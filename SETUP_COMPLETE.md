@@ -31,7 +31,7 @@ The ZumaTeledocAI application has been successfully configured and is ready for 
 4. **Environment Configuration**
    - ✅ Created `.env` file with production database connection
    - ✅ Generated secure secrets for JWT and encryption
-   - ✅ Created `env.example` template for documentation
+   - ✅ Environment variables documented in README
 
 ---
 
@@ -162,7 +162,7 @@ If migrations fail:
 
 - **QA Report:** See `QA_REPORT.md` for detailed testing results
 - **README:** See `README.md` for full documentation
-- **Environment Variables:** See `env.example` for configuration options
+- **Environment Variables:** See README.md for configuration options
 
 ---
 

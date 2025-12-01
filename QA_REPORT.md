@@ -47,7 +47,7 @@ npm run dev:next
 
 **Created Files:**
 - ✅ `.env` - Auto-generated with secure random secrets
-- ✅ `env.example` - Template with all required variables documented
+- ✅ Environment variables documented in README.md
 
 **Required Environment Variables:**
 ```env
@@ -247,9 +247,8 @@ This error appears in old logs but is not present in the current codebase. The q
    - Added UUID validation in `/:id` route handler
    - **Commit message:** `fix: Reorder provider routes to prevent /me/* route conflicts`
 
-3. **`env.example`** (new file)
-   - Created comprehensive environment variable template
-   - **Commit message:** `docs: Add env.example with all required environment variables`
+3. **Environment Variables Documentation**
+   - Environment variables documented in README.md
 
 4. **`.env`** (new file, gitignored)
    - Auto-generated with secure random secrets
@@ -306,7 +305,7 @@ This error appears in old logs but is not present in the current codebase. The q
 
 1. **Environment Variables**
    - ✅ `.env` is in `.gitignore`
-   - ✅ `env.example` created (no secrets)
+   - ✅ Environment variables documented in README.md
    - ✅ Secure random secrets generated
 
 2. **CORS Configuration**
