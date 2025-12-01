@@ -44,6 +44,18 @@ coverage/
 *.key
 *.cert
 
+# Backup and old files
+*-old.*
+*-old
+*.old
+*-new.*
+*-new
+*-backup.*
+*-backup
+*.bak
+*.tmp
+*~
+
 # Vercel
 .vercel
 
