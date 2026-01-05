@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BrainCircuit, CheckCircle, AlertTriangle, Loader2, Send, Sparkles, Pill, Calendar } from 'lucide-react';
+import Link from 'next/link';
+import { BrainCircuit, CheckCircle, AlertTriangle, Loader2, Send, Sparkles, Pill, Calendar, History, MapPin } from 'lucide-react';
 import { appointmentsAPI, triageAPI } from '@/lib/api';
 import { DoctaService } from '@/lib/doctaService';
 import { Button } from '@/components/ui/button';
@@ -137,12 +138,28 @@ export default function PatientTriagePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <BrainCircuit className="w-6 h-6 text-purple-500" />
-          AI Symptom Checker
-        </h1>
-        <p className="text-slate-500 mt-1">Powered by Med-Gemini</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <BrainCircuit className="w-6 h-6 text-purple-500" />
+            AI Symptom Checker
+          </h1>
+          <p className="text-muted-foreground mt-1">Powered by Med-Gemini</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link href="/patient/pharmacy">
+            <Button variant="outline" size="sm">
+              <MapPin className="w-4 h-4 mr-2" />
+              My Pharmacies
+            </Button>
+          </Link>
+          <Link href="/patient/triage/history">
+            <Button variant="outline" size="sm">
+              <History className="w-4 h-4 mr-2" />
+              View History
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Appointment Info Banner */}

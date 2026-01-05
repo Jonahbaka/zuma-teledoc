@@ -128,7 +128,7 @@ export default function ProviderVisitsPage() {
                     <div className="flex items-center gap-3">
                       <div className="text-right">
                         {visit.isSigned ? (
-                          <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-sm font-medium">
+                          <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
                             Signed
                           </span>
                         ) : (

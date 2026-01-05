@@ -75,7 +75,8 @@ async function main() {
     );
     
     console.log(`✅ Approved ${pendingProviders.length} provider(s)!`);
-    console.log('\nThey can now log in at: http://localhost:3000/login');
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+    console.log(`\nThey can now log in at: ${baseUrl}/provider/login`);
     
   } catch (error) {
     console.error('\n❌ Error:', error.message);

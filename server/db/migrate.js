@@ -1301,6 +1301,867 @@ const migrations = [
       END $$;
     `
   }
+  ,
+  // Migration 022: Allow same email across roles (unique by email+role)
+  {
+    name: '022_allow_duplicate_email_across_roles',
+    up: `
+      -- Drop the original unique constraint on users.email (created by column-level UNIQUE)
+      ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key;
+
+      -- Enforce uniqueness per (email, role) instead
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'users_email_role_key'
+        ) THEN
+          ALTER TABLE users
+          ADD CONSTRAINT users_email_role_key UNIQUE (email, role);
+        END IF;
+      END $$;
+    `
+  },
+  // Migration 023: Create prescriptions, e-dispensing, and enhanced triage tables
+  {
+    name: '023_create_prescriptions_and_triage_tables',
+    up: `
+      -- =====================================================
+      -- PRESCRIPTIONS TABLE (E-PRESCRIBING)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS prescriptions (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        patient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        appointment_id UUID REFERENCES appointments(id) ON DELETE SET NULL,
+        visit_id UUID REFERENCES visits(id) ON DELETE SET NULL,
+        
+        -- Medication Details
+        medication_name VARCHAR(255) NOT NULL,
+        generic_name VARCHAR(255),
+        ndc_code VARCHAR(20),
+        rx_norm_code VARCHAR(20),
+        
+        -- Dosage Information
+        dosage_strength VARCHAR(100) NOT NULL,
+        dosage_form VARCHAR(100) NOT NULL,
+        dosage_unit VARCHAR(50),
+        route_of_administration VARCHAR(100) DEFAULT 'oral',
+        
+        -- Prescription Details
+        quantity INTEGER NOT NULL,
+        quantity_unit VARCHAR(50) DEFAULT 'tablets',
+        days_supply INTEGER NOT NULL,
+        refills_allowed INTEGER DEFAULT 0,
+        refills_remaining INTEGER DEFAULT 0,
+        dispense_as_written BOOLEAN DEFAULT false,
+        
+        -- Scheduling
+        schedule_class VARCHAR(20) CHECK (schedule_class IN ('II', 'III', 'IV', 'V', 'non-controlled')),
+        is_controlled BOOLEAN DEFAULT false,
+        
+        -- Instructions
+        sig_directions TEXT NOT NULL,
+        patient_instructions TEXT,
+        pharmacy_notes TEXT,
+        
+        -- Clinical Information
+        diagnosis_code VARCHAR(20),
+        diagnosis_description TEXT,
+        indication TEXT,
+        
+        -- Prior Authorization
+        requires_prior_auth BOOLEAN DEFAULT false,
+        prior_auth_id UUID,
+        prior_auth_number VARCHAR(100),
+        
+        -- Pharmacy Information
+        pharmacy_id UUID,
+        pharmacy_name VARCHAR(255),
+        pharmacy_npi VARCHAR(20),
+        pharmacy_address TEXT,
+        pharmacy_phone VARCHAR(50),
+        pharmacy_fax VARCHAR(50),
+        
+        -- E-Prescribing Status
+        status VARCHAR(50) DEFAULT 'draft' CHECK (status IN (
+          'draft', 'pending_review', 'signed', 'sent', 
+          'received', 'processing', 'ready', 'picked_up', 
+          'delivered', 'cancelled', 'denied', 'transferred'
+        )),
+        
+        -- Surescripts/E-Prescribing
+        surescripts_message_id VARCHAR(255),
+        erx_sent_at TIMESTAMP WITH TIME ZONE,
+        erx_received_at TIMESTAMP WITH TIME ZONE,
+        erx_response JSONB,
+        
+        -- Digital Signature
+        provider_signature TEXT,
+        signed_at TIMESTAMP WITH TIME ZONE,
+        dea_number VARCHAR(20),
+        
+        -- Tracking
+        fill_date DATE,
+        last_fill_date DATE,
+        next_fill_date DATE,
+        
+        -- Metadata
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- =====================================================
+      -- TRIAGE SESSIONS TABLE (Independent of Appointments)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS triage_sessions (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        patient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        appointment_id UUID REFERENCES appointments(id) ON DELETE SET NULL,
+        
+        -- Symptoms
+        chief_complaint TEXT NOT NULL,
+        symptoms TEXT NOT NULL,
+        symptom_duration VARCHAR(100),
+        symptom_onset TIMESTAMP WITH TIME ZONE,
+        symptom_severity INTEGER CHECK (symptom_severity >= 1 AND symptom_severity <= 10),
+        
+        -- Vital Signs (if available)
+        temperature DECIMAL(4,1),
+        heart_rate INTEGER,
+        blood_pressure_systolic INTEGER,
+        blood_pressure_diastolic INTEGER,
+        respiratory_rate INTEGER,
+        oxygen_saturation DECIMAL(4,1),
+        pain_level INTEGER CHECK (pain_level >= 0 AND pain_level <= 10),
+        
+        -- AI Triage Results
+        ai_severity INTEGER CHECK (ai_severity >= 1 AND ai_severity <= 5),
+        ai_triage_level VARCHAR(50) CHECK (ai_triage_level IN ('EMERGENT', 'URGENT', 'SEMI_URGENT', 'ROUTINE', 'NON_URGENT')),
+        ai_recommended_specialty VARCHAR(100),
+        ai_soap_draft TEXT,
+        ai_suggested_medications JSONB DEFAULT '[]'::jsonb,
+        ai_clinical_flags JSONB DEFAULT '[]'::jsonb,
+        ai_differential_diagnosis JSONB DEFAULT '[]'::jsonb,
+        ai_recommended_tests JSONB DEFAULT '[]'::jsonb,
+        ai_confidence_score DECIMAL(5,2),
+        
+        -- Body System Categorization
+        affected_body_systems JSONB DEFAULT '[]'::jsonb,
+        
+        -- Emergency Detection
+        is_emergency BOOLEAN DEFAULT false,
+        emergency_flags JSONB DEFAULT '[]'::jsonb,
+        requires_immediate_attention BOOLEAN DEFAULT false,
+        
+        -- Provider Review
+        reviewed_by UUID REFERENCES users(id),
+        reviewed_at TIMESTAMP WITH TIME ZONE,
+        provider_override_severity INTEGER,
+        provider_notes TEXT,
+        
+        -- Disposition
+        disposition VARCHAR(50) CHECK (disposition IN (
+          'pending', 'scheduled', 'referred', 'emergency_transfer',
+          'self_care', 'completed', 'cancelled'
+        )) DEFAULT 'pending',
+        disposition_notes TEXT,
+        
+        -- Queue Management
+        queue_priority INTEGER DEFAULT 50,
+        queue_entered_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        queue_exited_at TIMESTAMP WITH TIME ZONE,
+        wait_time_minutes INTEGER,
+        
+        -- Routing
+        auto_routed BOOLEAN DEFAULT false,
+        routed_to_provider_id UUID REFERENCES users(id),
+        routed_to_specialty VARCHAR(100),
+        routing_reason TEXT,
+        
+        -- Timestamps
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- =====================================================
+      -- TRIAGE QUEUE TABLE (Real-time Queue Management)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS triage_queue (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        triage_session_id UUID NOT NULL REFERENCES triage_sessions(id) ON DELETE CASCADE,
+        patient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        
+        -- Queue Position
+        queue_number INTEGER NOT NULL,
+        priority_score INTEGER DEFAULT 50 CHECK (priority_score >= 0 AND priority_score <= 100),
+        
+        -- Triage Level (determines base priority)
+        triage_level VARCHAR(50) NOT NULL CHECK (triage_level IN ('EMERGENT', 'URGENT', 'SEMI_URGENT', 'ROUTINE', 'NON_URGENT')),
+        severity INTEGER CHECK (severity >= 1 AND severity <= 5),
+        
+        -- Assignment
+        assigned_provider_id UUID REFERENCES users(id),
+        assigned_specialty VARCHAR(100),
+        
+        -- Status
+        status VARCHAR(50) DEFAULT 'waiting' CHECK (status IN (
+          'waiting', 'called', 'in_progress', 'on_hold', 
+          'completed', 'no_show', 'left_without_being_seen'
+        )),
+        
+        -- Timing
+        entered_queue_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        called_at TIMESTAMP WITH TIME ZONE,
+        started_at TIMESTAMP WITH TIME ZONE,
+        completed_at TIMESTAMP WITH TIME ZONE,
+        estimated_wait_minutes INTEGER,
+        actual_wait_minutes INTEGER,
+        
+        -- Flags
+        is_callback BOOLEAN DEFAULT false,
+        callback_requested_at TIMESTAMP WITH TIME ZONE,
+        callback_phone VARCHAR(50),
+        
+        -- Metadata
+        notes TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- =====================================================
+      -- PHARMACY NETWORK TABLE (Enhanced Pharmacy Directory)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS pharmacy_network (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        
+        -- Pharmacy Details
+        name VARCHAR(255) NOT NULL,
+        chain_name VARCHAR(100),
+        npi VARCHAR(20) UNIQUE,
+        ncpdp_id VARCHAR(20),
+        
+        -- Address
+        address_line1 VARCHAR(255) NOT NULL,
+        address_line2 VARCHAR(255),
+        city VARCHAR(100) NOT NULL,
+        state VARCHAR(50) NOT NULL,
+        zip_code VARCHAR(20) NOT NULL,
+        country VARCHAR(50) DEFAULT 'USA',
+        
+        -- Contact
+        phone VARCHAR(50),
+        fax VARCHAR(50),
+        email VARCHAR(255),
+        
+        -- Location
+        latitude DECIMAL(10, 8),
+        longitude DECIMAL(11, 8),
+        
+        -- Hours
+        hours_monday VARCHAR(50),
+        hours_tuesday VARCHAR(50),
+        hours_wednesday VARCHAR(50),
+        hours_thursday VARCHAR(50),
+        hours_friday VARCHAR(50),
+        hours_saturday VARCHAR(50),
+        hours_sunday VARCHAR(50),
+        timezone VARCHAR(50) DEFAULT 'America/New_York',
+        
+        -- Capabilities
+        accepts_eprescriptions BOOLEAN DEFAULT true,
+        has_drive_thru BOOLEAN DEFAULT false,
+        has_24_hour BOOLEAN DEFAULT false,
+        has_delivery BOOLEAN DEFAULT false,
+        has_compounding BOOLEAN DEFAULT false,
+        accepts_controlled_substances BOOLEAN DEFAULT true,
+        dea_number VARCHAR(20),
+        
+        -- Network Status
+        is_in_network BOOLEAN DEFAULT true,
+        is_preferred BOOLEAN DEFAULT false,
+        is_active BOOLEAN DEFAULT true,
+        
+        -- Metadata
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- =====================================================
+      -- PRESCRIPTION HISTORY TABLE (Track All Activities)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS prescription_history (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        prescription_id UUID NOT NULL REFERENCES prescriptions(id) ON DELETE CASCADE,
+        
+        -- Activity
+        action VARCHAR(50) NOT NULL CHECK (action IN (
+          'created', 'updated', 'signed', 'sent', 'received',
+          'filled', 'picked_up', 'delivered', 'cancelled',
+          'transferred', 'refill_requested', 'refill_approved',
+          'refill_denied', 'prior_auth_submitted', 'prior_auth_approved',
+          'prior_auth_denied', 'pharmacy_changed'
+        )),
+        
+        -- Actor
+        performed_by UUID REFERENCES users(id),
+        performed_by_name VARCHAR(255),
+        performed_by_role VARCHAR(50),
+        
+        -- Details
+        old_values JSONB,
+        new_values JSONB,
+        notes TEXT,
+        
+        -- Timestamps
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- =====================================================
+      -- INDEXES
+      -- =====================================================
+      CREATE INDEX IF NOT EXISTS idx_prescriptions_patient_id ON prescriptions(patient_id);
+      CREATE INDEX IF NOT EXISTS idx_prescriptions_provider_id ON prescriptions(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_prescriptions_appointment_id ON prescriptions(appointment_id);
+      CREATE INDEX IF NOT EXISTS idx_prescriptions_status ON prescriptions(status);
+      CREATE INDEX IF NOT EXISTS idx_prescriptions_pharmacy_npi ON prescriptions(pharmacy_npi);
+      CREATE INDEX IF NOT EXISTS idx_prescriptions_medication ON prescriptions(medication_name);
+      CREATE INDEX IF NOT EXISTS idx_prescriptions_created_at ON prescriptions(created_at);
+      
+      CREATE INDEX IF NOT EXISTS idx_triage_sessions_patient_id ON triage_sessions(patient_id);
+      CREATE INDEX IF NOT EXISTS idx_triage_sessions_appointment_id ON triage_sessions(appointment_id);
+      CREATE INDEX IF NOT EXISTS idx_triage_sessions_severity ON triage_sessions(ai_severity);
+      CREATE INDEX IF NOT EXISTS idx_triage_sessions_triage_level ON triage_sessions(ai_triage_level);
+      CREATE INDEX IF NOT EXISTS idx_triage_sessions_disposition ON triage_sessions(disposition);
+      CREATE INDEX IF NOT EXISTS idx_triage_sessions_created_at ON triage_sessions(created_at);
+      CREATE INDEX IF NOT EXISTS idx_triage_sessions_is_emergency ON triage_sessions(is_emergency) WHERE is_emergency = true;
+      
+      CREATE INDEX IF NOT EXISTS idx_triage_queue_session_id ON triage_queue(triage_session_id);
+      CREATE INDEX IF NOT EXISTS idx_triage_queue_patient_id ON triage_queue(patient_id);
+      CREATE INDEX IF NOT EXISTS idx_triage_queue_status ON triage_queue(status);
+      CREATE INDEX IF NOT EXISTS idx_triage_queue_priority ON triage_queue(priority_score DESC);
+      CREATE INDEX IF NOT EXISTS idx_triage_queue_assigned_provider ON triage_queue(assigned_provider_id);
+      CREATE INDEX IF NOT EXISTS idx_triage_queue_waiting ON triage_queue(status, priority_score DESC) WHERE status = 'waiting';
+      
+      CREATE INDEX IF NOT EXISTS idx_pharmacy_network_npi ON pharmacy_network(npi);
+      CREATE INDEX IF NOT EXISTS idx_pharmacy_network_zip ON pharmacy_network(zip_code);
+      CREATE INDEX IF NOT EXISTS idx_pharmacy_network_active ON pharmacy_network(is_active) WHERE is_active = true;
+      
+      CREATE INDEX IF NOT EXISTS idx_prescription_history_prescription_id ON prescription_history(prescription_id);
+      CREATE INDEX IF NOT EXISTS idx_prescription_history_action ON prescription_history(action);
+      CREATE INDEX IF NOT EXISTS idx_prescription_history_created_at ON prescription_history(created_at);
+      
+      -- =====================================================
+      -- TRIGGERS
+      -- =====================================================
+      DROP TRIGGER IF EXISTS update_prescriptions_updated_at ON prescriptions;
+      CREATE TRIGGER update_prescriptions_updated_at
+        BEFORE UPDATE ON prescriptions
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+      
+      DROP TRIGGER IF EXISTS update_triage_sessions_updated_at ON triage_sessions;
+      CREATE TRIGGER update_triage_sessions_updated_at
+        BEFORE UPDATE ON triage_sessions
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+      
+      DROP TRIGGER IF EXISTS update_triage_queue_updated_at ON triage_queue;
+      CREATE TRIGGER update_triage_queue_updated_at
+        BEFORE UPDATE ON triage_queue
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+      
+      DROP TRIGGER IF EXISTS update_pharmacy_network_updated_at ON pharmacy_network;
+      CREATE TRIGGER update_pharmacy_network_updated_at
+        BEFORE UPDATE ON pharmacy_network
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    `
+  },
+
+  // Migration 024: Create invitations and campaigns tables
+  {
+    name: '024_create_invitations_and_campaigns',
+    up: `
+      -- =====================================================
+      -- INVITATIONS TABLE
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS invitations (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        
+        -- Invite details
+        email VARCHAR(255) NOT NULL,
+        first_name VARCHAR(100),
+        last_name VARCHAR(100),
+        role VARCHAR(50) NOT NULL CHECK (role IN ('provider', 'admin', 'super_admin')),
+        specialty VARCHAR(100),
+        
+        -- Token and status
+        token VARCHAR(255) UNIQUE NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'expired', 'revoked')),
+        
+        -- Invite metadata
+        invited_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        organization_name VARCHAR(255),
+        personal_message TEXT,
+        
+        -- Dates
+        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        accepted_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- =====================================================
+      -- EMAIL TEMPLATES TABLE
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS email_templates (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        
+        -- Template details
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(50) NOT NULL CHECK (category IN ('invitation', 'campaign', 'vc_pitch', 'partnership', 'welcome', 'announcement', 'custom')),
+        subject VARCHAR(500) NOT NULL,
+        body TEXT NOT NULL,
+        preview TEXT,
+        
+        -- Metadata
+        is_system_template BOOLEAN DEFAULT FALSE,
+        created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        
+        -- Timestamps
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- =====================================================
+      -- EMAIL CAMPAIGNS TABLE
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS email_campaigns (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        
+        -- Campaign details
+        name VARCHAR(255) NOT NULL,
+        template_id UUID REFERENCES email_templates(id) ON DELETE SET NULL,
+        
+        -- Recipients (stored as JSON array of emails or user IDs)
+        recipients JSONB NOT NULL DEFAULT '[]',
+        recipient_count INTEGER DEFAULT 0,
+        
+        -- Variables for template
+        variables JSONB DEFAULT '{}',
+        
+        -- Scheduling
+        status VARCHAR(50) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'scheduled', 'sending', 'sent', 'failed', 'cancelled')),
+        scheduled_at TIMESTAMP WITH TIME ZONE,
+        sent_at TIMESTAMP WITH TIME ZONE,
+        
+        -- Stats
+        emails_sent INTEGER DEFAULT 0,
+        emails_opened INTEGER DEFAULT 0,
+        emails_clicked INTEGER DEFAULT 0,
+        emails_bounced INTEGER DEFAULT 0,
+        
+        -- Metadata
+        created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        
+        -- Timestamps
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- =====================================================
+      -- CAMPAIGN EMAIL LOGS TABLE
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS campaign_email_logs (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        campaign_id UUID NOT NULL REFERENCES email_campaigns(id) ON DELETE CASCADE,
+        recipient_email VARCHAR(255) NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'opened', 'clicked', 'bounced', 'failed')),
+        sent_at TIMESTAMP WITH TIME ZONE,
+        opened_at TIMESTAMP WITH TIME ZONE,
+        clicked_at TIMESTAMP WITH TIME ZONE,
+        error_message TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      -- =====================================================
+      -- ADD must_change_password TO USERS TABLE
+      -- =====================================================
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
+      
+      -- =====================================================
+      -- INDEXES
+      -- =====================================================
+      CREATE INDEX IF NOT EXISTS idx_invitations_email ON invitations(email);
+      CREATE INDEX IF NOT EXISTS idx_invitations_token ON invitations(token);
+      CREATE INDEX IF NOT EXISTS idx_invitations_status ON invitations(status);
+      CREATE INDEX IF NOT EXISTS idx_invitations_invited_by ON invitations(invited_by_user_id);
+      CREATE INDEX IF NOT EXISTS idx_email_templates_category ON email_templates(category);
+      CREATE INDEX IF NOT EXISTS idx_email_campaigns_status ON email_campaigns(status);
+      CREATE INDEX IF NOT EXISTS idx_email_campaigns_scheduled_at ON email_campaigns(scheduled_at);
+      CREATE INDEX IF NOT EXISTS idx_campaign_email_logs_campaign ON campaign_email_logs(campaign_id);
+      
+      -- =====================================================
+      -- TRIGGERS
+      -- =====================================================
+      DROP TRIGGER IF EXISTS update_invitations_updated_at ON invitations;
+      CREATE TRIGGER update_invitations_updated_at
+        BEFORE UPDATE ON invitations
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+      
+      DROP TRIGGER IF EXISTS update_email_templates_updated_at ON email_templates;
+      CREATE TRIGGER update_email_templates_updated_at
+        BEFORE UPDATE ON email_templates
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+      
+      DROP TRIGGER IF EXISTS update_email_campaigns_updated_at ON email_campaigns;
+      CREATE TRIGGER update_email_campaigns_updated_at
+        BEFORE UPDATE ON email_campaigns
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    `
+  },
+
+  // Migration 025: Provider Credentialing System
+  {
+    name: '025_provider_credentialing',
+    up: `
+      -- Credentialing status enum
+      DO $$ BEGIN
+        CREATE TYPE credentialing_status AS ENUM (
+          'not_started', 'pending_payment', 'documents_required', 'documents_under_review',
+          'license_verification', 'dea_verification', 'npi_verification', 'background_check',
+          'malpractice_verification', 'education_verification', 'references_check',
+          'committee_review', 'approved', 'rejected', 'suspended', 'expired'
+        );
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;
+
+      -- Credentialing step status enum
+      DO $$ BEGIN
+        CREATE TYPE step_status AS ENUM (
+          'not_started', 'in_progress', 'pending_review', 'approved', 'rejected', 'requires_resubmission'
+        );
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;
+
+      -- Document type enum
+      DO $$ BEGIN
+        CREATE TYPE credential_document_type AS ENUM (
+          'medical_license', 'dea_certificate', 'npi_certificate', 'board_certification',
+          'medical_degree', 'cv_resume', 'malpractice_insurance', 'photo_id', 'proof_of_address',
+          'background_check_consent', 'reference_letter', 'immunization_records',
+          'cpr_certification', 'hipaa_training', 'state_license', 'work_history', 'other'
+        );
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;
+
+      -- Main provider credentialing table
+      CREATE TABLE IF NOT EXISTS provider_credentialing (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        provider_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        status credentialing_status DEFAULT 'not_started',
+        progress_percentage INTEGER DEFAULT 0,
+        payment_completed BOOLEAN DEFAULT FALSE,
+        payment_id TEXT,
+        payment_amount DECIMAL(10, 2),
+        payment_date TIMESTAMPTZ,
+        application_submitted_at TIMESTAMPTZ,
+        application_type VARCHAR(50) DEFAULT 'new',
+        legal_first_name VARCHAR(100),
+        legal_middle_name VARCHAR(100),
+        legal_last_name VARCHAR(100),
+        date_of_birth DATE,
+        ssn_last_four VARCHAR(4),
+        gender VARCHAR(20),
+        primary_address TEXT,
+        city VARCHAR(100),
+        state VARCHAR(50),
+        zip_code VARCHAR(20),
+        country VARCHAR(100) DEFAULT 'United States',
+        specialty VARCHAR(100),
+        subspecialties TEXT[],
+        years_in_practice INTEGER,
+        practice_type VARCHAR(50),
+        medical_license_number VARCHAR(100),
+        medical_license_state VARCHAR(50),
+        medical_license_expiry DATE,
+        license_verified BOOLEAN DEFAULT FALSE,
+        license_verified_at TIMESTAMPTZ,
+        license_verification_notes TEXT,
+        dea_number VARCHAR(50),
+        dea_expiry DATE,
+        dea_verified BOOLEAN DEFAULT FALSE,
+        dea_verified_at TIMESTAMPTZ,
+        dea_verification_notes TEXT,
+        npi_number VARCHAR(20),
+        npi_verified BOOLEAN DEFAULT FALSE,
+        npi_verified_at TIMESTAMPTZ,
+        npi_verification_notes TEXT,
+        board_certified BOOLEAN DEFAULT FALSE,
+        board_name VARCHAR(200),
+        board_certification_number VARCHAR(100),
+        board_certification_expiry DATE,
+        board_verified BOOLEAN DEFAULT FALSE,
+        board_verified_at TIMESTAMPTZ,
+        medical_school VARCHAR(200),
+        graduation_year INTEGER,
+        degree_type VARCHAR(50),
+        residency_program VARCHAR(200),
+        residency_completion_year INTEGER,
+        fellowship_program VARCHAR(200),
+        fellowship_completion_year INTEGER,
+        education_verified BOOLEAN DEFAULT FALSE,
+        education_verified_at TIMESTAMPTZ,
+        malpractice_carrier VARCHAR(200),
+        malpractice_policy_number VARCHAR(100),
+        malpractice_coverage_amount DECIMAL(12, 2),
+        malpractice_expiry DATE,
+        malpractice_verified BOOLEAN DEFAULT FALSE,
+        malpractice_verified_at TIMESTAMPTZ,
+        background_check_consent BOOLEAN DEFAULT FALSE,
+        background_check_submitted_at TIMESTAMPTZ,
+        background_check_completed_at TIMESTAMPTZ,
+        background_check_status VARCHAR(50),
+        background_check_clear BOOLEAN,
+        background_check_notes TEXT,
+        references_submitted INTEGER DEFAULT 0,
+        references_required INTEGER DEFAULT 3,
+        references_verified INTEGER DEFAULT 0,
+        work_history_gaps_explained BOOLEAN DEFAULT FALSE,
+        committee_review_date TIMESTAMPTZ,
+        committee_decision VARCHAR(50),
+        committee_notes TEXT,
+        approved_at TIMESTAMPTZ,
+        approved_by UUID REFERENCES users(id),
+        approval_expiry DATE,
+        rejection_reason TEXT,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(provider_id)
+      );
+
+      -- Credentialing steps tracking table
+      CREATE TABLE IF NOT EXISTS credentialing_steps (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        credentialing_id UUID NOT NULL REFERENCES provider_credentialing(id) ON DELETE CASCADE,
+        step_number INTEGER NOT NULL,
+        step_name VARCHAR(100) NOT NULL,
+        step_description TEXT,
+        status step_status DEFAULT 'not_started',
+        started_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        due_date DATE,
+        reviewed_by UUID REFERENCES users(id),
+        review_notes TEXT,
+        rejection_reason TEXT,
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(credentialing_id, step_number)
+      );
+
+      -- Credentialing documents table
+      CREATE TABLE IF NOT EXISTS credentialing_documents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        credentialing_id UUID NOT NULL REFERENCES provider_credentialing(id) ON DELETE CASCADE,
+        document_type credential_document_type NOT NULL,
+        document_name VARCHAR(255) NOT NULL,
+        file_url TEXT NOT NULL,
+        file_size INTEGER,
+        mime_type VARCHAR(100),
+        status step_status DEFAULT 'pending_review',
+        verified_at TIMESTAMPTZ,
+        verified_by UUID REFERENCES users(id),
+        verification_notes TEXT,
+        expiry_date DATE,
+        reminder_sent BOOLEAN DEFAULT FALSE,
+        metadata JSONB DEFAULT '{}',
+        uploaded_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Professional references table
+      CREATE TABLE IF NOT EXISTS credentialing_references (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        credentialing_id UUID NOT NULL REFERENCES provider_credentialing(id) ON DELETE CASCADE,
+        reference_name VARCHAR(200) NOT NULL,
+        reference_title VARCHAR(100),
+        reference_organization VARCHAR(200),
+        reference_email VARCHAR(255),
+        reference_phone VARCHAR(50),
+        relationship VARCHAR(100),
+        years_known INTEGER,
+        contacted_at TIMESTAMPTZ,
+        response_received_at TIMESTAMPTZ,
+        verification_status step_status DEFAULT 'not_started',
+        verification_notes TEXT,
+        recommendation VARCHAR(50),
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Work history table
+      CREATE TABLE IF NOT EXISTS credentialing_work_history (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        credentialing_id UUID NOT NULL REFERENCES provider_credentialing(id) ON DELETE CASCADE,
+        employer_name VARCHAR(200) NOT NULL,
+        employer_address TEXT,
+        position_title VARCHAR(100),
+        department VARCHAR(100),
+        start_date DATE NOT NULL,
+        end_date DATE,
+        is_current BOOLEAN DEFAULT FALSE,
+        reason_for_leaving TEXT,
+        supervisor_name VARCHAR(200),
+        supervisor_phone VARCHAR(50),
+        verified BOOLEAN DEFAULT FALSE,
+        verified_at TIMESTAMPTZ,
+        verification_notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Credentialing audit log
+      CREATE TABLE IF NOT EXISTS credentialing_audit_log (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        credentialing_id UUID NOT NULL REFERENCES provider_credentialing(id) ON DELETE CASCADE,
+        action VARCHAR(100) NOT NULL,
+        action_by UUID REFERENCES users(id),
+        action_by_role VARCHAR(50),
+        previous_status credentialing_status,
+        new_status credentialing_status,
+        details JSONB DEFAULT '{}',
+        ip_address VARCHAR(50),
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Add Stripe columns to users and subscriptions
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_tier VARCHAR(50) DEFAULT 'free';
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS stripe_payment_id VARCHAR(100);
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(100);
+
+      -- Indexes
+      CREATE INDEX IF NOT EXISTS idx_credentialing_provider ON provider_credentialing(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_credentialing_status ON provider_credentialing(status);
+      CREATE INDEX IF NOT EXISTS idx_credentialing_steps ON credentialing_steps(credentialing_id);
+      CREATE INDEX IF NOT EXISTS idx_credentialing_docs ON credentialing_documents(credentialing_id);
+      CREATE INDEX IF NOT EXISTS idx_credentialing_refs ON credentialing_references(credentialing_id);
+      CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id);
+      CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe ON subscriptions(stripe_subscription_id);
+
+      -- Trigger for default steps
+      CREATE OR REPLACE FUNCTION create_default_credentialing_steps()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        INSERT INTO credentialing_steps (credentialing_id, step_number, step_name, step_description) VALUES
+          (NEW.id, 1, 'Application Fee', 'Pay the credentialing application fee'),
+          (NEW.id, 2, 'Personal Information', 'Complete personal and contact information'),
+          (NEW.id, 3, 'Professional Information', 'Provide specialty and practice details'),
+          (NEW.id, 4, 'Medical License', 'Upload and verify medical license'),
+          (NEW.id, 5, 'DEA Registration', 'Provide DEA registration information'),
+          (NEW.id, 6, 'NPI Verification', 'Verify National Provider Identifier'),
+          (NEW.id, 7, 'Education & Training', 'Provide education and training history'),
+          (NEW.id, 8, 'Board Certification', 'Upload board certification if applicable'),
+          (NEW.id, 9, 'Malpractice Insurance', 'Provide malpractice insurance details'),
+          (NEW.id, 10, 'Work History', 'Complete 10-year work history'),
+          (NEW.id, 11, 'References', 'Provide professional references'),
+          (NEW.id, 12, 'Background Check', 'Consent to background check'),
+          (NEW.id, 13, 'Document Upload', 'Upload all required documents'),
+          (NEW.id, 14, 'Committee Review', 'Credentialing committee review'),
+          (NEW.id, 15, 'Final Approval', 'Final approval and activation');
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS create_credentialing_steps_trigger ON provider_credentialing;
+      CREATE TRIGGER create_credentialing_steps_trigger
+        AFTER INSERT ON provider_credentialing
+        FOR EACH ROW
+        EXECUTE FUNCTION create_default_credentialing_steps();
+
+      -- Updated_at triggers
+      DROP TRIGGER IF EXISTS update_provider_credentialing_updated_at ON provider_credentialing;
+      CREATE TRIGGER update_provider_credentialing_updated_at
+        BEFORE UPDATE ON provider_credentialing
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+      DROP TRIGGER IF EXISTS update_credentialing_steps_updated_at ON credentialing_steps;
+      CREATE TRIGGER update_credentialing_steps_updated_at
+        BEFORE UPDATE ON credentialing_steps
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    `
+  },
+
+  // Migration 026: Membership cards + access levels for Stripe plans
+  {
+    name: '026_membership_cards_and_access_levels',
+    up: `
+      -- Expand access_level enum (used for paid-access gating)
+      DO $$ BEGIN
+        ALTER TYPE access_level ADD VALUE IF NOT EXISTS 'basic_monthly';
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+
+      DO $$ BEGIN
+        ALTER TYPE access_level ADD VALUE IF NOT EXISTS 'platinum_monthly';
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+
+      -- Expand subscription_tier enum to include 'basic' (Stripe plan exists)
+      DO $$ BEGIN
+        ALTER TYPE subscription_tier ADD VALUE IF NOT EXISTS 'basic';
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+
+      -- Membership cards (Gold/Platinum issued after successful payment)
+      CREATE TABLE IF NOT EXISTS membership_cards (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+        tier subscription_tier NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'revoked')),
+
+        card_number VARCHAR(32) NOT NULL UNIQUE,
+        stripe_subscription_id VARCHAR(100),
+        current_period_end TIMESTAMPTZ,
+
+        issued_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        suspended_at TIMESTAMPTZ,
+        revoked_at TIMESTAMPTZ,
+
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_membership_cards_user_id ON membership_cards(user_id);
+      CREATE INDEX IF NOT EXISTS idx_membership_cards_tier ON membership_cards(tier);
+      CREATE INDEX IF NOT EXISTS idx_membership_cards_status ON membership_cards(status);
+      CREATE INDEX IF NOT EXISTS idx_membership_cards_stripe_sub ON membership_cards(stripe_subscription_id);
+
+      DROP TRIGGER IF EXISTS update_membership_cards_updated_at ON membership_cards;
+      CREATE TRIGGER update_membership_cards_updated_at
+        BEFORE UPDATE ON membership_cards
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    `
+  },
+
+  // Migration 027: Stripe webhook idempotency (avoid double-processing on retries)
+  {
+    name: '027_stripe_webhook_idempotency',
+    up: `
+      CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id VARCHAR(255) NOT NULL UNIQUE,
+        event_type VARCHAR(255) NOT NULL,
+        received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_received_at ON stripe_webhook_events(received_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_event_type ON stripe_webhook_events(event_type);
+    `
+  }
 ];
 
 async function runMigrations() {

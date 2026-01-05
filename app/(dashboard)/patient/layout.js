@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, Calendar, FileText, MessageSquare, 
-  CreditCard, User, Bell, Settings, Heart, Shield, BrainCircuit, MapPin
+  CreditCard, User, Bell, Settings, Heart, Shield, BrainCircuit, MapPin, Pill
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
@@ -13,8 +13,9 @@ const navigation = [
   { name: 'Dashboard', href: '/patient/dashboard', icon: LayoutDashboard },
   { name: 'Appointments', href: '/patient/appointments', icon: Calendar },
   { name: 'AI Triage', href: '/patient/triage', icon: BrainCircuit },
+  { name: 'My Prescriptions', href: '/patient/prescriptions', icon: Pill },
   { name: 'Insurance Wallet', href: '/patient/wallet', icon: Shield },
-  { name: 'Pharmacy Locator', href: '/patient/pharmacy', icon: MapPin },
+  { name: 'My Pharmacies', href: '/patient/pharmacy', icon: MapPin },
   { name: 'Health Records', href: '/patient/records', icon: FileText },
   { name: 'Messages', href: '/patient/messages', icon: MessageSquare },
   { name: 'Notifications', href: '/patient/notifications', icon: Bell },

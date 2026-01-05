@@ -90,8 +90,8 @@ export default function HIPAANoticePage() {
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">Contact Information</h2>
               <p>
                 If you have questions about this notice or want to exercise your rights, please contact our Privacy Officer at{' '}
-                <a href="mailto:privacy@docta.com" className="text-purple-600 hover:underline">
-                  privacy@docta.com
+                <a href="mailto:evolvedu@outlook.com" className="text-purple-600 hover:underline">
+                  evolvedu@outlook.com
                 </a>
                 {' '}or file a complaint with the U.S. Department of Health and Human Services.
               </p>

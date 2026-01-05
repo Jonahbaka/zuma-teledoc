@@ -6,15 +6,34 @@
 const express = require('express');
 const db = require('../db');
 const logger = require('../middleware/logger');
-const { authenticate, requireRole, requireSuperAdmin } = require('../middleware/auth');
+const { authenticate, requireRole, requireSuperAdmin, requireMfa } = require('../middleware/auth');
 const { auditMiddleware } = require('../middleware/audit');
 const { validate, searchUsersSchema, updateUserStatusSchema, paginationSchema } = require('../../lib/validation');
 const { keysToCamel, parseQueryParams, getPaginationMeta } = require('../../lib/utils');
+const notificationService = require('../services/notifications');
 
 const router = express.Router();
 
 // All admin routes require admin or super_admin role
 router.use(authenticate, requireRole('admin', 'super_admin'));
+
+// Production hardening: require MFA for all admin/super_admin access
+router.use((req, res, next) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  const isAdminUser = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+
+  if (!isProd || !isAdminUser) return next();
+
+  if (!req.user.mfaEnabled) {
+    return res.status(403).json({
+      success: false,
+      error: 'MFA is required for admin access. Please enable MFA in your account settings.',
+      code: 'MFA_SETUP_REQUIRED'
+    });
+  }
+
+  return requireMfa(req, res, next);
+});
 
 /**
  * GET /api/admin/dashboard
@@ -290,13 +309,19 @@ router.put('/users/:id/status',
         values
       );
       
-      // If provider was approved, send notification
-      if (data.providerStatus === 'approved' && current[0].provider_status !== 'approved') {
-        await db.query(
-          `INSERT INTO notifications (user_id, type, title, message)
-           VALUES ($1, 'system', 'Account Approved', 'Your provider account has been approved. You can now accept appointments.')`,
+      // If provider status changed, send notification
+      if (data.providerStatus && data.providerStatus !== current[0].provider_status) {
+        const { rows: providerData } = await db.query(
+          'SELECT first_name, last_name FROM users WHERE id = $1',
           [id]
         );
+        if (providerData.length > 0) {
+          await notificationService.sendProviderStatusNotification(
+            { id, lastName: providerData[0].last_name },
+            data.providerStatus,
+            req.body.reason || null
+          );
+        }
       }
       
       // If user was deactivated, revoke all tokens
@@ -927,6 +952,489 @@ router.get('/accounting', async (req, res) => {
     });
   }
 });
+
+/**
+ * POST /api/admin/messages
+ * Send a message/notification to a specific user
+ */
+router.post('/messages',
+  auditMiddleware('create', 'admin_message'),
+  async (req, res) => {
+    try {
+      const { userId, subject, content, sendEmail = false } = req.body;
+      
+      if (!userId || !subject || !content) {
+        return res.status(400).json({
+          success: false,
+          error: 'User ID, subject, and content are required'
+        });
+      }
+      
+      // Verify user exists
+      const { rows: users } = await db.query(
+        'SELECT id, email, first_name, last_name, role FROM users WHERE id = $1 AND is_active = true',
+        [userId]
+      );
+      
+      if (users.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+      
+      const recipient = users[0];
+      const adminName = `${req.user.firstName || req.user.first_name} ${req.user.lastName || req.user.last_name}`;
+      
+      // Create in-app notification
+      await notificationService.sendAdminMessageNotification(
+        userId,
+        adminName,
+        subject,
+        content
+      );
+      
+      // Optionally send email
+      if (sendEmail) {
+        try {
+          const emailService = require('../services/email');
+          await emailService.sendAdminMessage(recipient, subject, content, adminName);
+        } catch (emailError) {
+          logger.warn('Failed to send admin message email', { error: emailError.message });
+        }
+      }
+      
+      logger.info('Admin message sent', {
+        adminId: req.user.id,
+        recipientId: userId,
+        subject
+      });
+      
+      res.status(201).json({
+        success: true,
+        message: 'Message sent successfully'
+      });
+    } catch (error) {
+      logger.error('Send admin message error', { error: error.message });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to send message'
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/admin/messages/bulk
+ * Send a message to multiple users by role or selection
+ */
+router.post('/messages/bulk',
+  auditMiddleware('create', 'admin_bulk_message'),
+  async (req, res) => {
+    try {
+      const { userIds, targetRole, subject, content, sendEmail = false } = req.body;
+      
+      if (!subject || !content) {
+        return res.status(400).json({
+          success: false,
+          error: 'Subject and content are required'
+        });
+      }
+      
+      if (!userIds && !targetRole) {
+        return res.status(400).json({
+          success: false,
+          error: 'Either userIds or targetRole must be provided'
+        });
+      }
+      
+      let recipients;
+      
+      if (userIds && userIds.length > 0) {
+        // Send to specific users
+        const { rows } = await db.query(
+          'SELECT id, email, first_name, last_name, role FROM users WHERE id = ANY($1) AND is_active = true',
+          [userIds]
+        );
+        recipients = rows;
+      } else {
+        // Send to all users of a role
+        const { rows } = await db.query(
+          'SELECT id, email, first_name, last_name, role FROM users WHERE role = $1 AND is_active = true',
+          [targetRole]
+        );
+        recipients = rows;
+      }
+      
+      if (recipients.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'No recipients found'
+        });
+      }
+      
+      const adminName = `${req.user.firstName || req.user.first_name} ${req.user.lastName || req.user.last_name}`;
+      
+      // Create notifications for all recipients
+      let sentCount = 0;
+      for (const recipient of recipients) {
+        await notificationService.sendAdminMessageNotification(
+          recipient.id,
+          adminName,
+          subject,
+          content
+        );
+        sentCount++;
+        
+        // Optionally send email
+        if (sendEmail) {
+          try {
+            const emailService = require('../services/email');
+            await emailService.sendAdminMessage(recipient, subject, content, adminName);
+          } catch (emailError) {
+            logger.warn('Failed to send admin message email', { 
+              error: emailError.message, 
+              recipientId: recipient.id 
+            });
+          }
+        }
+      }
+      
+      logger.info('Bulk admin message sent', {
+        adminId: req.user.id,
+        recipientCount: sentCount,
+        targetRole: targetRole || 'specific users',
+        subject
+      });
+      
+      res.status(201).json({
+        success: true,
+        message: `Message sent to ${sentCount} users`
+      });
+    } catch (error) {
+      logger.error('Send bulk admin message error', { error: error.message });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to send bulk message'
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/admin/communications
+ * Get all admin communications history
+ */
+router.get('/communications', async (req, res) => {
+  try {
+    const filters = validate(paginationSchema, req.query);
+    const { page, limit } = parseQueryParams(filters);
+    const offset = (page - 1) * limit;
+    
+    const { rows: countResult } = await db.query(`
+      SELECT COUNT(*) FROM notifications 
+      WHERE type = 'system' AND title != 'Welcome to Docta.! 🎉'
+    `);
+    const total = parseInt(countResult[0].count);
+    
+    const { rows } = await db.query(`
+      SELECT n.*, u.email, u.first_name, u.last_name, u.role
+      FROM notifications n
+      JOIN users u ON u.id = n.user_id
+      WHERE n.type = 'system' AND n.title NOT LIKE 'Welcome%'
+      ORDER BY n.created_at DESC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+    
+    res.json({
+      success: true,
+      communications: rows.map(row => ({
+        id: row.id,
+        title: row.title,
+        message: row.message,
+        isRead: row.is_read,
+        createdAt: row.created_at,
+        recipient: {
+          id: row.user_id,
+          email: row.email,
+          name: `${row.first_name} ${row.last_name}`,
+          role: row.role
+        }
+      })),
+      pagination: getPaginationMeta(total, page, limit)
+    });
+  } catch (error) {
+    logger.error('Get admin communications error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get communications'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/admins
+ * Create a new admin account (Super Admin only)
+ */
+router.post('/admins',
+  requireSuperAdmin,
+  auditMiddleware('create', 'admin'),
+  async (req, res) => {
+    const bcrypt = require('bcryptjs');
+    const crypto = require('crypto');
+    
+    try {
+      const { firstName, lastName, email, role = 'admin', sendInvite = true } = req.body;
+      
+      if (!email || !firstName) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email and first name are required'
+        });
+      }
+      
+      // Validate role
+      if (!['admin', 'super_admin'].includes(role)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid role'
+        });
+      }
+      
+      // Check if user already exists
+      const { rows: existing } = await db.query(
+        `SELECT id FROM users WHERE email = $1 AND role IN ('admin', 'super_admin')`,
+        [email.toLowerCase()]
+      );
+      
+      if (existing.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'An admin account with this email already exists'
+        });
+      }
+      
+      // Generate temporary password
+      const tempPassword = crypto.randomBytes(12).toString('base64').slice(0, 16);
+      const passwordHash = await bcrypt.hash(tempPassword, 12);
+      
+      // Create admin user
+      const { rows } = await db.query(
+        `INSERT INTO users (
+          email, password_hash, first_name, last_name, role,
+          email_verified, is_active, must_change_password
+        ) VALUES ($1, $2, $3, $4, $5, true, true, true)
+        RETURNING id, email, first_name, last_name, role, created_at`,
+        [email.toLowerCase(), passwordHash, firstName, lastName, role]
+      );
+      
+      const newAdmin = keysToCamel(rows[0]);
+      
+      // Send credentials email if requested
+      if (sendInvite) {
+        const { sendEmail } = require('../services/email');
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+        
+        await sendEmail({
+          to: email,
+          subject: 'Your Docta Admin Account Has Been Created',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: linear-gradient(135deg, #10b981, #14b8a6); padding: 30px; text-align: center;">
+                <h1 style="color: white; margin: 0;">Docta Admin Console</h1>
+              </div>
+              <div style="padding: 30px; background: #f9fafb;">
+                <h2>Welcome, ${firstName}!</h2>
+                <p>Your administrator account has been created. Here are your login credentials:</p>
+                <div style="background: #e5e7eb; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                  <p style="margin: 5px 0;"><strong>Email:</strong> ${email}</p>
+                  <p style="margin: 5px 0;"><strong>Temporary Password:</strong> ${tempPassword}</p>
+                </div>
+                <p style="color: #dc2626; font-weight: bold;">⚠️ You will be required to change your password on first login.</p>
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${baseUrl}/secure/admin" style="background: linear-gradient(135deg, #10b981, #14b8a6); color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
+                    Login to Admin Console
+                  </a>
+                </div>
+                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+                <p style="color: #9ca3af; font-size: 12px;">
+                  This is a confidential communication. Do not share your credentials with anyone.
+                </p>
+              </div>
+            </div>
+          `
+        });
+      }
+      
+      logger.info('Admin account created', {
+        adminId: newAdmin.id,
+        role: newAdmin.role,
+        createdBy: req.user.id
+      });
+      
+      res.status(201).json({
+        success: true,
+        admin: newAdmin,
+        message: sendInvite ? 'Admin created and credentials sent' : 'Admin created successfully'
+      });
+    } catch (error) {
+      logger.error('Create admin error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to create admin account'
+      });
+    }
+  }
+);
+
+/**
+ * PUT /api/admin/users/:id/status
+ * Update user status (activate/deactivate, approve/reject provider)
+ */
+router.put('/users/:id/status',
+  auditMiddleware('update', 'user_status'),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { isActive, providerStatus } = req.body;
+      
+      // Cannot modify own account
+      if (id === req.user.id) {
+        return res.status(400).json({
+          success: false,
+          error: 'Cannot modify your own account status'
+        });
+      }
+      
+      // Get current user
+      const { rows: currentUser } = await db.query(
+        `SELECT role FROM users WHERE id = $1`,
+        [id]
+      );
+      
+      if (currentUser.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+      
+      // Only super_admin can modify other admins
+      if (['admin', 'super_admin'].includes(currentUser[0].role) && req.user.role !== 'super_admin') {
+        return res.status(403).json({
+          success: false,
+          error: 'Only Super Admins can modify admin accounts'
+        });
+      }
+      
+      // Build update query
+      const updates = [];
+      const params = [];
+      let paramIndex = 1;
+      
+      if (typeof isActive === 'boolean') {
+        updates.push(`is_active = $${paramIndex++}`);
+        params.push(isActive);
+      }
+      
+      if (providerStatus && ['pending', 'approved', 'suspended', 'rejected'].includes(providerStatus)) {
+        updates.push(`provider_status = $${paramIndex++}`);
+        params.push(providerStatus);
+      }
+      
+      if (updates.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'No valid updates provided'
+        });
+      }
+      
+      params.push(id);
+      
+      const { rows } = await db.query(
+        `UPDATE users SET ${updates.join(', ')}, updated_at = NOW()
+         WHERE id = $${paramIndex}
+         RETURNING id, email, first_name, last_name, role, is_active, provider_status`,
+        params
+      );
+      
+      logger.info('User status updated', {
+        userId: id,
+        updates: { isActive, providerStatus },
+        updatedBy: req.user.id
+      });
+      
+      res.json({
+        success: true,
+        user: keysToCamel(rows[0])
+      });
+    } catch (error) {
+      logger.error('Update user status error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to update user status'
+      });
+    }
+  }
+);
+
+/**
+ * DELETE /api/admin/users/:id
+ * Delete a user (Super Admin only)
+ */
+router.delete('/users/:id',
+  requireSuperAdmin,
+  auditMiddleware('delete', 'user'),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Cannot delete own account
+      if (id === req.user.id) {
+        return res.status(400).json({
+          success: false,
+          error: 'Cannot delete your own account'
+        });
+      }
+      
+      // Get user info before deletion
+      const { rows: userRows } = await db.query(
+        `SELECT email, role, first_name, last_name FROM users WHERE id = $1`,
+        [id]
+      );
+      
+      if (userRows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+      
+      const userToDelete = userRows[0];
+      
+      // Delete user (cascades to related records)
+      await db.query(`DELETE FROM users WHERE id = $1`, [id]);
+      
+      logger.info('User deleted', {
+        deletedUserId: id,
+        deletedUserEmail: userToDelete.email,
+        deletedUserRole: userToDelete.role,
+        deletedBy: req.user.id
+      });
+      
+      res.json({
+        success: true,
+        message: `User ${userToDelete.email} has been deleted`
+      });
+    } catch (error) {
+      logger.error('Delete user error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to delete user'
+      });
+    }
+  }
+);
 
 module.exports = router;
 

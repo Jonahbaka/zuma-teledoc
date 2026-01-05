@@ -45,7 +45,10 @@ npm install
 
 ### 2. Environment Setup
 
-The `.env` file is pre-configured with the production database. For custom deployment, update the following:
+Environment files are intentionally not committed. Use the examples in `config/` to create your own:
+
+- `config/env.local.example` → copy to `.env.local` (local dev)
+- `config/env.production.example` → copy to `.env.production` (production)
 
 ```env
 DATABASE_URL=postgres://user:pass@host:port/db?sslmode=require
@@ -280,6 +283,3 @@ For technical support, please contact the development team.
 ---
 
 Built with ❤️ by ZumaTeledocAI Team
-
-#   z u m a - t e l e d o c  
- 

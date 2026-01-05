@@ -85,8 +85,8 @@ export default function PrivacyPolicyPage() {
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">7. Contact Us</h2>
               <p>
                 If you have questions about this Privacy Policy, please contact us at{' '}
-                <a href="mailto:privacy@docta.com" className="text-purple-600 hover:underline">
-                  privacy@docta.com
+                <a href="mailto:evolvedu@outlook.com" className="text-purple-600 hover:underline">
+                  evolvedu@outlook.com
                 </a>
               </p>
             </section>

@@ -161,7 +161,7 @@ export default function PatientDetailPage() {
                         <div>
                           <p className="font-medium">{formatDateTime(visit.createdAt)}</p>
                           {visit.isSigned && (
-                            <span className="text-xs text-emerald-600">Signed</span>
+                            <span className="text-xs text-purple-700">Signed</span>
                           )}
                         </div>
                       </div>

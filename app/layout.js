@@ -1,6 +1,8 @@
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/components/providers/AuthProvider';
+import ConditionalSiteFooter from '@/components/layouts/ConditionalSiteFooter';
+import { THEME_STORAGE_KEY } from '@/lib/theme';
 
 export const metadata = {
   title: 'Docta. - Modern Telehealth Platform',
@@ -25,10 +27,17 @@ export default function RootLayout({ children }) {
           href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Instrument+Serif:ital@0;1&display=swap" 
           rel="stylesheet" 
         />
+        {/* Prevent theme flash: set `.dark` before React hydrates */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var k='${THEME_STORAGE_KEY}';var t=localStorage.getItem(k);if(t!=='dark'&&t!=='light'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}if(t==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();`
+          }}
+        />
       </head>
       <body className="min-h-screen bg-background font-sans antialiased" suppressHydrationWarning>
         <AuthProvider>
           {children}
+          <ConditionalSiteFooter />
           <Toaster />
         </AuthProvider>
       </body>

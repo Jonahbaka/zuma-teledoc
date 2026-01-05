@@ -123,7 +123,7 @@ export default function PatientNotificationsPage() {
           <Button
             onClick={markAllAsRead}
             variant="outline"
-            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200"
+            className="bg-purple-50 hover:bg-purple-100 text-purple-800 border-purple-200"
           >
             <Check className="w-4 h-4 mr-2" />
             Mark All Read
@@ -144,7 +144,7 @@ export default function PatientNotificationsPage() {
           {notifications.map((notification) => (
             <Card 
               key={notification.id}
-              className={`transition-all ${!notification.isRead ? 'bg-emerald-50 border-emerald-200' : ''}`}
+              className={`transition-all ${!notification.isRead ? 'bg-purple-50 border-purple-200' : ''}`}
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
@@ -152,7 +152,7 @@ export default function PatientNotificationsPage() {
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="font-semibold text-slate-900">{notification.title}</h3>
                       {!notification.isRead && (
-                        <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                        <span className="w-2 h-2 bg-purple-600 rounded-full"></span>
                       )}
                     </div>
                     <p className="text-slate-600 text-sm mb-2">{notification.message}</p>
@@ -162,7 +162,7 @@ export default function PatientNotificationsPage() {
                     {notification.actionUrl && (
                       <a
                         href={notification.actionUrl}
-                        className="text-sm text-emerald-600 hover:text-emerald-700 font-medium mt-2 inline-block"
+                        className="text-sm text-purple-700 hover:text-purple-800 font-medium mt-2 inline-block"
                       >
                         {notification.actionText || 'View Details'} →
                       </a>

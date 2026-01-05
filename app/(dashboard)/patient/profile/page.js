@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/components/providers/AuthProvider';
+import PharmacyPreferencePicker from '@/components/pharmacy/PharmacyPreferencePicker';
 
 export default function PatientProfilePage() {
   const { user } = useAuth();
@@ -209,7 +210,7 @@ export default function PatientProfilePage() {
           </div>
 
           <div className="flex justify-end pt-4">
-            <Button onClick={handleSave} disabled={saving} className="bg-emerald-500 hover:bg-emerald-600">
+            <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white">
               {saving ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -225,6 +226,8 @@ export default function PatientProfilePage() {
           </div>
         </CardContent>
       </Card>
+
+      <PharmacyPreferencePicker title="Preferred Pharmacy (Nearest to You)" />
     </div>
   );
 }

@@ -4,48 +4,53 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
+    /* Slate/ink base (matches footer palette) */
+    --background: 210 40% 98%;          /* slate-50 */
+    --foreground: 222.2 84% 4.9%;       /* slate-950-ish */
+    --card: 0 0% 100%;                  /* white cards on slate-50 background */
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 152 76% 36%;
+    /* Brand: Docta (purple/indigo) */
+    --primary: 262 83% 58%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
+    /* Subtle purple-tinted accent surfaces */
+    --accent: 270 100% 98%;
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 152 76% 36%;
+    /* Slightly higher-contrast borders for a more premium look */
+    --border: 214.3 31.8% 88%;
+    --input: 214.3 31.8% 88%;
+    --ring: 262 83% 58%;
     --radius: 0.75rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    /* Footer palette as the dark theme baseline */
+    --background: 222.2 84% 4.9%;       /* slate-950 */
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    --card: 222.2 84% 6.5%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 222.2 84% 6.5%;
     --popover-foreground: 210 40% 98%;
-    --primary: 152 76% 46%;
+    --primary: 262 83% 64%;
     --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
+    --secondary: 217.2 32.6% 14%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
+    --muted: 217.2 32.6% 14%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+    --accent: 217.2 32.6% 14%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 152 76% 46%;
+    --border: 217.2 32.6% 18%;
+    --input: 217.2 32.6% 18%;
+    --ring: 262 83% 64%;
   }
 }
 
@@ -79,19 +84,19 @@
   }
 
   .glass {
-    @apply bg-white/80 backdrop-blur-lg border border-white/20;
+    @apply bg-white/70 backdrop-blur-xl border border-slate-200/60;
   }
 
   .glass-dark {
-    @apply bg-black/50 backdrop-blur-lg border border-white/10;
+    @apply bg-slate-950/60 backdrop-blur-xl border border-white/10;
   }
 
   .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-purple-800;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-indigo-700;
   }
 
   .gradient-bg {
-    @apply bg-gradient-to-br from-yellow-50 via-purple-50 to-yellow-50;
+    @apply bg-gradient-to-br from-slate-50 via-purple-50 to-slate-50;
   }
 
   .pattern-dots {

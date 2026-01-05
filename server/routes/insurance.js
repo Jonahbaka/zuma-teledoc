@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireRole, canAccessPatient } = require('../middleware/auth');
 const { auditMiddleware } = require('../middleware/audit');
 const insuranceWalletService = require('../services/insuranceWalletService');
 const ocrService = require('../services/ocrService');
@@ -15,6 +15,54 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
+
+// Provider/Admin: Get a patient's insurance wallet (for visits/triage prep)
+router.get('/patient/:patientId/wallet',
+  authenticate,
+  requireRole('provider', 'admin', 'super_admin'),
+  canAccessPatient,
+  async (req, res) => {
+    try {
+      const wallet = await insuranceWalletService.getWallet(req.params.patientId);
+      res.json({ success: true, wallet });
+    } catch (error) {
+      console.error('Error fetching patient wallet:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Provider/Admin: Get a specific insurance record with audit logging (images omitted by default)
+router.get('/patient/:patientId/:id',
+  authenticate,
+  requireRole('provider', 'admin', 'super_admin'),
+  canAccessPatient,
+  async (req, res) => {
+    try {
+      const insurance = await insuranceWalletService.getInsuranceById(
+        req.params.id,
+        req.user.id,
+        req.query.reason || 'provider_view'
+      );
+
+      if (!insurance || String(insurance.patient_id) !== String(req.params.patientId)) {
+        return res.status(404).json({ success: false, error: 'Insurance not found' });
+      }
+
+      // Avoid returning decrypted images to provider unless explicitly requested (PHI minimization)
+      const includeImages = req.query.includeImages === 'true';
+      if (!includeImages) {
+        insurance.frontImageDecrypted = null;
+        insurance.backImageDecrypted = null;
+      }
+
+      res.json({ success: true, insurance });
+    } catch (error) {
+      console.error('Error fetching patient insurance:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
 
 // Get patient insurance wallet
 router.get('/wallet', authenticate, async (req, res) => {

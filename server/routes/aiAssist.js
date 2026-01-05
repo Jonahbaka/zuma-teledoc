@@ -12,7 +12,7 @@ const { createAuditLog } = require('../middleware/audit');
 
 const router = express.Router();
 
-// Clinical knowledge base for demonstrations
+// Clinical knowledge base reference data
 const ICD_CODES = {
   'headache': [
     { code: 'R51.9', description: 'Headache, unspecified' },

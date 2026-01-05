@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/components/providers/AuthProvider';
+import PharmacyPreferencePicker from '@/components/pharmacy/PharmacyPreferencePicker';
 
 export default function ProviderProfilePage() {
   const { user } = useAuth();
@@ -237,6 +238,8 @@ export default function ProviderProfilePage() {
           </div>
         </CardContent>
       </Card>
+
+      <PharmacyPreferencePicker title="Default Pharmacy (Nearest to You)" />
     </div>
   );
 }

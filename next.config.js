@@ -24,7 +24,7 @@ const nextConfig = {
           },
           {
             key: 'X-Frame-Options',
-            value: 'DENY'
+            value: 'SAMEORIGIN'
           },
           {
             key: 'X-XSS-Protection',
@@ -36,7 +36,7 @@ const nextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(self), microphone=(self), geolocation=()'
+            value: 'camera=(self), microphone=(self), geolocation=(self)'
           }
         ]
       }
@@ -48,27 +48,40 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'}/:path*`
+        destination: `${process.env.NEXT_PUBLIC_API_URL || 'https://doctarx.com/api'}/:path*`
       }
     ];
   },
 
   // Environment variables exposed to client
   env: {
-    NEXT_PUBLIC_APP_NAME: 'ZumaTeledocAI',
-    NEXT_PUBLIC_APP_VERSION: '1.0.0'
+    NEXT_PUBLIC_APP_NAME: 'DoctaRx',
+    NEXT_PUBLIC_APP_VERSION: '1.0.0',
+    NEXT_PUBLIC_APP_DOMAIN: 'doctarx.com'
   },
 
   // Image optimization
   images: {
-    domains: ['localhost'],
+    domains: ['doctarx.com', 'www.doctarx.com', 'localhost'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'doctarx.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.stripe.com',
+        pathname: '/**',
+      }
+    ],
     formats: ['image/avif', 'image/webp']
   },
 
   // Experimental features
   experimental: {
     serverActions: {
-      allowedOrigins: ['localhost:3000']
+      allowedOrigins: ['doctarx.com', 'www.doctarx.com', 'localhost:3000']
     }
   }
 };

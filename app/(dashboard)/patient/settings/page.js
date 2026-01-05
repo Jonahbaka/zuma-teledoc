@@ -174,7 +174,7 @@ export default function PatientSettingsPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === tab.id
-                  ? 'border-emerald-500 text-emerald-600'
+                  ? 'border-purple-500 text-purple-700'
                   : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
               }`}
             >
@@ -201,7 +201,7 @@ export default function PatientSettingsPage() {
                     <p className="font-medium text-slate-900">{user?.email}</p>
                     <p className="text-sm text-slate-500">
                       {user?.isVerified ? (
-                        <span className="flex items-center gap-1 text-emerald-600">
+                        <span className="flex items-center gap-1 text-purple-700">
                           <CheckCircle className="w-4 h-4" />
                           Verified
                         </span>
@@ -218,7 +218,7 @@ export default function PatientSettingsPage() {
                   <Button
                     onClick={handleResendVerification}
                     variant="outline"
-                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200"
+                    className="bg-purple-50 hover:bg-purple-100 text-purple-800 border-purple-200"
                   >
                     Resend Verification
                   </Button>
@@ -268,7 +268,7 @@ export default function PatientSettingsPage() {
                 <Button
                   onClick={handlePasswordChange}
                   disabled={saving}
-                  className="bg-emerald-500 hover:bg-emerald-600"
+                  className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white"
                 >
                   {saving ? (
                     <>
@@ -305,7 +305,7 @@ export default function PatientSettingsPage() {
                 <button
                   onClick={() => setNotifications({ ...notifications, emailNotifications: !notifications.emailNotifications })}
                   className={`w-11 h-6 flex items-center rounded-full transition-colors ${
-                    notifications.emailNotifications ? 'bg-emerald-500' : 'bg-slate-300'
+                    notifications.emailNotifications ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
                   }`}
                 >
                   <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
@@ -322,7 +322,7 @@ export default function PatientSettingsPage() {
                 <button
                   onClick={() => setNotifications({ ...notifications, smsNotifications: !notifications.smsNotifications })}
                   className={`w-11 h-6 flex items-center rounded-full transition-colors ${
-                    notifications.smsNotifications ? 'bg-emerald-500' : 'bg-slate-300'
+                    notifications.smsNotifications ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
                   }`}
                 >
                   <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
@@ -339,7 +339,7 @@ export default function PatientSettingsPage() {
                 <button
                   onClick={() => setNotifications({ ...notifications, appointmentReminders: !notifications.appointmentReminders })}
                   className={`w-11 h-6 flex items-center rounded-full transition-colors ${
-                    notifications.appointmentReminders ? 'bg-emerald-500' : 'bg-slate-300'
+                    notifications.appointmentReminders ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
                   }`}
                 >
                   <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
@@ -356,7 +356,7 @@ export default function PatientSettingsPage() {
                 <button
                   onClick={() => setNotifications({ ...notifications, messageNotifications: !notifications.messageNotifications })}
                   className={`w-11 h-6 flex items-center rounded-full transition-colors ${
-                    notifications.messageNotifications ? 'bg-emerald-500' : 'bg-slate-300'
+                    notifications.messageNotifications ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
                   }`}
                 >
                   <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
@@ -373,7 +373,7 @@ export default function PatientSettingsPage() {
                 <button
                   onClick={() => setNotifications({ ...notifications, appointmentUpdates: !notifications.appointmentUpdates })}
                   className={`w-11 h-6 flex items-center rounded-full transition-colors ${
-                    notifications.appointmentUpdates ? 'bg-emerald-500' : 'bg-slate-300'
+                    notifications.appointmentUpdates ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
                   }`}
                 >
                   <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
@@ -387,7 +387,7 @@ export default function PatientSettingsPage() {
               <Button
                 onClick={handleNotificationSave}
                 disabled={saving}
-                className="bg-emerald-500 hover:bg-emerald-600"
+                className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white"
               >
                 {saving ? (
                   <>

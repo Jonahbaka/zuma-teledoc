@@ -9,24 +9,44 @@ import {
   X, Calendar, Clock, ArrowLeft
 } from 'lucide-react';
 import api from '@/lib/api';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { formatDateTime, formatTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
+import { VIDEO_BG_PRESETS } from '@/lib/videoBackgrounds';
 
 // --- Assets & Constants ---
 const PATIENT_VIDEO_URL = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
 
-const BG_IMAGES = [
-  { name: "Blur", value: "blur", type: "blur" },
-  { name: "Modern Office", value: "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80", type: "image" },
-  { name: "Calm Nature", value: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=800&q=80", type: "image" },
-  { name: "Clinic", value: "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=800&q=80", type: "image" },
-];
+const getBgPreviewStyle = (preset) => {
+  if (preset.type === 'gradient') {
+    const name = (preset.value || '').split(':')[1];
+    switch (name) {
+      case 'studio':
+        return { background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 45%, #334155 100%)' };
+      case 'ocean':
+        return { background: 'linear-gradient(135deg, #0ea5e9 0%, #22c55e 100%)' };
+      case 'sunset':
+        return { background: 'linear-gradient(135deg, #f97316 0%, #db2777 60%, #7c3aed 100%)' };
+      case 'aurora':
+        return { background: 'linear-gradient(135deg, #22c55e 0%, #06b6d4 50%, #a855f7 100%)' };
+      default:
+        return { background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)' };
+    }
+  }
+  if (preset.type === 'color') {
+    const color = (preset.value || '').split(':')[1] || '#0f172a';
+    return { background: color };
+  }
+  return null;
+};
 
 export default function ProviderVideoCallPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const appointmentId = params.id;
+  const isStandalone = appointmentId === 'standalone';
   
   const [appointment, setAppointment] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -44,6 +64,29 @@ export default function ProviderVideoCallPage() {
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
+    // Standalone provider test call (no appointment required)
+    if (isStandalone) {
+      setAppointment({
+        id: 'standalone',
+        type: 'video',
+        status: 'in_progress',
+        patientFirstName: 'Test',
+        patientLastName: 'Patient',
+        providerFirstName: user?.firstName || '',
+        providerLastName: user?.lastName || '',
+        scheduledAt: new Date().toISOString(),
+        durationMinutes: 30,
+        reasonForVisit: 'Standalone provider video call (no appointment)'
+      });
+
+      if (user?.firstName) {
+        setUserName(`Dr. ${user.firstName}${user.lastName ? ` ${user.lastName}` : ''}`);
+      }
+
+      setLoading(false);
+      return;
+    }
+
     fetchAppointment();
   }, [appointmentId]);
 
@@ -76,7 +119,7 @@ export default function ProviderVideoCallPage() {
   const endCall = () => {
     setIsInCall(false);
     setActiveEffect(null);
-    router.push(`/provider/appointments/${appointmentId}/visit`);
+    router.push(isStandalone ? '/provider/dashboard' : `/provider/appointments/${appointmentId}/visit`);
   };
 
   if (loading) {
@@ -84,7 +127,7 @@ export default function ProviderVideoCallPage() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading appointment...</p>
+          <p className="text-slate-600">{isStandalone ? 'Preparing call...' : 'Loading appointment...'}</p>
         </div>
       </div>
     );
@@ -106,7 +149,11 @@ export default function ProviderVideoCallPage() {
       {/* Header / Nav */}
       <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 fixed top-0 w-full z-50">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push(`/provider/appointments/${appointmentId}/visit`)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push(isStandalone ? '/provider/dashboard' : `/provider/appointments/${appointmentId}/visit`)}
+          >
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex items-center gap-2">
@@ -343,35 +390,32 @@ const ActiveCallRoom = ({
                 <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${processingEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
               </button>
             </div>
-            {processingEnabled && (
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setActiveEffect(null)}
-                  className={`p-2 rounded-lg border text-sm flex flex-col items-center gap-2 ${activeEffect === null ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 hover:bg-slate-50'}`}
-                >
-                  <div className="w-6 h-6 rounded bg-slate-200" />
-                  None
-                </button>
-                {BG_IMAGES.map((bg, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setActiveEffect(bg.type === 'blur' ? 'blur' : bg.value)}
-                    className={`p-2 rounded-lg border text-sm flex flex-col items-center gap-2 ${
-                      (bg.type === 'blur' && activeEffect === 'blur') || activeEffect === bg.value
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {bg.type === 'blur' ? (
-                      <div className="w-6 h-6 rounded bg-slate-300 blur-sm" />
-                    ) : (
-                      <img src={bg.value} className="w-6 h-6 rounded object-cover" alt="" />
-                    )}
-                    {bg.name}
-                  </button>
-                ))}
-              </div>
-            )}
+             {processingEnabled && (
+               <div className="grid grid-cols-3 gap-2">
+                 {VIDEO_BG_PRESETS.map((preset) => (
+                   <button
+                     key={preset.id}
+                     onClick={() => setActiveEffect(preset.value)}
+                     className={`p-2 rounded-lg border text-[11px] flex flex-col items-center gap-2 transition-colors ${
+                       activeEffect === preset.value
+                         ? 'border-blue-500 bg-blue-50 text-blue-700'
+                         : 'border-slate-200 hover:bg-slate-50'
+                     }`}
+                   >
+                     {preset.type === 'blur' ? (
+                       <div className="w-7 h-7 rounded bg-slate-300 blur-sm" />
+                     ) : preset.type === 'image' ? (
+                       <img src={preset.value} className="w-7 h-7 rounded object-cover" alt="" />
+                     ) : preset.type === 'gradient' || preset.type === 'color' ? (
+                       <div className="w-7 h-7 rounded" style={getBgPreviewStyle(preset)} />
+                     ) : (
+                       <div className="w-7 h-7 rounded bg-slate-200" />
+                     )}
+                     {preset.name}
+                   </button>
+                 ))}
+               </div>
+             )}
           </div>
         </div>
       )}
@@ -443,6 +487,7 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
   const canvasRef = useRef(null);
   const bgImageRef = useRef(null);
   const bgImageLoadedRef = useRef(false);
+  const personCanvasRef = useRef(null);
   const segmentationRef = useRef(null);
   const requestRef = useRef(null);
   const streamRef = useRef(null);
@@ -451,6 +496,11 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
   const [cameraLoading, setCameraLoading] = useState(true);
   const errorShownRef = useRef(false);
   const errorHandlerRef = useRef(null);
+  const activeEffectRef = useRef(activeEffect);
+
+  useEffect(() => {
+    activeEffectRef.current = activeEffect;
+  }, [activeEffect]);
 
   // Load MediaPipe Script
   useEffect(() => {
@@ -600,29 +650,22 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
 
   // Preload background image when activeEffect changes
   useEffect(() => {
-    if (activeEffect && activeEffect !== 'blur' && typeof activeEffect === 'string') {
-      console.log('Loading background image:', activeEffect);
+    const effect = activeEffect;
+    const isUrl = typeof effect === 'string' && /^https?:\/\//i.test(effect);
+    if (isUrl) {
       bgImageLoadedRef.current = false;
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
-        console.log('Background image loaded successfully:', {
-          width: img.naturalWidth,
-          height: img.naturalHeight,
-          displayWidth: img.width,
-          displayHeight: img.height,
-          src: activeEffect,
-          complete: img.complete
-        });
         bgImageRef.current = img;
         bgImageLoadedRef.current = true;
       };
       img.onerror = (error) => {
-        console.error('Failed to load background image:', activeEffect, error);
+        console.error('Failed to load background image:', effect, error);
         bgImageRef.current = null;
         bgImageLoadedRef.current = false;
       };
-      img.src = activeEffect;
+      img.src = effect;
     } else {
       bgImageRef.current = null;
       bgImageLoadedRef.current = false;
@@ -1009,47 +1052,75 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
 
+    // Stable value (MediaPipe onResults is registered once; do not use closed-over state)
+    const currentEffect = activeEffectRef.current;
+    const effectStr = typeof currentEffect === 'string' ? currentEffect : null;
+    const isUrl = typeof effectStr === 'string' && /^https?:\/\//i.test(effectStr);
+    const isBlur = typeof effectStr === 'string' && effectStr.startsWith('blur:');
+    const isColor = typeof effectStr === 'string' && effectStr.startsWith('color:');
+    const isGradient = typeof effectStr === 'string' && effectStr.startsWith('gradient:');
+    const blurStrength = isBlur ? (effectStr.split(':')[1] || 'soft') : null;
+
     ctx.save();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     // STEP 1: Draw background FIRST (before the person)
     ctx.globalCompositeOperation = 'source-over';
-    if (activeEffect === 'blur') {
-      ctx.filter = 'blur(10px)';
+    if (isBlur) {
+      const px = blurStrength === 'strong' ? 16 : 10;
+      ctx.filter = `blur(${px}px)`;
       ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
       ctx.filter = 'none';
-    } else if (activeEffect && activeEffect !== 'blur') {
+    } else if (isColor) {
+      const color = effectStr.split(':')[1] || '#0f172a';
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (isGradient) {
+      const name = effectStr.split(':')[1] || 'studio';
+      const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      if (name === 'ocean') {
+        grad.addColorStop(0, '#0ea5e9');
+        grad.addColorStop(1, '#22c55e');
+      } else if (name === 'sunset') {
+        grad.addColorStop(0, '#f97316');
+        grad.addColorStop(0.6, '#db2777');
+        grad.addColorStop(1, '#7c3aed');
+      } else if (name === 'aurora') {
+        grad.addColorStop(0, '#22c55e');
+        grad.addColorStop(0.5, '#06b6d4');
+        grad.addColorStop(1, '#a855f7');
+      } else {
+        // studio (default)
+        grad.addColorStop(0, '#0f172a');
+        grad.addColorStop(0.45, '#1e293b');
+        grad.addColorStop(1, '#334155');
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (isUrl) {
       if (bgImageRef.current && bgImageLoadedRef.current && bgImageRef.current.complete && bgImageRef.current.naturalWidth > 0) {
-        // Draw the preloaded background image, covering the entire canvas
         const bgImg = bgImageRef.current;
-        
-        // Calculate aspect ratios to cover the canvas
         const canvasAspect = canvas.width / canvas.height;
         const imgAspect = bgImg.naturalWidth / bgImg.naturalHeight;
-        
+
         let drawWidth, drawHeight, drawX, drawY;
-        
         if (imgAspect > canvasAspect) {
-          // Image is wider - fit to height
           drawHeight = canvas.height;
           drawWidth = bgImg.naturalWidth * (canvas.height / bgImg.naturalHeight);
           drawX = (canvas.width - drawWidth) / 2;
           drawY = 0;
         } else {
-          // Image is taller - fit to width
           drawWidth = canvas.width;
           drawHeight = bgImg.naturalHeight * (canvas.width / bgImg.naturalWidth);
           drawX = 0;
           drawY = (canvas.height - drawHeight) / 2;
         }
-        
+
         ctx.drawImage(bgImg, drawX, drawY, drawWidth, drawHeight);
       } else {
-        // Image not ready yet, draw original video as background
         ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
       }
     } else {
-      // Default: draw original video as background
       ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
     }
     
@@ -1057,10 +1128,13 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
     // The segmentation mask is white where the person is, black where background is
     // We need to composite the person on top of the background using the mask
     
-    // Create a temporary canvas to extract just the person
-    const personCanvas = document.createElement('canvas');
-    personCanvas.width = canvas.width;
-    personCanvas.height = canvas.height;
+    // Reuse a canvas to extract just the person (avoid per-frame allocations)
+    if (!personCanvasRef.current) {
+      personCanvasRef.current = document.createElement('canvas');
+    }
+    const personCanvas = personCanvasRef.current;
+    if (personCanvas.width !== canvas.width) personCanvas.width = canvas.width;
+    if (personCanvas.height !== canvas.height) personCanvas.height = canvas.height;
     const personCtx = personCanvas.getContext('2d');
     
     // Draw the person image on temp canvas
@@ -1069,6 +1143,7 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
     // Apply mask to keep only person (where mask is white)
     personCtx.globalCompositeOperation = 'destination-in';
     personCtx.drawImage(results.segmentationMask, 0, 0, personCanvas.width, personCanvas.height);
+    personCtx.globalCompositeOperation = 'source-over';
     
     // Now composite the masked person on top of the background
     ctx.globalCompositeOperation = 'source-over';
@@ -1128,7 +1203,7 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
         </button>
         <button
           onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-slate-600 hover:bg-slate-700 rounded-lg text-sm text-white text-xs"
+          className="px-4 py-2 bg-slate-600 hover:bg-slate-700 rounded-lg text-sm text-white"
         >
           Reload Page
         </button>

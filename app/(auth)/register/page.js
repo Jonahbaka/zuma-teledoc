@@ -2,13 +2,12 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { 
-  Eye, EyeOff, Loader2, Stethoscope, Mail, Lock, User, 
-  Phone, CheckCircle2, Shield, AlertCircle 
+  Eye, EyeOff, Loader2, Mail, Lock, User, 
+  Phone, CheckCircle2, Shield, Heart 
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
@@ -16,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 const registerSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(100),
@@ -29,14 +29,6 @@ const registerSchema = z.object({
     .regex(/[0-9]/, 'Password must contain at least one number')
     .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character'),
   confirmPassword: z.string(),
-  role: z.enum(['patient', 'provider']),
-  // Provider fields
-  licenseNumber: z.string().optional(),
-  licenseState: z.string().optional(),
-  specialty: z.string().optional(),
-  npiNumber: z.string().optional(),
-  credentials: z.string().optional(),
-  // Consent
   hipaaConsent: z.boolean().refine(val => val === true, {
     message: 'You must accept the HIPAA consent'
   }),
@@ -48,13 +40,10 @@ const registerSchema = z.object({
   path: ['confirmPassword']
 });
 
-export default function RegisterPage() {
+export default function PatientRegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { register: registerUser } = useAuth();
-  const searchParams = useSearchParams();
-  
-  const defaultRole = searchParams.get('role') === 'provider' ? 'provider' : 'patient';
 
   const {
     register,
@@ -70,18 +59,11 @@ export default function RegisterPage() {
       phone: '',
       password: '',
       confirmPassword: '',
-      role: defaultRole,
-      licenseNumber: '',
-      licenseState: '',
-      specialty: '',
-      npiNumber: '',
-      credentials: '',
       hipaaConsent: false,
       termsAccepted: false
     }
   });
 
-  const watchRole = watch('role');
   const watchPassword = watch('password');
 
   const passwordRequirements = [
@@ -96,7 +78,11 @@ export default function RegisterPage() {
     setIsLoading(true);
     
     try {
-      const result = await registerUser(data);
+      // Patient registration only
+      const result = await registerUser({
+        ...data,
+        role: 'patient'
+      });
       
       if (result.error) {
         toast({
@@ -133,217 +119,125 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center gradient-bg p-4 py-12">
-      <div className="absolute inset-0 pattern-dots opacity-50" />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950 p-4 py-12 relative">
+      {/* Dot pattern overlay */}
+      <div className="absolute inset-0 opacity-30 dark:opacity-10 pointer-events-none" style={{
+        backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(139, 92, 246, 0.15) 1px, transparent 0)',
+        backgroundSize: '32px 32px'
+      }} />
       
-      <div className="relative w-full max-w-2xl animate-fade-in">
+      {/* Theme toggle */}
+      <div className="absolute top-4 right-4 z-10">
+        <ThemeToggle />
+      </div>
+      
+      <div className="relative w-full max-w-lg animate-fade-in">
         {/* Logo */}
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <div className="h-20 w-20 bg-purple-900 rounded-full flex items-center justify-center shadow-xl text-white font-bold text-4xl relative">
-              D
-              <div className="absolute ml-8 mt-8 w-3 h-3 bg-amber-400 rounded-full border-2 border-purple-900"></div>
+          <Link href="/" className="inline-flex items-center gap-3">
+            <div className="h-16 w-16 bg-gradient-to-br from-purple-600 to-indigo-700 rounded-2xl flex items-center justify-center shadow-xl shadow-purple-500/25">
+              <span className="text-white font-bold text-3xl">D</span>
             </div>
-            <span className="text-6xl font-extrabold text-purple-900">Docta<span className="text-amber-500">.</span></span>
+            <span className="text-5xl font-extrabold text-foreground">
+              Docta<span className="text-amber-500">.</span>
+            </span>
           </Link>
         </div>
 
-        <Card className="shadow-xl border-0">
+        <Card className="shadow-2xl border border-border bg-card">
           <CardHeader className="space-y-1 pb-4">
-            <CardTitle className="text-2xl font-serif">Create your account</CardTitle>
-            <CardDescription>
-              {watchRole === 'provider' 
-                ? 'Join our network of healthcare providers'
-                : 'Start your telehealth journey today'
-              }
+            <div className="flex items-center gap-2 mb-2">
+              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
+                <Heart className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              </div>
+              <span className="text-sm font-medium text-purple-600 dark:text-purple-400">Patient Registration</span>
+            </div>
+            <CardTitle className="text-2xl font-serif text-foreground">Create your account</CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Start your telehealth journey today
             </CardDescription>
           </CardHeader>
           
           <form onSubmit={handleSubmit(onSubmit)}>
-            <CardContent className="space-y-6">
-              {/* Role Selection */}
-              <div className="grid grid-cols-2 gap-4">
-                <label className={`
-                  relative flex flex-col items-center p-4 border-2 rounded-xl cursor-pointer transition-all
-                  ${watchRole === 'patient' 
-                    ? 'border-purple-500 bg-purple-50' 
-                    : 'border-gray-200 hover:border-gray-300'
-                  }
-                `}>
-                  <input
-                    type="radio"
-                    value="patient"
-                    className="sr-only"
-                    {...register('role')}
-                  />
-                  <User className={`w-8 h-8 mb-2 ${watchRole === 'patient' ? 'text-purple-600' : 'text-gray-400'}`} />
-                  <span className={`font-medium ${watchRole === 'patient' ? 'text-purple-700' : 'text-gray-600'}`}>
-                    Patient
-                  </span>
-                  <span className="text-xs text-gray-500 mt-1">Access healthcare</span>
-                </label>
-
-                <label className={`
-                  relative flex flex-col items-center p-4 border-2 rounded-xl cursor-pointer transition-all
-                  ${watchRole === 'provider' 
-                    ? 'border-purple-500 bg-purple-50' 
-                    : 'border-gray-200 hover:border-gray-300'
-                  }
-                `}>
-                  <input
-                    type="radio"
-                    value="provider"
-                    className="sr-only"
-                    {...register('role')}
-                  />
-                  <Stethoscope className={`w-8 h-8 mb-2 ${watchRole === 'provider' ? 'text-purple-600' : 'text-gray-400'}`} />
-                  <span className={`font-medium ${watchRole === 'provider' ? 'text-purple-700' : 'text-gray-600'}`}>
-                    Provider
-                  </span>
-                  <span className="text-xs text-gray-500 mt-1">Offer care services</span>
-                </label>
-              </div>
-
+            <CardContent className="space-y-5">
               {/* Name Fields */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
+                  <Label htmlFor="firstName" className="text-foreground">First Name</Label>
                   <Input
                     id="firstName"
                     placeholder="John"
+                    className="bg-background"
                     {...register('firstName')}
                   />
                   {errors.firstName && (
-                    <p className="text-sm text-red-500">{errors.firstName.message}</p>
+                    <p className="text-sm text-destructive">{errors.firstName.message}</p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
+                  <Label htmlFor="lastName" className="text-foreground">Last Name</Label>
                   <Input
                     id="lastName"
                     placeholder="Doe"
+                    className="bg-background"
                     {...register('lastName')}
                   />
                   {errors.lastName && (
-                    <p className="text-sm text-red-500">{errors.lastName.message}</p>
+                    <p className="text-sm text-destructive">{errors.lastName.message}</p>
                   )}
                 </div>
               </div>
 
               {/* Email */}
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email" className="text-foreground">Email</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <Input
                     id="email"
                     type="email"
                     placeholder="name@example.com"
-                    className="pl-10"
+                    className="pl-10 bg-background"
                     {...register('email')}
                   />
                 </div>
                 {errors.email && (
-                  <p className="text-sm text-red-500">{errors.email.message}</p>
+                  <p className="text-sm text-destructive">{errors.email.message}</p>
                 )}
               </div>
 
               {/* Phone */}
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone (optional)</Label>
+                <Label htmlFor="phone" className="text-foreground">Phone (optional)</Label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <Input
                     id="phone"
                     type="tel"
                     placeholder="+1 (555) 000-0000"
-                    className="pl-10"
+                    className="pl-10 bg-background"
                     {...register('phone')}
                   />
                 </div>
               </div>
 
-              {/* Provider-specific fields */}
-              {watchRole === 'provider' && (
-                <div className="space-y-4 p-4 bg-gray-50 rounded-xl animate-fade-in">
-                  <h4 className="font-medium text-gray-900 flex items-center gap-2">
-                    <Shield className="w-5 h-5 text-purple-600" />
-                    Provider Information
-                  </h4>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="licenseNumber">License Number</Label>
-                      <Input
-                        id="licenseNumber"
-                        placeholder="ABC123456"
-                        {...register('licenseNumber')}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="licenseState">License State</Label>
-                      <Input
-                        id="licenseState"
-                        placeholder="CA"
-                        {...register('licenseState')}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="specialty">Specialty</Label>
-                      <Input
-                        id="specialty"
-                        placeholder="Family Medicine"
-                        {...register('specialty')}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="credentials">Credentials</Label>
-                      <Input
-                        id="credentials"
-                        placeholder="MD, FAAFP"
-                        {...register('credentials')}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="npiNumber">NPI Number</Label>
-                    <Input
-                      id="npiNumber"
-                      placeholder="1234567890"
-                      {...register('npiNumber')}
-                    />
-                  </div>
-
-                  <p className="text-sm text-amber-600 flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                    Provider accounts require verification. You'll be notified once approved.
-                  </p>
-                </div>
-              )}
-
               {/* Password */}
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password" className="text-foreground">Password</Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Create a strong password"
-                    className="pl-10 pr-10"
+                    className="pl-10 pr-10 bg-background"
                     {...register('password')}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -355,7 +249,7 @@ export default function RegisterPage() {
                     <div 
                       key={i}
                       className={`flex items-center gap-2 text-xs ${
-                        req.test(watchPassword || '') ? 'text-purple-600' : 'text-gray-400'
+                        req.test(watchPassword || '') ? 'text-primary' : 'text-muted-foreground'
                       }`}
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
@@ -367,19 +261,19 @@ export default function RegisterPage() {
 
               {/* Confirm Password */}
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Label htmlFor="confirmPassword" className="text-foreground">Confirm Password</Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <Input
                     id="confirmPassword"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Confirm your password"
-                    className="pl-10"
+                    className="pl-10 bg-background"
                     {...register('confirmPassword')}
                   />
                 </div>
                 {errors.confirmPassword && (
-                  <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>
+                  <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
                 )}
               </div>
 
@@ -388,40 +282,40 @@ export default function RegisterPage() {
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
-                    className="mt-1 w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    className="mt-1 w-4 h-4 text-primary border-border rounded focus:ring-primary"
                     {...register('hipaaConsent')}
                   />
-                  <span className="text-sm text-gray-600">
+                  <span className="text-sm text-muted-foreground">
                     I acknowledge that I have read and understand the{' '}
-                    <Link href="/hipaa" className="text-purple-600 hover:underline">
+                    <Link href="/hipaa" className="text-primary hover:underline">
                       HIPAA Privacy Notice
                     </Link>
                     {' '}and consent to the collection and use of my health information.
                   </span>
                 </label>
                 {errors.hipaaConsent && (
-                  <p className="text-sm text-red-500 ml-7">{errors.hipaaConsent.message}</p>
+                  <p className="text-sm text-destructive ml-7">{errors.hipaaConsent.message}</p>
                 )}
 
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
-                    className="mt-1 w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    className="mt-1 w-4 h-4 text-primary border-border rounded focus:ring-primary"
                     {...register('termsAccepted')}
                   />
-                  <span className="text-sm text-gray-600">
+                  <span className="text-sm text-muted-foreground">
                     I agree to the{' '}
-                    <Link href="/terms" className="text-purple-600 hover:underline">
+                    <Link href="/terms" className="text-primary hover:underline">
                       Terms of Service
                     </Link>
                     {' '}and{' '}
-                    <Link href="/privacy" className="text-purple-600 hover:underline">
+                    <Link href="/privacy" className="text-primary hover:underline">
                       Privacy Policy
                     </Link>
                   </span>
                 </label>
                 {errors.termsAccepted && (
-                  <p className="text-sm text-red-500 ml-7">{errors.termsAccepted.message}</p>
+                  <p className="text-sm text-destructive ml-7">{errors.termsAccepted.message}</p>
                 )}
               </div>
             </CardContent>
@@ -429,7 +323,7 @@ export default function RegisterPage() {
             <CardFooter className="flex flex-col gap-4">
               <Button 
                 type="submit" 
-                className="w-full bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white"
+                className="w-full bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white shadow-lg shadow-purple-500/25"
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -442,9 +336,9 @@ export default function RegisterPage() {
                 )}
               </Button>
 
-              <p className="text-sm text-center text-gray-600">
+              <p className="text-sm text-center text-muted-foreground">
                 Already have an account?{' '}
-                <Link href="/login" className="text-purple-600 hover:underline font-medium">
+                <Link href="/login" className="text-primary hover:underline font-medium">
                   Sign in
                 </Link>
               </p>
@@ -453,7 +347,7 @@ export default function RegisterPage() {
         </Card>
 
         {/* Security badge */}
-        <div className="mt-6 flex items-center justify-center gap-2 text-sm text-gray-500">
+        <div className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground">
           <Shield className="w-4 h-4" />
           <span>HIPAA Compliant • 256-bit SSL • SOC 2 Certified</span>
         </div>
@@ -461,4 +355,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-

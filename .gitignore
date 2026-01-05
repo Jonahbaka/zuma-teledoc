@@ -71,3 +71,23 @@ backups/
 # SSL certificates (should be managed separately)
 certs/
 
+# Test scripts with credentials (do not commit)
+scripts/test-*.js
+scripts/check-*.js
+scripts/reset-*.js
+scripts/create-*.js
+scripts/verify-*.js
+scripts/setup-stripe-webhook.js
+server/scripts/check-*.js
+server/scripts/create-*.js
+server/scripts/reset-*.js
+
+# Keep setup scripts but not user-specific ones
+!server/scripts/setup-admin.js
+!server/scripts/setup-super-admin.js
+!server/scripts/approve-provider.js
+!server/scripts/run-migration.js
+
+# Cursor IDE terminals
+terminals/
+

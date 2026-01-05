@@ -105,7 +105,15 @@ export default function ProviderMessagesPage() {
       if (response.data.success) {
         setConversations(response.data.conversations || []);
         if (response.data.conversations?.length > 0 && !selectedConversation) {
-          setSelectedConversation(response.data.conversations[0]);
+          // Transform to the structure expected by sendMessage
+          const conv = response.data.conversations[0];
+          const recipientId = conv.recipientId || conv.otherUser?.id;
+          const recipientName = conv.recipientName || (conv.otherUser ? `${conv.otherUser.firstName} ${conv.otherUser.lastName}` : 'Patient');
+          setSelectedConversation({
+            recipientId,
+            recipientName,
+            conversationId: conv.conversationId
+          });
         }
       }
     } catch (error) {
@@ -124,10 +132,15 @@ export default function ProviderMessagesPage() {
       const response = await api.get(`/messages/conversation/${recipientId}`);
       if (response.data.success) {
         setMessages(response.data.messages || []);
-        // Mark as read
-        const unread = response.data.messages?.filter(m => !m.isRead && !m.isFromMe);
+        // Mark as read - filter for unread messages not sent by me
+        const unread = response.data.messages?.filter(m => !m.readAt && !m.sentByMe);
         for (const msg of unread || []) {
-          await api.put(`/messages/${msg.id}/read`);
+          try {
+            await api.put(`/messages/${msg.id}/read`);
+          } catch (readErr) {
+            // Silently handle read marking errors
+            console.warn('Failed to mark message as read:', msg.id);
+          }
         }
       }
     } catch (error) {
@@ -329,14 +342,14 @@ export default function ProviderMessagesPage() {
                   messages.map((msg) => (
                     <div
                       key={msg.id}
-                      className={`flex ${msg.isFromMe ? 'justify-end' : 'justify-start'}`}
+                      className={`flex ${msg.sentByMe ? 'justify-end' : 'justify-start'}`}
                     >
                       <div className={`max-w-[70%] rounded-lg p-3 ${
-                        msg.isFromMe 
+                        msg.sentByMe 
                           ? 'bg-blue-500 text-white' 
                           : 'bg-slate-100 text-slate-900'
                       }`}>
-                        {msg.isUrgent && !msg.isFromMe && (
+                        {msg.isUrgent && !msg.sentByMe && (
                           <div className="flex items-center gap-1 text-red-600 mb-1">
                             <AlertCircle className="w-3 h-3" />
                             <span className="text-xs font-medium">Urgent</span>
@@ -344,7 +357,7 @@ export default function ProviderMessagesPage() {
                         )}
                         <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                         <p className={`text-xs mt-1 ${
-                          msg.isFromMe ? 'text-blue-50' : 'text-slate-500'
+                          msg.sentByMe ? 'text-blue-50' : 'text-slate-500'
                         }`}>
                           {formatRelativeTime(msg.createdAt)}
                         </p>

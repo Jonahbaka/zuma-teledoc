@@ -49,20 +49,27 @@ export default function PatientDashboard() {
     return 'Good evening';
   };
 
+  const statColors = {
+    purple: { bg: 'bg-purple-500/10 dark:bg-purple-500/20', icon: 'text-purple-600 dark:text-purple-400' },
+    blue: { bg: 'bg-blue-500/10 dark:bg-blue-500/20', icon: 'text-blue-600 dark:text-blue-400' },
+    amber: { bg: 'bg-amber-500/10 dark:bg-amber-500/20', icon: 'text-amber-600 dark:text-amber-400' },
+    indigo: { bg: 'bg-indigo-500/10 dark:bg-indigo-500/20', icon: 'text-indigo-600 dark:text-indigo-400' }
+  };
+
   return (
     <div className="space-y-8">
       {/* Welcome Section */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold font-serif">
+          <h1 className="text-3xl font-bold font-serif text-foreground">
             {getGreeting()}, {user?.firstName}!
           </h1>
-          <p className="text-gray-600 mt-1">
+          <p className="text-muted-foreground mt-1">
             Here's your health overview
           </p>
         </div>
         <Link href="/patient/appointments/book">
-          <Button className="bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white">
+          <Button className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white shadow-lg shadow-purple-500/25">
             <Plus className="w-4 h-4 mr-2" />
             Book Appointment
           </Button>
@@ -72,45 +79,21 @@ export default function PatientDashboard() {
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { 
-            label: 'Upcoming Visits', 
-            value: appointments.length, 
-            icon: Calendar, 
-            color: 'emerald',
-            href: '/patient/appointments'
-          },
-          { 
-            label: 'Messages', 
-            value: '2 new', 
-            icon: MessageSquare, 
-            color: 'blue',
-            href: '/patient/messages'
-          },
-          { 
-            label: 'Health Records', 
-            value: 'View', 
-            icon: FileText, 
-            color: 'purple',
-            href: '/patient/records'
-          },
-          { 
-            label: 'Notifications', 
-            value: notifications.filter(n => !n.isRead).length, 
-            icon: Bell, 
-            color: 'amber',
-            href: '/patient/notifications'
-          }
+          { label: 'Upcoming Visits', value: appointments.length, icon: Calendar, color: 'purple', href: '/patient/appointments' },
+          { label: 'Messages', value: '2 new', icon: MessageSquare, color: 'blue', href: '/patient/messages' },
+          { label: 'Health Records', value: 'View', icon: FileText, color: 'indigo', href: '/patient/records' },
+          { label: 'Notifications', value: notifications.filter(n => !n.isRead).length, icon: Bell, color: 'amber', href: '/patient/notifications' }
         ].map((stat, index) => (
           <Link key={index} href={stat.href}>
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+            <Card className="hover:shadow-lg hover:border-primary/30 transition-all cursor-pointer bg-card">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500">{stat.label}</p>
-                    <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+                    <p className="text-2xl font-bold mt-1 text-foreground">{stat.value}</p>
                   </div>
-                  <div className={`w-12 h-12 rounded-xl bg-${stat.color}-100 flex items-center justify-center`}>
-                    <stat.icon className={`w-6 h-6 text-${stat.color}-600`} />
+                  <div className={`w-12 h-12 rounded-xl ${statColors[stat.color]?.bg} flex items-center justify-center`}>
+                    <stat.icon className={`w-6 h-6 ${statColors[stat.color]?.icon}`} />
                   </div>
                 </div>
               </CardContent>
@@ -121,10 +104,10 @@ export default function PatientDashboard() {
 
       <div className="grid lg:grid-cols-2 gap-8">
         {/* Upcoming Appointments */}
-        <Card>
+        <Card className="bg-card">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <div>
-              <CardTitle className="text-lg">Upcoming Appointments</CardTitle>
+              <CardTitle className="text-lg text-foreground">Upcoming Appointments</CardTitle>
               <CardDescription>Your scheduled visits</CardDescription>
             </div>
             <Link href="/patient/appointments">
@@ -138,14 +121,14 @@ export default function PatientDashboard() {
               <div className="space-y-4">
                 {[1, 2, 3].map(i => (
                   <div key={i} className="animate-pulse">
-                    <div className="h-20 bg-gray-100 rounded-xl"></div>
+                    <div className="h-20 bg-muted rounded-xl"></div>
                   </div>
                 ))}
               </div>
             ) : appointments.length === 0 ? (
               <div className="text-center py-8">
-                <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500">No upcoming appointments</p>
+                <Calendar className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-muted-foreground">No upcoming appointments</p>
                 <Link href="/patient/appointments/book">
                   <Button variant="link" className="mt-2">
                     Schedule your first visit
@@ -156,28 +139,28 @@ export default function PatientDashboard() {
               <div className="space-y-4">
                 {appointments.map((apt) => (
                   <Link key={apt.id} href={`/patient/appointments/${apt.id}`}>
-                    <div className="p-4 rounded-xl border hover:border-emerald-300 hover:bg-emerald-50/50 transition-all cursor-pointer">
+                    <div className="p-4 rounded-xl border border-border hover:border-primary/30 hover:bg-accent transition-all cursor-pointer">
                       <div className="flex items-start justify-between">
                         <div className="flex gap-4">
-                          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white font-medium">
+                          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white font-medium shadow-lg shadow-purple-500/25">
                             {apt.providerFirstName?.[0]}{apt.providerLastName?.[0]}
                           </div>
                           <div>
-                            <p className="font-medium">
+                            <p className="font-medium text-foreground">
                               Dr. {apt.providerFirstName} {apt.providerLastName}
                             </p>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-sm text-muted-foreground">
                               {apt.providerSpecialty || 'General Practice'}
                             </p>
-                            <div className="flex items-center gap-2 mt-2 text-sm">
-                              <Clock className="w-4 h-4 text-gray-400" />
+                            <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                              <Clock className="w-4 h-4" />
                               <span>{formatDateTime(apt.scheduledAt)}</span>
                             </div>
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-2">
                           {apt.type === 'video' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs rounded-full">
                               <Video className="w-3 h-3" />
                               Video
                             </span>
@@ -196,10 +179,10 @@ export default function PatientDashboard() {
         </Card>
 
         {/* Recent Notifications */}
-        <Card>
+        <Card className="bg-card">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <div>
-              <CardTitle className="text-lg">Recent Activity</CardTitle>
+              <CardTitle className="text-lg text-foreground">Recent Activity</CardTitle>
               <CardDescription>Latest updates and notifications</CardDescription>
             </div>
             <Link href="/patient/notifications">
@@ -213,14 +196,14 @@ export default function PatientDashboard() {
               <div className="space-y-4">
                 {[1, 2, 3].map(i => (
                   <div key={i} className="animate-pulse">
-                    <div className="h-16 bg-gray-100 rounded-xl"></div>
+                    <div className="h-16 bg-muted rounded-xl"></div>
                   </div>
                 ))}
               </div>
             ) : notifications.length === 0 ? (
               <div className="text-center py-8">
-                <Bell className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500">No recent notifications</p>
+                <Bell className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-muted-foreground">No recent notifications</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -228,27 +211,29 @@ export default function PatientDashboard() {
                   <div 
                     key={notification.id}
                     className={`p-3 rounded-xl border ${
-                      notification.isRead ? 'bg-white' : 'bg-emerald-50 border-emerald-200'
+                      notification.isRead 
+                        ? 'bg-background border-border' 
+                        : 'bg-primary/5 border-primary/20'
                     }`}
                   >
                     <div className="flex items-start gap-3">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                        notification.type === 'appointment' ? 'bg-blue-100' :
-                        notification.type === 'message' ? 'bg-purple-100' :
-                        'bg-gray-100'
+                        notification.type === 'appointment' ? 'bg-blue-500/10 dark:bg-blue-500/20' :
+                        notification.type === 'message' ? 'bg-purple-500/10 dark:bg-purple-500/20' :
+                        'bg-muted'
                       }`}>
                         {notification.type === 'appointment' ? (
-                          <Calendar className="w-4 h-4 text-blue-600" />
+                          <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                         ) : notification.type === 'message' ? (
-                          <MessageSquare className="w-4 h-4 text-purple-600" />
+                          <MessageSquare className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                         ) : (
-                          <Bell className="w-4 h-4 text-gray-600" />
+                          <Bell className="w-4 h-4 text-muted-foreground" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{notification.title}</p>
-                        <p className="text-xs text-gray-500 truncate">{notification.message}</p>
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="font-medium text-sm truncate text-foreground">{notification.title}</p>
+                        <p className="text-xs text-muted-foreground truncate">{notification.message}</p>
+                        <p className="text-xs text-muted-foreground/70 mt-1">
                           {formatRelativeTime(notification.createdAt)}
                         </p>
                       </div>
@@ -262,44 +247,24 @@ export default function PatientDashboard() {
       </div>
 
       {/* Quick Actions */}
-      <Card>
+      <Card className="bg-card">
         <CardHeader>
-          <CardTitle className="text-lg">Quick Actions</CardTitle>
+          <CardTitle className="text-lg text-foreground">Quick Actions</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { 
-                label: 'Book Appointment', 
-                icon: Calendar, 
-                href: '/patient/appointments/book',
-                color: 'emerald'
-              },
-              { 
-                label: 'Message Provider', 
-                icon: MessageSquare, 
-                href: '/patient/messages',
-                color: 'blue'
-              },
-              { 
-                label: 'View Records', 
-                icon: FileText, 
-                href: '/patient/records',
-                color: 'purple'
-              },
-              { 
-                label: 'Update Profile', 
-                icon: User, 
-                href: '/patient/profile',
-                color: 'amber'
-              }
+              { label: 'Book Appointment', icon: Calendar, href: '/patient/appointments/book', color: 'purple' },
+              { label: 'Message Provider', icon: MessageSquare, href: '/patient/messages', color: 'blue' },
+              { label: 'View Records', icon: FileText, href: '/patient/records', color: 'indigo' },
+              { label: 'Update Profile', icon: User, href: '/patient/profile', color: 'amber' }
             ].map((action, index) => (
               <Link key={index} href={action.href}>
-                <div className={`p-4 rounded-xl border-2 border-dashed hover:border-${action.color}-300 hover:bg-${action.color}-50 transition-all cursor-pointer text-center group`}>
-                  <div className={`w-12 h-12 rounded-xl bg-${action.color}-100 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform`}>
-                    <action.icon className={`w-6 h-6 text-${action.color}-600`} />
+                <div className="p-4 rounded-xl border-2 border-dashed border-border hover:border-primary/50 hover:bg-accent transition-all cursor-pointer text-center group">
+                  <div className={`w-12 h-12 rounded-xl ${statColors[action.color]?.bg} flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform`}>
+                    <action.icon className={`w-6 h-6 ${statColors[action.color]?.icon}`} />
                   </div>
-                  <p className="font-medium text-sm">{action.label}</p>
+                  <p className="font-medium text-sm text-foreground">{action.label}</p>
                 </div>
               </Link>
             ))}
@@ -309,4 +274,3 @@ export default function PatientDashboard() {
     </div>
   );
 }
-

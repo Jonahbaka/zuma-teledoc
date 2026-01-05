@@ -91,7 +91,7 @@ export default function AuditLogs() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold font-serif flex items-center gap-2">
-            <Shield className="w-6 h-6 text-emerald-600" />
+            <Shield className="w-6 h-6 text-purple-700" />
             HIPAA Audit Logs
           </h1>
           <p className="text-gray-600">Track all system activity and PHI access</p>

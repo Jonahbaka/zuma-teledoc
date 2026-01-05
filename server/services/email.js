@@ -41,7 +41,7 @@ const transporter = createTransporter();
  */
 const sendWelcomeEmail = async (user) => {
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
     const roleName = user.role === 'provider' ? 'Healthcare Provider' : 'Patient';
     
     const html = `
@@ -79,7 +79,7 @@ const sendWelcomeEmail = async (user) => {
     `;
 
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || 'noreply@zumateledoc.com',
+      from: process.env.SMTP_FROM || 'noreply@doctarx.com',
       to: user.email,
       subject: 'Welcome to Docta.!',
       html
@@ -97,7 +97,7 @@ const sendWelcomeEmail = async (user) => {
  */
 const sendAppointmentNotification = async (appointment, recipient, type) => {
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
     const scheduledDate = new Date(appointment.scheduledAt);
     const formattedDate = scheduledDate.toLocaleDateString('en-US', {
       weekday: 'long',
@@ -177,7 +177,7 @@ const sendAppointmentNotification = async (appointment, recipient, type) => {
     `;
 
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || 'noreply@zumateledoc.com',
+      from: process.env.SMTP_FROM || 'noreply@doctarx.com',
       to: recipient.email,
       subject,
       html
@@ -202,7 +202,7 @@ const sendAppointmentNotification = async (appointment, recipient, type) => {
  */
 const sendPasswordResetEmail = async (user, resetToken) => {
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
     const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
 
     const html = `
@@ -233,7 +233,7 @@ const sendPasswordResetEmail = async (user, resetToken) => {
     `;
 
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || 'noreply@zumateledoc.com',
+      from: process.env.SMTP_FROM || 'noreply@doctarx.com',
       to: user.email,
       subject: 'Reset Your Password - Docta.',
       html
@@ -251,7 +251,7 @@ const sendPasswordResetEmail = async (user, resetToken) => {
  */
 const sendVerificationEmail = async (user, verificationToken) => {
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
     const verificationUrl = `${appUrl}/verify-email?token=${verificationToken}`;
 
     const html = `
@@ -284,7 +284,7 @@ const sendVerificationEmail = async (user, verificationToken) => {
     `;
 
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || 'noreply@zumateledoc.com',
+      from: process.env.SMTP_FROM || 'noreply@doctarx.com',
       to: user.email,
       subject: 'Verify Your Email - Docta.',
       html
@@ -297,10 +297,141 @@ const sendVerificationEmail = async (user, verificationToken) => {
   }
 };
 
+/**
+ * Send admin message email to user
+ */
+const sendAdminMessage = async (recipient, subject, content, adminName) => {
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+    const dashboardPath = recipient.role === 'provider' ? 'provider' : recipient.role === 'admin' ? 'admin' : 'patient';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${subject}</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0;">Message from Docta. Admin</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px;">
+            <p>Hello ${recipient.first_name || recipient.firstName} ${recipient.last_name || recipient.lastName},</p>
+            <div style="background: white; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #7c3aed;">
+              <h3 style="margin-top: 0; color: #7c3aed;">${subject}</h3>
+              <p style="white-space: pre-wrap;">${content}</p>
+            </div>
+            <p style="color: #666; font-size: 14px;">This message was sent by ${adminName} from the Docta. Admin team.</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${appUrl}/${dashboardPath}/notifications" style="background: #7c3aed; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">View in Dashboard</a>
+            </div>
+            <p>Best regards,<br>The Docta. Team</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || 'noreply@doctarx.com',
+      to: recipient.email,
+      subject: `[Docta.] ${subject}`,
+      html
+    });
+
+    logger.info('Admin message email sent', { recipientId: recipient.id, email: recipient.email, subject });
+  } catch (error) {
+    logger.error('Failed to send admin message email', { error: error.message, recipientId: recipient.id });
+    // Don't throw - admin message email failures shouldn't break the flow
+  }
+};
+
+/**
+ * Send new message notification email
+ */
+const sendNewMessageEmail = async (recipient, senderName, isUrgent = false) => {
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+    const dashboardPath = recipient.role === 'provider' ? 'provider' : 'patient';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>New Message on Docta.</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, ${isUrgent ? '#dc2626' : '#7c3aed'} 0%, ${isUrgent ? '#b91c1c' : '#6d28d9'} 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0;">${isUrgent ? '🔴 Urgent Message' : 'New Message'}</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px;">
+            <p>Hello ${recipient.first_name || recipient.firstName},</p>
+            <p>You have a new ${isUrgent ? '<strong style="color: #dc2626;">urgent</strong> ' : ''}message from <strong>${senderName}</strong> on Docta.</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${appUrl}/${dashboardPath}/messages" style="background: ${isUrgent ? '#dc2626' : '#7c3aed'}; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">View Message</a>
+            </div>
+            <p style="font-size: 12px; color: #666;">For your privacy, message content is not included in this email. Please log in to view your messages.</p>
+            <p>Best regards,<br>The Docta. Team</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || 'noreply@doctarx.com',
+      to: recipient.email,
+      subject: isUrgent ? '🔴 [Urgent] New message on Docta.' : 'New message on Docta.',
+      html
+    });
+
+    logger.info('New message notification email sent', { recipientId: recipient.id, senderName, isUrgent });
+  } catch (error) {
+    logger.error('Failed to send new message email', { error: error.message, recipientId: recipient.id });
+    // Don't throw - email failures shouldn't break messaging
+  }
+};
+
+/**
+ * Send ops/alert email (webhooks, readiness, critical failures)
+ */
+const sendOpsAlertEmail = async ({ subject, html, text, metadata }) => {
+  try {
+    const to = process.env.ALERT_ADMIN_EMAIL || 'evolvedu@outlook.com';
+    const safeSubject = subject?.slice(0, 200) || 'Docta. Ops Alert';
+
+    const bodyHtml = html || `
+      <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px;">
+        <h2 style="margin:0 0 12px 0;">${safeSubject}</h2>
+        <pre style="background:#0b1220;color:#e5e7eb;padding:16px;border-radius:10px;overflow:auto;">${(text || '').replace(/</g, '&lt;')}</pre>
+        ${metadata ? `<pre style="background:#f3f4f6;padding:12px;border-radius:10px;overflow:auto;">${JSON.stringify(metadata, null, 2)}</pre>` : ''}
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || 'noreply@doctarx.com',
+      to,
+      subject: `[Docta. ALERT] ${safeSubject}`,
+      html: bodyHtml,
+      text: text || undefined
+    });
+
+    logger.info('Ops alert email sent', { to, subject: safeSubject });
+  } catch (error) {
+    logger.error('Failed to send ops alert email', { error: error.message, subject });
+    // Don't throw – alerting must not crash production flows
+  }
+};
+
 module.exports = {
   sendWelcomeEmail,
   sendAppointmentNotification,
   sendPasswordResetEmail,
-  sendVerificationEmail
+  sendVerificationEmail,
+  sendAdminMessage,
+  sendNewMessageEmail,
+  sendOpsAlertEmail
 };
 

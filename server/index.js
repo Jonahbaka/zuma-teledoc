@@ -36,6 +36,14 @@ const claimsRoutes = require('./routes/claims');
 const insuranceRoutes = require('./routes/insurance');
 const rtbcRoutes = require('./routes/rtbc');
 const triageRoutes = require('./routes/triage');
+const prescriptionRoutes = require('./routes/prescriptions');
+const pharmacyRoutes = require('./routes/pharmacy');
+const triageQueueRoutes = require('./routes/triageQueue');
+const invitationRoutes = require('./routes/invitations');
+const stripeRoutes = require('./routes/stripe');
+const credentialingRoutes = require('./routes/credentialing');
+const membershipRoutes = require('./routes/membership');
+const contactRoutes = require('./routes/contact');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -53,15 +61,20 @@ app.use((req, res, next) => {
 // CORS configuration - MUST be before other middleware
 const corsOptions = {
   origin: function (origin, callback) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
     const allowedOrigins = [
-      process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      appUrl,
+      // Include both www and non-www versions
+      appUrl.replace('https://', 'https://www.'),
+      // Local development fallbacks
       'http://localhost:3000',
       'http://127.0.0.1:3000'
-    ];
+    ].filter(Boolean);
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    if (!origin || allowedOrigins.some(allowed => origin === allowed || origin.endsWith(allowed.replace('https://', '')))) {
       callback(null, true);
     } else {
+      logger.warn('CORS blocked origin', { origin, allowedOrigins });
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -74,6 +87,8 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Security middleware
+const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://doctarx.com/api';
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -81,16 +96,19 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
       imgSrc: ["'self'", 'data:', 'https:'],
-      connectSrc: ["'self'", 'http://localhost:3000', 'http://localhost:3001'],
-      fontSrc: ["'self'"],
+      connectSrc: ["'self'", appUrl, apiUrl, 'https://doctarx.com', 'https://www.doctarx.com', 'http://localhost:3000', 'http://localhost:3001', 'wss://doctarx.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
       objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'none'"]
+      mediaSrc: ["'self'", 'blob:'],
+      frameSrc: ["'self'", 'https://js.stripe.com', 'https://hooks.stripe.com']
     }
   },
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
+// Stripe webhook needs raw body - MUST be before json parser
+app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
@@ -128,6 +146,21 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+
+// Password reset & contact forms are frequent abuse targets
+const sensitivePublicLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_SENSITIVE_MAX_REQUESTS) || 5,
+  message: {
+    success: false,
+    error: 'Too many requests, please try again later'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip || req.headers['x-forwarded-for'] || 'unknown'
+});
+app.use('/api/auth/password/request-reset', sensitivePublicLimiter);
+app.use('/api/contact', sensitivePublicLimiter);
 
 // Request logging
 app.use((req, res, next) => {
@@ -170,6 +203,69 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Readiness endpoint (production gating)
+// - verifies DB connectivity
+// - verifies critical env vars are present
+app.get('/api/ready', async (req, res) => {
+  const isProd = process.env.NODE_ENV === 'production';
+
+  const requiredAlways = [
+    'DATABASE_URL',
+    'JWT_ACCESS_SECRET',
+    'JWT_REFRESH_SECRET',
+    'ENCRYPTION_KEY',
+    'SESSION_SECRET',
+    'NEXT_PUBLIC_APP_URL'
+  ];
+
+  const requiredProd = [
+    'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+    'SMTP_HOST',
+    'SMTP_PORT',
+    'SMTP_USER',
+    'SMTP_PASSWORD',
+    'SMTP_FROM'
+  ];
+
+  const missing = [];
+  for (const k of requiredAlways) if (!process.env[k]) missing.push(k);
+  if (isProd) for (const k of requiredProd) if (!process.env[k]) missing.push(k);
+
+  let dbHealth = { healthy: false, error: 'not_checked' };
+  try {
+    dbHealth = await db.healthCheck();
+  } catch (e) {
+    dbHealth = { healthy: false, error: e.message };
+  }
+
+  const ready = missing.length === 0 && dbHealth?.healthy === true;
+  const payload = {
+    success: ready,
+    ready,
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    database: dbHealth,
+    missingEnv: missing
+  };
+
+  if (!ready) {
+    // Optional: email ops when readiness is failing (avoid spamming by keeping it manual/off by default)
+    // If you want this enabled, set READYNESS_ALERTS=true.
+    if (process.env.READINESS_ALERTS === 'true') {
+      try {
+        const opsAlerts = require('./services/opsAlerts');
+        await opsAlerts.notifyReadinessFailure({ details: payload });
+      } catch (e) {
+        logger.error('Failed to send readiness failure alert', { error: e.message });
+      }
+    }
+    return res.status(503).json(payload);
+  }
+
+  return res.json(payload);
+});
+
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
@@ -191,6 +287,14 @@ app.use('/api/claims', claimsRoutes);
 app.use('/api/insurance', insuranceRoutes);
 app.use('/api/rtbc', rtbcRoutes);
 app.use('/api/triage', triageRoutes);
+app.use('/api/prescriptions', prescriptionRoutes);
+app.use('/api/pharmacy', pharmacyRoutes);
+app.use('/api/triage-queue', triageQueueRoutes);
+app.use('/api/invitations', invitationRoutes);
+app.use('/api/stripe', stripeRoutes);
+app.use('/api/membership', membershipRoutes);
+app.use('/api/credentialing', credentialingRoutes);
+app.use('/api/contact', contactRoutes);
 
 // 404 handler for API routes
 app.use('/api/*', (req, res) => {

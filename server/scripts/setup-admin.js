@@ -100,8 +100,9 @@ async function main() {
     console.log('\n✅ Admin account created successfully!');
     console.log(`   Email: ${email}`);
     console.log(`   Role: admin`);
-    console.log('\n🔗 Login at: http://localhost:3000/login');
-    console.log('🔗 Admin Portal: http://localhost:3000/admin/dashboard');
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+    console.log(`\n🔗 Login at: ${baseUrl}/secure/admin`);
+    console.log(`🔗 Admin Portal: ${baseUrl}/admin/dashboard`);
     
   } catch (error) {
     console.error('\n❌ Error:', error.message);

@@ -483,19 +483,19 @@ export default function BookAppointmentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <div className="bg-card border-b border-border sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="bg-purple-900 h-10 w-10 rounded-full flex items-center justify-center relative">
+              <div className="bg-purple-700 dark:bg-purple-600 h-10 w-10 rounded-full flex items-center justify-center relative">
                 <span className="text-white font-bold italic">D</span>
-                <div className="absolute bottom-1 right-1 w-2 h-2 bg-amber-400 rounded-full border border-purple-900"></div>
+                <div className="absolute bottom-1 right-1 w-2 h-2 bg-amber-400 rounded-full border border-purple-700 dark:border-purple-600"></div>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-900">Book Appointment</h1>
-                <p className="text-sm text-slate-500">We'll match you with the right provider</p>
+                <h1 className="text-xl font-bold text-foreground">Book Appointment</h1>
+                <p className="text-sm text-muted-foreground">We'll match you with the right provider</p>
               </div>
             </div>
             <Button variant="ghost" onClick={() => router.back()}>Cancel</Button>
@@ -509,26 +509,26 @@ export default function BookAppointmentPage() {
           {STEPS.map((step, index) => (
             <div key={step.id} className="flex items-center">
               <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${
-                currentStep >= step.id ? 'bg-purple-500 border-purple-500 text-white' : 'border-slate-300 text-slate-400'
+                currentStep >= step.id ? 'bg-purple-500 border-purple-500 text-white' : 'border-muted-foreground/30 text-muted-foreground'
               }`}>
                 {currentStep > step.id ? <CheckCircle2 className="w-5 h-5" /> : <step.icon className="w-5 h-5" />}
               </div>
               <span className={`hidden sm:block ml-2 text-sm font-medium ${
-                currentStep >= step.id ? 'text-slate-900' : 'text-slate-400'
+                currentStep >= step.id ? 'text-foreground' : 'text-muted-foreground'
               }`}>{step.title}</span>
-              {index < STEPS.length - 1 && <ChevronRight className="w-5 h-5 text-slate-300 mx-2" />}
+              {index < STEPS.length - 1 && <ChevronRight className="w-5 h-5 text-muted-foreground/50 mx-2" />}
             </div>
           ))}
         </div>
 
         {/* Step Content */}
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+        <div className="bg-card rounded-2xl shadow-xl border border-border overflow-hidden">
           
           {/* Step 1: Health Issue Selection */}
           {currentStep === 1 && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">What brings you in today?</h2>
-              <p className="text-slate-600 mb-6">Select the category that best describes your health concern. We'll match you with the right specialist.</p>
+              <h2 className="text-2xl font-bold text-foreground mb-2">What brings you in today?</h2>
+              <p className="text-muted-foreground mb-6">Select the category that best describes your health concern. We'll match you with the right specialist.</p>
               
               <div className="grid md:grid-cols-3 gap-3">
                 {HEALTH_CATEGORIES.map((category) => (
@@ -537,19 +537,19 @@ export default function BookAppointmentPage() {
                     onClick={() => setSelectedCategory(category)}
                     className={`p-4 rounded-xl border-2 text-left transition-all hover:shadow-md ${
                       selectedCategory?.id === category.id
-                        ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
-                        : 'border-slate-200 hover:border-emerald-300'
+                        ? 'border-purple-500 bg-purple-500/10 ring-2 ring-purple-500/30'
+                        : 'border-border hover:border-purple-400 dark:hover:border-purple-500'
                     }`}
                   >
                     <div className="flex items-start gap-3">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        selectedCategory?.id === category.id ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-600'
+                        selectedCategory?.id === category.id ? 'bg-purple-500 text-white' : 'bg-muted text-muted-foreground'
                       }`}>
                         <category.icon className="w-5 h-5" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="font-semibold text-slate-900">{category.name}</h3>
-                        <p className="text-xs text-slate-500 mt-1">{category.description}</p>
+                        <h3 className="font-semibold text-foreground">{category.name}</h3>
+                        <p className="text-xs text-muted-foreground mt-1">{category.description}</p>
                       </div>
                     </div>
                   </button>
@@ -561,55 +561,55 @@ export default function BookAppointmentPage() {
           {/* Step 3: AI Triage Analysis */}
           {currentStep === 3 && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-foreground mb-2 flex items-center gap-2">
                 <Brain className="w-6 h-6 text-purple-500" />
                 AI Symptom Analysis
               </h2>
-              <p className="text-slate-600 mb-6">Powered by Med-Gemini. Analyzing your symptoms to help match you with the right provider.</p>
+              <p className="text-muted-foreground mb-6">Powered by Med-Gemini. Analyzing your symptoms to help match you with the right provider.</p>
               
               {isAnalyzing ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Loader2 className="w-12 h-12 animate-spin text-purple-500 mb-4" />
-                  <p className="text-slate-600">Analyzing your symptoms...</p>
+                  <p className="text-muted-foreground">Analyzing your symptoms...</p>
                 </div>
               ) : triageResult ? (
                 <div className="space-y-4">
-                  <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border border-purple-200">
+                  <div className="p-4 bg-gradient-to-br from-purple-500/10 to-indigo-500/10 rounded-xl border border-purple-500/30">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <Sparkles className="w-5 h-5 text-purple-500" />
-                        <h3 className="font-semibold text-slate-900">AI Assessment</h3>
+                        <h3 className="font-semibold text-foreground">AI Assessment</h3>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                           triageResult.severity >= 4
-                            ? 'bg-red-100 text-red-800'
+                            ? 'bg-red-500/20 text-red-700 dark:text-red-400'
                             : triageResult.severity >= 3
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-green-100 text-green-800'
+                            ? 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400'
+                            : 'bg-green-500/20 text-green-700 dark:text-green-400'
                         }`}>
                           Severity: {triageResult.severity}/5
                         </span>
-                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800">
+                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-500/20 text-purple-700 dark:text-purple-400">
                           {triageResult.triageLevel}
                         </span>
                       </div>
                     </div>
                     
                     <div className="mb-4">
-                      <p className="text-sm font-medium text-slate-700 mb-2">Recommended Specialty:</p>
-                      <p className="font-semibold text-purple-900">{triageResult.suggestedSpecialty}</p>
+                      <p className="text-sm font-medium text-muted-foreground mb-2">Recommended Specialty:</p>
+                      <p className="font-semibold text-purple-700 dark:text-purple-400">{triageResult.suggestedSpecialty}</p>
                     </div>
                     
                     {triageResult.flags && triageResult.flags.length > 0 && (
-                      <div className="mb-4 p-3 bg-red-50 rounded-lg border border-red-200">
+                      <div className="mb-4 p-3 bg-red-500/10 rounded-lg border border-red-500/30">
                         <div className="flex items-start gap-2">
-                          <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
+                          <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5" />
                           <div>
-                            <p className="text-sm font-bold text-red-900 mb-2">Clinical Flags</p>
+                            <p className="text-sm font-bold text-red-700 dark:text-red-400 mb-2">Clinical Flags</p>
                             <div className="flex flex-wrap gap-2">
                               {triageResult.flags.map((flag, idx) => (
-                                <span key={idx} className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-bold">
+                                <span key={idx} className="px-2 py-1 bg-red-500/20 text-red-700 dark:text-red-400 rounded text-xs font-bold">
                                   {flag}
                                 </span>
                               ))}
@@ -621,13 +621,13 @@ export default function BookAppointmentPage() {
                     
                     {triageResult.suggestedMeds && triageResult.suggestedMeds.length > 0 && (
                       <div className="mb-4">
-                        <p className="text-sm font-medium text-slate-700 mb-2 flex items-center gap-1">
+                        <p className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
                           <Pill className="w-4 h-4" />
                           AI Suggested Medications (For Provider Review)
                         </p>
                         <div className="flex flex-wrap gap-2">
                           {triageResult.suggestedMeds.map((med, idx) => (
-                            <span key={idx} className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium">
+                            <span key={idx} className="px-3 py-1 bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 rounded-full text-sm font-medium">
                               {med}
                             </span>
                           ))}
@@ -635,28 +635,28 @@ export default function BookAppointmentPage() {
                       </div>
                     )}
                     
-                    <div className="mt-4 p-3 bg-slate-50 rounded-lg">
-                      <p className="text-xs text-slate-500 uppercase font-bold mb-2">Assessment Preview</p>
-                      <pre className="text-sm text-slate-700 whitespace-pre-wrap font-mono">
+                    <div className="mt-4 p-3 bg-muted rounded-lg">
+                      <p className="text-xs text-muted-foreground uppercase font-bold mb-2">Assessment Preview</p>
+                      <pre className="text-sm text-foreground whitespace-pre-wrap font-mono">
                         {triageResult.soapDraft}
                       </pre>
                     </div>
                   </div>
                   
-                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                  <div className="p-4 bg-blue-500/10 rounded-xl border border-blue-500/30">
                     <div className="flex items-start gap-3">
-                      <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                      <CheckCircle2 className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-sm font-medium text-blue-900">Analysis Complete</p>
-                        <p className="text-xs text-blue-700 mt-1">This information will be shared with your provider to help prepare for your visit.</p>
+                        <p className="text-sm font-medium text-blue-700 dark:text-blue-400">Analysis Complete</p>
+                        <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">This information will be shared with your provider to help prepare for your visit.</p>
                       </div>
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-12">
-                  <Brain className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                  <p className="text-slate-500">No analysis available. Please go back and describe your symptoms.</p>
+                  <Brain className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
+                  <p className="text-muted-foreground">No analysis available. Please go back and describe your symptoms.</p>
                 </div>
               )}
             </div>
@@ -665,13 +665,13 @@ export default function BookAppointmentPage() {
           {/* Step 2: Symptoms & Details */}
           {currentStep === 2 && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Tell us more about your symptoms</h2>
-              <p className="text-slate-600 mb-6">This helps us prepare for your visit and match you with the right provider.</p>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Tell us more about your symptoms</h2>
+              <p className="text-muted-foreground mb-6">This helps us prepare for your visit and match you with the right provider.</p>
               
               <div className="space-y-6">
                 {/* Visit Type */}
                 <div>
-                  <Label className="text-sm font-medium text-slate-700 mb-3 block">Visit Type</Label>
+                  <Label className="text-sm font-medium text-foreground mb-3 block">Visit Type</Label>
                   <div className="grid grid-cols-3 gap-3">
                     {[
                       { value: 'video', label: 'Video Call', icon: Video, desc: 'Recommended' },
@@ -682,12 +682,12 @@ export default function BookAppointmentPage() {
                         key={type.value}
                         onClick={() => setVisitType(type.value)}
                         className={`p-4 rounded-xl border-2 transition-all ${
-                          visitType === type.value ? 'border-purple-500 bg-purple-50' : 'border-slate-200 hover:border-purple-300'
+                          visitType === type.value ? 'border-purple-500 bg-purple-500/10' : 'border-border hover:border-purple-400'
                         }`}
                       >
-                        <type.icon className={`w-6 h-6 mb-2 ${visitType === type.value ? 'text-emerald-600' : 'text-slate-400'}`} />
-                        <div className="font-medium text-slate-900">{type.label}</div>
-                        <div className="text-xs text-slate-500">{type.desc}</div>
+                        <type.icon className={`w-6 h-6 mb-2 ${visitType === type.value ? 'text-purple-600 dark:text-purple-400' : 'text-muted-foreground'}`} />
+                        <div className="font-medium text-foreground">{type.label}</div>
+                        <div className="text-xs text-muted-foreground">{type.desc}</div>
                       </button>
                     ))}
                   </div>
@@ -695,33 +695,33 @@ export default function BookAppointmentPage() {
                 
                 {/* Symptoms */}
                 <div>
-                  <Label htmlFor="symptoms">Describe your symptoms *</Label>
+                  <Label htmlFor="symptoms" className="text-foreground">Describe your symptoms *</Label>
                   <textarea
                     id="symptoms"
                     value={symptoms}
                     onChange={(e) => setSymptoms(e.target.value)}
                     placeholder="Please describe what you're experiencing in detail..."
-                    className="w-full mt-2 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 min-h-[120px]"
+                    className="w-full mt-2 p-3 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-purple-500 focus:border-purple-500 min-h-[120px]"
                   />
                 </div>
                 
                 {/* Severity */}
                 <div>
-                  <Label>How severe are your symptoms?</Label>
+                  <Label className="text-foreground">How severe are your symptoms?</Label>
                   <div className="grid grid-cols-4 gap-2 mt-2">
                     {[
-                      { value: 'mild', label: 'Mild', color: 'emerald' },
-                      { value: 'moderate', label: 'Moderate', color: 'amber' },
-                      { value: 'severe', label: 'Severe', color: 'orange' },
-                      { value: 'urgent', label: 'Urgent', color: 'red' }
+                      { value: 'mild', label: 'Mild', activeClasses: 'border-emerald-500 bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' },
+                      { value: 'moderate', label: 'Moderate', activeClasses: 'border-amber-500 bg-amber-500/20 text-amber-700 dark:text-amber-400' },
+                      { value: 'severe', label: 'Severe', activeClasses: 'border-orange-500 bg-orange-500/20 text-orange-700 dark:text-orange-400' },
+                      { value: 'urgent', label: 'Urgent', activeClasses: 'border-red-500 bg-red-500/20 text-red-700 dark:text-red-400' }
                     ].map((s) => (
                       <button
                         key={s.value}
                         onClick={() => setSeverity(s.value)}
-                        className={`p-3 rounded-lg border-2 text-center transition-all ${
+                        className={`p-3 rounded-lg border-2 text-center transition-all font-medium ${
                           severity === s.value 
-                            ? `border-${s.color}-500 bg-${s.color}-50 text-${s.color}-700`
-                            : 'border-slate-200 hover:border-slate-300'
+                            ? s.activeClasses
+                            : 'border-border hover:border-muted-foreground text-foreground'
                         }`}
                       >
                         {s.label}
@@ -732,35 +732,35 @@ export default function BookAppointmentPage() {
                 
                 {/* Duration */}
                 <div>
-                  <Label htmlFor="duration">How long have you had these symptoms?</Label>
+                  <Label htmlFor="duration" className="text-foreground">How long have you had these symptoms?</Label>
                   <Input
                     id="duration"
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
                     placeholder="e.g., 3 days, 2 weeks, 1 month"
-                    className="mt-2"
+                    className="mt-2 bg-background"
                   />
                 </div>
                 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="medications">Current Medications</Label>
+                    <Label htmlFor="medications" className="text-foreground">Current Medications</Label>
                     <Input
                       id="medications"
                       value={medications}
                       onChange={(e) => setMedications(e.target.value)}
                       placeholder="List any medications you take"
-                      className="mt-2"
+                      className="mt-2 bg-background"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="allergies">Known Allergies</Label>
+                    <Label htmlFor="allergies" className="text-foreground">Known Allergies</Label>
                     <Input
                       id="allergies"
                       value={allergies}
                       onChange={(e) => setAllergies(e.target.value)}
                       placeholder="List any allergies"
-                      className="mt-2"
+                      className="mt-2 bg-background"
                     />
                   </div>
                 </div>
@@ -771,21 +771,21 @@ export default function BookAppointmentPage() {
           {/* Step 4: Schedule */}
           {currentStep === 4 && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Choose your appointment time</h2>
-              <p className="text-slate-600 mb-6">Select a date and time that works best for you.</p>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Choose your appointment time</h2>
+              <p className="text-muted-foreground mb-6">Select a date and time that works best for you.</p>
               
               {/* Matched Provider Info */}
               {matchedProvider && (
-                <div className="mb-6 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                <div className="mb-6 p-4 bg-purple-500/10 rounded-xl border border-purple-500/30">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white font-bold">
                       {matchedProvider.first_name?.[0]}{matchedProvider.last_name?.[0]}
                     </div>
                     <div>
-                      <p className="font-semibold text-emerald-900">
+                      <p className="font-semibold text-purple-700 dark:text-purple-400">
                         Matched: Dr. {matchedProvider.first_name} {matchedProvider.last_name}
                       </p>
-                      <p className="text-sm text-emerald-600">{matchedProvider.specialty}</p>
+                      <p className="text-sm text-purple-600 dark:text-purple-300">{matchedProvider.specialty}</p>
                     </div>
                     <CheckCircle2 className="w-5 h-5 text-purple-500 ml-auto" />
                   </div>
@@ -795,7 +795,7 @@ export default function BookAppointmentPage() {
               <div className="grid md:grid-cols-2 gap-6">
                 {/* Date Selection */}
                 <div>
-                  <Label className="text-sm font-medium text-slate-700 mb-3 block">Select Date</Label>
+                  <Label className="text-sm font-medium text-foreground mb-3 block">Select Date</Label>
                   <div className="grid grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-2">
                     {getAvailableDates().map((date) => (
                       <button
@@ -803,8 +803,8 @@ export default function BookAppointmentPage() {
                         onClick={() => { setSelectedDate(date); setSelectedTime(null); }}
                         className={`p-3 rounded-lg border-2 text-center transition-all ${
                           selectedDate === date
-                            ? 'border-purple-500 bg-purple-50 text-purple-700'
-                            : 'border-slate-200 hover:border-emerald-300'
+                            ? 'border-purple-500 bg-purple-500/10 text-purple-700 dark:text-purple-400'
+                            : 'border-border hover:border-purple-400'
                         }`}
                       >
                         {(() => {
@@ -813,13 +813,13 @@ export default function BookAppointmentPage() {
                             if (isNaN(dateObj.getTime())) return <div>Invalid</div>;
                             return (
                               <>
-                                <div className="text-xs text-slate-500">
+                                <div className={`text-xs ${selectedDate === date ? 'text-purple-600 dark:text-purple-300' : 'text-muted-foreground'}`}>
                                   {dateObj.toLocaleDateString('en-US', { weekday: 'short' })}
                                 </div>
-                                <div className="font-semibold text-lg">
+                                <div className={`font-semibold text-lg ${selectedDate === date ? '' : 'text-foreground'}`}>
                                   {dateObj.getDate()}
                                 </div>
-                                <div className="text-xs text-slate-500">
+                                <div className={`text-xs ${selectedDate === date ? 'text-purple-600 dark:text-purple-300' : 'text-muted-foreground'}`}>
                                   {dateObj.toLocaleDateString('en-US', { month: 'short' })}
                                 </div>
                               </>
@@ -835,7 +835,7 @@ export default function BookAppointmentPage() {
                 
                 {/* Time Slots */}
                 <div>
-                  <Label className="text-sm font-medium text-slate-700 mb-3 block">Select Time</Label>
+                  <Label className="text-sm font-medium text-foreground mb-3 block">Select Time</Label>
                   {selectedDate ? (
                     <div className="space-y-4">
                       {['Morning', 'Afternoon', 'Evening'].map((period) => {
@@ -843,7 +843,7 @@ export default function BookAppointmentPage() {
                         if (periodSlots.length === 0) return null;
                         return (
                           <div key={period}>
-                            <p className="text-xs font-medium text-slate-500 mb-2">{period}</p>
+                            <p className="text-xs font-medium text-muted-foreground mb-2">{period}</p>
                             <div className="grid grid-cols-3 gap-2">
                               {periodSlots.map((slot) => (
                                 <button
@@ -851,8 +851,8 @@ export default function BookAppointmentPage() {
                                   onClick={() => setSelectedTime(slot.time)}
                                   className={`p-2 rounded-lg border-2 text-sm transition-all ${
                                     selectedTime === slot.time
-                                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium'
-                                      : 'border-slate-200 hover:border-emerald-300'
+                                      ? 'border-purple-500 bg-purple-500/10 text-purple-700 dark:text-purple-400 font-medium'
+                                      : 'border-border hover:border-purple-400 text-foreground'
                                   }`}
                                 >
                                   {formatTime(slot.time)}
@@ -864,8 +864,8 @@ export default function BookAppointmentPage() {
                       })}
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center h-48 bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
-                      <p className="text-slate-400">Select a date first</p>
+                    <div className="flex items-center justify-center h-48 bg-muted rounded-lg border-2 border-dashed border-border">
+                      <p className="text-muted-foreground">Select a date first</p>
                     </div>
                   )}
                 </div>
@@ -876,12 +876,12 @@ export default function BookAppointmentPage() {
                   const formattedDate = formatDate(selectedDate);
                   const formattedTime = formatTime(selectedTime);
                   return (
-                    <div className="mt-6 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                    <div className="mt-6 p-4 bg-purple-500/10 rounded-xl border border-purple-500/30">
                       <div className="flex items-center gap-3">
-                        <Calendar className="w-5 h-5 text-emerald-600" />
+                        <Calendar className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                         <div>
-                          <p className="font-medium text-emerald-900">{formattedDate} at {formattedTime}</p>
-                          <p className="text-sm text-emerald-600">30 minute {visitType} consultation</p>
+                          <p className="font-medium text-purple-700 dark:text-purple-400">{formattedDate} at {formattedTime}</p>
+                          <p className="text-sm text-purple-600 dark:text-purple-300">30 minute {visitType} consultation</p>
                         </div>
                       </div>
                     </div>
@@ -896,23 +896,23 @@ export default function BookAppointmentPage() {
           {/* Step 5: Insurance */}
           {currentStep === 5 && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Insurance Information</h2>
-              <p className="text-slate-600 mb-6">Provide your insurance details for billing. <span className="font-medium text-slate-700">This step is optional.</span></p>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Insurance Information</h2>
+              <p className="text-muted-foreground mb-6">Provide your insurance details for billing. <span className="font-medium text-foreground">This step is optional.</span></p>
               
               {hasExistingInsurance && (
-                <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
-                  <div className="flex items-center gap-2 text-blue-800">
+                <div className="mb-6 p-4 bg-blue-500/10 rounded-xl border border-blue-500/30">
+                  <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
                     <Shield className="w-5 h-5" />
                     <span className="font-medium">We have your insurance on file</span>
                   </div>
                 </div>
               )}
               
-              <div className="mb-6 p-4 bg-amber-50 rounded-xl border border-amber-200">
+              <div className="mb-6 p-4 bg-amber-500/10 rounded-xl border border-amber-500/30">
                 <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm text-amber-800">
+                    <p className="text-sm text-amber-700 dark:text-amber-300">
                       <strong>Note:</strong> You can skip insurance for now and provide it later, or pay out-of-pocket. You can always add or update insurance information in your profile.
                     </p>
                   </div>
@@ -922,45 +922,45 @@ export default function BookAppointmentPage() {
               <div className="space-y-6">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="insuranceProvider">Insurance Provider</Label>
-                    <Input {...insuranceForm.register('insuranceProvider')} placeholder="e.g., Blue Cross" className="mt-2" />
+                    <Label htmlFor="insuranceProvider" className="text-foreground">Insurance Provider</Label>
+                    <Input {...insuranceForm.register('insuranceProvider')} placeholder="e.g., Blue Cross" className="mt-2 bg-background" />
                   </div>
                   <div>
-                    <Label htmlFor="policyNumber">Policy Number</Label>
-                    <Input {...insuranceForm.register('policyNumber')} placeholder="e.g., ABC123456" className="mt-2" />
+                    <Label htmlFor="policyNumber" className="text-foreground">Policy Number</Label>
+                    <Input {...insuranceForm.register('policyNumber')} placeholder="e.g., ABC123456" className="mt-2 bg-background" />
                   </div>
                   <div>
-                    <Label htmlFor="groupNumber">Group Number</Label>
-                    <Input {...insuranceForm.register('groupNumber')} placeholder="e.g., GRP001" className="mt-2" />
+                    <Label htmlFor="groupNumber" className="text-foreground">Group Number</Label>
+                    <Input {...insuranceForm.register('groupNumber')} placeholder="e.g., GRP001" className="mt-2 bg-background" />
                   </div>
                   <div>
-                    <Label htmlFor="subscriberName">Subscriber Name</Label>
-                    <Input {...insuranceForm.register('subscriberName')} placeholder="Name on card" className="mt-2" />
+                    <Label htmlFor="subscriberName" className="text-foreground">Subscriber Name</Label>
+                    <Input {...insuranceForm.register('subscriberName')} placeholder="Name on card" className="mt-2 bg-background" />
                   </div>
                 </div>
                 
                 {/* Card Upload */}
-                <div className="border-t pt-6">
-                  <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                <div className="border-t border-border pt-6">
+                  <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                     <Camera className="w-5 h-5" /> Upload Insurance Card
                   </h3>
                   <div className="grid md:grid-cols-2 gap-4">
                     {[{ type: 'front', label: 'Front', state: insuranceFront, setState: setInsuranceFront },
                       { type: 'back', label: 'Back', state: insuranceBack, setState: setInsuranceBack }].map(({ type, label, state, setState }) => (
                       <div key={type}>
-                        <Label className="text-sm">Card {label}</Label>
+                        <Label className="text-sm text-foreground">Card {label}</Label>
                         <div className="mt-2">
                           {state ? (
                             <div className="relative">
-                              <img src={state.preview} alt={`Insurance ${label}`} className="w-full h-32 object-cover rounded-lg border" />
+                              <img src={state.preview} alt={`Insurance ${label}`} className="w-full h-32 object-cover rounded-lg border border-border" />
                               <button onClick={() => setState(null)} className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center">
                                 <X className="w-4 h-4" />
                               </button>
                             </div>
                           ) : (
-                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-emerald-400 hover:bg-emerald-50">
-                              <Upload className="w-8 h-8 text-slate-400" />
-                              <span className="text-sm text-slate-500 mt-2">Upload {label.toLowerCase()}</span>
+                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-purple-400 hover:bg-purple-500/5">
+                              <Upload className="w-8 h-8 text-muted-foreground" />
+                              <span className="text-sm text-muted-foreground mt-2">Upload {label.toLowerCase()}</span>
                               <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, type)} className="hidden" />
                             </label>
                           )}
@@ -976,54 +976,54 @@ export default function BookAppointmentPage() {
           {/* Step 6: Confirm */}
           {currentStep === 6 && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Review & Confirm</h2>
-              <p className="text-slate-600 mb-6">Please review your appointment details.</p>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Review & Confirm</h2>
+              <p className="text-muted-foreground mb-6">Please review your appointment details.</p>
               
               <div className="space-y-4">
-                <div className="p-4 bg-slate-50 rounded-xl">
-                  <h3 className="font-semibold text-slate-700 mb-2 flex items-center gap-2"><Heart className="w-4 h-4" /> Health Concern</h3>
-                  <p className="font-medium">{selectedCategory?.name}</p>
-                  <p className="text-sm text-slate-600 mt-1">{symptoms}</p>
+                <div className="p-4 bg-muted rounded-xl">
+                  <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2"><Heart className="w-4 h-4" /> Health Concern</h3>
+                  <p className="font-medium text-foreground">{selectedCategory?.name}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{symptoms}</p>
                 </div>
                 
                 {triageResult && (
-                  <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border border-purple-200">
-                    <h3 className="font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                  <div className="p-4 bg-gradient-to-br from-purple-500/10 to-indigo-500/10 rounded-xl border border-purple-500/30">
+                    <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2">
                       <Brain className="w-4 h-4 text-purple-500" /> AI Analysis
                     </h3>
                     <div className="flex items-center gap-2 mb-2">
                       <span className={`px-2 py-1 rounded text-xs font-bold ${
-                        triageResult.severity >= 4 ? 'bg-red-100 text-red-800' :
-                        triageResult.severity >= 3 ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-green-100 text-green-800'
+                        triageResult.severity >= 4 ? 'bg-red-500/20 text-red-700 dark:text-red-400' :
+                        triageResult.severity >= 3 ? 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400' :
+                        'bg-green-500/20 text-green-700 dark:text-green-400'
                       }`}>
                         Severity: {triageResult.severity}/5
                       </span>
-                      <span className="px-2 py-1 rounded text-xs font-bold bg-purple-100 text-purple-800">
+                      <span className="px-2 py-1 rounded text-xs font-bold bg-purple-500/20 text-purple-700 dark:text-purple-400">
                         {triageResult.triageLevel}
                       </span>
                     </div>
-                    <p className="text-sm font-medium text-purple-900">Recommended: {triageResult.suggestedSpecialty}</p>
+                    <p className="text-sm font-medium text-purple-700 dark:text-purple-400">Recommended: {triageResult.suggestedSpecialty}</p>
                     {triageResult.flags && triageResult.flags.length > 0 && (
-                      <p className="text-xs text-red-700 mt-2">
+                      <p className="text-xs text-red-700 dark:text-red-400 mt-2">
                         ⚠️ {triageResult.flags.join(', ')}
                       </p>
                     )}
                   </div>
                 )}
                 
-                <div className="p-4 bg-slate-50 rounded-xl">
-                  <h3 className="font-semibold text-slate-700 mb-2 flex items-center gap-2"><Calendar className="w-4 h-4" /> Appointment</h3>
+                <div className="p-4 bg-muted rounded-xl">
+                  <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2"><Calendar className="w-4 h-4" /> Appointment</h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div><span className="text-slate-500">Date:</span><p className="font-medium">{selectedDate ? formatDate(selectedDate) : 'Not selected'}</p></div>
-                    <div><span className="text-slate-500">Time:</span><p className="font-medium">{selectedTime ? formatTime(selectedTime) : 'Not selected'}</p></div>
-                    <div><span className="text-slate-500">Type:</span><p className="font-medium capitalize">{visitType || 'video'}</p></div>
-                    <div><span className="text-slate-500">Duration:</span><p className="font-medium">30 minutes</p></div>
+                    <div><span className="text-muted-foreground">Date:</span><p className="font-medium text-foreground">{selectedDate ? formatDate(selectedDate) : 'Not selected'}</p></div>
+                    <div><span className="text-muted-foreground">Time:</span><p className="font-medium text-foreground">{selectedTime ? formatTime(selectedTime) : 'Not selected'}</p></div>
+                    <div><span className="text-muted-foreground">Type:</span><p className="font-medium text-foreground capitalize">{visitType || 'video'}</p></div>
+                    <div><span className="text-muted-foreground">Duration:</span><p className="font-medium text-foreground">30 minutes</p></div>
                   </div>
                 </div>
                 
-                <div className="p-4 bg-slate-50 rounded-xl">
-                  <h3 className="font-semibold text-slate-700 mb-2 flex items-center gap-2"><CreditCard className="w-4 h-4" /> Insurance</h3>
+                <div className="p-4 bg-muted rounded-xl">
+                  <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2"><CreditCard className="w-4 h-4" /> Insurance</h3>
                   {(() => {
                     const insuranceData = insuranceForm.getValues();
                     const hasInsurance = insuranceData.insuranceProvider && 
@@ -1033,23 +1033,23 @@ export default function BookAppointmentPage() {
                     if (hasInsurance || hasExistingInsurance) {
                       return (
                         <>
-                          <p className="font-medium">{insuranceData.insuranceProvider || 'On file'}</p>
+                          <p className="font-medium text-foreground">{insuranceData.insuranceProvider || 'On file'}</p>
                           {insuranceData.policyNumber && (
-                            <p className="text-sm text-slate-500">Policy: {insuranceData.policyNumber}</p>
+                            <p className="text-sm text-muted-foreground">Policy: {insuranceData.policyNumber}</p>
                           )}
                         </>
                       );
                     }
                     return (
-                      <p className="text-slate-500 italic">No insurance provided. You can add insurance later in your profile.</p>
+                      <p className="text-muted-foreground italic">No insurance provided. You can add insurance later in your profile.</p>
                     );
                   })()}
                 </div>
                 
-                <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                <div className="p-4 bg-amber-500/10 rounded-xl border border-amber-500/30">
                   <div className="flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-amber-800">
+                    <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-amber-700 dark:text-amber-300">
                       <strong>Note:</strong> We'll automatically match you with the best available provider for your needs. You'll receive a confirmation with provider details shortly.
                     </p>
                   </div>
@@ -1059,7 +1059,7 @@ export default function BookAppointmentPage() {
           )}
 
           {/* Navigation */}
-          <div className="px-6 py-4 bg-slate-50 border-t flex items-center justify-between">
+          <div className="px-6 py-4 bg-muted border-t border-border flex items-center justify-between">
             <Button variant="ghost" onClick={prevStep} disabled={currentStep === 1} className="flex items-center gap-2">
               <ChevronLeft className="w-4 h-4" /> Back
             </Button>
@@ -1075,12 +1075,12 @@ export default function BookAppointmentPage() {
                     Skip Insurance <ChevronRight className="w-4 h-4" />
                   </Button>
                 )}
-                <Button onClick={nextStep} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 flex items-center gap-2">
+                <Button onClick={nextStep} className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white flex items-center gap-2">
                   Continue <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
             ) : (
-              <Button onClick={submitBooking} disabled={isLoading} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 flex items-center gap-2">
+              <Button onClick={submitBooking} disabled={isLoading} className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white flex items-center gap-2">
                 {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Booking...</> : <><CheckCircle2 className="w-4 h-4" /> Confirm Booking</>}
               </Button>
             )}

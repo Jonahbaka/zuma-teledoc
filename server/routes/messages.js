@@ -13,6 +13,7 @@ const { auditMiddleware } = require('../middleware/audit');
 const { encrypt, decrypt } = require('../../lib/encryption');
 const { validate, createMessageSchema, paginationSchema } = require('../../lib/validation');
 const { keysToCamel, parseQueryParams, getPaginationMeta } = require('../../lib/utils');
+const notificationService = require('../services/notifications');
 
 const router = express.Router();
 
@@ -153,18 +154,35 @@ router.post('/',
         throw dbError;
       }
       
-      // Create notification for recipient
-      const senderName = `${req.user.firstName || req.user.first_name || 'User'} ${req.user.lastName || req.user.last_name || ''}`;
-      await db.query(
-        `INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id)
-         VALUES ($1, 'message', $2, $3, 'message', $4)`,
-        [
-          data.recipientId,
-          data.isUrgent ? 'Urgent Message' : 'New Message',
-          `New message from ${senderName}`,
-          rows[0].id
-        ]
+      // Create notification for recipient using notification service
+      const senderName = `${req.user.firstName || req.user.first_name || 'User'} ${req.user.lastName || req.user.last_name || ''}`.trim();
+      await notificationService.sendMessageNotification(
+        req.user.id,
+        senderName,
+        data.recipientId,
+        rows[0].id,
+        data.isUrgent
       );
+      
+      // Send email notification for urgent messages
+      if (data.isUrgent) {
+        try {
+          const emailService = require('../services/email');
+          const recipient = recipients[0];
+          await emailService.sendNewMessageEmail(
+            {
+              id: recipient.id,
+              email: recipient.email,
+              first_name: recipient.first_name,
+              role: recipient.role
+            },
+            senderName,
+            true
+          );
+        } catch (emailError) {
+          logger.warn('Failed to send urgent message email notification', { error: emailError.message });
+        }
+      }
       
       logger.info('Message sent', { 
         messageId: rows[0].id, 
@@ -273,8 +291,19 @@ router.get('/conversations', authenticate, async (req, res) => {
     
     // Decrypt preview of last message
     const conversations = rows.map(row => {
-      const decryptedContent = decrypt(row.content_encrypted, row.content_iv, row.content_tag);
-      const preview = decryptedContent ? decryptedContent.substring(0, 50) + (decryptedContent.length > 50 ? '...' : '') : '';
+      let preview = '[Message unavailable]';
+      try {
+        const decryptedContent = decrypt(row.content_encrypted, row.content_iv, row.content_tag);
+        if (decryptedContent) {
+          preview = decryptedContent.substring(0, 50) + (decryptedContent.length > 50 ? '...' : '');
+        }
+      } catch (decryptError) {
+        // Log but don't fail - show placeholder for unreadable messages
+        logger.warn('Failed to decrypt message preview', { 
+          messageId: row.message_id, 
+          error: decryptError.message 
+        });
+      }
       
       return {
         conversationId: row.conversation_id,
@@ -355,21 +384,36 @@ router.get('/conversation/:recipientId', authenticate, async (req, res) => {
     );
     
     // Decrypt messages
-    const messages = rows.map(row => ({
-      id: row.id,
-      conversationId: row.conversation_id,
-      senderId: row.sender_id,
-      senderName: `${row.sender_first_name} ${row.sender_last_name}`,
-      content: decrypt(row.content_encrypted, row.content_iv, row.content_tag),
-      isUrgent: row.is_urgent,
-      hasAttachment: row.has_attachment,
-      attachmentName: row.attachment_name,
-      attachmentType: row.attachment_type,
-      status: row.status,
-      sentByMe: row.sender_id === req.user.id,
-      createdAt: row.created_at,
-      readAt: row.read_at
-    }));
+    const messages = rows.map(row => {
+      let content = '[Message unavailable - decryption failed]';
+      try {
+        const decryptedContent = decrypt(row.content_encrypted, row.content_iv, row.content_tag);
+        if (decryptedContent) {
+          content = decryptedContent;
+        }
+      } catch (decryptError) {
+        logger.warn('Failed to decrypt message', { 
+          messageId: row.id, 
+          error: decryptError.message 
+        });
+      }
+      
+      return {
+        id: row.id,
+        conversationId: row.conversation_id,
+        senderId: row.sender_id,
+        senderName: `${row.sender_first_name} ${row.sender_last_name}`,
+        content,
+        isUrgent: row.is_urgent,
+        hasAttachment: row.has_attachment,
+        attachmentName: row.attachment_name,
+        attachmentType: row.attachment_type,
+        status: row.status,
+        sentByMe: row.sender_id === req.user.id,
+        createdAt: row.created_at,
+        readAt: row.read_at
+      };
+    });
     
     res.json({
       success: true,

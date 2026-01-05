@@ -8,10 +8,10 @@ const { keysToCamel } = require('../../lib/utils');
 const logger = require('../middleware/logger');
 
 // Access levels that can book appointments and join waiting rooms
-const PAID_ACCESS_LEVELS = ['gold_monthly', 'gold_yearly', 'pay_per_visit', 'insurance'];
+const PAID_ACCESS_LEVELS = ['basic_monthly', 'gold_monthly', 'gold_yearly', 'platinum_monthly', 'pay_per_visit', 'insurance'];
 
 // Access levels that can access prescriptions
-const PRESCRIPTION_ACCESS_LEVELS = ['gold_monthly', 'gold_yearly', 'pay_per_visit', 'insurance'];
+const PRESCRIPTION_ACCESS_LEVELS = ['basic_monthly', 'gold_monthly', 'gold_yearly', 'platinum_monthly', 'pay_per_visit', 'insurance'];
 
 /**
  * Check if user has paid access (can book appointments, join waiting rooms)

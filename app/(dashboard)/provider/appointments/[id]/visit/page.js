@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/use-toast';
 import AISoapAssist from '@/components/provider/AISoapAssist';
 import EPrescribe from '@/components/provider/ePrescribe';
-import { insuranceAPI, rtbcAPI, triageAPI } from '@/lib/api';
+import { insuranceAPI, pharmacyAPI, rtbcAPI, triageAPI } from '@/lib/api';
 
 export default function ProviderVisitPage() {
   const params = useParams();
@@ -29,6 +29,7 @@ export default function ProviderVisitPage() {
   const [appointment, setAppointment] = useState(null);
   const [visit, setVisit] = useState(null);
   const [patientInsurance, setPatientInsurance] = useState(null);
+  const [preferredPharmacy, setPreferredPharmacy] = useState(null);
 
   // SOAP Notes state
   const [subjective, setSubjective] = useState('');
@@ -57,7 +58,6 @@ export default function ProviderVisitPage() {
 
   useEffect(() => {
     fetchAppointmentAndVisit();
-    fetchPatientInsurance();
   }, [appointmentId]);
 
   // Auto-refresh triage data every 3 seconds to get instant updates
@@ -136,27 +136,40 @@ export default function ProviderVisitPage() {
     return () => clearInterval(triagePollInterval);
   }, [appointmentId, appointment?.triageData?.timestamp]);
 
-  const fetchPatientInsurance = async () => {
+  const fetchPatientInsuranceForPatient = async (patientId) => {
     try {
-      // Get patient insurance from appointment
-      const walletRes = await insuranceAPI.getWallet();
+      if (!patientId) return;
+      const walletRes = await insuranceAPI.getPatientWallet(patientId);
       if (walletRes?.data?.success && walletRes.data.wallet?.length > 0) {
         const primary = walletRes.data.wallet.find(i => i.is_primary) || walletRes.data.wallet[0];
         if (primary?.id) {
-          try {
-            const insuranceDetail = await insuranceAPI.getById(primary.id, 'visit_preparation');
-            if (insuranceDetail?.data?.success) {
-              setPatientInsurance(insuranceDetail.data.insurance);
-            }
-          } catch (insuranceError) {
-            // Silently handle insurance detail fetch errors
-            console.warn('Could not fetch insurance details:', insuranceError);
+          const insuranceDetail = await insuranceAPI.getPatientInsuranceById(
+            patientId,
+            primary.id,
+            'visit_preparation',
+            false
+          );
+          if (insuranceDetail?.data?.success) {
+            setPatientInsurance(insuranceDetail.data.insurance);
           }
         }
       }
     } catch (error) {
-      // Silently handle wallet fetch errors - insurance is optional
       console.warn('Could not fetch patient insurance wallet:', error);
+    }
+  };
+
+  const fetchPreferredPharmacyForPatient = async (patientId) => {
+    try {
+      if (!patientId) return;
+      const res = await pharmacyAPI.getPreferences(patientId);
+      if (res.data?.success) {
+        const prefs = res.data.pharmacies || [];
+        const pref = prefs.find(p => p.isPreferred) || prefs.find(p => p.is_preferred) || null;
+        setPreferredPharmacy(pref);
+      }
+    } catch (e) {
+      // Optional
     }
   };
 
@@ -179,6 +192,9 @@ export default function ProviderVisitPage() {
           appointmentData.triageData = appointmentData.metadata.triage;
         }
         setAppointment(appointmentData);
+        // Load patient-linked artifacts for provider: insurance + preferred pharmacy
+        fetchPatientInsuranceForPatient(appointmentData.patientId || appointmentData.patient_id);
+        fetchPreferredPharmacyForPatient(appointmentData.patientId || appointmentData.patient_id);
       }
 
       if (visitRes.data?.visit) {
@@ -376,6 +392,26 @@ export default function ProviderVisitPage() {
                   <div className="bg-red-50 p-3 rounded-lg border border-red-100 text-red-700 text-sm flex items-center">
                     <AlertCircle size={14} className="mr-2" />
                     No active insurance
+                  </div>
+                )}
+              </div>
+
+              {/* Preferred Pharmacy */}
+              <div>
+                <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2">Preferred Pharmacy</p>
+                {preferredPharmacy ? (
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <div className="text-slate-900 text-sm font-bold mb-1">
+                      {preferredPharmacy.pharmacyName || preferredPharmacy.pharmacy_name || preferredPharmacy.name || 'Pharmacy'}
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      {preferredPharmacy.pharmacyAddress || preferredPharmacy.pharmacy_address || preferredPharmacy.address || ''}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-700 text-sm flex items-center">
+                    <AlertCircle size={14} className="mr-2" />
+                    No preferred pharmacy selected
                   </div>
                 )}
               </div>

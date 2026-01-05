@@ -3,55 +3,54 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { subscriptionsAPI } from '@/lib/api';
+import { stripeAPI, membershipAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Check, Crown, CreditCard, Shield, Zap } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
+import MembershipCard from '@/components/membership/MembershipCard';
+import InsuranceCardUploader from '@/components/insurance/InsuranceCardUploader';
 
 export default function SubscriptionPage() {
   const { user, refreshUser } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [membership, setMembership] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [accessLevel, setAccessLevel] = useState('read_only');
 
   useEffect(() => {
-    fetchSubscription();
+    fetchMembership();
   }, []);
 
-  const fetchSubscription = async () => {
+  const fetchMembership = async () => {
     try {
-      const response = await subscriptionsAPI.getMySubscription();
+      const response = await membershipAPI.getMe();
       if (response.data.success) {
+        setMembership(response.data.card);
         setSubscription(response.data.subscription);
-        setAccessLevel(response.data.accessLevel || 'read_only');
+        setAccessLevel(response.data.accessLevel || user?.accessLevel || 'read_only');
       }
     } catch (error) {
-      console.error('Failed to fetch subscription:', error);
+      console.error('Failed to fetch membership:', error);
     }
   };
 
-  const handleSubscribe = async (type) => {
+  const handleSubscribe = async (planKey) => {
     if (loading) return;
 
     setLoading(true);
     try {
-      const response = await subscriptionsAPI.createSubscription({ type });
-      if (response.data.success) {
-        toast({
-          title: 'Success',
-          description: 'Subscription created successfully!',
-          variant: 'success'
-        });
-        await refreshUser();
-        await fetchSubscription();
-        router.push('/patient/dashboard');
+      const response = await stripeAPI.createSubscriptionCheckout({ planKey });
+      if (response.data?.success && response.data.checkout?.url) {
+        window.location.href = response.data.checkout.url;
+        return;
       }
+      throw new Error(response.data?.error || 'Failed to create checkout');
     } catch (error) {
       toast({
         title: 'Error',
-        description: error.response?.data?.error || 'Failed to create subscription',
+        description: error.response?.data?.error || error.message || 'Failed to start subscription checkout',
         variant: 'destructive'
       });
     } finally {
@@ -71,53 +70,65 @@ export default function SubscriptionPage() {
 
   const plans = [
     {
-      id: 'gold_monthly',
-      name: 'Monthly Gold',
-      price: '$39',
+      id: 'basic',
+      name: 'Docta Basic',
+      price: '$19.99',
       period: 'per month',
-      description: 'Unlimited consultations, prescriptions, and full access',
+      description: 'Essentials for ongoing care and messaging',
       features: [
-        'Unlimited video consultations',
+        'Unlimited messaging with providers',
+        '2 telehealth consultations per month',
         'Prescription access',
-        'Priority support',
-        'Cancel anytime'
+        'Health records access'
       ],
       popular: false
     },
     {
-      id: 'gold_yearly',
-      name: 'Yearly Gold',
-      price: '$299',
-      period: 'per year',
-      originalPrice: '$468',
-      savings: 'Save $169',
-      description: 'Best value - Save 36% with annual billing',
+      id: 'gold',
+      name: 'Docta Gold',
+      price: '$39.99',
+      period: 'per month',
+      description: 'Unlimited consultations + priority access + Gold card',
       features: [
         'Unlimited video consultations',
         'Prescription access',
         'Priority support',
-        'Cancel anytime',
-        '36% savings vs monthly'
+        '24/7 urgent care access',
+        'Docta Gold membership card'
       ],
       popular: true
     },
     {
-      id: 'pay_per_visit',
-      name: 'Pay Per Visit',
-      price: '$79',
-      period: 'per consultation',
-      description: 'Pay only when you need a consultation',
+      id: 'goldYearly',
+      name: 'Docta Gold (Annual)',
+      price: '$299',
+      period: 'per year',
+      description: 'Gold membership billed annually (best value)',
       features: [
-        'Single consultation access',
-        'Prescription access included',
-        'No subscription commitment',
-        'Pay as you go'
+        'All Gold features',
+        'Annual savings',
+        'Docta Gold membership card'
+      ],
+      popular: false,
+      savings: 'Save vs monthly'
+    },
+    {
+      id: 'platinum',
+      name: 'Docta Platinum',
+      price: '$79.99',
+      period: 'per month',
+      description: 'Premium care coordination + Platinum card',
+      features: [
+        'All Gold features',
+        'Dedicated care coordinator',
+        'Family plan (up to 4 members)',
+        'Docta Platinum membership card'
       ],
       popular: false
     }
   ];
 
-  const isPaidUser = ['gold_monthly', 'gold_yearly', 'pay_per_visit', 'insurance'].includes(accessLevel);
+  const isPaidUser = ['basic_monthly', 'gold_monthly', 'gold_yearly', 'platinum_monthly', 'pay_per_visit', 'insurance'].includes(accessLevel);
   const hasActiveSubscription = subscription && subscription.status === 'active';
 
   return (
@@ -130,18 +141,21 @@ export default function SubscriptionPage() {
       </div>
 
       {hasActiveSubscription && (
-        <Card className="mb-6 border-green-500 bg-green-50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Check className="w-5 h-5 text-green-600" />
-              Active Subscription
-            </CardTitle>
-            <CardDescription>
-              {subscription.subscriptionType === 'monthly' ? 'Monthly Gold' : 'Yearly Gold'} - 
-              Renews on {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <div className="mb-6 grid gap-4 md:grid-cols-2">
+          <Card className="border-green-500/30 bg-green-50/60 dark:bg-green-500/10">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Check className="w-5 h-5 text-green-600" />
+                Active Subscription
+              </CardTitle>
+              <CardDescription>
+                Tier: {subscription.tier} • Status: {subscription.status}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <MembershipCard user={user} card={membership} subscription={subscription} />
+        </div>
       )}
 
       <div className="grid md:grid-cols-3 gap-6 mb-6">
@@ -189,14 +203,20 @@ export default function SubscriptionPage() {
                 className="w-full"
                 variant={plan.popular ? 'default' : 'outline'}
                 onClick={() => handleSubscribe(plan.id)}
-                disabled={loading || (plan.id === 'pay_per_visit' && hasActiveSubscription)}
+                disabled={loading}
               >
-                {loading ? 'Processing...' : plan.id === 'pay_per_visit' ? 'Select' : 'Subscribe'}
+                {loading ? 'Processing...' : 'Subscribe'}
               </Button>
             </CardFooter>
           </Card>
         ))}
       </div>
+
+      {hasActiveSubscription && (
+        <div className="mb-6">
+          <InsuranceCardUploader title="Validate your insurance card (optional)" />
+        </div>
+      )}
 
       <Card className="border-dashed">
         <CardHeader>

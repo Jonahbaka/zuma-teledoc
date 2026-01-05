@@ -105,9 +105,12 @@ const authenticate = async (req, res, next) => {
 
 /**
  * Require specific roles
- * @param  {...string} roles - Allowed roles
+ * @param  {...string} roles - Allowed roles (can be array or individual arguments)
  */
 const requireRole = (...roles) => {
+  // Flatten in case an array is passed: requireRole(['a', 'b']) or requireRole('a', 'b')
+  const allowedRoles = roles.flat();
+  
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
@@ -121,10 +124,10 @@ const requireRole = (...roles) => {
       return next();
     }
     
-    if (!roles.includes(req.user.role)) {
+    if (!allowedRoles.includes(req.user.role)) {
       logger.audit('ACCESS_DENIED', {
         userId: req.user.id,
-        requiredRoles: roles,
+        requiredRoles: allowedRoles,
         userRole: req.user.role,
         resource: req.originalUrl
       });

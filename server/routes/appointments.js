@@ -17,6 +17,7 @@ const {
   searchAppointmentsSchema
 } = require('../../lib/validation');
 const { keysToCamel, parseQueryParams, getPaginationMeta, generateRoomId } = require('../../lib/utils');
+const notificationService = require('../services/notifications');
 
 const router = express.Router();
 
@@ -96,39 +97,51 @@ router.post('/',
         ]
       );
       
-      // Create notification for provider
-      await db.query(
-        `INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id)
-         VALUES ($1, 'appointment', 'New Appointment', $2, 'appointment', $3)`,
-        [
-          data.providerId,
-          `New appointment scheduled for ${scheduledAt.toLocaleString()}`,
-          rows[0].id
-        ]
+      // Get patient and provider details for notifications
+      const { rows: patientRows } = await db.query(
+        'SELECT id, email, first_name, last_name, role FROM users WHERE id = $1',
+        [patientId]
       );
+      
+      // Prepare appointment data with names
+      const appointmentData = {
+        ...keysToCamel(rows[0]),
+        providerFirstName: providers[0]?.first_name,
+        providerLastName: providers[0]?.last_name,
+        patientFirstName: patientRows[0]?.first_name,
+        patientLastName: patientRows[0]?.last_name
+      };
+      
+      // Create in-app notifications for both provider and patient
+      try {
+        // Notify provider
+        await notificationService.sendAppointmentNotification(
+          appointmentData,
+          data.providerId,
+          'provider',
+          'created'
+        );
+        
+        // Notify patient (if different from current user or explicit)
+        await notificationService.sendAppointmentNotification(
+          appointmentData,
+          patientId,
+          'patient',
+          'created'
+        );
+      } catch (notifyError) {
+        logger.warn('Failed to create appointment notifications', { error: notifyError.message });
+      }
       
       // Send email notifications
       try {
         const emailService = require('../services/email');
         
-        // Get provider details
+        // Get provider details for email
         const { rows: providerRows } = await db.query(
-          'SELECT id, email, first_name, last_name FROM users WHERE id = $1',
+          'SELECT id, email, first_name, last_name, role FROM users WHERE id = $1',
           [data.providerId]
         );
-        
-        // Get patient details
-        const { rows: patientRows } = await db.query(
-          'SELECT id, email, first_name, last_name FROM users WHERE id = $1',
-          [patientId]
-        );
-        
-        // Prepare appointment data with names for email template
-        const appointmentData = keysToCamel(rows[0]);
-        appointmentData.providerFirstName = providers[0]?.first_name || providerRows[0]?.first_name;
-        appointmentData.providerLastName = providers[0]?.last_name || providerRows[0]?.last_name;
-        appointmentData.patientFirstName = patientRows[0]?.first_name;
-        appointmentData.patientLastName = patientRows[0]?.last_name;
         
         if (providerRows.length > 0) {
           await emailService.sendAppointmentNotification(

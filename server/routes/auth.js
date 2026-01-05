@@ -58,11 +58,16 @@ const generateTokens = (userId, role) => {
  * Set auth cookies
  */
 const setAuthCookies = (res, accessToken, refreshToken) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.doctarx.com' : undefined);
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/'
+    secure: isProd,
+    // IMPORTANT: must allow Stripe -> return redirect back to our site to still include cookies
+    // 'strict' can break auth continuity after external redirects.
+    sameSite: isProd ? 'lax' : 'strict',
+    path: '/',
+    ...(cookieDomain ? { domain: cookieDomain } : {})
   };
   
   res.cookie('accessToken', accessToken, {
@@ -80,11 +85,14 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
  * Clear auth cookies
  */
 const clearAuthCookies = (res) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.doctarx.com' : undefined);
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/'
+    secure: isProd,
+    sameSite: isProd ? 'lax' : 'strict',
+    path: '/',
+    ...(cookieDomain ? { domain: cookieDomain } : {})
   };
   
   res.clearCookie('accessToken', cookieOptions);
@@ -100,16 +108,16 @@ router.post('/register', async (req, res) => {
   try {
     const data = validate(registerSchema, req.body);
     
-    // Check if email already exists
+    // Check if email already exists for this role
     const { rows: existingUsers } = await db.query(
-      'SELECT id FROM users WHERE email = $1',
-      [data.email]
+      'SELECT id FROM users WHERE email = $1 AND role = $2',
+      [data.email, data.role]
     );
     
     if (existingUsers.length > 0) {
       return res.status(409).json({
         success: false,
-        error: 'An account with this email already exists'
+        error: 'An account with this email already exists for this role'
       });
     }
     
@@ -184,9 +192,12 @@ router.post('/register', async (req, res) => {
     // Audit log
     await auditLogin(req, true, user.id);
     
-    // Send verification email and welcome email
+    // Send verification email, welcome email, and create in-app notification
     try {
       const emailService = require('../services/email');
+      const notificationService = require('../services/notifications');
+      
+      // Send verification email
       await emailService.sendVerificationEmail({
         id: user.id,
         email: user.email,
@@ -195,7 +206,7 @@ router.post('/register', async (req, res) => {
         role: user.role
       }, verificationToken);
       
-      // Also send welcome email
+      // Send welcome email
       await emailService.sendWelcomeEmail({
         id: user.id,
         email: user.email,
@@ -203,12 +214,20 @@ router.post('/register', async (req, res) => {
         lastName: user.last_name,
         role: user.role
       });
+      
+      // Create in-app welcome notification
+      await notificationService.sendWelcomeNotification({
+        id: user.id,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role
+      });
     } catch (emailError) {
-      logger.error('Failed to send verification/welcome email', { 
+      logger.error('Failed to send verification/welcome notifications', { 
         error: emailError.message, 
         userId: user.id 
       });
-      // Don't fail registration if email fails
+      // Don't fail registration if email/notification fails
     }
     
     logger.info('User registered', { userId: user.id, role: user.role });
@@ -253,13 +272,25 @@ router.post('/login', async (req, res) => {
   try {
     const data = validate(loginSchema, req.body);
     
-    // Get user
+    // Get user(s) by email, optionally narrowed by role (to support same email across roles)
+    const params = [data.email];
+    let whereClause = 'WHERE email = $1';
+    if (data.role) {
+      // When 'admin' role is specified, also match 'super_admin' for admin portal access
+      if (data.role === 'admin') {
+        whereClause += " AND role IN ('admin', 'super_admin')";
+      } else {
+        params.push(data.role);
+        whereClause += ' AND role = $2';
+      }
+    }
+
     const { rows } = await db.query(
       `SELECT id, email, password_hash, role, first_name, last_name,
               is_active, mfa_enabled, mfa_secret, failed_login_attempts,
               locked_until, provider_status
-       FROM users WHERE email = $1`,
-      [data.email]
+       FROM users ${whereClause}`,
+      params
     );
     
     if (rows.length === 0) {
@@ -267,6 +298,17 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({
         success: false,
         error: 'Invalid email or password'
+      });
+    }
+
+    // If multiple accounts share the same email and no role was provided, require role selection
+    if (rows.length > 1 && !data.role) {
+      const availableRoles = [...new Set(rows.map(r => r.role))];
+      await auditLogin(req, false, null, 'Multiple accounts for email - role required');
+      return res.status(409).json({
+        success: false,
+        error: 'Multiple accounts exist for this email. Please select an account type (role) and try again.',
+        availableRoles
       });
     }
     
@@ -390,10 +432,13 @@ router.post('/login', async (req, res) => {
     
     // Set MFA verified cookie if MFA was passed
     if (user.mfa_enabled) {
+      const isProd = process.env.NODE_ENV === 'production';
+      const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.doctarx.com' : undefined);
       res.cookie('mfaVerified', 'true', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: isProd,
+        sameSite: isProd ? 'lax' : 'strict',
+        ...(cookieDomain ? { domain: cookieDomain } : {}),
         maxAge: 15 * 60 * 1000 // 15 minutes
       });
     }
@@ -997,15 +1042,36 @@ router.post('/password/request-reset', async (req, res) => {
   try {
     const data = validate(requestPasswordResetSchema, req.body);
     
-    // Find user by email
+    // Find user(s) by email, optionally narrowed by role (supports same email across roles)
+    const params = [data.email];
+    let whereClause = 'WHERE email = $1 AND is_active = true';
+    if (data.role) {
+      params.push(data.role);
+      whereClause += ' AND role = $2';
+    }
+
     const { rows } = await db.query(
-      'SELECT id, email, first_name, last_name FROM users WHERE email = $1 AND is_active = true',
-      [data.email]
+      `SELECT id, email, first_name, last_name, role
+       FROM users ${whereClause}`,
+      params
     );
     
     // Always return success to prevent email enumeration
     if (rows.length === 0) {
       logger.warn('Password reset requested for non-existent email', { email: data.email });
+      return res.json({
+        success: true,
+        message: 'If an account with that email exists, a password reset link has been sent.'
+      });
+    }
+
+    // If multiple accounts share the same email and role was not provided, do not guess.
+    // Still return generic success to avoid enumeration.
+    if (rows.length > 1 && !data.role) {
+      logger.warn('Password reset requested for email with multiple accounts; role required', {
+        email: data.email,
+        roles: [...new Set(rows.map(r => r.role))]
+      });
       return res.json({
         success: true,
         message: 'If an account with that email exists, a password reset link has been sent.'

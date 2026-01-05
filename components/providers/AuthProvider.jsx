@@ -31,13 +31,16 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const login = async (email, password, mfaCode = null) => {
+  const login = async (email, password, mfaCode = null, role = null) => {
     try {
       setError(null);
       // Only include mfaCode if it has a value
       const payload = { email, password };
       if (mfaCode) {
         payload.mfaCode = mfaCode;
+      }
+      if (role) {
+        payload.role = role;
       }
       const response = await api.post('/auth/login', payload);
       
@@ -56,8 +59,8 @@ export function AuthProvider({ children }) {
           localStorage.setItem('refreshToken', response.data.refreshToken);
         }
         
-        // Redirect based on role
-        const redirectPath = getRedirectPath(response.data.user.role);
+        // Redirect based on role + access level
+        const redirectPath = getRedirectPath(response.data.user);
         router.push(redirectPath);
         
         return { success: true };
@@ -85,8 +88,8 @@ export function AuthProvider({ children }) {
           localStorage.setItem('refreshToken', response.data.refreshToken);
         }
         
-        // Redirect based on role
-        const redirectPath = getRedirectPath(response.data.user.role);
+        // Redirect based on role + access level
+        const redirectPath = getRedirectPath(response.data.user);
         router.push(redirectPath);
         
         return { success: true, message: response.data.message };
@@ -131,7 +134,8 @@ export function AuthProvider({ children }) {
     setUser(prev => ({ ...prev, ...updates }));
   };
 
-  const getRedirectPath = (role) => {
+  const getRedirectPath = (u) => {
+    const role = u?.role;
     switch (role) {
       case 'admin':
       case 'super_admin':
@@ -140,6 +144,11 @@ export function AuthProvider({ children }) {
         return '/provider/dashboard';
       case 'patient':
       default:
+        // If patient isn't paid up, route them to subscription first.
+        // Access control middleware will block booking/prescriptions without paid access.
+        if (!u?.accessLevel || u.accessLevel === 'read_only') {
+          return '/patient/subscription';
+        }
         return '/patient/dashboard';
     }
   };

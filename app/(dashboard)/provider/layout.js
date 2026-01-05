@@ -4,14 +4,19 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, Calendar, Users, FileText, MessageSquare, 
-  Clock, ClipboardList, Settings, User, Bell, Sparkles, Receipt, BrainCircuit
+  Clock, ClipboardList, Settings, User, Bell, Sparkles, Receipt, BrainCircuit, Video, Eye,
+  Pill, ListOrdered
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
 
 const navigation = [
   { name: 'Dashboard', href: '/provider/dashboard', icon: LayoutDashboard },
-  { name: 'Triage', href: '/provider/triage', icon: BrainCircuit },
+  { name: 'Triage Queue', href: '/provider/triage-queue', icon: ListOrdered },
+  { name: 'E-Prescriptions', href: '/provider/prescriptions', icon: Pill },
+  { name: 'Video Call (No Appointment)', href: '/provider/call', icon: Video },
+  { name: 'Medical Imaging', href: '/provider/imaging', icon: Eye },
+  { name: 'AI Triage Results', href: '/provider/triage', icon: BrainCircuit },
   { name: 'Schedule', href: '/provider/schedule', icon: Calendar },
   { name: 'Patients', href: '/provider/patients', icon: Users },
   { name: 'Visit Notes', href: '/provider/visits', icon: ClipboardList },

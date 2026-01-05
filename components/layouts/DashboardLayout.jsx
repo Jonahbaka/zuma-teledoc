@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { notificationsAPI } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -51,7 +52,7 @@ export default function DashboardLayout({ children, navigation, portalName, port
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div 
@@ -62,18 +63,18 @@ export default function DashboardLayout({ children, navigation, portalName, port
 
       {/* Sidebar */}
       <aside className={cn(
-        'fixed top-0 left-0 z-50 h-full w-64 bg-white border-r transform transition-transform duration-300 lg:translate-x-0',
+        'fixed top-0 left-0 z-50 h-full w-64 bg-card border-r border-border transform transition-transform duration-300 lg:translate-x-0',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
         {/* Logo */}
-        <div className="h-16 flex items-center justify-between px-4 border-b">
+        <div className="h-16 flex items-center justify-between px-4 border-b border-border">
           <Link href="/" className="flex items-center gap-2">
             <div className="bg-purple-900 h-10 w-10 rounded-full flex items-center justify-center mr-3 shadow-md relative">
               <span className="text-white font-bold italic">D</span>
               <div className="absolute bottom-1 right-1 w-2 h-2 bg-amber-400 rounded-full border border-purple-900"></div>
             </div>
             <div>
-              <span className="font-bold text-gray-900">Docta<span className="text-amber-500">.</span></span>
+              <span className="font-bold text-foreground">Docta<span className="text-amber-500">.</span></span>
               <span className={cn(
                 'block text-xs font-medium',
                 portalName === 'Patient' && 'text-purple-600',
@@ -85,7 +86,7 @@ export default function DashboardLayout({ children, navigation, portalName, port
             </div>
           </Link>
           <button 
-            className="lg:hidden text-gray-500 hover:text-gray-700"
+            className="lg:hidden text-muted-foreground hover:text-foreground"
             onClick={() => setSidebarOpen(false)}
           >
             <X className="w-6 h-6" />
@@ -106,7 +107,7 @@ export default function DashboardLayout({ children, navigation, portalName, port
                     'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all',
                     isActive 
                       ? `bg-gradient-to-r ${portalColor} text-white shadow-lg` 
-                      : 'text-gray-600 hover:bg-gray-100'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   )}
                   onClick={() => setSidebarOpen(false)}
                 >
@@ -123,16 +124,16 @@ export default function DashboardLayout({ children, navigation, portalName, port
         </nav>
 
         {/* User info at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t bg-gray-50">
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border bg-muted/30">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-              <User className="w-5 h-5 text-gray-600" />
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-muted to-muted/70 flex items-center justify-center border border-border">
+              <User className="w-5 h-5 text-muted-foreground" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
+              <p className="text-sm font-medium text-foreground truncate">
                 {user?.firstName} {user?.lastName}
               </p>
-              <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+              <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
             </div>
           </div>
         </div>
@@ -141,10 +142,10 @@ export default function DashboardLayout({ children, navigation, portalName, port
       {/* Main content */}
       <div className="lg:pl-64">
         {/* Top header */}
-        <header className="sticky top-0 z-30 h-16 bg-white border-b flex items-center justify-between px-4 lg:px-8">
+        <header className="sticky top-0 z-30 h-16 bg-card/80 backdrop-blur-xl border-b border-border flex items-center justify-between px-4 lg:px-8">
           <div className="flex items-center gap-4">
             <button 
-              className="lg:hidden text-gray-500 hover:text-gray-700"
+              className="lg:hidden text-muted-foreground hover:text-foreground"
               onClick={() => setSidebarOpen(true)}
             >
               <Menu className="w-6 h-6" />
@@ -153,17 +154,18 @@ export default function DashboardLayout({ children, navigation, portalName, port
             {/* Search */}
             <div className="hidden md:flex items-center">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <input
                   type="text"
                   placeholder="Search..."
-                  className="w-64 pl-10 pr-4 py-2 bg-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-64 pl-10 pr-4 py-2 bg-muted/60 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             {/* Notifications */}
             <Link href={`/${getRoleRoute(user?.role)}/notifications`}>
               <Button variant="ghost" size="icon" className="relative">
@@ -187,14 +189,14 @@ export default function DashboardLayout({ children, navigation, portalName, port
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent transition-colors"
               >
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center">
                   <span className="text-white text-sm font-medium">
                     {user?.firstName?.[0]}{user?.lastName?.[0]}
                   </span>
                 </div>
-                <ChevronDown className="w-4 h-4 text-gray-500" />
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
               </button>
 
               {userMenuOpen && (
@@ -203,16 +205,16 @@ export default function DashboardLayout({ children, navigation, portalName, port
                     className="fixed inset-0 z-40"
                     onClick={() => setUserMenuOpen(false)}
                   />
-                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border py-2 z-50">
-                    <div className="px-4 py-2 border-b">
-                      <p className="font-medium text-gray-900">
+                  <div className="absolute right-0 mt-2 w-56 bg-popover rounded-xl shadow-lg border border-border py-2 z-50">
+                    <div className="px-4 py-2 border-b border-border">
+                      <p className="font-medium text-foreground">
                         {user?.firstName} {user?.lastName}
                       </p>
-                      <p className="text-sm text-gray-500">{user?.email}</p>
+                      <p className="text-sm text-muted-foreground">{user?.email}</p>
                     </div>
                     <Link
                       href={`/${getRoleRoute(user?.role)}/profile`}
-                      className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      className="flex items-center gap-3 px-4 py-2 text-sm text-foreground/90 hover:bg-accent"
                       onClick={() => setUserMenuOpen(false)}
                     >
                       <User className="w-4 h-4" />
@@ -220,7 +222,7 @@ export default function DashboardLayout({ children, navigation, portalName, port
                     </Link>
                     <Link
                       href={`/${getRoleRoute(user?.role)}/settings`}
-                      className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      className="flex items-center gap-3 px-4 py-2 text-sm text-foreground/90 hover:bg-accent"
                       onClick={() => setUserMenuOpen(false)}
                     >
                       <Settings className="w-4 h-4" />
