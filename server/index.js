@@ -17,6 +17,7 @@ const db = require('./db');
 
 // Logger
 const logger = require('./middleware/logger');
+const { initSentry, sentryErrorHandler } = require('./middleware/sentry');
 
 // Routes
 const authRoutes = require('./routes/auth');
@@ -50,6 +51,12 @@ const PORT = process.env.PORT || 3001;
 
 // Trust proxy (for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
+
+// Sentry must be initialized as early as possible
+const sentryState = initSentry(app);
+if (sentryState.enabled) {
+  logger.info('Sentry enabled for API server');
+}
 
 // Request ID middleware
 app.use((req, res, next) => {
@@ -328,6 +335,9 @@ app.use((err, req, res, next) => {
     requestId: req.id
   });
 });
+
+// Sentry error handler (must be after all controllers, before process exit)
+sentryErrorHandler(app);
 
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {
