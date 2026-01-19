@@ -8,7 +8,7 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const db = require('../db');
-const { authenticateToken, requireRole } = require('../middleware/auth');
+const { authenticate, requireRole } = require('../middleware/auth');
 const logger = require('../middleware/logger');
 
 // Generate a secure random token
@@ -18,7 +18,7 @@ const generateToken = () => crypto.randomBytes(32).toString('hex');
  * GET /api/testing-links
  * List all testing links (admin only)
  */
-router.get('/', authenticateToken, requireRole(['admin', 'super_admin']), async (req, res) => {
+router.get('/', authenticate, requireRole(['admin', 'super_admin']), async (req, res) => {
   try {
     const { type, active_only } = req.query;
     
@@ -67,7 +67,7 @@ router.get('/', authenticateToken, requireRole(['admin', 'super_admin']), async 
  * POST /api/testing-links
  * Create a new testing access link (admin only)
  */
-router.post('/', authenticateToken, requireRole(['admin', 'super_admin']), async (req, res) => {
+router.post('/', authenticate, requireRole(['admin', 'super_admin']), async (req, res) => {
   try {
     const {
       linkType,
@@ -132,7 +132,7 @@ router.post('/', authenticateToken, requireRole(['admin', 'super_admin']), async
  * GET /api/testing-links/:id
  * Get a specific testing link details
  */
-router.get('/:id', authenticateToken, requireRole(['admin', 'super_admin']), async (req, res) => {
+router.get('/:id', authenticate, requireRole(['admin', 'super_admin']), async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -187,7 +187,7 @@ router.get('/:id', authenticateToken, requireRole(['admin', 'super_admin']), asy
  * PATCH /api/testing-links/:id
  * Update a testing link (extend, deactivate, etc.)
  */
-router.patch('/:id', authenticateToken, requireRole(['admin', 'super_admin']), async (req, res) => {
+router.patch('/:id', authenticate, requireRole(['admin', 'super_admin']), async (req, res) => {
   try {
     const { id } = req.params;
     const { isActive, extendHours, maxUses, label, description } = req.body;
@@ -248,7 +248,7 @@ router.patch('/:id', authenticateToken, requireRole(['admin', 'super_admin']), a
  * DELETE /api/testing-links/:id
  * Delete a testing link
  */
-router.delete('/:id', authenticateToken, requireRole(['admin', 'super_admin']), async (req, res) => {
+router.delete('/:id', authenticate, requireRole(['admin', 'super_admin']), async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -321,7 +321,7 @@ router.post('/validate', async (req, res) => {
  * POST /api/testing-links/activate
  * Activate testing bypass for a user (called after login/register with test token)
  */
-router.post('/activate', authenticateToken, async (req, res) => {
+router.post('/activate', authenticate, async (req, res) => {
   try {
     const { token } = req.body;
     const userId = req.user.id;
@@ -431,7 +431,7 @@ router.post('/activate', authenticateToken, async (req, res) => {
  * GET /api/testing-links/my-status
  * Check if current user has active testing bypass
  */
-router.get('/my-status', authenticateToken, async (req, res) => {
+router.get('/my-status', authenticate, async (req, res) => {
   try {
     const { rows: [user] } = await db.query(`
       SELECT testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
