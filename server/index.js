@@ -46,6 +46,7 @@ const credentialingRoutes = require('./routes/credentialing');
 const membershipRoutes = require('./routes/membership');
 const contactRoutes = require('./routes/contact');
 const clinicalEncounterRoutes = require('./routes/clinicalEncounters');
+const testingLinksRoutes = require('./routes/testingLinks');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -302,6 +303,7 @@ app.use('/api/membership', membershipRoutes);
 app.use('/api/credentialing', credentialingRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/clinical-encounters', clinicalEncounterRoutes);
+app.use('/api/testing-links', testingLinksRoutes);
 
 // 404 handler for API routes
 app.use('/api/*', (req, res) => {

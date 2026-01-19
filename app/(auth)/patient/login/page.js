@@ -1,25 +1,42 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, EyeOff, Mail, Lock, Heart, Shield, Loader2 } from 'lucide-react';
-import { authAPI } from '@/lib/api';
+import { Eye, EyeOff, Mail, Lock, Heart, Shield, Loader2, Zap } from 'lucide-react';
+import { authAPI, testingLinksAPI } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { toast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 
 export default function PatientLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const testToken = searchParams.get('test_token');
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [testingMode, setTestingMode] = useState(null);
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
+
+  // Check if test token is valid
+  useEffect(() => {
+    if (testToken) {
+      testingLinksAPI.validate(testToken)
+        .then(res => {
+          if (res.data.success && res.data.linkType === 'patient') {
+            setTestingMode(res.data);
+          }
+        })
+        .catch(() => setTestingMode(null));
+    }
+  }, [testToken]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,10 +50,25 @@ export default function PatientLoginPage() {
 
       if (response.data.success) {
         await login(response.data.accessToken, response.data.refreshToken, response.data.user);
-        toast({
-          title: 'Welcome back!',
-          description: 'Successfully signed in to your patient portal.',
-        });
+        
+        // If we have a test token, activate testing bypass
+        if (testToken && testingMode) {
+          try {
+            await testingLinksAPI.activate(testToken);
+            toast({
+              title: 'Testing Access Activated!',
+              description: `You now have ${testingMode.grantTier} tier access for testing.`,
+            });
+          } catch (err) {
+            console.error('Failed to activate testing bypass:', err);
+          }
+        } else {
+          toast({
+            title: 'Welcome back!',
+            description: 'Successfully signed in to your patient portal.',
+          });
+        }
+        
         router.push('/patient/dashboard');
       }
     } catch (error) {
@@ -69,6 +101,21 @@ export default function PatientLoginPage() {
       <main className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="bg-card border border-border rounded-2xl shadow-xl p-8">
+            {/* Testing Mode Banner */}
+            {testingMode && (
+              <div className="mb-6 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-amber-600" />
+                  <div>
+                    <p className="font-medium text-amber-900">Testing Access</p>
+                    <p className="text-sm text-amber-700">
+                      Sign in to activate {testingMode.grantTier} tier access
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Icon & Title */}
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4">

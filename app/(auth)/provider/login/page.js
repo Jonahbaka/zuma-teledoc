@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, EyeOff, Mail, Lock, Stethoscope, Shield, Loader2, AlertTriangle } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, Stethoscope, Shield, Loader2, AlertTriangle, Zap } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { testingLinksAPI } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,14 +16,16 @@ export default function ProviderLoginPage() {
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [testingMode, setTestingMode] = useState(null);
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
 
-  // Check for invite token
+  // Check for invite token and test token
   const inviteToken = searchParams.get('invite');
   const fromInvite = searchParams.get('from') === 'invite';
+  const testToken = searchParams.get('test_token');
 
   useEffect(() => {
     if (fromInvite) {
@@ -32,6 +35,19 @@ export default function ProviderLoginPage() {
       });
     }
   }, [fromInvite]);
+
+  // Check if test token is valid
+  useEffect(() => {
+    if (testToken) {
+      testingLinksAPI.validate(testToken)
+        .then(res => {
+          if (res.data.success && res.data.linkType === 'provider') {
+            setTestingMode(res.data);
+          }
+        })
+        .catch(() => setTestingMode(null));
+    }
+  }, [testToken]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -71,10 +87,27 @@ export default function ProviderLoginPage() {
       }
 
       if (result?.success) {
-        toast({
-          title: 'Welcome back, Doctor!',
-          description: 'Successfully signed in to your provider portal.',
-        });
+        // If we have a test token, activate testing bypass
+        if (testToken && testingMode) {
+          try {
+            await testingLinksAPI.activate(testToken);
+            toast({
+              title: 'Testing Access Activated!',
+              description: `You now have ${testingMode.grantTier} tier access for testing.`,
+            });
+          } catch (err) {
+            console.error('Failed to activate testing bypass:', err);
+            toast({
+              title: 'Welcome back, Doctor!',
+              description: 'Successfully signed in to your provider portal.',
+            });
+          }
+        } else {
+          toast({
+            title: 'Welcome back, Doctor!',
+            description: 'Successfully signed in to your provider portal.',
+          });
+        }
         // AuthProvider handles redirect automatically
       }
     } catch (error) {
@@ -107,6 +140,21 @@ export default function ProviderLoginPage() {
       <main className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl p-8">
+            {/* Testing Mode Banner */}
+            {testingMode && (
+              <div className="mb-6 p-3 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-amber-400" />
+                  <div>
+                    <p className="font-medium text-amber-200">Testing Access</p>
+                    <p className="text-sm text-amber-300/80">
+                      Sign in to activate {testingMode.grantTier} tier access
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Icon & Title */}
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -117,7 +165,7 @@ export default function ProviderLoginPage() {
             </div>
 
             {/* Notice for non-invited users */}
-            {!inviteToken && !fromInvite && (
+            {!inviteToken && !fromInvite && !testingMode && (
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 mb-6">
                 <div className="flex items-start gap-3">
                   <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5" />

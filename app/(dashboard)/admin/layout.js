@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, Users, UserCheck, BarChart3, DollarSign, 
   Shield, FileText, Bell, Settings, Database, MessageSquare,
-  Mail, Megaphone, Link2, UserPlus
+  Mail, Megaphone, Link2, UserPlus, Zap
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
@@ -18,6 +18,7 @@ const navigation = [
   { name: 'Credentialing', href: '/admin/credentialing', icon: FileText },
   { name: 'Invitations', href: '/admin/invites', icon: UserPlus },
   { name: 'Access URLs', href: '/admin/access-urls', icon: Link2 },
+  { name: 'Testing Links', href: '/admin/testing-links', icon: Zap },
   { name: 'Email Campaigns', href: '/admin/campaigns', icon: Megaphone },
   { name: 'Communications', href: '/admin/communications', icon: MessageSquare },
   { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },

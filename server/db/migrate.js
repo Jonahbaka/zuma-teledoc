@@ -2717,6 +2717,74 @@ const migrations = [
         BEFORE UPDATE ON prescription_intents
         FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
     `
+  },
+
+  // Migration 030: Testing Access Links (time-limited bypass for demos)
+  {
+    name: '030_testing_access_links',
+    up: `
+      -- =====================================================
+      -- TESTING ACCESS LINKS - Time-limited demo access tokens
+      -- Allows providers/patients to bypass payment for testing
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS testing_access_links (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        token VARCHAR(64) NOT NULL UNIQUE,
+        link_type VARCHAR(20) NOT NULL CHECK (link_type IN ('provider', 'patient')),
+        label VARCHAR(255),
+        description TEXT,
+        
+        -- Access control
+        max_uses INTEGER DEFAULT 1,
+        current_uses INTEGER DEFAULT 0,
+        expires_at TIMESTAMPTZ NOT NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        
+        -- What this link bypasses
+        bypass_payment BOOLEAN DEFAULT TRUE,
+        bypass_subscription BOOLEAN DEFAULT TRUE,
+        grant_tier VARCHAR(50) DEFAULT 'gold',
+        
+        -- Tracking
+        created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        last_used_at TIMESTAMPTZ,
+        last_used_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_token ON testing_access_links(token);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_type ON testing_access_links(link_type);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_active ON testing_access_links(is_active) WHERE is_active = true;
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_expires ON testing_access_links(expires_at);
+
+      DROP TRIGGER IF EXISTS update_testing_access_links_updated_at ON testing_access_links;
+      CREATE TRIGGER update_testing_access_links_updated_at
+        BEFORE UPDATE ON testing_access_links
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+      -- Track which users were created/activated via testing links
+      CREATE TABLE IF NOT EXISTS testing_link_activations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        link_id UUID NOT NULL REFERENCES testing_access_links(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        activated_at TIMESTAMPTZ DEFAULT NOW(),
+        ip_address VARCHAR(45),
+        user_agent TEXT,
+        bypass_expires_at TIMESTAMPTZ,
+        UNIQUE(link_id, user_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_testing_link_activations_link ON testing_link_activations(link_id);
+      CREATE INDEX IF NOT EXISTS idx_testing_link_activations_user ON testing_link_activations(user_id);
+      CREATE INDEX IF NOT EXISTS idx_testing_link_activations_expires ON testing_link_activations(bypass_expires_at);
+
+      -- Add testing_bypass flag to users table
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_active BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_expires_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_tier VARCHAR(50);
+    `
   }
 ];
 

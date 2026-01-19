@@ -4,8 +4,9 @@ import { useState } from 'react';
 import {
   Link2, Copy, ExternalLink, Shield, Stethoscope, Heart, Users,
   CheckCircle, AlertTriangle, Lock, Globe, QrCode, Eye, EyeOff,
-  Share2, Mail, RefreshCw
+  Share2, Mail, RefreshCw, Zap, ArrowRight
 } from 'lucide-react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -128,6 +129,32 @@ export default function AccessURLsPage() {
                 <li>• Use invite tokens for provider registration, not direct links</li>
               </ul>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Testing Links CTA */}
+      <Card className="border-amber-500/50 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-amber-900 dark:text-amber-200">Testing Access Links</h3>
+                <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
+                  Generate time-limited links for demos that bypass payment requirements.
+                  Perfect for showcasing the platform to potential users.
+                </p>
+              </div>
+            </div>
+            <Link href="/admin/testing-links">
+              <Button className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700">
+                Manage Testing Links
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
           </div>
         </CardContent>
       </Card>
