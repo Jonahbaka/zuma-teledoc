@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
+import { Badge } from '@/components/ui/badge';
+import { clinicalEhrAPI } from '@/lib/api';
 
 export default function PatientDetailPage() {
   const params = useParams();
@@ -22,6 +24,7 @@ export default function PatientDetailPage() {
   const [patient, setPatient] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [visits, setVisits] = useState([]);
+  const [ehrSummary, setEhrSummary] = useState(null);
 
   useEffect(() => {
     fetchPatientData();
@@ -29,20 +32,25 @@ export default function PatientDetailPage() {
 
   const fetchPatientData = async () => {
     try {
-      const [patientRes, appointmentsRes, visitsRes] = await Promise.all([
-        api.get(`/users/${patientId}`).catch(() => ({ data: { success: false } })),
+      const [patientsRes, appointmentsRes, visitsRes, ehrSummaryRes] = await Promise.all([
+        api.get(`/providers/me/patients`).catch(() => ({ data: { success: false } })),
         api.get('/appointments', { params: { patientId } }).catch(() => ({ data: { success: false } })),
-        api.get(`/visits/patient/${patientId}`).catch(() => ({ data: { success: false } }))
+        api.get(`/visits/patient/${patientId}`).catch(() => ({ data: { success: false } })),
+        clinicalEhrAPI.getSummary(patientId).catch(() => ({ data: { success: false } }))
       ]);
 
-      if (patientRes.data.success) {
-        setPatient(patientRes.data.user);
+      if (patientsRes.data.success) {
+        const p = (patientsRes.data.patients || []).find(x => x.id === patientId);
+        if (p) setPatient(p);
       }
       if (appointmentsRes.data.success) {
         setAppointments(appointmentsRes.data.appointments || []);
       }
       if (visitsRes.data.success) {
         setVisits(visitsRes.data.visits || []);
+      }
+      if (ehrSummaryRes.data.success) {
+        setEhrSummary(ehrSummaryRes.data);
       }
     } catch (error) {
       toast({
@@ -105,6 +113,28 @@ export default function PatientDetailPage() {
                 {patient.phone && (
                   <p className="text-sm text-slate-500 mt-1">{patient.phone}</p>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Heart className="w-5 h-5 text-purple-600" />
+                Clinical Chart
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-slate-600">
+                Patient clinical profile, encounters, clinical notes (append‑only), consent history, and external eRx intents.
+              </p>
+              {ehrSummary?.profile?.identityVerified && (
+                <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Identity Verified</Badge>
+              )}
+              <div className="flex gap-2">
+                <Link href={`/provider/patients/${patientId}/ehr`}>
+                  <Button className="bg-purple-600 hover:bg-purple-700 w-full">Open Chart</Button>
+                </Link>
               </div>
             </CardContent>
           </Card>

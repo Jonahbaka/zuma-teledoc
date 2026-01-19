@@ -2161,6 +2161,562 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_received_at ON stripe_webhook_events(received_at DESC);
       CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_event_type ON stripe_webhook_events(event_type);
     `
+  },
+
+  // Migration 028: Mini-EHR Clinical Records Module
+  {
+    name: '028_mini_ehr_clinical_records',
+    up: `
+      -- =====================================================
+      -- PATIENT ALLERGIES TABLE
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS patient_allergies (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        allergy_name VARCHAR(255) NOT NULL,
+        reaction TEXT,
+        severity VARCHAR(50) CHECK (severity IN ('mild', 'moderate', 'severe', 'anaphylaxis')),
+        onset_date DATE,
+        status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'resolved', 'inactive')),
+        recorded_by UUID REFERENCES users(id),
+        recorded_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (patient_id, allergy_name)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_patient_allergies_patient_id ON patient_allergies(patient_id);
+
+      -- =====================================================
+      -- PATIENT MEDICATIONS TABLE (Manually maintained, informational)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS patient_medications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        medication_name VARCHAR(255) NOT NULL,
+        dosage VARCHAR(100),
+        frequency VARCHAR(100),
+        route VARCHAR(100),
+        start_date DATE,
+        end_date DATE,
+        status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'discontinued', 'completed')),
+        notes TEXT,
+        recorded_by UUID REFERENCES users(id),
+        recorded_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_patient_medications_patient_id ON patient_medications(patient_id);
+
+      -- =====================================================
+      -- PATIENT PROBLEMS / DIAGNOSES TABLE
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS patient_problems (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        problem_name VARCHAR(255) NOT NULL,
+        icd_code VARCHAR(20),
+        onset_date DATE,
+        resolved_date DATE,
+        status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'resolved', 'chronic')),
+        notes TEXT,
+        recorded_by UUID REFERENCES users(id),
+        recorded_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_patient_problems_patient_id ON patient_problems(patient_id);
+
+      -- =====================================================
+      -- CLINICAL ENCOUNTERS TABLE (System of Record)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS clinical_encounters (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider_id UUID NOT NULL REFERENCES users(id),
+        appointment_id UUID REFERENCES appointments(id) ON DELETE SET NULL,
+        encounter_type VARCHAR(100) NOT NULL,
+        encounter_start_time TIMESTAMPTZ NOT NULL,
+        encounter_end_time TIMESTAMPTZ,
+        patient_location_state VARCHAR(100),
+        identity_verified BOOLEAN DEFAULT FALSE,
+        identity_verification_method VARCHAR(100),
+        chief_complaint TEXT,
+        status VARCHAR(50) DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'signed', 'amended', 'finalized')),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_clinical_encounters_patient_id ON clinical_encounters(patient_id);
+      CREATE INDEX IF NOT EXISTS idx_clinical_encounters_provider_id ON clinical_encounters(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_clinical_encounters_appointment_id ON clinical_encounters(appointment_id);
+      CREATE INDEX IF NOT EXISTS idx_clinical_encounters_status ON clinical_encounters(status);
+
+      -- =====================================================
+      -- CLINICAL NOTES TABLE (Append-only header)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS clinical_notes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        encounter_id UUID NOT NULL REFERENCES clinical_encounters(id) ON DELETE CASCADE,
+        note_type VARCHAR(50) NOT NULL DEFAULT 'SOAP',
+        current_version_id UUID,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_clinical_notes_encounter_id ON clinical_notes(encounter_id);
+
+      -- =====================================================
+      -- CLINICAL NOTE VERSIONS TABLE (Append-only, full history)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS clinical_note_versions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        note_id UUID NOT NULL REFERENCES clinical_notes(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL,
+        subjective_encrypted TEXT,
+        subjective_iv VARCHAR(255),
+        subjective_tag VARCHAR(255),
+        objective_encrypted TEXT,
+        objective_iv VARCHAR(255),
+        objective_tag VARCHAR(255),
+        assessment_encrypted TEXT,
+        assessment_iv VARCHAR(255),
+        assessment_tag VARCHAR(255),
+        plan_encrypted TEXT,
+        plan_iv VARCHAR(255),
+        plan_tag VARCHAR(255),
+        icd_codes TEXT[],
+        cpt_codes TEXT[],
+        provider_signature_text VARCHAR(255),
+        provider_signature_timestamp TIMESTAMPTZ,
+        signed_by UUID REFERENCES users(id),
+        is_amendment BOOLEAN DEFAULT FALSE,
+        amends_version_id UUID REFERENCES clinical_note_versions(id),
+        created_by UUID NOT NULL REFERENCES users(id),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (note_id, version_number)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_clinical_note_versions_note_id ON clinical_note_versions(note_id);
+      CREATE INDEX IF NOT EXISTS idx_clinical_note_versions_created_by ON clinical_note_versions(created_by);
+
+      -- Add FK constraint for current_version_id after versions table exists
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'fk_clinical_notes_current_version'
+        ) THEN
+          ALTER TABLE clinical_notes
+          ADD CONSTRAINT fk_clinical_notes_current_version
+          FOREIGN KEY (current_version_id)
+          REFERENCES clinical_note_versions(id)
+          ON DELETE SET NULL;
+        END IF;
+      END $$;
+
+      -- =====================================================
+      -- TELEHEALTH CONSENTS TABLE
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS telehealth_consents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        encounter_id UUID REFERENCES clinical_encounters(id) ON DELETE SET NULL,
+        consent_text_version VARCHAR(50) NOT NULL,
+        consent_granted_at TIMESTAMPTZ DEFAULT NOW(),
+        ip_address VARCHAR(45),
+        user_agent TEXT,
+        is_valid BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_telehealth_consents_patient_id ON telehealth_consents(patient_id);
+      CREATE INDEX IF NOT EXISTS idx_telehealth_consents_encounter_id ON telehealth_consents(encounter_id);
+
+      -- =====================================================
+      -- EXTERNAL E-PRESCRIBING REFERENCES TABLE (iPrescribe integration)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS erx_prescriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider_id UUID NOT NULL REFERENCES users(id),
+        clinical_encounter_id UUID REFERENCES clinical_encounters(id) ON DELETE SET NULL,
+        medication_name VARCHAR(255) NOT NULL,
+        dosage VARCHAR(100),
+        route VARCHAR(100),
+        indication TEXT,
+        rationale TEXT,
+        external_rx_id VARCHAR(255),
+        external_status VARCHAR(50) DEFAULT 'pending_external_creation',
+        external_status_details JSONB,
+        prescribed_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_erx_prescriptions_patient_id ON erx_prescriptions(patient_id);
+      CREATE INDEX IF NOT EXISTS idx_erx_prescriptions_provider_id ON erx_prescriptions(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_erx_prescriptions_encounter_id ON erx_prescriptions(clinical_encounter_id);
+      CREATE INDEX IF NOT EXISTS idx_erx_prescriptions_external_rx_id ON erx_prescriptions(external_rx_id);
+
+      -- =====================================================
+      -- EXTEND USERS TABLE FOR PROVIDER METADATA
+      -- =====================================================
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS dea_number VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS business_associate_agreement_signed BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS business_associate_agreement_signed_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS primary_address VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(50);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS identity_verified BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS identity_verification_method VARCHAR(100);
+
+      -- =====================================================
+      -- EXTEND APPOINTMENTS TABLE TO LINK TO CLINICAL ENCOUNTERS
+      -- =====================================================
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS clinical_encounter_id UUID REFERENCES clinical_encounters(id) ON DELETE SET NULL;
+
+      -- =====================================================
+      -- TRIGGERS FOR UPDATED_AT
+      -- =====================================================
+      DROP TRIGGER IF EXISTS update_patient_allergies_updated_at ON patient_allergies;
+      CREATE TRIGGER update_patient_allergies_updated_at
+        BEFORE UPDATE ON patient_allergies
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+      DROP TRIGGER IF EXISTS update_patient_medications_updated_at ON patient_medications;
+      CREATE TRIGGER update_patient_medications_updated_at
+        BEFORE UPDATE ON patient_medications
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+      DROP TRIGGER IF EXISTS update_patient_problems_updated_at ON patient_problems;
+      CREATE TRIGGER update_patient_problems_updated_at
+        BEFORE UPDATE ON patient_problems
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+      DROP TRIGGER IF EXISTS update_clinical_encounters_updated_at ON clinical_encounters;
+      CREATE TRIGGER update_clinical_encounters_updated_at
+        BEFORE UPDATE ON clinical_encounters
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+      DROP TRIGGER IF EXISTS update_clinical_notes_updated_at ON clinical_notes;
+      CREATE TRIGGER update_clinical_notes_updated_at
+        BEFORE UPDATE ON clinical_notes
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+      DROP TRIGGER IF EXISTS update_erx_prescriptions_updated_at ON erx_prescriptions;
+      CREATE TRIGGER update_erx_prescriptions_updated_at
+        BEFORE UPDATE ON erx_prescriptions
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    `
+  },
+
+  // Migration 029: Mini-EHR schema alignment (match services + encrypted PHI-by-default)
+  {
+    name: '029_mini_ehr_schema_alignment',
+    up: `
+      -- =====================================================
+      -- PROVIDER ↔ PATIENT RELATIONSHIPS (access scoping)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS provider_patient_relationships (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        provider_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        patient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        relationship_type VARCHAR(50) NOT NULL DEFAULT 'treating',
+        established_encounter_id UUID REFERENCES clinical_encounters(id) ON DELETE SET NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(provider_id, patient_id, relationship_type)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_provider_patient_relationships_provider ON provider_patient_relationships(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_provider_patient_relationships_patient ON provider_patient_relationships(patient_id);
+      CREATE INDEX IF NOT EXISTS idx_provider_patient_relationships_active ON provider_patient_relationships(is_active) WHERE is_active = true;
+
+      DROP TRIGGER IF EXISTS update_provider_patient_relationships_updated_at ON provider_patient_relationships;
+      CREATE TRIGGER update_provider_patient_relationships_updated_at
+        BEFORE UPDATE ON provider_patient_relationships
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+      -- =====================================================
+      -- PATIENT CLINICAL PROFILE (non-note chart data)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS patient_clinical_profiles (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+
+        identity_verified BOOLEAN DEFAULT FALSE,
+        identity_verification_method VARCHAR(100),
+        identity_verified_at TIMESTAMPTZ,
+        identity_verified_by UUID REFERENCES users(id),
+
+        emergency_contact_name VARCHAR(255),
+        emergency_contact_phone VARCHAR(50),
+        emergency_contact_relationship VARCHAR(100),
+
+        pcp_name VARCHAR(255),
+        pcp_phone VARCHAR(50),
+        pcp_fax VARCHAR(50),
+        pcp_npi VARCHAR(50),
+
+        preferred_pharmacy_name VARCHAR(255),
+        preferred_pharmacy_address TEXT,
+        preferred_pharmacy_phone VARCHAR(50),
+        preferred_pharmacy_npi VARCHAR(50),
+
+        has_advance_directive BOOLEAN DEFAULT FALSE,
+        advance_directive_type VARCHAR(100),
+        advance_directive_notes TEXT,
+
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_patient_clinical_profiles_patient_id ON patient_clinical_profiles(patient_id);
+
+      DROP TRIGGER IF EXISTS update_patient_clinical_profiles_updated_at ON patient_clinical_profiles;
+      CREATE TRIGGER update_patient_clinical_profiles_updated_at
+        BEFORE UPDATE ON patient_clinical_profiles
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+      -- =====================================================
+      -- ALIGN patient_allergies to encrypted format used by services
+      -- (keeps existing columns for backward compatibility)
+      -- =====================================================
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS allergen_encrypted TEXT;
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS allergen_iv VARCHAR(255);
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS allergen_tag VARCHAR(255);
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS allergen_type VARCHAR(50);
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS reaction_encrypted TEXT;
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS reaction_iv VARCHAR(255);
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS reaction_tag VARCHAR(255);
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS source VARCHAR(50);
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS verified_by UUID REFERENCES users(id);
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS inactivated_at TIMESTAMPTZ;
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS inactivated_by UUID REFERENCES users(id);
+      ALTER TABLE patient_allergies ADD COLUMN IF NOT EXISTS inactivation_reason TEXT;
+
+      -- =====================================================
+      -- ALIGN patient_problems to encrypted format used by services
+      -- =====================================================
+      ALTER TABLE patient_problems ADD COLUMN IF NOT EXISTS encounter_id UUID REFERENCES clinical_encounters(id) ON DELETE SET NULL;
+      ALTER TABLE patient_problems ADD COLUMN IF NOT EXISTS icd10_code VARCHAR(20);
+      ALTER TABLE patient_problems ADD COLUMN IF NOT EXISTS icd10_description VARCHAR(255);
+      ALTER TABLE patient_problems ADD COLUMN IF NOT EXISTS problem_description_encrypted TEXT;
+      ALTER TABLE patient_problems ADD COLUMN IF NOT EXISTS problem_description_iv VARCHAR(255);
+      ALTER TABLE patient_problems ADD COLUMN IF NOT EXISTS problem_description_tag VARCHAR(255);
+      ALTER TABLE patient_problems ADD COLUMN IF NOT EXISTS problem_type VARCHAR(50) DEFAULT 'chronic';
+      ALTER TABLE patient_problems ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'secondary';
+      ALTER TABLE patient_problems ADD COLUMN IF NOT EXISTS documented_by UUID REFERENCES users(id);
+      ALTER TABLE patient_problems ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE patient_problems ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+
+      CREATE INDEX IF NOT EXISTS idx_patient_problems_active ON patient_problems(patient_id, is_active);
+      CREATE INDEX IF NOT EXISTS idx_patient_problems_encounter_id ON patient_problems(encounter_id);
+
+      -- =====================================================
+      -- ALIGN patient_medications to encrypted format used by services
+      -- =====================================================
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS medication_name_encrypted TEXT;
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS medication_name_iv VARCHAR(255);
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS medication_name_tag VARCHAR(255);
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS dosage_encrypted TEXT;
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS dosage_iv VARCHAR(255);
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS dosage_tag VARCHAR(255);
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS medication_type VARCHAR(50) DEFAULT 'prescription';
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS is_prn BOOLEAN DEFAULT FALSE;
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS source VARCHAR(50);
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS prescriber_name VARCHAR(255);
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS discontinued_at TIMESTAMPTZ;
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS discontinued_by UUID REFERENCES users(id);
+      ALTER TABLE patient_medications ADD COLUMN IF NOT EXISTS discontinuation_reason TEXT;
+
+      CREATE INDEX IF NOT EXISTS idx_patient_medications_active ON patient_medications(patient_id, is_active);
+
+      -- =====================================================
+      -- ALIGN clinical_encounters to service expectations
+      -- =====================================================
+      ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS patient_state CHAR(2);
+      ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS patient_location_verified BOOLEAN DEFAULT FALSE;
+      ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS patient_location_method VARCHAR(50) DEFAULT 'self_reported';
+      ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS provider_state CHAR(2);
+      ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS encounter_start TIMESTAMPTZ;
+      ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS encounter_end TIMESTAMPTZ;
+      ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS chief_complaint_encrypted TEXT;
+      ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS chief_complaint_iv VARCHAR(255);
+      ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS chief_complaint_tag VARCHAR(255);
+      ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS telehealth_consent_id UUID REFERENCES telehealth_consents(id) ON DELETE SET NULL;
+
+      -- Drop restrictive status check if present and replace with expanded one
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'clinical_encounters_status_check') THEN
+          ALTER TABLE clinical_encounters DROP CONSTRAINT clinical_encounters_status_check;
+        END IF;
+      END $$;
+
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'clinical_encounters_status_check_v2') THEN
+          ALTER TABLE clinical_encounters
+            ADD CONSTRAINT clinical_encounters_status_check_v2
+            CHECK (status IN ('in_progress', 'completed', 'signed', 'amended', 'finalized', 'cancelled'));
+        END IF;
+      END $$;
+
+      -- =====================================================
+      -- ALIGN clinical_notes to service expectations (append-only + amendments)
+      -- =====================================================
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS patient_id UUID REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS provider_id UUID REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS parent_note_id UUID REFERENCES clinical_notes(id) ON DELETE SET NULL;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS is_amendment BOOLEAN DEFAULT FALSE;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS amendment_reason TEXT;
+
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS subjective_encrypted TEXT;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS subjective_iv VARCHAR(255);
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS subjective_tag VARCHAR(255);
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS objective_encrypted TEXT;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS objective_iv VARCHAR(255);
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS objective_tag VARCHAR(255);
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS assessment_encrypted TEXT;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS assessment_iv VARCHAR(255);
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS assessment_tag VARCHAR(255);
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS plan_encrypted TEXT;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS plan_iv VARCHAR(255);
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS plan_tag VARCHAR(255);
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS vitals_encrypted TEXT;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS vitals_iv VARCHAR(255);
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS vitals_tag VARCHAR(255);
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS physical_exam_encrypted TEXT;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS physical_exam_iv VARCHAR(255);
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS physical_exam_tag VARCHAR(255);
+
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS icd_codes TEXT[];
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS cpt_codes TEXT[];
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS follow_up_required BOOLEAN DEFAULT FALSE;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS follow_up_interval VARCHAR(100);
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS follow_up_notes TEXT;
+
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS is_signed BOOLEAN DEFAULT FALSE;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS signature_hash TEXT;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS is_locked BOOLEAN DEFAULT FALSE;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ;
+      ALTER TABLE clinical_notes ADD COLUMN IF NOT EXISTS locked_reason TEXT;
+
+      CREATE INDEX IF NOT EXISTS idx_clinical_notes_encounter_version ON clinical_notes(encounter_id, version DESC);
+      CREATE INDEX IF NOT EXISTS idx_clinical_notes_patient_id ON clinical_notes(patient_id);
+      CREATE INDEX IF NOT EXISTS idx_clinical_notes_provider_id ON clinical_notes(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_clinical_notes_signed ON clinical_notes(is_signed) WHERE is_signed = true;
+
+      -- =====================================================
+      -- TELEHEALTH CONSENT TEMPLATES + CONSENT CAPTURE (versioned)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS telehealth_consent_templates (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        version VARCHAR(50) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        content_html TEXT,
+        content_plain TEXT,
+        applicable_states TEXT[],
+        effective_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        expiry_date DATE,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_by UUID REFERENCES users(id),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_telehealth_consent_templates_active ON telehealth_consent_templates(is_active) WHERE is_active = true;
+      CREATE INDEX IF NOT EXISTS idx_telehealth_consent_templates_effective ON telehealth_consent_templates(effective_date DESC);
+
+      DROP TRIGGER IF EXISTS update_telehealth_consent_templates_updated_at ON telehealth_consent_templates;
+      CREATE TRIGGER update_telehealth_consent_templates_updated_at
+        BEFORE UPDATE ON telehealth_consent_templates
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS template_id UUID REFERENCES telehealth_consent_templates(id) ON DELETE SET NULL;
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS template_version VARCHAR(50);
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS consent_method VARCHAR(50);
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS patient_state CHAR(2);
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS signature_data_encrypted TEXT;
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS signature_data_iv VARCHAR(255);
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS signature_data_tag VARCHAR(255);
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS consent_captured_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS revoked_reason TEXT;
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS witness_name VARCHAR(255);
+      ALTER TABLE telehealth_consents ADD COLUMN IF NOT EXISTS witness_id UUID REFERENCES users(id) ON DELETE SET NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_telehealth_consents_patient_state ON telehealth_consents(patient_id, patient_state);
+      CREATE INDEX IF NOT EXISTS idx_telehealth_consents_valid ON telehealth_consents(is_valid) WHERE is_valid = true;
+
+      -- =====================================================
+      -- PRESCRIPTION INTENTS (external eRx handoff only; no internal transmission)
+      -- =====================================================
+      CREATE TABLE IF NOT EXISTS prescription_intents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        encounter_id UUID NOT NULL REFERENCES clinical_encounters(id) ON DELETE CASCADE,
+        patient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+        medication_name VARCHAR(255) NOT NULL,
+        generic_name VARCHAR(255),
+        dosage_strength VARCHAR(100) NOT NULL,
+        dosage_form VARCHAR(100) NOT NULL,
+        route VARCHAR(100) DEFAULT 'oral',
+        quantity INTEGER NOT NULL,
+        days_supply INTEGER NOT NULL,
+        refills_authorized INTEGER DEFAULT 0,
+
+        indication TEXT NOT NULL,
+        indication_icd10 VARCHAR(20),
+
+        rationale_encrypted TEXT,
+        rationale_iv VARCHAR(255),
+        rationale_tag VARCHAR(255),
+
+        sig_directions TEXT NOT NULL,
+        patient_instructions TEXT,
+
+        pharmacy_name VARCHAR(255),
+        pharmacy_npi VARCHAR(50),
+        pharmacy_address TEXT,
+
+        is_controlled BOOLEAN DEFAULT FALSE,
+        schedule_class VARCHAR(20),
+
+        status VARCHAR(50) NOT NULL DEFAULT 'draft',
+
+        external_erx_system VARCHAR(50),
+        external_erx_id VARCHAR(255),
+        external_erx_status VARCHAR(50),
+        external_erx_sent_at TIMESTAMPTZ,
+        external_erx_status_updated_at TIMESTAMPTZ,
+
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_prescription_intents_encounter_id ON prescription_intents(encounter_id);
+      CREATE INDEX IF NOT EXISTS idx_prescription_intents_patient_id ON prescription_intents(patient_id);
+      CREATE INDEX IF NOT EXISTS idx_prescription_intents_provider_id ON prescription_intents(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_prescription_intents_status ON prescription_intents(status);
+      CREATE INDEX IF NOT EXISTS idx_prescription_intents_created_at ON prescription_intents(created_at DESC);
+
+      DROP TRIGGER IF EXISTS update_prescription_intents_updated_at ON prescription_intents;
+      CREATE TRIGGER update_prescription_intents_updated_at
+        BEFORE UPDATE ON prescription_intents
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    `
   }
 ];
 

@@ -38,8 +38,13 @@ export default function ProviderLoginPage() {
     setIsLoading(true);
 
     try {
+      // Read from DOM form fields to avoid any state/event edge-cases (autofill/automation/etc.)
+      const fd = new FormData(e.currentTarget);
+      const email = String(fd.get('email') || '').trim();
+      const password = String(fd.get('password') || '');
+
       // Use the AuthProvider's login function directly with correct signature
-      const result = await login(formData.email, formData.password, null, 'provider');
+      const result = await login(email, password, null, 'provider');
 
       if (result?.error) {
         // Check if error indicates pending/suspended status
@@ -136,6 +141,7 @@ export default function ProviderLoginPage() {
                     id="email"
                     type="email"
                     placeholder="doctor@hospital.com"
+                    name="email"
                     value={formData.email}
                     onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                     className="pl-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 focus:border-purple-500"
@@ -157,6 +163,7 @@ export default function ProviderLoginPage() {
                     id="password"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
+                    name="password"
                     value={formData.password}
                     onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
                     className="pl-10 pr-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 focus:border-purple-500"

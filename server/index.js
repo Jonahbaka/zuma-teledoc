@@ -45,6 +45,7 @@ const stripeRoutes = require('./routes/stripe');
 const credentialingRoutes = require('./routes/credentialing');
 const membershipRoutes = require('./routes/membership');
 const contactRoutes = require('./routes/contact');
+const clinicalEncounterRoutes = require('./routes/clinicalEncounters');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -134,9 +135,7 @@ const limiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    return req.ip || req.headers['x-forwarded-for'] || 'unknown';
-  }
+  validate: { trustProxy: false, xForwardedForHeader: false }
 });
 
 // Apply rate limiting to all API routes
@@ -164,7 +163,7 @@ const sensitivePublicLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || req.headers['x-forwarded-for'] || 'unknown'
+  validate: { trustProxy: false, xForwardedForHeader: false }
 });
 app.use('/api/auth/password/request-reset', sensitivePublicLimiter);
 app.use('/api/contact', sensitivePublicLimiter);
@@ -302,6 +301,7 @@ app.use('/api/stripe', stripeRoutes);
 app.use('/api/membership', membershipRoutes);
 app.use('/api/credentialing', credentialingRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/clinical-encounters', clinicalEncounterRoutes);
 
 // 404 handler for API routes
 app.use('/api/*', (req, res) => {

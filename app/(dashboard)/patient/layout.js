@@ -13,7 +13,7 @@ const navigation = [
   { name: 'Dashboard', href: '/patient/dashboard', icon: LayoutDashboard },
   { name: 'Appointments', href: '/patient/appointments', icon: Calendar },
   { name: 'AI Triage', href: '/patient/triage', icon: BrainCircuit },
-  { name: 'My Prescriptions', href: '/patient/prescriptions', icon: Pill },
+  { name: 'Prescription Activity', href: '/patient/prescriptions', icon: Pill },
   { name: 'Insurance Wallet', href: '/patient/wallet', icon: Shield },
   { name: 'My Pharmacies', href: '/patient/pharmacy', icon: MapPin },
   { name: 'Health Records', href: '/patient/records', icon: FileText },
