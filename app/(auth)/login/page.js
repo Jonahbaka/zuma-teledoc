@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -21,7 +21,7 @@ const loginSchema = z.object({
   mfaCode: z.string().optional()
 });
 
-export default function PatientLoginPage() {
+function PatientLoginContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [mfaRequired, setMfaRequired] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -226,5 +226,24 @@ export default function PatientLoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function LoginPageFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950 p-4 relative">
+      <div className="flex items-center gap-2">
+        <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
+        <span className="text-muted-foreground">Loading...</span>
+      </div>
+    </div>
+  );
+}
+
+export default function PatientLoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <PatientLoginContent />
+    </Suspense>
   );
 }

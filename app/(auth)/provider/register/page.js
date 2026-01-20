@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, Mail, Lock, User, Stethoscope, Shield, Loader2, CheckCircle, AlertTriangle, Building2, BadgeCheck } from 'lucide-react';
@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-export default function ProviderRegisterPage() {
+function ProviderRegisterContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const inviteToken = searchParams.get('token');
@@ -363,3 +363,21 @@ export default function ProviderRegisterPage() {
   );
 }
 
+function RegisterFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      <div className="flex items-center gap-2">
+        <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+        <span className="text-slate-400">Loading...</span>
+      </div>
+    </div>
+  );
+}
+
+export default function ProviderRegisterPage() {
+  return (
+    <Suspense fallback={<RegisterFallback />}>
+      <ProviderRegisterContent />
+    </Suspense>
+  );
+}

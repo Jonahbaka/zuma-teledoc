@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, Mail, Lock, Stethoscope, Shield, Loader2, AlertTriangle, Zap } from 'lucide-react';
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-export default function ProviderLoginPage() {
+function ProviderLoginContent() {
   const searchParams = useSearchParams();
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
@@ -255,3 +255,21 @@ export default function ProviderLoginPage() {
   );
 }
 
+function ProviderLoginFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      <div className="flex items-center gap-2">
+        <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+        <span className="text-slate-400">Loading...</span>
+      </div>
+    </div>
+  );
+}
+
+export default function ProviderLoginPage() {
+  return (
+    <Suspense fallback={<ProviderLoginFallback />}>
+      <ProviderLoginContent />
+    </Suspense>
+  );
+}
