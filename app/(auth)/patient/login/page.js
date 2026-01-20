@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, Mail, Lock, Heart, Shield, Loader2, Zap } from 'lucide-react';
@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 
-export default function PatientLoginPage() {
+function PatientLoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const testToken = searchParams.get('test_token');
@@ -207,3 +207,21 @@ export default function PatientLoginPage() {
   );
 }
 
+function LoginPageFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950">
+      <div className="flex items-center gap-2">
+        <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
+        <span className="text-muted-foreground">Loading...</span>
+      </div>
+    </div>
+  );
+}
+
+export default function PatientLoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <PatientLoginContent />
+    </Suspense>
+  );
+}
