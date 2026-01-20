@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
 
-export default function ePrescribe({ patientId, visitId, appointmentId, aiSuggestions = [], hasGoldCard = false }) {
+export default function EPrescribe({ patientId, visitId, appointmentId, aiSuggestions = [], hasGoldCard = false }) {
   const [selectedDrug, setSelectedDrug] = useState('');
   const [rtbcResult, setRtbcResult] = useState(null);
   const [loadingRTBC, setLoadingRTBC] = useState(false);
