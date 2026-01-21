@@ -34,6 +34,11 @@ export function AuthProvider({ children }) {
   const login = async (email, password, mfaCode = null, role = null) => {
     try {
       setError(null);
+      // Avoid sending stale/oversized auth headers on login
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+      }
       // Only include mfaCode if it has a value
       const payload = { email, password };
       if (mfaCode) {
@@ -42,7 +47,10 @@ export function AuthProvider({ children }) {
       if (role) {
         payload.role = role;
       }
-      const response = await api.post('/auth/login', payload);
+      const response = await api.post('/auth/login', payload, {
+        skipAuth: true,
+        withCredentials: false
+      });
       
       if (response.data.mfaRequired) {
         return { mfaRequired: true };
