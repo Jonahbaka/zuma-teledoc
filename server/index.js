@@ -77,7 +77,9 @@ const corsOptions = {
       appUrl.replace('https://', 'https://www.'),
       // Local development fallbacks
       'http://localhost:3000',
-      'http://127.0.0.1:3000'
+      'http://127.0.0.1:3000',
+      'https://doctarx.com',
+      'https://www.doctarx.com'
     ].filter(Boolean);
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin || allowedOrigins.some(allowed => origin === allowed || origin.endsWith(allowed.replace('https://', '')))) {

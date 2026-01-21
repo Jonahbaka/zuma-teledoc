@@ -12,12 +12,22 @@ import {
   Stethoscope,
   Clock,
   Lock,
-  Users
+  Users,
+  AlertCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { toast } from '@/components/ui/use-toast';
 
 export default function HomePage() {
+  const handleJoinAsProvider = (e) => {
+    // Show info toast
+    toast({
+      title: "Provider Registration",
+      description: "Provider sign-ups are by invitation only. If you have an invitation, please use the link provided in your email.",
+      variant: "default",
+    });
+  };
   const featureColors = {
     purple: { bg: 'bg-purple-500/10 dark:bg-purple-500/20', icon: 'text-purple-600 dark:text-purple-400' },
     indigo: { bg: 'bg-indigo-500/10 dark:bg-indigo-500/20', icon: 'text-indigo-600 dark:text-indigo-400' },
@@ -97,11 +107,16 @@ export default function HomePage() {
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
               </Link>
-              <Link href="/register?role=provider">
-                <Button size="lg" variant="outline" className="h-14 px-8 text-lg border-2">
-                  Join as Provider
-                </Button>
-              </Link>
+              <div className="flex flex-col items-center">
+                <Link href="/provider/login" onClick={handleJoinAsProvider}>
+                  <Button size="lg" variant="outline" className="h-14 px-8 text-lg border-2">
+                    Join as Provider
+                  </Button>
+                </Link>
+                <span className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-semibold">
+                  Invite Only
+                </span>
+              </div>
             </div>
             
             <div className="mt-12 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground animate-fade-in" style={{ animationDelay: '0.3s' }}>

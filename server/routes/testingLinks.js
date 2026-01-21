@@ -52,7 +52,7 @@ router.get('/', authenticate, requireRole(['admin', 'super_admin']), async (req,
       success: true,
       links: rows.map(link => ({
         ...link,
-        fullUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/access/${link.token}`,
+        fullUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com'}/access/${link.token}`,
         isExpired: new Date(link.expires_at) < new Date(),
         isExhausted: link.max_uses && link.current_uses >= link.max_uses
       }))
@@ -104,7 +104,7 @@ router.post('/', authenticate, requireRole(['admin', 'super_admin']), async (req
     ]);
     
     const link = rows[0];
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
     
     logger.info('Testing link created', {
       linkId: link.id,
@@ -163,7 +163,7 @@ router.get('/:id', authenticate, requireRole(['admin', 'super_admin']), async (r
       ORDER BY tla.activated_at DESC
     `, [id]);
     
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
     
     res.json({
       success: true,

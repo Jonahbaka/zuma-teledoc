@@ -57,7 +57,7 @@ export default function TestingLinksPage() {
     grantTier: 'gold'
   });
 
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://doctarx.com';
 
   useEffect(() => {
     fetchLinks();
