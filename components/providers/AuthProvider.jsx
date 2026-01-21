@@ -47,10 +47,7 @@ export function AuthProvider({ children }) {
       if (role) {
         payload.role = role;
       }
-      const response = await api.post('/auth/login', payload, {
-        skipAuth: true,
-        withCredentials: false
-      });
+      const response = await api.post('/auth/login', payload, { skipAuth: true });
       
       if (response.data.mfaRequired) {
         return { mfaRequired: true };
