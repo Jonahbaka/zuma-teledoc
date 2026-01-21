@@ -14,6 +14,16 @@ const logger = require('../middleware/logger');
 // Generate a secure random token
 const generateToken = () => crypto.randomBytes(32).toString('hex');
 
+// Get the correct base URL for links - always use production URL in production
+const getBaseUrl = () => {
+  // Always use production URL if NODE_ENV is production or if running on Cloud Run
+  if (process.env.NODE_ENV === 'production' || process.env.K_SERVICE) {
+    return 'https://doctarx.com';
+  }
+  // Otherwise use env var or fallback to production
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+};
+
 /**
  * GET /api/testing-links
  * List all testing links (admin only)
@@ -48,11 +58,12 @@ router.get('/', authenticate, requireRole(['admin', 'super_admin']), async (req,
     
     const { rows } = await db.query(query, params);
     
+    const baseUrl = getBaseUrl();
     res.json({
       success: true,
       links: rows.map(link => ({
         ...link,
-        fullUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com'}/access/${link.token}`,
+        fullUrl: `${baseUrl}/access/${link.token}`,
         isExpired: new Date(link.expires_at) < new Date(),
         isExhausted: link.max_uses && link.current_uses >= link.max_uses
       }))
@@ -104,7 +115,7 @@ router.post('/', authenticate, requireRole(['admin', 'super_admin']), async (req
     ]);
     
     const link = rows[0];
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+    const baseUrl = getBaseUrl();
     
     logger.info('Testing link created', {
       linkId: link.id,
@@ -163,7 +174,7 @@ router.get('/:id', authenticate, requireRole(['admin', 'super_admin']), async (r
       ORDER BY tla.activated_at DESC
     `, [id]);
     
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+    const baseUrl = getBaseUrl();
     
     res.json({
       success: true,
