@@ -14,14 +14,22 @@ const logger = require('../middleware/logger');
 // Generate a secure random token
 const generateToken = () => crypto.randomBytes(32).toString('hex');
 
-// Get the correct base URL for links - always use production URL in production
-const getBaseUrl = () => {
-  // Always use production URL if NODE_ENV is production or if running on Cloud Run
-  if (process.env.NODE_ENV === 'production' || process.env.K_SERVICE) {
-    return 'https://doctarx.com';
+// Get the correct base URL for links, preferring non-localhost env,
+// then falling back to the request host (Cloud Run), then production.
+const getBaseUrl = (req) => {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (envUrl && !envUrl.includes('localhost')) {
+    return envUrl;
   }
-  // Otherwise use env var or fallback to production
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+
+  const forwardedHost = req?.headers?.['x-forwarded-host'];
+  const host = forwardedHost || req?.get?.('host');
+  const proto = req?.headers?.['x-forwarded-proto'] || req?.protocol;
+  if (host) {
+    return `${proto || 'https'}://${host}`;
+  }
+
+  return 'https://doctarx.com';
 };
 
 /**
@@ -58,7 +66,7 @@ router.get('/', authenticate, requireRole(['admin', 'super_admin']), async (req,
     
     const { rows } = await db.query(query, params);
     
-    const baseUrl = getBaseUrl();
+    const baseUrl = getBaseUrl(req);
     res.json({
       success: true,
       links: rows.map(link => ({
@@ -115,7 +123,7 @@ router.post('/', authenticate, requireRole(['admin', 'super_admin']), async (req
     ]);
     
     const link = rows[0];
-    const baseUrl = getBaseUrl();
+    const baseUrl = getBaseUrl(req);
     
     logger.info('Testing link created', {
       linkId: link.id,
@@ -174,7 +182,7 @@ router.get('/:id', authenticate, requireRole(['admin', 'super_admin']), async (r
       ORDER BY tla.activated_at DESC
     `, [id]);
     
-    const baseUrl = getBaseUrl();
+    const baseUrl = getBaseUrl(req);
     
     res.json({
       success: true,
