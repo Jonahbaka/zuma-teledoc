@@ -49,7 +49,9 @@ const clinicalEncounterRoutes = require('./routes/clinicalEncounters');
 const testingLinksRoutes = require('./routes/testingLinks');
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+// In production on Cloud Run, PORT is 8080 (for Next.js). 
+// The API server should run on a different port (3001) so Next.js can proxy to it.
+const PORT = process.env.API_PORT || 3001;
 
 // Trust proxy (for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
