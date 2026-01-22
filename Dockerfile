@@ -31,8 +31,6 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/server ./server
 # Copy lib folder for shared utilities
 COPY --from=builder /app/lib ./lib
-# Copy environment config if exists (should be set via Cloud Run env vars instead)
-COPY --from=builder /app/.env* ./
 
 USER nextjs
 
