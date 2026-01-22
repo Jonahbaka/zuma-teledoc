@@ -264,9 +264,7 @@ function ProviderLoginFallback() {
       </div>
     </div>
   );
-}
-
-export default function ProviderLoginPage() {
+}export default function ProviderLoginPage() {
   return (
     <Suspense fallback={<ProviderLoginFallback />}>
       <ProviderLoginContent />

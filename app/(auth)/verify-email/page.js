@@ -145,9 +145,7 @@ function VerifyEmailFallback() {
       </div>
     </div>
   );
-}
-
-export default function VerifyEmailPage() {
+}export default function VerifyEmailPage() {
   return (
     <Suspense fallback={<VerifyEmailFallback />}>
       <VerifyEmailContent />

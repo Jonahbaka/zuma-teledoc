@@ -43,14 +43,13 @@ function PatientLoginContent() {
     setIsLoading(true);
 
     try {
-      const response = await authAPI.login({
-        ...formData,
-        role: 'patient'
-      });
+      const fd = new FormData(e.currentTarget);
+      const email = String(fd.get('email') || '').trim();
+      const password = String(fd.get('password') || '');
 
-      if (response.data.success) {
-        await login(response.data.accessToken, response.data.refreshToken, response.data.user);
-        
+      const result = await login(email, password, null, 'patient');
+
+      if (result.success) {
         // If we have a test token, activate testing bypass
         if (testToken && testingMode) {
           try {
@@ -70,12 +69,17 @@ function PatientLoginContent() {
         }
         
         router.push('/patient/dashboard');
+      } else {
+        toast({
+          title: 'Login Failed',
+          description: result.error || 'Invalid credentials',
+          variant: 'destructive'
+        });
       }
     } catch (error) {
-      const message = error.response?.data?.error || 'Invalid credentials';
       toast({
         title: 'Login Failed',
-        description: message,
+        description: 'An unexpected error occurred',
         variant: 'destructive'
       });
     } finally {
@@ -133,6 +137,7 @@ function PatientLoginContent() {
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <Input
                     id="email"
+                    name="email"
                     type="email"
                     placeholder="your@email.com"
                     value={formData.email}
@@ -154,6 +159,7 @@ function PatientLoginContent() {
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <Input
                     id="password"
+                    name="password"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     value={formData.password}
