@@ -366,32 +366,51 @@ const gracefulShutdown = async (signal) => {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+// Track Next.js readiness
+let nextReady = false;
+
 // Catch-all to serve Next.js app
 app.all('*', (req, res) => {
+  if (!nextReady) {
+    // Return a simple loading page while Next.js prepares
+    return res.status(200).send(`
+      <!DOCTYPE html>
+      <html><head><meta charset="utf-8"><title>Docta.</title>
+      <meta http-equiv="refresh" content="3">
+      <style>body{font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5;}
+      .loader{text-align:center;}.spinner{width:40px;height:40px;border:4px solid #e0e0e0;border-top:4px solid #9333ea;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px;}
+      @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</style></head>
+      <body><div class="loader"><div class="spinner"></div><p>Starting Docta...</p></div></body></html>
+    `);
+  }
   return handle(req, res);
 });
 
-// Start server
-nextApp.prepare().then(() => {
-  app.listen(PORT, '0.0.0.0', async () => {
-    logger.info(`Docta. server running on port ${PORT}`);
-    logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    
-    // Test database connection (non-blocking)
-    try {
-      const dbHealth = await db.healthCheck();
-      if (dbHealth.healthy) {
-        logger.info('Database connection: OK');
-      } else {
-        logger.warn('Database connection: FAILED', { error: dbHealth.error });
-      }
-    } catch (error) {
-      logger.warn('Database connection check failed', { error: error.message });
+// START LISTENING IMMEDIATELY (required for Cloud Run health check)
+const server = app.listen(PORT, '0.0.0.0', async () => {
+  logger.info(`Docta. server listening on port ${PORT}`);
+  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  
+  // Test database connection (non-blocking)
+  try {
+    const dbHealth = await db.healthCheck();
+    if (dbHealth.healthy) {
+      logger.info('Database connection: OK');
+    } else {
+      logger.warn('Database connection: FAILED', { error: dbHealth.error });
     }
-  });
+  } catch (error) {
+    logger.warn('Database connection check failed', { error: error.message });
+  }
+});
+
+// Prepare Next.js in the background AFTER server is listening
+nextApp.prepare().then(() => {
+  nextReady = true;
+  logger.info('Next.js is ready to serve requests');
 }).catch(err => {
   logger.error('Failed to prepare Next.js', err);
-  process.exit(1);
+  // Don't exit - API routes still work
 });
 
 module.exports = app;
