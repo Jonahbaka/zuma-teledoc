@@ -9,7 +9,14 @@ export const metadata = {
   description: 'HIPAA-compliant telehealth platform for virtual healthcare delivery',
   keywords: 'telehealth, telemedicine, virtual healthcare, doctor appointment, video consultation',
   authors: [{ name: 'Docta.' }],
-  robots: 'index, follow'
+  robots: 'index, follow',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.svg', type: 'image/svg+xml' }
+    ],
+    apple: '/icon.svg'
+  }
 };
 
 export const viewport = {
@@ -21,6 +28,11 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Favicon and icons */}
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/icon.svg" />
+        
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link 
