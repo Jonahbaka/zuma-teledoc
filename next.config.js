@@ -43,17 +43,6 @@ const nextConfig = {
     ];
   },
 
-  // Rewrites for API proxy
-  async rewrites() {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${apiUrl}/:path*`
-      }
-    ];
-  },
-
   // Environment variables exposed to client
   env: {
     NEXT_PUBLIC_APP_NAME: 'DoctaRx',

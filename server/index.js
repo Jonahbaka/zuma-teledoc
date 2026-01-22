@@ -49,9 +49,13 @@ const clinicalEncounterRoutes = require('./routes/clinicalEncounters');
 const testingLinksRoutes = require('./routes/testingLinks');
 
 const app = express();
-// In production on Cloud Run, PORT is 8080 (for Next.js). 
-// The API server should run on a different port (3001) so Next.js can proxy to it.
-const PORT = process.env.API_PORT || 3001;
+const PORT = process.env.PORT || 3001;
+
+// Initialize Next.js
+const next = require('next');
+const dev = process.env.NODE_ENV !== 'production';
+const nextApp = next({ dev });
+const handle = nextApp.getRequestHandler();
 
 // Trust proxy (for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
@@ -362,22 +366,32 @@ const gracefulShutdown = async (signal) => {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+// Catch-all to serve Next.js app
+app.all('*', (req, res) => {
+  return handle(req, res);
+});
+
 // Start server
-app.listen(PORT, async () => {
-  logger.info(`Docta. API server running on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  
-  // Test database connection (non-blocking)
-  try {
-    const dbHealth = await db.healthCheck();
-    if (dbHealth.healthy) {
-      logger.info('Database connection: OK');
-    } else {
-      logger.warn('Database connection: FAILED', { error: dbHealth.error });
+nextApp.prepare().then(() => {
+  app.listen(PORT, '0.0.0.0', async () => {
+    logger.info(`Docta. server running on port ${PORT}`);
+    logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    
+    // Test database connection (non-blocking)
+    try {
+      const dbHealth = await db.healthCheck();
+      if (dbHealth.healthy) {
+        logger.info('Database connection: OK');
+      } else {
+        logger.warn('Database connection: FAILED', { error: dbHealth.error });
+      }
+    } catch (error) {
+      logger.warn('Database connection check failed', { error: error.message });
     }
-  } catch (error) {
-    logger.warn('Database connection check failed', { error: error.message });
-  }
+  });
+}).catch(err => {
+  logger.error('Failed to prepare Next.js', err);
+  process.exit(1);
 });
 
 module.exports = app;
