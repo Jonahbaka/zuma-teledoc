@@ -24,6 +24,14 @@ export function AuthProvider({ children }) {
         setUser(response.data.user);
       }
     } catch (err) {
+      // Handle 431 error - clear corrupted tokens
+      if (err.response?.status === 431) {
+        console.warn('431 error during auth check - clearing corrupted tokens');
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+        }
+      }
       // Not authenticated - this is fine
       setUser(null);
     } finally {
