@@ -30,7 +30,7 @@ steps:
       - '--timeout=300'
       - '--cpu-boost'
       - '--startup-cpu-boost'
-      - '--set-env-vars=NODE_ENV=production'
+      - '--update-env-vars=NODE_ENV=production'
 
 # Build timeout (default is 10 minutes, we need more for Next.js)
 timeout: '1800s'  # 30 minutes total
