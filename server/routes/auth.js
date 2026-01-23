@@ -499,12 +499,30 @@ router.post('/login', async (req, res) => {
       });
     }
     
-    // Include error details for debugging (remove in production later)
+    // Check for database errors
+    if (error.code && error.code.startsWith('23')) { // PostgreSQL constraint errors
+      return res.status(500).json({
+        success: false,
+        error: 'Database constraint error',
+        detail: error.detail || error.message
+      });
+    }
+    
+    if (error.code === '42P01') { // Table doesn't exist
+      return res.status(500).json({
+        success: false,
+        error: 'Database table missing - migrations may need to run',
+        detail: error.message
+      });
+    }
+    
+    // Return error details for debugging
     res.status(500).json({
       success: false,
       error: 'Login failed',
-      debug: process.env.NODE_ENV !== 'production' ? error.message : undefined,
-      debugProd: error.message // Temporary - remove after debugging
+      errorType: error.name || 'Unknown',
+      errorCode: error.code || 'none',
+      errorMessage: error.message
     });
   }
 });
