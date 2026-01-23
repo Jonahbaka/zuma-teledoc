@@ -19,35 +19,6 @@ const db = require('./db');
 const logger = require('./middleware/logger');
 const { initSentry, sentryErrorHandler } = require('./middleware/sentry');
 
-// Routes
-const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users');
-const appointmentRoutes = require('./routes/appointments');
-const medicalRecordRoutes = require('./routes/medicalRecords');
-const messageRoutes = require('./routes/messages');
-const notificationRoutes = require('./routes/notifications');
-const adminRoutes = require('./routes/admin');
-const providerRoutes = require('./routes/providers');
-const visitRoutes = require('./routes/visits');
-const aiAssistRoutes = require('./routes/aiAssist');
-const subscriptionRoutes = require('./routes/subscriptions');
-const paymentRoutes = require('./routes/payments');
-const priorAuthRoutes = require('./routes/priorAuth');
-const claimsRoutes = require('./routes/claims');
-const insuranceRoutes = require('./routes/insurance');
-const rtbcRoutes = require('./routes/rtbc');
-const triageRoutes = require('./routes/triage');
-const prescriptionRoutes = require('./routes/prescriptions');
-const pharmacyRoutes = require('./routes/pharmacy');
-const triageQueueRoutes = require('./routes/triageQueue');
-const invitationRoutes = require('./routes/invitations');
-const stripeRoutes = require('./routes/stripe');
-const credentialingRoutes = require('./routes/credentialing');
-const membershipRoutes = require('./routes/membership');
-const contactRoutes = require('./routes/contact');
-const clinicalEncounterRoutes = require('./routes/clinicalEncounters');
-const testingLinksRoutes = require('./routes/testingLinks');
-
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -70,6 +41,14 @@ app.use((req, res, next) => {
   req.id = uuidv4();
   res.setHeader('X-Request-ID', req.id);
   next();
+});
+
+// START LISTENING IMMEDIATELY (required for Cloud Run health check)
+// This ensures the port is bound even while routes/middleware initialize
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server listening on port ${PORT}`);
+  logger.info(`Docta. server listening on port ${PORT}`);
+  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 // CORS configuration - MUST be before other middleware
@@ -283,6 +262,35 @@ app.get('/api/ready', async (req, res) => {
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+// Routes (loaded after server starts listening)
+const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/users');
+const appointmentRoutes = require('./routes/appointments');
+const medicalRecordRoutes = require('./routes/medicalRecords');
+const messageRoutes = require('./routes/messages');
+const notificationRoutes = require('./routes/notifications');
+const adminRoutes = require('./routes/admin');
+const providerRoutes = require('./routes/providers');
+const visitRoutes = require('./routes/visits');
+const aiAssistRoutes = require('./routes/aiAssist');
+const subscriptionRoutes = require('./routes/subscriptions');
+const paymentRoutes = require('./routes/payments');
+const priorAuthRoutes = require('./routes/priorAuth');
+const claimsRoutes = require('./routes/claims');
+const insuranceRoutes = require('./routes/insurance');
+const rtbcRoutes = require('./routes/rtbc');
+const triageRoutes = require('./routes/triage');
+const prescriptionRoutes = require('./routes/prescriptions');
+const pharmacyRoutes = require('./routes/pharmacy');
+const triageQueueRoutes = require('./routes/triageQueue');
+const invitationRoutes = require('./routes/invitations');
+const stripeRoutes = require('./routes/stripe');
+const credentialingRoutes = require('./routes/credentialing');
+const membershipRoutes = require('./routes/membership');
+const contactRoutes = require('./routes/contact');
+const clinicalEncounterRoutes = require('./routes/clinicalEncounters');
+const testingLinksRoutes = require('./routes/testingLinks');
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -382,37 +390,29 @@ app.all('*', (req, res) => {
   return handle(req, res);
 });
 
-// START LISTENING IMMEDIATELY (required for Cloud Run health check)
-// This MUST happen before Next.js initialization
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server listening on port ${PORT}`);
-  logger.info(`Docta. server listening on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+// Initialize Next.js AFTER server is already listening
+const next = require('next');
+const dev = process.env.NODE_ENV !== 'production';
+nextApp = next({ dev });
+
+nextApp.prepare().then(() => {
+  handle = nextApp.getRequestHandler();
+  nextReady = true;
+  logger.info('Next.js is ready to serve requests');
   
-  // Initialize Next.js AFTER server is already listening
-  const next = require('next');
-  const dev = process.env.NODE_ENV !== 'production';
-  nextApp = next({ dev });
-  
-  nextApp.prepare().then(() => {
-    handle = nextApp.getRequestHandler();
-    nextReady = true;
-    logger.info('Next.js is ready to serve requests');
-    
-    // Test database connection (non-blocking)
-    db.healthCheck().then(dbHealth => {
-      if (dbHealth.healthy) {
-        logger.info('Database connection: OK');
-      } else {
-        logger.warn('Database connection: FAILED', { error: dbHealth.error });
-      }
-    }).catch(error => {
-      logger.warn('Database connection check failed', { error: error.message });
-    });
-  }).catch(err => {
-    logger.error('Failed to prepare Next.js', err);
-    // Don't exit - API routes still work
+  // Test database connection (non-blocking)
+  db.healthCheck().then(dbHealth => {
+    if (dbHealth.healthy) {
+      logger.info('Database connection: OK');
+    } else {
+      logger.warn('Database connection: FAILED', { error: dbHealth.error });
+    }
+  }).catch(error => {
+    logger.warn('Database connection check failed', { error: error.message });
   });
+}).catch(err => {
+  logger.error('Failed to prepare Next.js', err);
+  // Don't exit - API routes still work
 });
 
 module.exports = app;
