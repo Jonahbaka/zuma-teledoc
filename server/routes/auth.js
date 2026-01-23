@@ -491,38 +491,9 @@ router.post('/login', async (req, res) => {
     
     logger.error('Login error', { error: error.message, stack: error.stack });
     
-    // Check for JWT secret configuration error
-    if (error.message && error.message.includes('secretOrPrivateKey')) {
-      return res.status(500).json({
-        success: false,
-        error: 'Server configuration error: JWT secrets not configured'
-      });
-    }
-    
-    // Check for database errors
-    if (error.code && error.code.startsWith('23')) { // PostgreSQL constraint errors
-      return res.status(500).json({
-        success: false,
-        error: 'Database constraint error',
-        detail: error.detail || error.message
-      });
-    }
-    
-    if (error.code === '42P01') { // Table doesn't exist
-      return res.status(500).json({
-        success: false,
-        error: 'Database table missing - migrations may need to run',
-        detail: error.message
-      });
-    }
-    
-    // Return error details for debugging
     res.status(500).json({
       success: false,
-      error: 'Login failed',
-      errorType: error.name || 'Unknown',
-      errorCode: error.code || 'none',
-      errorMessage: error.message
+      error: 'Login failed'
     });
   }
 });

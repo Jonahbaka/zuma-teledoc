@@ -36,20 +36,6 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady });
 });
 
-// Diagnostic endpoint to check env vars (remove after debugging)
-app.get('/api/debug/env', (req, res) => {
-  const dbUrl = process.env.DATABASE_URL;
-  res.json({
-    hasDbUrl: !!dbUrl,
-    dbUrlStart: dbUrl ? dbUrl.substring(0, 30) + '...' : 'NOT SET',
-    dbUrlHost: dbUrl ? (dbUrl.match(/@([^:\/]+)/) || [])[1] || 'parse error' : 'NOT SET',
-    nodeEnv: process.env.NODE_ENV || 'not set',
-    envVarsSet: ['DATABASE_URL', 'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'SESSION_SECRET', 'ENCRYPTION_KEY']
-      .map(k => ({ [k]: !!process.env[k] }))
-      .reduce((a, b) => ({...a, ...b}), {})
-  });
-});
-
 /**
  * Initialize all services AFTER port is already bound
  */
