@@ -27,21 +27,31 @@ const {
   changePasswordSchema
 } = require('../../lib/validation');
 
+const crypto = require('crypto');
 const router = express.Router();
 
 const BCRYPT_ROUNDS = 12;
-const ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET;
-const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET;
-const ACCESS_TOKEN_EXPIRES = process.env.JWT_ACCESS_EXPIRES || '15m';
-const REFRESH_TOKEN_EXPIRES = process.env.JWT_REFRESH_EXPIRES || '7d';
 
-// Validate required environment variables
+// Generate fallback secrets if not provided (for development/initial deployment)
+// WARNING: In production, always set JWT_ACCESS_SECRET and JWT_REFRESH_SECRET env vars
+const generateFallbackSecret = () => crypto.randomBytes(64).toString('hex');
+
+// Use global storage to ensure same secret is used across all modules
+let ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET;
+let REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET;
+
 if (!ACCESS_TOKEN_SECRET) {
-  console.error('FATAL: JWT_ACCESS_SECRET environment variable is not set!');
+  // Store in global so auth middleware can use the same secret
+  ACCESS_TOKEN_SECRET = global.__JWT_ACCESS_SECRET || (global.__JWT_ACCESS_SECRET = generateFallbackSecret());
+  console.warn('WARNING: JWT_ACCESS_SECRET not set, using generated fallback. Set this in production!');
 }
 if (!REFRESH_TOKEN_SECRET) {
-  console.error('FATAL: JWT_REFRESH_SECRET environment variable is not set!');
+  REFRESH_TOKEN_SECRET = global.__JWT_REFRESH_SECRET || (global.__JWT_REFRESH_SECRET = generateFallbackSecret());
+  console.warn('WARNING: JWT_REFRESH_SECRET not set, using generated fallback. Set this in production!');
 }
+
+const ACCESS_TOKEN_EXPIRES = process.env.JWT_ACCESS_EXPIRES || '15m';
+const REFRESH_TOKEN_EXPIRES = process.env.JWT_REFRESH_EXPIRES || '7d';
 
 /**
  * Generate access and refresh tokens

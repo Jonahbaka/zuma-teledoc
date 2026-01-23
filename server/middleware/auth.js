@@ -4,10 +4,20 @@
  */
 
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const db = require('../db');
 const logger = require('./logger');
 
-const ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET;
+// Generate fallback secret if not provided (matches auth.js logic)
+const generateFallbackSecret = () => crypto.randomBytes(64).toString('hex');
+
+let ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET;
+if (!ACCESS_TOKEN_SECRET) {
+  // Use a consistent fallback that matches auth.js - we need the SAME secret
+  // This is stored in memory and shared across the app
+  ACCESS_TOKEN_SECRET = global.__JWT_ACCESS_SECRET || (global.__JWT_ACCESS_SECRET = generateFallbackSecret());
+  console.warn('WARNING: JWT_ACCESS_SECRET not set in auth middleware, using fallback.');
+}
 
 /**
  * Verify JWT access token
