@@ -22,10 +22,51 @@ const { initSentry, sentryErrorHandler } = require('./middleware/sentry');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Next.js will be initialized AFTER server starts listening
+// Track startup status
 let nextApp = null;
 let handle = null;
 let nextReady = false;
+
+// 1. START LISTENING IMMEDIATELY (Satisfies Cloud Run health check)
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚀 PORT OPEN: ${PORT} (0.0.0.0)`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🕒 Time: ${new Date().toISOString()}`);
+  
+  // 2. Load heavy dependencies AFTER port is bound
+  try {
+    initializeServices();
+  } catch (err) {
+    console.error('❌ CRITICAL STARTUP ERROR:', err);
+    // Don't process.exit(1) yet, keep the port open so we can see logs
+  }
+});
+
+// Basic health check available immediately
+app.get('/api/health/minimal', (req, res) => {
+  res.status(200).json({ status: 'ok', port: PORT, nextReady });
+});
+
+async function initializeServices() {
+  console.log('📦 Initializing services...');
+  
+  // Database
+  const dbHealth = await db.healthCheck();
+  console.log(`🗄️ Database: ${dbHealth.healthy ? 'OK' : 'FAILED (' + dbHealth.error + ')'}`);
+
+  // Initialize Next.js in background
+  const next = require('next');
+  const dev = process.env.NODE_ENV !== 'production';
+  nextApp = next({ dev });
+  
+  nextApp.prepare().then(() => {
+    handle = nextApp.getRequestHandler();
+    nextReady = true;
+    console.log('✅ Next.js is ready');
+  }).catch(err => {
+    console.error('❌ Failed to prepare Next.js:', err.message);
+  });
+}
 
 // Trust proxy (for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
@@ -41,14 +82,6 @@ app.use((req, res, next) => {
   req.id = uuidv4();
   res.setHeader('X-Request-ID', req.id);
   next();
-});
-
-// START LISTENING IMMEDIATELY (required for Cloud Run health check)
-// This ensures the port is bound even while routes/middleware initialize
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server listening on port ${PORT}`);
-  logger.info(`Docta. server listening on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 // CORS configuration - MUST be before other middleware
@@ -388,31 +421,6 @@ app.all('*', (req, res) => {
     `);
   }
   return handle(req, res);
-});
-
-// Initialize Next.js AFTER server is already listening
-const next = require('next');
-const dev = process.env.NODE_ENV !== 'production';
-nextApp = next({ dev });
-
-nextApp.prepare().then(() => {
-  handle = nextApp.getRequestHandler();
-  nextReady = true;
-  logger.info('Next.js is ready to serve requests');
-  
-  // Test database connection (non-blocking)
-  db.healthCheck().then(dbHealth => {
-    if (dbHealth.healthy) {
-      logger.info('Database connection: OK');
-    } else {
-      logger.warn('Database connection: FAILED', { error: dbHealth.error });
-    }
-  }).catch(error => {
-    logger.warn('Database connection check failed', { error: error.message });
-  });
-}).catch(err => {
-  logger.error('Failed to prepare Next.js', err);
-  // Don't exit - API routes still work
 });
 
 module.exports = app;

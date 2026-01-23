@@ -21,9 +21,6 @@ ENV NODE_ENV production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Create logs directory with proper permissions
-RUN mkdir -p /app/logs && chown -R nextjs:nodejs /app/logs
-
 # Copy the build output
 COPY --from=builder /app/public ./public
 # Note: If you are NOT using Next.js, you might need to adjust the line below to point to your build folder
