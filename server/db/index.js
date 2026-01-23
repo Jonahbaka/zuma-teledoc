@@ -35,10 +35,10 @@ const dbConfig = {
 
 const pool = new Pool(dbConfig);
 
-// Connection error handling
+// Connection error handling - DO NOT exit, just log
 pool.on('error', (err) => {
   console.error('Unexpected database pool error:', err);
-  process.exit(-1);
+  // DO NOT process.exit() - this kills Cloud Run containers before port binds
 });
 
 pool.on('connect', () => {
