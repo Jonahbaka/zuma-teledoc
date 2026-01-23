@@ -10,6 +10,14 @@ const path = require('path');
 // Database configuration
 let connectionString = process.env.DATABASE_URL;
 
+// Log database connection info (without password)
+if (connectionString) {
+  const sanitized = connectionString.replace(/\/\/[^:]+:[^@]+@/, '//***:***@');
+  console.log('📊 DATABASE_URL configured:', sanitized);
+} else {
+  console.error('❌ DATABASE_URL is NOT SET! Will default to localhost:5432');
+}
+
 // Configure SSL for Aiven Cloud
 let sslConfig = false;
 if (process.env.DATABASE_URL && (process.env.DATABASE_URL.includes('aivencloud.com') || process.env.DATABASE_URL.includes('sslmode=require'))) {
