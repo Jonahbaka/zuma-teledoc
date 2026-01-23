@@ -20,7 +20,7 @@ const logger = require('./middleware/logger');
 const { initSentry, sentryErrorHandler } = require('./middleware/sentry');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080;
 
 // Next.js will be initialized AFTER server starts listening
 let nextApp = null;
