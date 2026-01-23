@@ -51,11 +51,10 @@ const testingLinksRoutes = require('./routes/testingLinks');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Initialize Next.js
-const next = require('next');
-const dev = process.env.NODE_ENV !== 'production';
-const nextApp = next({ dev });
-const handle = nextApp.getRequestHandler();
+// Next.js will be initialized AFTER server starts listening
+let nextApp = null;
+let handle = null;
+let nextReady = false;
 
 // Trust proxy (for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
@@ -366,12 +365,9 @@ const gracefulShutdown = async (signal) => {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// Track Next.js readiness
-let nextReady = false;
-
-// Catch-all to serve Next.js app
+// Catch-all to serve Next.js app (must be last route)
 app.all('*', (req, res) => {
-  if (!nextReady) {
+  if (!nextReady || !handle) {
     // Return a simple loading page while Next.js prepares
     return res.status(200).send(`
       <!DOCTYPE html>
@@ -387,30 +383,36 @@ app.all('*', (req, res) => {
 });
 
 // START LISTENING IMMEDIATELY (required for Cloud Run health check)
-const server = app.listen(PORT, '0.0.0.0', async () => {
+// This MUST happen before Next.js initialization
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server listening on port ${PORT}`);
   logger.info(`Docta. server listening on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
   
-  // Test database connection (non-blocking)
-  try {
-    const dbHealth = await db.healthCheck();
-    if (dbHealth.healthy) {
-      logger.info('Database connection: OK');
-    } else {
-      logger.warn('Database connection: FAILED', { error: dbHealth.error });
-    }
-  } catch (error) {
-    logger.warn('Database connection check failed', { error: error.message });
-  }
-});
-
-// Prepare Next.js in the background AFTER server is listening
-nextApp.prepare().then(() => {
-  nextReady = true;
-  logger.info('Next.js is ready to serve requests');
-}).catch(err => {
-  logger.error('Failed to prepare Next.js', err);
-  // Don't exit - API routes still work
+  // Initialize Next.js AFTER server is already listening
+  const next = require('next');
+  const dev = process.env.NODE_ENV !== 'production';
+  nextApp = next({ dev });
+  
+  nextApp.prepare().then(() => {
+    handle = nextApp.getRequestHandler();
+    nextReady = true;
+    logger.info('Next.js is ready to serve requests');
+    
+    // Test database connection (non-blocking)
+    db.healthCheck().then(dbHealth => {
+      if (dbHealth.healthy) {
+        logger.info('Database connection: OK');
+      } else {
+        logger.warn('Database connection: FAILED', { error: dbHealth.error });
+      }
+    }).catch(error => {
+      logger.warn('Database connection check failed', { error: error.message });
+    });
+  }).catch(err => {
+    logger.error('Failed to prepare Next.js', err);
+    // Don't exit - API routes still work
+  });
 });
 
 module.exports = app;

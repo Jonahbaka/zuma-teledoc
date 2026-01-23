@@ -49,33 +49,37 @@ const logger = winston.createLogger({
   ]
 });
 
-// Add file transports in production
+// Add file transports in production (wrapped in try-catch to prevent startup failures)
 if (process.env.NODE_ENV === 'production') {
-  // Error log file
-  logger.add(new winston.transports.File({
-    filename: path.join(logPath, 'error.log'),
-    level: 'error',
-    format: fileFormat,
-    maxsize: 10 * 1024 * 1024, // 10MB
-    maxFiles: 5
-  }));
-  
-  // Combined log file
-  logger.add(new winston.transports.File({
-    filename: path.join(logPath, 'combined.log'),
-    format: fileFormat,
-    maxsize: 10 * 1024 * 1024, // 10MB
-    maxFiles: 10
-  }));
-  
-  // Audit log file (HIPAA requirement)
-  logger.add(new winston.transports.File({
-    filename: path.join(logPath, 'audit.log'),
-    level: 'info',
-    format: fileFormat,
-    maxsize: 50 * 1024 * 1024, // 50MB
-    maxFiles: 30 // Keep 30 days of audit logs
-  }));
+  try {
+    // Error log file
+    logger.add(new winston.transports.File({
+      filename: path.join(logPath, 'error.log'),
+      level: 'error',
+      format: fileFormat,
+      maxsize: 10 * 1024 * 1024, // 10MB
+      maxFiles: 5
+    }));
+    
+    // Combined log file
+    logger.add(new winston.transports.File({
+      filename: path.join(logPath, 'combined.log'),
+      format: fileFormat,
+      maxsize: 10 * 1024 * 1024, // 10MB
+      maxFiles: 10
+    }));
+    
+    // Audit log file (HIPAA requirement)
+    logger.add(new winston.transports.File({
+      filename: path.join(logPath, 'audit.log'),
+      level: 'info',
+      format: fileFormat,
+      maxsize: 50 * 1024 * 1024, // 50MB
+      maxFiles: 30 // Keep 30 days of audit logs
+    }));
+  } catch (err) {
+    console.warn('Could not add file transports to logger:', err.message);
+  }
 }
 
 // Audit logging helper (HIPAA compliance)
