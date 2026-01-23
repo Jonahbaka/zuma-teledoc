@@ -499,9 +499,12 @@ router.post('/login', async (req, res) => {
       });
     }
     
+    // Include error details for debugging (remove in production later)
     res.status(500).json({
       success: false,
-      error: 'Login failed'
+      error: 'Login failed',
+      debug: process.env.NODE_ENV !== 'production' ? error.message : undefined,
+      debugProd: error.message // Temporary - remove after debugging
     });
   }
 });
