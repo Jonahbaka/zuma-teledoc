@@ -36,6 +36,40 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady });
 });
 
+// Database diagnostic endpoint
+app.get('/api/db-check', async (req, res) => {
+  const dbUrl = process.env.DATABASE_URL;
+  const hasDbUrl = !!dbUrl;
+  const dbHost = dbUrl ? (dbUrl.match(/@([^:\/]+)/) || [])[1] : 'NOT SET';
+  
+  let dbConnected = false;
+  let dbError = null;
+  
+  if (hasDbUrl) {
+    try {
+      const { Pool } = require('pg');
+      const testPool = new Pool({ 
+        connectionString: dbUrl,
+        ssl: dbUrl.includes('aivencloud.com') ? { rejectUnauthorized: false } : false,
+        connectionTimeoutMillis: 5000
+      });
+      const result = await testPool.query('SELECT NOW()');
+      dbConnected = true;
+      await testPool.end();
+    } catch (err) {
+      dbError = err.message;
+    }
+  }
+  
+  res.json({
+    hasDbUrl,
+    dbHost,
+    dbConnected,
+    dbError,
+    nodeEnv: process.env.NODE_ENV
+  });
+});
+
 /**
  * Initialize all services AFTER port is already bound
  */
