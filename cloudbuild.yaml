@@ -1,0 +1,41 @@
+# Cloud Build configuration for Docta. Telehealth Platform
+# This file configures the build and deployment to Cloud Run
+
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/zuma-teledoc:$COMMIT_SHA', '.']
+    timeout: '1200s'  # 20 minutes for build
+
+  # Push the image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/zuma-teledoc:$COMMIT_SHA']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'zuma-teledoc'
+      - '--image=gcr.io/$PROJECT_ID/zuma-teledoc:$COMMIT_SHA'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--port=8080'
+      - '--cpu=2'
+      - '--memory=2Gi'
+      - '--min-instances=0'
+      - '--max-instances=20'
+      - '--timeout=300'
+      - '--cpu-boost'
+      - '--startup-cpu-boost'
+      - '--set-env-vars=NODE_ENV=production'
+
+# Build timeout (default is 10 minutes, we need more for Next.js)
+timeout: '1800s'  # 30 minutes total
+
+# Use higher-spec machine for faster builds
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
