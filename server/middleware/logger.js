@@ -6,8 +6,20 @@
 const winston = require('winston');
 const path = require('path');
 
+const fs = require('fs');
+
 const logLevel = process.env.LOG_LEVEL || 'info';
-const logPath = process.env.LOG_FILE_PATH || './logs';
+// Use /tmp in production (always writable on Cloud Run), fallback to ./logs for local dev
+const logPath = process.env.LOG_FILE_PATH || (process.env.NODE_ENV === 'production' ? '/tmp/logs' : './logs');
+
+// Ensure log directory exists
+try {
+  if (!fs.existsSync(logPath)) {
+    fs.mkdirSync(logPath, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`Could not create log directory ${logPath}:`, err.message);
+}
 
 // Custom format for console output
 const consoleFormat = winston.format.combine(
