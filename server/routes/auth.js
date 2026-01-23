@@ -35,6 +35,14 @@ const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET;
 const ACCESS_TOKEN_EXPIRES = process.env.JWT_ACCESS_EXPIRES || '15m';
 const REFRESH_TOKEN_EXPIRES = process.env.JWT_REFRESH_EXPIRES || '7d';
 
+// Validate required environment variables
+if (!ACCESS_TOKEN_SECRET) {
+  console.error('FATAL: JWT_ACCESS_SECRET environment variable is not set!');
+}
+if (!REFRESH_TOKEN_SECRET) {
+  console.error('FATAL: JWT_REFRESH_SECRET environment variable is not set!');
+}
+
 /**
  * Generate access and refresh tokens
  */
@@ -471,7 +479,16 @@ router.post('/login', async (req, res) => {
       });
     }
     
-    logger.error('Login error', { error: error.message });
+    logger.error('Login error', { error: error.message, stack: error.stack });
+    
+    // Check for JWT secret configuration error
+    if (error.message && error.message.includes('secretOrPrivateKey')) {
+      return res.status(500).json({
+        success: false,
+        error: 'Server configuration error: JWT secrets not configured'
+      });
+    }
+    
     res.status(500).json({
       success: false,
       error: 'Login failed'
