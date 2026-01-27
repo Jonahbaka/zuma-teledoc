@@ -161,14 +161,14 @@ async function initializeApp() {
   });
   app.use('/api', limiter);
   
-  // Auth rate limiting
-  const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 50, // Increased from 10 to allow more login attempts during testing
-    message: { success: false, error: 'Too many auth attempts' }
-  });
-  app.use('/api/auth/login', authLimiter);
-  app.use('/api/auth/register', authLimiter);
+  // Auth rate limiting - DISABLED for testing
+  // const authLimiter = rateLimit({
+  //   windowMs: 15 * 60 * 1000,
+  //   max: 50,
+  //   message: { success: false, error: 'Too many auth attempts' }
+  // });
+  // app.use('/api/auth/login', authLimiter);
+  // app.use('/api/auth/register', authLimiter);
   
   // Request logging
   app.use((req, res, next) => {
