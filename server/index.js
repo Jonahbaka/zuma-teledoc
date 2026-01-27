@@ -164,7 +164,7 @@ async function initializeApp() {
   // Auth rate limiting
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 10,
+    max: 50, // Increased from 10 to allow more login attempts during testing
     message: { success: false, error: 'Too many auth attempts' }
   });
   app.use('/api/auth/login', authLimiter);
