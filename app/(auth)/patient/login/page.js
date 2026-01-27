@@ -25,6 +25,15 @@ function PatientLoginContent() {
     password: ''
   });
 
+  // Clear any stale tokens when landing on login page
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+    }
+  }, []);
+
   // Check if test token is valid
   useEffect(() => {
     if (testToken) {

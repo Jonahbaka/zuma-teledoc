@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Eye, EyeOff, Mail, Lock, ShieldCheck, Loader2, KeyRound } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { toast } from '@/components/ui/use-toast';
@@ -11,6 +11,15 @@ import { Label } from '@/components/ui/label';
 export default function AdminLoginPage() {
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Clear any stale tokens when landing on login page
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+    }
+  }, []);
   const [showPassword, setShowPassword] = useState(false);
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaCode, setMfaCode] = useState('');

@@ -27,6 +27,15 @@ function ProviderLoginContent() {
   const fromInvite = searchParams.get('from') === 'invite';
   const testToken = searchParams.get('test_token');
 
+  // Clear any stale tokens when landing on login page
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+    }
+  }, []);
+
   useEffect(() => {
     if (fromInvite) {
       toast({
