@@ -187,39 +187,46 @@ async function initializeApp() {
   
   console.log('📚 Loading API routes...');
   
-  // Load routes
-  try {
-    app.use('/api/auth', require('./routes/auth'));
-    app.use('/api/users', require('./routes/users'));
-    app.use('/api/appointments', require('./routes/appointments'));
-    app.use('/api/medical-records', require('./routes/medicalRecords'));
-    app.use('/api/messages', require('./routes/messages'));
-    app.use('/api/notifications', require('./routes/notifications'));
-    app.use('/api/admin', require('./routes/admin'));
-    app.use('/api/providers', require('./routes/providers'));
-    app.use('/api/visits', require('./routes/visits'));
-    app.use('/api/ai-assist', require('./routes/aiAssist'));
-    app.use('/api/subscriptions', require('./routes/subscriptions'));
-    app.use('/api/payments', require('./routes/payments'));
-    app.use('/api/prior-auth', require('./routes/priorAuth'));
-    app.use('/api/claims', require('./routes/claims'));
-    app.use('/api/insurance', require('./routes/insurance'));
-    app.use('/api/rtbc', require('./routes/rtbc'));
-    app.use('/api/triage', require('./routes/triage'));
-    app.use('/api/prescriptions', require('./routes/prescriptions'));
-    app.use('/api/pharmacy', require('./routes/pharmacy'));
-    app.use('/api/triage-queue', require('./routes/triageQueue'));
-    app.use('/api/invitations', require('./routes/invitations'));
-    app.use('/api/stripe', require('./routes/stripe'));
-    app.use('/api/membership', require('./routes/membership'));
-    app.use('/api/credentialing', require('./routes/credentialing'));
-    app.use('/api/contact', require('./routes/contact'));
-    app.use('/api/clinical-encounters', require('./routes/clinicalEncounters'));
-    app.use('/api/testing-links', require('./routes/testingLinks'));
-    console.log('✅ API routes loaded');
-  } catch (err) {
-    console.error('❌ Failed to load some routes:', err.message);
-  }
+  // Helper to safely load routes
+  const loadRoute = (path, routeModule) => {
+    try {
+      app.use(path, require(routeModule));
+      return true;
+    } catch (err) {
+      console.error(`❌ Failed to load ${path}:`, err.message);
+      return false;
+    }
+  };
+  
+  // Load routes individually to identify failures
+  loadRoute('/api/auth', './routes/auth');
+  loadRoute('/api/users', './routes/users');
+  loadRoute('/api/appointments', './routes/appointments');
+  loadRoute('/api/medical-records', './routes/medicalRecords');
+  loadRoute('/api/messages', './routes/messages');
+  loadRoute('/api/notifications', './routes/notifications');
+  loadRoute('/api/admin', './routes/admin');
+  loadRoute('/api/providers', './routes/providers');
+  loadRoute('/api/visits', './routes/visits');
+  loadRoute('/api/ai-assist', './routes/aiAssist');
+  loadRoute('/api/subscriptions', './routes/subscriptions');
+  loadRoute('/api/payments', './routes/payments');
+  loadRoute('/api/prior-auth', './routes/priorAuth');
+  loadRoute('/api/claims', './routes/claims');
+  loadRoute('/api/insurance', './routes/insurance');
+  loadRoute('/api/rtbc', './routes/rtbc');
+  loadRoute('/api/triage', './routes/triage');
+  loadRoute('/api/prescriptions', './routes/prescriptions');
+  loadRoute('/api/pharmacy', './routes/pharmacy');
+  loadRoute('/api/triage-queue', './routes/triageQueue');
+  loadRoute('/api/invitations', './routes/invitations');
+  loadRoute('/api/stripe', './routes/stripe');
+  loadRoute('/api/membership', './routes/membership');
+  loadRoute('/api/credentialing', './routes/credentialing');
+  loadRoute('/api/contact', './routes/contact');
+  loadRoute('/api/clinical-encounters', './routes/clinicalEncounters');
+  loadRoute('/api/testing-links', './routes/testingLinks');
+  console.log('✅ API routes loading complete');
   
   // 404 for API
   app.use('/api/*', (req, res) => {
