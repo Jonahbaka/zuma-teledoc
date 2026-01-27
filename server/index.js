@@ -150,10 +150,10 @@ async function initializeApp() {
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(cookieParser(process.env.SESSION_SECRET));
   
-  // Rate limiting
+  // Rate limiting - INCREASED for testing
   const limiter = rateLimit({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000, // Increased from 100
     message: { success: false, error: 'Too many requests' },
     standardHeaders: true,
     legacyHeaders: false,
