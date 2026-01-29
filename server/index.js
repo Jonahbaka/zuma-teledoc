@@ -33,7 +33,7 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady });
+  res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady, version: 'v2-no-ratelimit' });
 });
 
 /**
