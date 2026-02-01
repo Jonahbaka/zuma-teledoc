@@ -19,11 +19,32 @@ export function AuthProvider({ children }) {
 
   const checkAuth = async () => {
     try {
+      // Skip auth check if no token exists (user is definitely not logged in)
+      if (typeof window !== 'undefined') {
+        const token = localStorage.getItem('accessToken');
+        if (!token) {
+          setLoading(false);
+          return;
+        }
+      }
+      
       const response = await api.get('/auth/me');
       if (response.data.success) {
         setUser(response.data.user);
       }
     } catch (err) {
+      // 401 is expected when user is not logged in - don't log it
+      if (err.response?.status === 401) {
+        // Silently clear tokens and return - this is expected
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
+        }
+        setLoading(false);
+        return;
+      }
+      
       // Handle 431 error - clear corrupted tokens
       if (err.response?.status === 431) {
         console.warn('431 error during auth check - clearing corrupted tokens');

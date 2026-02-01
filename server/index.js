@@ -226,6 +226,7 @@ async function initializeApp() {
   loadRoute('/api/contact', './routes/contact');
   loadRoute('/api/clinical-encounters', './routes/clinicalEncounters');
   loadRoute('/api/testing-links', './routes/testingLinks');
+  loadRoute('/api/interop', './routes/interoperability');
   console.log('✅ API routes loading complete');
   
   // 404 for API

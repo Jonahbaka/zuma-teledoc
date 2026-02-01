@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, Calendar, Users, FileText, MessageSquare, 
   Clock, ClipboardList, Settings, User, Bell, Sparkles, Receipt, BrainCircuit, Video, Eye,
-  Pill, ListOrdered
+  Pill, ListOrdered, Share2, Building2, BarChart3
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
@@ -21,6 +21,11 @@ const navigation = [
   { name: 'Patients', href: '/provider/patients', icon: Users },
   { name: 'Visit Notes', href: '/provider/visits', icon: ClipboardList },
   { name: 'Claims', href: '/provider/claims', icon: Receipt },
+  // Interoperability Hub - Hospital Integration
+  { name: 'Smart Referrals', href: '/provider/referrals', icon: Share2 },
+  { name: 'Hospital Network', href: '/provider/hospital-network', icon: Building2 },
+  { name: 'Outcomes Analytics', href: '/provider/analytics', icon: BarChart3 },
+  // Standard navigation
   { name: 'Messages', href: '/provider/messages', icon: MessageSquare },
   { name: 'Notifications', href: '/provider/notifications', icon: Bell },
   { name: 'Profile', href: '/provider/profile', icon: User },
