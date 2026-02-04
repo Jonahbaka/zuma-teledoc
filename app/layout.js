@@ -2,6 +2,7 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/components/providers/AuthProvider';
 import ConditionalSiteFooter from '@/components/layouts/ConditionalSiteFooter';
+import GoogleAnalytics from '@/components/analytics/GoogleAnalytics';
 import { THEME_STORAGE_KEY } from '@/lib/theme';
 
 export const metadata = {
@@ -22,11 +23,20 @@ export const metadata = {
     siteName: 'DoctaRx',
     title: 'DoctaRx | Telehealth & E-Prescribing Platform',
     description: 'Secure telehealth platform for providers and patients. Manage prescriptions, video consults, and medical records online.',
+    images: [
+      {
+        url: 'https://doctarx.com/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'DoctaRx - Telehealth & E-Prescribing Platform',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'DoctaRx | Telehealth & E-Prescribing Platform',
     description: 'Secure telehealth platform for providers and patients. Manage prescriptions, video consults, and medical records online.',
+    images: ['https://doctarx.com/og-image.png'],
   },
   icons: {
     icon: [
@@ -65,6 +75,7 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body className="min-h-screen bg-background font-sans antialiased" suppressHydrationWarning>
+        <GoogleAnalytics />
         <AuthProvider>
           {children}
           <ConditionalSiteFooter />

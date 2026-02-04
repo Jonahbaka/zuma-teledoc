@@ -2,8 +2,7 @@
 User-agent: *
 Allow: /
 Disallow: /api/
-Disallow: /secure/
-Disallow: /admin/
+Disallow: /secure/admin
 Disallow: /_next/
 
 # Sitemap
