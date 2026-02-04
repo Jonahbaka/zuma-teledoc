@@ -11,7 +11,7 @@ const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { auditMiddleware } = require('../middleware/audit');
 const logger = require('../middleware/logger');
-const { sendEmail } = require('../services/email');
+const { sendEmail, generateEmailTemplate } = require('../services/email');
 const { keysToCamel, keysToSnake } = require('../../lib/utils');
 
 /**
@@ -91,36 +91,81 @@ router.post('/',
 
       const invitation = keysToCamel(rows[0]);
 
-      // Send invitation email
+      // Send invitation email with elegant template
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
       const inviteLink = `${baseUrl}/${type}/register?token=${token}`;
+      const inviterName = `${req.user.firstName} ${req.user.lastName}`;
+      const roleName = type === 'admin' ? 'Administrator' : 'Healthcare Provider';
+
+      const features = type === 'provider' ? [
+        { icon: '📹', text: 'HD Video consultations with patients' },
+        { icon: '📋', text: 'AI-powered clinical documentation' },
+        { icon: '💊', text: 'Electronic prescribing (eRx)' },
+        { icon: '💳', text: 'Integrated billing and claims' },
+        { icon: '📊', text: 'Practice analytics dashboard' }
+      ] : [
+        { icon: '👥', text: 'User and provider management' },
+        { icon: '📈', text: 'Platform analytics and insights' },
+        { icon: '🔐', text: 'Role-based access control' },
+        { icon: '📝', text: 'Audit logs and compliance tools' }
+      ];
+
+      const featuresHtml = features.map(f => `<li style="margin-bottom: 8px;">${f.icon} ${f.text}</li>`).join('');
+
+      const inviteBodyContent = `
+        <p style="margin: 0 0 24px 0; font-size: 18px;">
+          Hello <strong>${firstName || 'there'}</strong>,
+        </p>
+        
+        <p style="margin: 0 0 24px 0;">
+          <strong>${inviterName}</strong> has invited you to join <strong style="color: #7c3aed;">Docta.</strong> as a <strong>${roleName}</strong>!
+        </p>
+        
+        ${personalMessage ? `
+        <div style="background: #f3e8ff; border-radius: 12px; padding: 20px; margin: 24px 0; border-left: 4px solid #7c3aed;">
+          <p style="margin: 0; font-style: italic; color: #6b21a8;">
+            "${personalMessage}"
+          </p>
+          <p style="margin: 8px 0 0 0; font-size: 13px; color: #9333ea;">— ${inviterName}</p>
+        </div>
+        ` : ''}
+        
+        <div style="background: linear-gradient(135deg, #10b98110 0%, #7c3aed10 100%); border-radius: 12px; padding: 24px; margin: 24px 0; border: 1px solid #e2e8f0;">
+          <p style="margin: 0 0 16px 0; font-weight: 600; color: #1e1b4b; font-size: 17px;">
+            🏥 As a Docta. ${roleName}, you'll have access to:
+          </p>
+          <ul style="margin: 0; padding-left: 20px; color: #334155;">
+            ${featuresHtml}
+          </ul>
+        </div>
+        
+        <p style="margin: 24px 0; font-size: 14px; color: #64748b;">
+          This invitation expires on <strong>${expiresAt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong>.
+        </p>
+      `;
+
+      const inviteHtml = generateEmailTemplate({
+        preheader: `${inviterName} has invited you to join Docta. as a ${roleName}`,
+        headerIcon: type === 'provider' ? '🩺' : '🛡️',
+        headerTitle: "You're Invited!",
+        headerSubtitle: `Join Docta. as a ${roleName}`,
+        headerColor: '#10b981',
+        headerColorEnd: '#7c3aed',
+        bodyContent: inviteBodyContent,
+        ctaButton: {
+          text: 'Accept Invitation →',
+          url: inviteLink,
+          color: '#10b981',
+          colorEnd: '#059669'
+        },
+        footerNote: "If you didn't expect this invitation, you can safely ignore this email.",
+        recipientEmail: email
+      });
 
       await sendEmail({
         to: email,
-        subject: `You're invited to join Docta as a ${type === 'admin' ? 'Administrator' : 'Healthcare Provider'}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 30px; text-align: center;">
-              <h1 style="color: white; margin: 0;">Docta Healthcare</h1>
-            </div>
-            <div style="padding: 30px; background: #f9fafb;">
-              <h2>Hello ${firstName || 'there'},</h2>
-              <p>You've been invited to join Docta as a ${type === 'admin' ? 'Administrator' : 'Healthcare Provider'}.</p>
-              ${personalMessage ? `<p style="background: #e5e7eb; padding: 15px; border-radius: 8px; font-style: italic;">"${personalMessage}"</p>` : ''}
-              <p>Click the button below to complete your registration:</p>
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${inviteLink}" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
-                  Accept Invitation
-                </a>
-              </div>
-              <p style="color: #6b7280; font-size: 14px;">This invitation expires on ${expiresAt.toLocaleDateString()}.</p>
-              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-              <p style="color: #9ca3af; font-size: 12px;">
-                If you didn't expect this invitation, you can safely ignore this email.
-              </p>
-            </div>
-          </div>
-        `
+        subject: `🎉 You're Invited to Join Docta. as a ${roleName}!`,
+        html: inviteHtml
       });
 
       logger.info('Invitation sent', {
@@ -327,30 +372,52 @@ router.post('/:id/resend',
         [newExpiresAt, id]
       );
 
-      // Resend email
+      // Resend email with elegant template
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
       const inviteLink = `${baseUrl}/${invite.role}/register?token=${invite.token}`;
+      const roleName = invite.role === 'admin' ? 'Administrator' : 'Healthcare Provider';
+
+      const reminderBodyContent = `
+        <p style="margin: 0 0 24px 0; font-size: 18px;">
+          Hello <strong>${invite.firstName || 'there'}</strong>,
+        </p>
+        
+        <p style="margin: 0 0 24px 0;">
+          This is a friendly reminder that you've been invited to join <strong style="color: #7c3aed;">Docta.</strong> as a <strong>${roleName}</strong>.
+        </p>
+        
+        <div style="background: #fef3c7; border-radius: 12px; padding: 20px; margin: 24px 0; border-left: 4px solid #f59e0b;">
+          <p style="margin: 0; font-size: 14px; color: #92400e;">
+            ⏰ <strong>Don't miss out!</strong> Your invitation has been extended and will now expire on <strong>${newExpiresAt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong>.
+          </p>
+        </div>
+        
+        <p style="margin: 24px 0;">
+          Click the button below to complete your registration and join our platform.
+        </p>
+      `;
+
+      const reminderHtml = generateEmailTemplate({
+        preheader: `Reminder: Your invitation to join Docta. is waiting!`,
+        headerIcon: '⏰',
+        headerTitle: 'Invitation Reminder',
+        headerSubtitle: `Your ${roleName} spot is waiting`,
+        headerColor: '#f59e0b',
+        headerColorEnd: '#d97706',
+        bodyContent: reminderBodyContent,
+        ctaButton: {
+          text: 'Accept Invitation →',
+          url: inviteLink,
+          color: '#10b981',
+          colorEnd: '#059669'
+        },
+        recipientEmail: invite.email
+      });
 
       await sendEmail({
         to: invite.email,
-        subject: `Reminder: You're invited to join Docta`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 30px; text-align: center;">
-              <h1 style="color: white; margin: 0;">Docta Healthcare</h1>
-            </div>
-            <div style="padding: 30px; background: #f9fafb;">
-              <h2>Hello ${invite.firstName || 'there'},</h2>
-              <p>This is a reminder that you've been invited to join Docta.</p>
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${inviteLink}" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
-                  Accept Invitation
-                </a>
-              </div>
-              <p style="color: #6b7280; font-size: 14px;">This invitation expires on ${newExpiresAt.toLocaleDateString()}.</p>
-            </div>
-          </div>
-        `
+        subject: `⏰ Reminder: Your Docta. Invitation is Waiting!`,
+        html: reminderHtml
       });
 
       logger.info('Invitation resent', { inviteId: id });
