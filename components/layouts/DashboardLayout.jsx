@@ -14,16 +14,40 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { notificationsAPI } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-export default function DashboardLayout({ children, navigation, portalName, portalColor, showQuickActions = false }) {
+export default function DashboardLayout({ 
+  children, 
+  navigation, 
+  navigationGroups, // NEW: Support for grouped navigation
+  portalName, 
+  portalColor, 
+  showQuickActions = false 
+}) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [showSidebarEmail, setShowSidebarEmail] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState({});
   const { user, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+
+  // Initialize expanded groups based on current path
+  useEffect(() => {
+    if (navigationGroups) {
+      const initialExpanded = {};
+      navigationGroups.forEach(group => {
+        const hasActiveItem = group.items.some(item => 
+          pathname === item.href || pathname.startsWith(item.href + '/')
+        );
+        if (hasActiveItem) {
+          initialExpanded[group.name] = true;
+        }
+      });
+      setExpandedGroups(initialExpanded);
+    }
+  }, [navigationGroups, pathname]);
 
   useEffect(() => {
     const fetchUnreadCount = async () => {
@@ -66,8 +90,108 @@ export default function DashboardLayout({ children, navigation, portalName, port
     }
   };
 
-  // Determine if this is a provider portal for quick actions
+  const toggleGroup = (groupName) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupName]: !prev[groupName]
+    }));
+  };
+
   const isProviderPortal = portalName === 'Provider';
+  const isAdminPortal = portalName === 'Admin';
+
+  // Render navigation item
+  const renderNavItem = (item, inGroup = false) => {
+    // Check if item should be hidden based on role
+    if (item.superAdminOnly && user?.role !== 'super_admin') {
+      return null;
+    }
+    if (item.hideFromRole && item.hideFromRole.includes(user?.role)) {
+      return null;
+    }
+
+    const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+    
+    return (
+      <Link
+        key={item.name}
+        href={item.href}
+        className={cn(
+          'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all',
+          inGroup && 'ml-4 px-3',
+          isActive 
+            ? `bg-gradient-to-r ${portalColor} text-white shadow-lg` 
+            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+        )}
+        onClick={() => setSidebarOpen(false)}
+      >
+        <item.icon className="w-5 h-5 flex-shrink-0" />
+        <span className="truncate">{item.name}</span>
+        {item.badge && (
+          <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+            {item.badge}
+          </span>
+        )}
+      </Link>
+    );
+  };
+
+  // Render grouped navigation (for Admin)
+  const renderGroupedNavigation = () => {
+    if (!navigationGroups) return null;
+
+    return (
+      <div className="space-y-2">
+        {navigationGroups.map((group) => {
+          // Filter items based on role
+          const visibleItems = group.items.filter(item => {
+            if (item.superAdminOnly && user?.role !== 'super_admin') return false;
+            if (item.hideFromRole && item.hideFromRole.includes(user?.role)) return false;
+            return true;
+          });
+
+          if (visibleItems.length === 0) return null;
+
+          const isExpanded = expandedGroups[group.name];
+          const hasActiveItem = visibleItems.some(item => 
+            pathname === item.href || pathname.startsWith(item.href + '/')
+          );
+
+          return (
+            <div key={group.name} className="space-y-1">
+              <button
+                onClick={() => toggleGroup(group.name)}
+                className={cn(
+                  "w-full flex items-center justify-between px-4 py-2 rounded-lg text-sm font-semibold transition-all",
+                  hasActiveItem 
+                    ? "text-foreground bg-accent/50" 
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent/30"
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <group.icon className="w-4 h-4" />
+                  <span>{group.name}</span>
+                </div>
+                <ChevronDown className={cn(
+                  "w-4 h-4 transition-transform duration-200",
+                  isExpanded && "rotate-180"
+                )} />
+              </button>
+              
+              <div className={cn(
+                "overflow-hidden transition-all duration-200",
+                isExpanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+              )}>
+                <div className="space-y-1 py-1">
+                  {visibleItems.map(item => renderNavItem(item, true))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -95,9 +219,7 @@ export default function DashboardLayout({ children, navigation, portalName, port
               <span className="font-bold text-foreground">Docta<span className="text-amber-500">.</span></span>
               <span className={cn(
                 'block text-xs font-medium',
-                portalName === 'Patient' && 'text-purple-600',
-                portalName === 'Provider' && 'text-purple-600',
-                portalName === 'Admin' && 'text-purple-600'
+                'text-purple-600'
               )}>
                 {portalName} Portal
               </span>
@@ -113,32 +235,14 @@ export default function DashboardLayout({ children, navigation, portalName, port
 
         {/* Navigation */}
         <nav className="p-4 space-y-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
-          {navigation
-            .filter((item) => !item.superAdminOnly || user?.role === 'super_admin')
-            .map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all',
-                    isActive 
-                      ? `bg-gradient-to-r ${portalColor} text-white shadow-lg` 
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                  )}
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <item.icon className="w-5 h-5" />
-                  {item.name}
-                  {item.badge && (
-                    <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
+          {/* Use grouped navigation if available, otherwise flat */}
+          {navigationGroups ? (
+            renderGroupedNavigation()
+          ) : (
+            navigation
+              ?.filter((item) => !item.superAdminOnly || user?.role === 'super_admin')
+              .map((item) => renderNavItem(item))
+          )}
         </nav>
 
         {/* User info at bottom - Privacy Enhanced */}
@@ -191,7 +295,7 @@ export default function DashboardLayout({ children, navigation, portalName, port
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Search patients, notes, ICD-10..."
+                  placeholder={isAdminPortal ? "Search users, logs..." : "Search patients, notes, ICD-10..."}
                   className="w-72 pl-10 pr-4 py-2 bg-muted/60 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                 />
               </div>
