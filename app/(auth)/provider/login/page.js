@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, EyeOff, Mail, Lock, Stethoscope, Shield, Loader2, AlertTriangle, Zap } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, Stethoscope, Shield, Loader2, Zap } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { testingLinksAPI } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
@@ -173,15 +173,15 @@ function ProviderLoginContent() {
               <p className="text-slate-400 mt-2">Access your clinical dashboard</p>
             </div>
 
-            {/* Notice for non-invited users */}
-            {!inviteToken && !fromInvite && !testingMode && (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 mb-6">
+            {/* Registration success notice */}
+            {fromInvite && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 mb-6">
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5" />
+                  <Shield className="w-5 h-5 text-emerald-400 mt-0.5" />
                   <div>
-                    <p className="text-sm text-amber-200 font-medium">Invite Required</p>
-                    <p className="text-xs text-amber-300/70 mt-1">
-                      Provider registration is by invitation only. Contact administration if you need access.
+                    <p className="text-sm text-emerald-200 font-medium">Registration Complete</p>
+                    <p className="text-xs text-emerald-300/70 mt-1">
+                      Your account is pending verification. Sign in to check your status.
                     </p>
                   </div>
                 </div>
@@ -250,6 +250,14 @@ function ProviderLoginContent() {
                   'Sign In'
                 )}
               </Button>
+
+              {/* Register Link */}
+              <p className="text-center text-sm text-slate-400">
+                Don't have an account?{' '}
+                <Link href="/provider/register" className="text-purple-400 hover:text-purple-300 font-medium">
+                  Register as Provider
+                </Link>
+              </p>
             </form>
           </div>
 
