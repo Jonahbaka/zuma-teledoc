@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { 
   Video, 
@@ -13,21 +14,32 @@ import {
   Clock,
   Lock,
   Users,
-  AlertCircle
+  AlertCircle,
+  ChevronDown,
+  UserCircle,
+  Briefcase,
+  ShieldCheck,
+  X,
+  AlertTriangle,
+  Phone
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { toast } from '@/components/ui/use-toast';
+import { cn } from '@/lib/utils';
 
 export default function HomePage() {
+  const [loginDropdownOpen, setLoginDropdownOpen] = useState(false);
+  const [emergencyBannerVisible, setEmergencyBannerVisible] = useState(true);
+
   const handleJoinAsProvider = (e) => {
-    // Show info toast
     toast({
       title: "Provider Registration",
-      description: "Provider sign-ups are by invitation only. If you have an invitation, please use the link provided in your email.",
+      description: "Provider sign-ups require board certification. If you have an invitation, please use the link provided in your email.",
       variant: "default",
     });
   };
+
   const featureColors = {
     purple: { bg: 'bg-purple-500/10 dark:bg-purple-500/20', icon: 'text-purple-600 dark:text-purple-400' },
     indigo: { bg: 'bg-indigo-500/10 dark:bg-indigo-500/20', icon: 'text-indigo-600 dark:text-indigo-400' },
@@ -38,8 +50,33 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* Emergency Disclaimer Banner */}
+      {emergencyBannerVisible && (
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-gradient-to-r from-amber-600 to-orange-600 text-white">
+          <div className="container mx-auto px-4 py-2">
+            <div className="flex items-center justify-center gap-3 text-sm">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span className="text-center">
+                <strong>For medical emergencies, please call 911.</strong>
+                <span className="hidden sm:inline"> Docta is for non-emergency consultations only.</span>
+              </span>
+              <button 
+                onClick={() => setEmergencyBannerVisible(false)}
+                className="ml-2 p-1 hover:bg-white/20 rounded transition-colors flex-shrink-0"
+                aria-label="Dismiss banner"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-border">
+      <nav className={cn(
+        "fixed left-0 right-0 z-50 bg-background/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-border transition-all",
+        emergencyBannerVisible ? "top-[40px]" : "top-0"
+      )}>
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center gap-3">
@@ -66,12 +103,82 @@ export default function HomePage() {
             
             <div className="flex items-center gap-2">
               <ThemeToggle />
-              <Link href="/login">
-                <Button variant="ghost" className="hidden sm:inline-flex">
-                  Sign In
+              
+              {/* Login Dropdown - THE FIX */}
+              <div className="relative hidden sm:block">
+                <button
+                  onClick={() => setLoginDropdownOpen(!loginDropdownOpen)}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-accent"
+                >
+                  Log In
+                  <ChevronDown className={cn(
+                    "w-4 h-4 transition-transform",
+                    loginDropdownOpen && "rotate-180"
+                  )} />
+                </button>
+                
+                {loginDropdownOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40"
+                      onClick={() => setLoginDropdownOpen(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-56 bg-popover rounded-xl shadow-xl border border-border py-2 z-50 animate-in fade-in slide-in-from-top-2">
+                      <div className="px-3 py-2 border-b border-border mb-1">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Select Portal</p>
+                      </div>
+                      
+                      <Link
+                        href="/patient/login"
+                        className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent transition-colors"
+                        onClick={() => setLoginDropdownOpen(false)}
+                      >
+                        <div className="w-9 h-9 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                          <UserCircle className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Patient Portal</p>
+                          <p className="text-xs text-muted-foreground">Access your health records</p>
+                        </div>
+                      </Link>
+                      
+                      <Link
+                        href="/provider/login"
+                        className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent transition-colors"
+                        onClick={() => setLoginDropdownOpen(false)}
+                      >
+                        <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                          <Stethoscope className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Provider Portal</p>
+                          <p className="text-xs text-muted-foreground">For healthcare providers</p>
+                        </div>
+                      </Link>
+                      
+                      <div className="border-t border-border mt-1 pt-1">
+                        <Link
+                          href="/secure/admin"
+                          className="flex items-center gap-3 px-4 py-2 text-sm hover:bg-accent transition-colors text-muted-foreground"
+                          onClick={() => setLoginDropdownOpen(false)}
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                          <span className="text-xs">Admin Access</span>
+                        </Link>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Mobile Login Link */}
+              <Link href="/login" className="sm:hidden">
+                <Button variant="ghost" size="sm">
+                  Log In
                 </Button>
               </Link>
-              <Link href="/register">
+              
+              <Link href="/patient/register">
                 <Button className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white shadow-lg shadow-purple-500/20">
                   Get Started
                 </Button>
@@ -82,7 +189,10 @@ export default function HomePage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20 px-6 bg-gradient-to-b from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950">
+      <section className={cn(
+        "pb-20 px-6 bg-gradient-to-b from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950",
+        emergencyBannerVisible ? "pt-40" : "pt-32"
+      )}>
         <div className="container mx-auto">
           <div className="max-w-4xl mx-auto text-center">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card dark:bg-white/5 border border-border mb-8 animate-fade-in">
@@ -90,9 +200,10 @@ export default function HomePage() {
               <span className="text-sm font-medium text-foreground">HIPAA Compliant & Secure</span>
             </div>
             
+            {/* UPDATED HEADLINE */}
             <h1 className="text-5xl md:text-7xl font-bold mb-6 animate-slide-up font-serif text-foreground">
-              Healthcare,{' '}
-              <span className="bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">Reimagined</span>
+              Talk to a Doctor{' '}
+              <span className="bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">in Minutes</span>
             </h1>
             
             <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: '0.1s' }}>
@@ -100,21 +211,24 @@ export default function HomePage() {
               Secure video consultations, instant messaging, and comprehensive care—all in one platform.
             </p>
             
+            {/* Hero Buttons - Patient on top for mobile */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in" style={{ animationDelay: '0.2s' }}>
-              <Link href="/register">
-                <Button size="lg" className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white h-14 px-8 text-lg shadow-lg shadow-purple-500/25">
+              <Link href="/patient/register" className="w-full sm:w-auto order-1 sm:order-1">
+                <Button size="lg" className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white h-14 px-8 text-lg shadow-lg shadow-purple-500/25">
                   Start Your Visit
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
               </Link>
-              <div className="flex flex-col items-center">
-                <Link href="/provider/login" onClick={handleJoinAsProvider}>
-                  <Button size="lg" variant="outline" className="h-14 px-8 text-lg border-2">
+              <div className="flex flex-col items-center order-2 sm:order-2 w-full sm:w-auto">
+                <Link href="/provider/login" onClick={handleJoinAsProvider} className="w-full sm:w-auto">
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto h-14 px-8 text-lg border-2">
                     Join as Provider
                   </Button>
                 </Link>
-                <span className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-semibold">
-                  Invite Only
+                {/* UPDATED FROM "INVITE ONLY" */}
+                <span className="text-[10px] text-muted-foreground mt-1.5 uppercase tracking-wider font-semibold flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                  Board Certified Only
                 </span>
               </div>
             </div>
@@ -216,7 +330,7 @@ export default function HomePage() {
           </div>
           
           <div className="text-center mt-16">
-            <Link href="/register">
+            <Link href="/patient/register">
               <Button size="lg" className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white h-14 px-10 text-lg shadow-lg shadow-purple-500/25 transition-all">
                 Get Started Now
                 <ArrowRight className="ml-2 w-5 h-5" />
@@ -250,7 +364,7 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Link href="/register">
+              <Link href="/patient/register">
                 <Button variant="outline" className="w-full">Get Started</Button>
               </Link>
             </div>
@@ -271,7 +385,7 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Link href="/register?plan=gold">
+              <Link href="/patient/register?plan=gold">
                 <Button className="w-full bg-white text-purple-700 hover:bg-purple-50">
                   Subscribe Now
                 </Button>
@@ -308,7 +422,7 @@ export default function HomePage() {
           <p className="text-xl text-purple-100/90 mb-10 max-w-2xl mx-auto">
             Join thousands of patients who've discovered a better way to access healthcare
           </p>
-          <Link href="/register">
+          <Link href="/patient/register">
             <Button size="lg" className="bg-white text-purple-700 hover:bg-purple-50 h-14 px-10 text-lg shadow-lg">
               Start Your Free Account
               <ArrowRight className="ml-2 w-5 h-5" />
@@ -316,6 +430,43 @@ export default function HomePage() {
           </Link>
         </div>
       </section>
+
+      {/* Footer with Emergency Reminder */}
+      <footer className="py-8 px-6 bg-slate-900 dark:bg-slate-950 border-t border-slate-800">
+        <div className="container mx-auto">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-gradient-to-br from-purple-600 to-indigo-700 h-8 w-8 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">D</span>
+              </div>
+              <span className="font-bold text-white">
+                Docta<span className="text-amber-500">.</span>
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-6 text-sm text-slate-400">
+              <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+              <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
+              <Link href="/hipaa" className="hover:text-white transition-colors">HIPAA</Link>
+              <Link href="/contact" className="hover:text-white transition-colors">Contact</Link>
+            </div>
+            
+            <p className="text-sm text-slate-500">
+              © 2026 Docta. All rights reserved.
+            </p>
+          </div>
+          
+          {/* Footer Emergency Disclaimer */}
+          <div className="mt-6 pt-6 border-t border-slate-800 text-center">
+            <p className="text-xs text-slate-500 flex items-center justify-center gap-2">
+              <Phone className="w-3 h-3" />
+              <span>
+                <strong>Emergency?</strong> Call 911. Docta is not for life-threatening emergencies.
+              </span>
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
