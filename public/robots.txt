@@ -1,0 +1,10 @@
+# DoctaRx Robots.txt
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /secure/
+Disallow: /admin/
+Disallow: /_next/
+
+# Sitemap
+Sitemap: https://doctarx.com/sitemap.xml

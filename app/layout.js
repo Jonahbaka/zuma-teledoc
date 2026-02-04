@@ -5,11 +5,29 @@ import ConditionalSiteFooter from '@/components/layouts/ConditionalSiteFooter';
 import { THEME_STORAGE_KEY } from '@/lib/theme';
 
 export const metadata = {
-  title: 'Docta. - Modern Telehealth Platform',
-  description: 'HIPAA-compliant telehealth platform for virtual healthcare delivery',
-  keywords: 'telehealth, telemedicine, virtual healthcare, doctor appointment, video consultation',
-  authors: [{ name: 'Docta.' }],
+  title: {
+    default: 'DoctaRx | Telehealth & E-Prescribing Platform',
+    template: '%s | DoctaRx'
+  },
+  description: 'Secure telehealth platform for providers and patients. Manage prescriptions, video consults, and medical records online.',
+  keywords: 'telehealth, telemedicine, e-prescribing, virtual healthcare, doctor appointment, video consultation, online doctor, medical records, HIPAA compliant',
+  authors: [{ name: 'DoctaRx' }],
+  creator: 'DoctaRx',
+  publisher: 'DoctaRx',
   robots: 'index, follow',
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    url: 'https://doctarx.com',
+    siteName: 'DoctaRx',
+    title: 'DoctaRx | Telehealth & E-Prescribing Platform',
+    description: 'Secure telehealth platform for providers and patients. Manage prescriptions, video consults, and medical records online.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DoctaRx | Telehealth & E-Prescribing Platform',
+    description: 'Secure telehealth platform for providers and patients. Manage prescriptions, video consults, and medical records online.',
+  },
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
