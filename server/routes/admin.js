@@ -1436,5 +1436,99 @@ router.delete('/users/:id',
   }
 );
 
+/**
+ * POST /api/admin/test-email
+ * Send a test welcome email to verify deliverability (Super Admin only)
+ */
+router.post('/test-email',
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const { email, type = 'welcome' } = req.body;
+      
+      // Default to admin's email if none provided
+      const targetEmail = email || req.user.email;
+      
+      if (!targetEmail) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email address is required'
+        });
+      }
+      
+      const emailService = require('../services/email');
+      
+      // Create mock user object for test
+      const testUser = {
+        id: req.user.id,
+        email: targetEmail,
+        firstName: req.user.firstName || req.user.first_name || 'Test',
+        lastName: req.user.lastName || req.user.last_name || 'User',
+        role: 'patient' // Test as patient to see full welcome email
+      };
+      
+      if (type === 'welcome') {
+        await emailService.sendWelcomeEmail(testUser);
+        logger.info('Test welcome email sent', { to: targetEmail, by: req.user.id });
+        
+        res.json({
+          success: true,
+          message: `Welcome email sent to ${targetEmail}`,
+          details: {
+            type: 'welcome',
+            recipient: targetEmail,
+            sentAt: new Date().toISOString()
+          }
+        });
+      } else if (type === 'verification') {
+        const crypto = require('crypto');
+        const testToken = crypto.randomBytes(32).toString('hex');
+        await emailService.sendVerificationEmail(testUser, testToken);
+        logger.info('Test verification email sent', { to: targetEmail, by: req.user.id });
+        
+        res.json({
+          success: true,
+          message: `Verification email sent to ${targetEmail}`,
+          details: {
+            type: 'verification',
+            recipient: targetEmail,
+            sentAt: new Date().toISOString()
+          }
+        });
+      } else if (type === 'admin_message') {
+        const adminName = `${req.user.firstName || req.user.first_name} ${req.user.lastName || req.user.last_name}`;
+        await emailService.sendAdminMessage(
+          testUser, 
+          'Test Admin Message', 
+          'This is a test message from the Docta Admin Console.\n\nIf you received this email, your email configuration is working correctly!',
+          adminName
+        );
+        logger.info('Test admin message email sent', { to: targetEmail, by: req.user.id });
+        
+        res.json({
+          success: true,
+          message: `Admin message email sent to ${targetEmail}`,
+          details: {
+            type: 'admin_message',
+            recipient: targetEmail,
+            sentAt: new Date().toISOString()
+          }
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid email type. Use: welcome, verification, or admin_message'
+        });
+      }
+    } catch (error) {
+      logger.error('Test email error:', error);
+      res.status(500).json({
+        success: false,
+        error: `Failed to send test email: ${error.message}`
+      });
+    }
+  }
+);
+
 module.exports = router;
 
