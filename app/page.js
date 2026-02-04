@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Script from 'next/script';
 import { 
   Video, 
   Shield, 
@@ -28,6 +29,31 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { toast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
 
+// JSON-LD Structured Data for SEO
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "DoctaRx",
+  "operatingSystem": "Web",
+  "applicationCategory": "MedicalApplication",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "description": "A secure telehealth and e-prescribing platform for healthcare providers and patients.",
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "4.8",
+    "ratingCount": "24"
+  },
+  "author": {
+    "@type": "Organization",
+    "name": "DoctaRx Inc",
+    "url": "https://doctarx.com"
+  }
+};
+
 export default function HomePage() {
   const [loginDropdownOpen, setLoginDropdownOpen] = useState(false);
   const [emergencyBannerVisible, setEmergencyBannerVisible] = useState(true);
@@ -50,6 +76,14 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* JSON-LD Structured Data for SEO */}
+      <Script
+        id="json-ld-schema"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        strategy="beforeInteractive"
+      />
+
       {/* Emergency Disclaimer Banner */}
       {emergencyBannerVisible && (
         <div className="fixed top-0 left-0 right-0 z-[60] bg-gradient-to-r from-amber-600 to-orange-600 text-white">
