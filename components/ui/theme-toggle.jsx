@@ -23,7 +23,7 @@ export function ThemeToggle({ variant = 'ghost', size = 'icon', className = '' }
   if (!mounted) {
     // Avoid hydration mismatch for icon
     return (
-      <Button variant={variant} size={size} className={className} aria-label="Toggle theme" disabled />
+      <Button variant={variant} size={size} className={className} aria-label="Toggle theme" disabled suppressHydrationWarning />
     );
   }
 
@@ -35,7 +35,7 @@ export function ThemeToggle({ variant = 'ghost', size = 'icon', className = '' }
   };
 
   return (
-    <Button variant={variant} size={size} className={className} onClick={toggle} aria-label={label} title={label}>
+    <Button variant={variant} size={size} className={className} onClick={toggle} aria-label={label} title={label} suppressHydrationWarning>
       <Icon className="w-5 h-5" />
     </Button>
   );
