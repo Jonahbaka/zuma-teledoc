@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import Script from 'next/script';
 import { usePathname, useSearchParams } from 'next/navigation';
 import ReactGA from 'react-ga4';
@@ -11,7 +11,8 @@ const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-S9C6QB
 // Initialize React GA4
 let initialized = false;
 
-export default function GoogleAnalytics() {
+// Inner component that uses useSearchParams (must be wrapped in Suspense)
+function GoogleAnalyticsInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -40,6 +41,11 @@ export default function GoogleAnalytics() {
     }
   }, [pathname, searchParams]);
 
+  return null;
+}
+
+// Main component with Suspense wrapper
+export default function GoogleAnalytics() {
   if (!GA_MEASUREMENT_ID) {
     return null;
   }
@@ -61,6 +67,10 @@ export default function GoogleAnalytics() {
           });
         `}
       </Script>
+      {/* Wrap the component that uses useSearchParams in Suspense */}
+      <Suspense fallback={null}>
+        <GoogleAnalyticsInner />
+      </Suspense>
     </>
   );
 }
