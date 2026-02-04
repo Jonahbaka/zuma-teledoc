@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, EyeOff, Mail, Lock, User, Stethoscope, Shield, Loader2, CheckCircle, AlertTriangle, Building2, BadgeCheck } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, Stethoscope, Shield, Loader2, CheckCircle, Building2, BadgeCheck, Phone } from 'lucide-react';
 import { authAPI } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
@@ -16,8 +16,7 @@ function ProviderRegisterContent() {
   const inviteToken = searchParams.get('token');
   
   const [isLoading, setIsLoading] = useState(false);
-  const [validatingToken, setValidatingToken] = useState(true);
-  const [tokenValid, setTokenValid] = useState(false);
+  const [validatingToken, setValidatingToken] = useState(!!inviteToken);
   const [inviteData, setInviteData] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -32,7 +31,7 @@ function ProviderRegisterContent() {
     confirmPassword: ''
   });
 
-  // Validate invite token on mount
+  // Validate invite token if provided (optional)
   useEffect(() => {
     const validateToken = async () => {
       if (!inviteToken) {
@@ -43,7 +42,6 @@ function ProviderRegisterContent() {
       try {
         const response = await authAPI.validateInvite(inviteToken);
         if (response.data.success) {
-          setTokenValid(true);
           setInviteData(response.data.invite);
           setFormData(prev => ({
             ...prev,
@@ -53,11 +51,10 @@ function ProviderRegisterContent() {
           }));
         }
       } catch (error) {
-        setTokenValid(false);
+        // Token invalid, but allow registration anyway
         toast({
-          title: 'Invalid Invitation',
-          description: 'This invitation link is invalid or has expired.',
-          variant: 'destructive'
+          title: 'Note',
+          description: 'Invitation link expired, but you can still register.',
         });
       } finally {
         setValidatingToken(false);
@@ -79,24 +76,33 @@ function ProviderRegisterContent() {
       return;
     }
 
+    if (formData.password.length < 8) {
+      toast({
+        title: 'Password Too Short',
+        description: 'Password must be at least 8 characters',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const response = await authAPI.registerProvider({
         ...formData,
-        inviteToken,
+        inviteToken: inviteToken || undefined,
         role: 'provider'
       });
 
       if (response.data.success) {
         toast({
           title: 'Registration Successful!',
-          description: 'Your account has been created. You can now sign in.',
+          description: 'Your account is pending verification. We will review your credentials shortly.',
         });
-        router.push('/provider/login?from=invite');
+        router.push('/provider/login?registered=true');
       }
     } catch (error) {
-      const message = error.response?.data?.error || 'Registration failed';
+      const message = error.response?.data?.error || 'Registration failed. Please try again.';
       toast({
         title: 'Registration Failed',
         description: message,
@@ -113,45 +119,8 @@ function ProviderRegisterContent() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-purple-400 mx-auto mb-4" />
-          <p className="text-slate-400">Validating invitation...</p>
+          <p className="text-slate-400">Loading...</p>
         </div>
-      </div>
-    );
-  }
-
-  // Show error if no token or invalid token
-  if (!inviteToken || !tokenValid) {
-    return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <header className="p-6">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-xl">D</span>
-            </div>
-            <span className="text-2xl font-bold text-white">
-              Docta<span className="text-purple-400">.</span>
-            </span>
-          </Link>
-        </header>
-
-        <main className="flex-1 flex items-center justify-center p-6">
-          <div className="w-full max-w-md">
-            <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl p-8 text-center">
-              <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <AlertTriangle className="w-8 h-8 text-red-400" />
-              </div>
-              <h1 className="text-2xl font-bold text-white mb-2">Invitation Required</h1>
-              <p className="text-slate-400 mb-6">
-                Provider registration is by invitation only. Please use the link provided in your invitation email.
-              </p>
-              <Link href="/provider/login">
-                <Button variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700">
-                  Back to Login
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </main>
       </div>
     );
   }
@@ -179,11 +148,11 @@ function ProviderRegisterContent() {
               <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <Stethoscope className="w-8 h-8 text-white" />
               </div>
-              <h1 className="text-2xl font-bold text-white">Complete Provider Registration</h1>
-              <p className="text-slate-400 mt-2">You've been invited to join Docta as a healthcare provider</p>
+              <h1 className="text-2xl font-bold text-white">Provider Registration</h1>
+              <p className="text-slate-400 mt-2">Join our network of board-certified healthcare providers</p>
             </div>
 
-            {/* Invite Info Banner */}
+            {/* Invite Info Banner (if from invite) */}
             {inviteData && (
               <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4 mb-6">
                 <div className="flex items-center gap-3">
@@ -196,11 +165,25 @@ function ProviderRegisterContent() {
               </div>
             )}
 
+            {/* Verification Notice */}
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <Shield className="w-5 h-5 text-amber-400 mt-0.5" />
+                <div>
+                  <p className="text-sm text-amber-200 font-medium">Credential Verification Required</p>
+                  <p className="text-xs text-amber-300/70 mt-1">
+                    All provider accounts require verification of medical credentials before activation. 
+                    This typically takes 1-2 business days.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Registration Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="firstName" className="text-slate-300">First Name</Label>
+                  <Label htmlFor="firstName" className="text-slate-300">First Name *</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                     <Input
@@ -208,43 +191,59 @@ function ProviderRegisterContent() {
                       placeholder="John"
                       value={formData.firstName}
                       onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
-                      className="pl-9 bg-slate-900/50 border-slate-600 text-white"
+                      className="pl-9 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
                       required
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="lastName" className="text-slate-300">Last Name</Label>
+                  <Label htmlFor="lastName" className="text-slate-300">Last Name *</Label>
                   <Input
                     id="lastName"
                     placeholder="Smith"
                     value={formData.lastName}
                     onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
-                    className="bg-slate-900/50 border-slate-600 text-white"
+                    className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
                     required
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-slate-300">Email Address</Label>
+                <Label htmlFor="email" className="text-slate-300">Email Address *</Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <Input
                     id="email"
                     type="email"
+                    placeholder="doctor@example.com"
                     value={formData.email}
                     onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                    className="pl-9 bg-slate-900/50 border-slate-600 text-white"
+                    className="pl-9 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
                     disabled={inviteData?.email}
                     required
                   />
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="phone" className="text-slate-300">Phone Number</Label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="(555) 123-4567"
+                    value={formData.phone}
+                    onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                    className="pl-9 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="specialty" className="text-slate-300">Specialty</Label>
+                  <Label htmlFor="specialty" className="text-slate-300">Specialty *</Label>
                   <select
                     id="specialty"
                     value={formData.specialty}
@@ -255,61 +254,68 @@ function ProviderRegisterContent() {
                     <option value="">Select specialty</option>
                     <option value="Primary Care">Primary Care</option>
                     <option value="Internal Medicine">Internal Medicine</option>
+                    <option value="Family Medicine">Family Medicine</option>
                     <option value="Cardiology">Cardiology</option>
                     <option value="Dermatology">Dermatology</option>
                     <option value="Psychiatry">Psychiatry</option>
+                    <option value="Psychology">Psychology</option>
                     <option value="Pediatrics">Pediatrics</option>
                     <option value="OB/GYN">OB/GYN</option>
                     <option value="Neurology">Neurology</option>
                     <option value="Orthopedics">Orthopedics</option>
+                    <option value="Endocrinology">Endocrinology</option>
+                    <option value="Gastroenterology">Gastroenterology</option>
+                    <option value="Urgent Care">Urgent Care</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="npi" className="text-slate-300">NPI Number</Label>
+                  <Label htmlFor="npi" className="text-slate-300">NPI Number *</Label>
                   <Input
                     id="npi"
                     placeholder="1234567890"
                     value={formData.npiNumber}
                     onChange={(e) => setFormData(prev => ({ ...prev, npiNumber: e.target.value }))}
-                    className="bg-slate-900/50 border-slate-600 text-white"
+                    className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
                     maxLength={10}
+                    required
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="medicalLicense" className="text-slate-300">Medical License Number</Label>
+                <Label htmlFor="medicalLicense" className="text-slate-300">Medical License Number *</Label>
                 <div className="relative">
                   <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <Input
                     id="medicalLicense"
-                    placeholder="License number"
+                    placeholder="State license number"
                     value={formData.medicalLicense}
                     onChange={(e) => setFormData(prev => ({ ...prev, medicalLicense: e.target.value }))}
-                    className="pl-9 bg-slate-900/50 border-slate-600 text-white"
+                    className="pl-9 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
+                    required
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-slate-300">Password</Label>
+                <Label htmlFor="password" className="text-slate-300">Password *</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
+                    placeholder="Min. 8 characters"
                     value={formData.password}
                     onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                    className="pl-9 pr-10 bg-slate-900/50 border-slate-600 text-white"
+                    className="pl-9 pr-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
                     required
                     minLength={8}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -317,16 +323,16 @@ function ProviderRegisterContent() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword" className="text-slate-300">Confirm Password</Label>
+                <Label htmlFor="confirmPassword" className="text-slate-300">Confirm Password *</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <Input
                     id="confirmPassword"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
+                    placeholder="Re-enter password"
                     value={formData.confirmPassword}
                     onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                    className="pl-9 bg-slate-900/50 border-slate-600 text-white"
+                    className="pl-9 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
                     required
                   />
                 </div>
@@ -335,7 +341,7 @@ function ProviderRegisterContent() {
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 h-12 text-base"
               >
                 {isLoading ? (
                   <>
@@ -345,10 +351,18 @@ function ProviderRegisterContent() {
                 ) : (
                   <>
                     <CheckCircle className="w-4 h-4 mr-2" />
-                    Complete Registration
+                    Submit Application
                   </>
                 )}
               </Button>
+
+              {/* Already have account */}
+              <p className="text-center text-sm text-slate-400">
+                Already have an account?{' '}
+                <Link href="/provider/login" className="text-purple-400 hover:text-purple-300 font-medium">
+                  Sign in
+                </Link>
+              </p>
             </form>
           </div>
 
