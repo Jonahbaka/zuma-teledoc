@@ -14,7 +14,7 @@ const navigation = [
   { name: 'Dashboard', href: '/provider/dashboard', icon: LayoutDashboard },
   { name: 'Triage Queue', href: '/provider/triage-queue', icon: ListOrdered },
   { name: 'External eRx', href: '/provider/prescriptions', icon: Pill },
-  { name: 'Video Call (No Appointment)', href: '/provider/call', icon: Video },
+  { name: 'Instant Call', href: '/provider/call', icon: Video },
   { name: 'Medical Imaging', href: '/provider/imaging', icon: Eye },
   { name: 'AI Triage Results', href: '/provider/triage', icon: BrainCircuit },
   { name: 'Schedule', href: '/provider/schedule', icon: Calendar },
