@@ -1,13 +1,45 @@
 'use client';
 
+import { useEffect } from 'react';
 import Script from 'next/script';
+import { usePathname, useSearchParams } from 'next/navigation';
+import ReactGA from 'react-ga4';
 
-// Google Analytics Component
-// Set your Measurement ID in .env as NEXT_PUBLIC_GA_MEASUREMENT_ID
-const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+// Google Analytics Measurement ID
+const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-S9C6QBY7DD';
+
+// Initialize React GA4
+let initialized = false;
 
 export default function GoogleAnalytics() {
-  // Don't render if no measurement ID is configured
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Initialize GA4 on mount
+  useEffect(() => {
+    if (!initialized && GA_MEASUREMENT_ID) {
+      ReactGA.initialize(GA_MEASUREMENT_ID);
+      initialized = true;
+    }
+  }, []);
+
+  // Track page views on route change
+  useEffect(() => {
+    if (initialized && pathname) {
+      const url = pathname + (searchParams?.toString() ? `?${searchParams.toString()}` : '');
+      
+      // Track with react-ga4
+      ReactGA.send({ hitType: 'pageview', page: url });
+      
+      // Also track with gtag for redundancy
+      if (typeof window !== 'undefined' && window.gtag) {
+        window.gtag('config', GA_MEASUREMENT_ID, {
+          page_path: url,
+        });
+      }
+    }
+  }, [pathname, searchParams]);
+
   if (!GA_MEASUREMENT_ID) {
     return null;
   }
@@ -33,22 +65,65 @@ export default function GoogleAnalytics() {
   );
 }
 
-// Helper function to track page views (for use in components)
+// Helper function to track page views manually
 export const pageview = (url) => {
-  if (typeof window !== 'undefined' && window.gtag && GA_MEASUREMENT_ID) {
-    window.gtag('config', GA_MEASUREMENT_ID, {
-      page_path: url,
+  if (typeof window !== 'undefined') {
+    ReactGA.send({ hitType: 'pageview', page: url });
+    if (window.gtag) {
+      window.gtag('config', GA_MEASUREMENT_ID, {
+        page_path: url,
+      });
+    }
+  }
+};
+
+// Helper function to track custom events
+export const trackEvent = ({ action, category, label, value }) => {
+  if (typeof window !== 'undefined') {
+    ReactGA.event({
+      category: category,
+      action: action,
+      label: label,
+      value: value,
     });
   }
 };
 
-// Helper function to track events
-export const event = ({ action, category, label, value }) => {
-  if (typeof window !== 'undefined' && window.gtag) {
-    window.gtag('event', action, {
-      event_category: category,
-      event_label: label,
-      value: value,
+// Track specific healthcare events
+export const trackHealthcareEvent = {
+  appointmentBooked: (appointmentType) => {
+    trackEvent({
+      action: 'appointment_booked',
+      category: 'engagement',
+      label: appointmentType,
     });
-  }
+  },
+  videoCallStarted: () => {
+    trackEvent({
+      action: 'video_call_started',
+      category: 'telehealth',
+      label: 'consultation',
+    });
+  },
+  prescriptionSent: () => {
+    trackEvent({
+      action: 'prescription_sent',
+      category: 'e_prescribing',
+      label: 'sent',
+    });
+  },
+  userRegistered: (userType) => {
+    trackEvent({
+      action: 'user_registered',
+      category: 'conversion',
+      label: userType,
+    });
+  },
+  subscriptionStarted: (plan) => {
+    trackEvent({
+      action: 'subscription_started',
+      category: 'revenue',
+      label: plan,
+    });
+  },
 };

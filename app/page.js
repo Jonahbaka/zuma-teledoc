@@ -200,16 +200,17 @@ export default function HomePage() {
               <span className="text-sm font-medium text-foreground">HIPAA Compliant & Secure</span>
             </div>
             
-            {/* UPDATED HEADLINE */}
-            <h1 className="text-5xl md:text-7xl font-bold mb-6 animate-slide-up font-serif text-foreground">
-              Talk to a Doctor{' '}
-              <span className="bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">in Minutes</span>
+            {/* SEO-OPTIMIZED HEADLINE */}
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 animate-slide-up font-serif text-foreground">
+              Secure Telehealth &{' '}
+              <span className="bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">E-Prescribing</span>
+              {' '}for Modern Medical Practices
             </h1>
             
-            <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: '0.1s' }}>
-              Connect with board-certified physicians from the comfort of your home. 
-              Secure video consultations, instant messaging, and comprehensive care—all in one platform.
-            </p>
+            <h2 className="text-xl md:text-2xl text-muted-foreground mb-10 max-w-3xl mx-auto animate-fade-in font-medium" style={{ animationDelay: '0.1s' }}>
+              Streamline your clinic with DoctaRx. The all-in-one HIPAA-compliant platform for 
+              video consultations, digital prescriptions, and patient management.
+            </h2>
             
             {/* Hero Buttons - Patient on top for mobile */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in" style={{ animationDelay: '0.2s' }}>
@@ -263,12 +264,12 @@ export default function HomePage() {
           
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
-              { icon: Video, title: 'HD Video Consultations', description: 'Crystal-clear video visits with your healthcare provider, anytime, anywhere.', color: 'purple' },
-              { icon: Calendar, title: 'Easy Scheduling', description: 'Book appointments instantly with real-time availability and automated reminders.', color: 'indigo' },
-              { icon: MessageSquare, title: 'Secure Messaging', description: 'End-to-end encrypted messaging for confidential communication with your care team.', color: 'sky' },
-              { icon: Heart, title: 'Health Records', description: 'Access your complete medical history, lab results, and prescriptions in one place.', color: 'rose' },
-              { icon: Shield, title: 'HIPAA Compliant', description: 'Bank-level security with full HIPAA compliance to protect your health information.', color: 'purple' },
-              { icon: Clock, title: '24/7 Availability', description: 'Access healthcare whenever you need it, day or night, weekday or weekend.', color: 'amber' }
+              { icon: Video, title: 'HD Video Telemedicine', description: 'Host clear, secure video appointments with patients from any device. HIPAA-compliant telehealth consultations.', color: 'purple' },
+              { icon: Heart, title: 'Integrated E-Prescribing', description: 'Send prescriptions directly to thousands of pharmacies instantly and securely. Streamline your prescription workflow.', color: 'rose' },
+              { icon: Users, title: 'Patient & Provider Portals', description: 'Dedicated dashboards for clinicians to manage records and patients to track their health history.', color: 'indigo' },
+              { icon: MessageSquare, title: 'Secure Messaging', description: 'End-to-end encrypted messaging for confidential HIPAA-compliant communication with your care team.', color: 'sky' },
+              { icon: Shield, title: 'HIPAA Compliant Security', description: 'Bank-level security with full HIPAA compliance. Your patient data is always protected.', color: 'purple' },
+              { icon: Clock, title: '24/7 Availability', description: 'Access telehealth services whenever you need them, day or night, weekday or weekend.', color: 'amber' }
             ].map((feature, index) => (
               <div 
                 key={index}
