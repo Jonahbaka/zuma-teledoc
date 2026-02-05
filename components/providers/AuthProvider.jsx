@@ -187,11 +187,21 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Get token from localStorage for socket connection
+  const getToken = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('accessToken');
+    }
+    return null;
+  }, []);
+
   const value = {
     user,
     loading,
     error,
     isAuthenticated: !!user,
+    token: typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null,
+    getToken,
     login,
     register,
     logout,

@@ -320,7 +320,7 @@ router.get('/conversations', authenticate, async (req, res) => {
     
     // Decrypt preview of last message
     const conversations = rows.map(row => {
-      let preview = '[Message unavailable]';
+      let preview = '🔒 Encrypted message';
       try {
         const decryptedContent = decrypt(row.content_encrypted, row.content_iv, row.content_tag);
         if (decryptedContent) {
@@ -414,7 +414,7 @@ router.get('/conversation/:recipientId', authenticate, async (req, res) => {
     
     // Decrypt messages
     const messages = rows.map(row => {
-      let content = '[Message unavailable - decryption failed]';
+      let content = '🔒 This message cannot be displayed';
       try {
         const decryptedContent = decrypt(row.content_encrypted, row.content_iv, row.content_tag);
         if (decryptedContent) {
