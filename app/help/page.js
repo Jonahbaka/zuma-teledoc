@@ -71,7 +71,10 @@ export default function HelpCenterPage() {
         <div className="bg-card rounded-2xl shadow-lg p-8 text-center border border-border">
           <h2 className="text-2xl font-bold text-foreground mb-4">Still need help?</h2>
           <p className="text-muted-foreground mb-6">
-            Our support team is here to assist you
+            Our support team is here to assist you. Email us at{' '}
+            <a href="mailto:info@doctarx.com" className="text-purple-600 hover:underline font-medium">
+              info@doctarx.com
+            </a>
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/contact">

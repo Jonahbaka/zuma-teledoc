@@ -65,8 +65,8 @@ export default function AccessibilityPage() {
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">Feedback</h2>
               <p>
                 If you encounter any accessibility barriers on our platform, please contact us at{' '}
-                <a href="mailto:evolvedu@outlook.com" className="text-purple-600 hover:underline">
-                  evolvedu@outlook.com
+                <a href="mailto:info@doctarx.com" className="text-purple-600 hover:underline">
+                  info@doctarx.com
                 </a>
                 . We will make every effort to address your concerns and improve accessibility.
               </p>

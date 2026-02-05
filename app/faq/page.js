@@ -98,7 +98,11 @@ export default function FAQPage() {
         <div className="mt-12 bg-white rounded-2xl shadow-lg p-8 text-center">
           <h2 className="text-2xl font-bold text-purple-900 mb-4">Still have questions?</h2>
           <p className="text-gray-600 mb-6">
-            Can't find what you're looking for? Our support team is here to help.
+            Can't find what you're looking for? Email us at{' '}
+            <a href="mailto:info@doctarx.com" className="text-purple-600 hover:underline font-medium">
+              info@doctarx.com
+            </a>
+            {' '}or contact our support team.
           </p>
           <Link href="/contact">
             <Button className="bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white">

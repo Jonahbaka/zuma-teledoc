@@ -446,6 +446,7 @@ export default function HomePage() {
             </div>
             
             <div className="flex items-center gap-6 text-sm text-slate-400">
+              <a href="mailto:info@doctarx.com" className="hover:text-white transition-colors">info@doctarx.com</a>
               <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
               <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
               <Link href="/hipaa" className="hover:text-white transition-colors">HIPAA</Link>

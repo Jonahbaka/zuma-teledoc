@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ShieldCheck, Lock, KeyRound, ArrowRight } from 'lucide-react';
+import { ShieldCheck, Lock, KeyRound, ArrowRight, Mail } from 'lucide-react';
 
 const FooterLink = ({ href, children }) => (
   <Link
@@ -47,6 +47,15 @@ export default function SiteFooter() {
             <p className="text-sm leading-relaxed text-slate-400 max-w-sm">
               Modern telehealth platform providing HIPAA-compliant virtual healthcare services with cutting-edge technology.
             </p>
+
+            {/* Contact Email */}
+            <a 
+              href="mailto:info@doctarx.com" 
+              className="inline-flex items-center gap-2 text-sm text-purple-300 hover:text-purple-200 transition-colors"
+            >
+              <Mail className="w-4 h-4" />
+              info@doctarx.com
+            </a>
 
             <div className="flex flex-wrap gap-3 pt-1">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-white/5 border border-white/10 text-purple-100">

@@ -86,8 +86,8 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-foreground mb-1">Email</h3>
-                    <a href="mailto:evolvedu@outlook.com" className="text-primary hover:underline">
-                      evolvedu@outlook.com
+                    <a href="mailto:info@doctarx.com" className="text-primary hover:underline">
+                      info@doctarx.com
                     </a>
                     <p className="text-sm text-muted-foreground mt-1">We typically respond within 24 hours</p>
                   </div>
@@ -99,7 +99,7 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-foreground mb-1">Enterprise Solutions</h3>
-                    <a href="mailto:evolvedu@outlook.com?subject=Enterprise%20Inquiry" className="text-primary hover:underline">
+                    <a href="mailto:info@doctarx.com?subject=Enterprise%20Inquiry" className="text-primary hover:underline">
                       Contact Sales
                     </a>
                     <p className="text-sm text-muted-foreground mt-1">Custom solutions for healthcare organizations</p>

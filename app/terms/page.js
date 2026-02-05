@@ -95,8 +95,8 @@ export default function TermsOfServicePage() {
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">9. Contact Information</h2>
               <p>
                 For questions about these Terms of Service, please contact us at{' '}
-                <a href="mailto:evolvedu@outlook.com" className="text-purple-600 hover:underline">
-                  evolvedu@outlook.com
+                <a href="mailto:info@doctarx.com" className="text-purple-600 hover:underline">
+                  info@doctarx.com
                 </a>
               </p>
             </section>
