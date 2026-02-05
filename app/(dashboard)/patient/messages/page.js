@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   MessageSquare, Send, Loader2, User, Search, 
-  Clock, Paperclip, Image as ImageIcon, FileText, Plus, X
+  Clock, Paperclip, Image as ImageIcon, FileText, Plus, X,
+  Circle, CheckCheck, Wifi, WifiOff
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { formatRelativeTime, formatDateTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
+import { useSocket } from '@/lib/useSocket';
 
 export default function PatientMessagesPage() {
   const [conversations, setConversations] = useState([]);
@@ -27,6 +29,22 @@ export default function PatientMessagesPage() {
   const [newMessageContent, setNewMessageContent] = useState('');
   const [sendingNewMessage, setSendingNewMessage] = useState(false);
   const messagesEndRef = useRef(null);
+  
+  // Real-time socket connection
+  const {
+    isConnected,
+    onlineUsers,
+    joinConversation,
+    leaveConversation,
+    sendTypingStart,
+    sendTypingStop,
+    sendReadReceipt,
+    onNewMessage,
+    isUserOnline,
+    getTypingUser
+  } = useSocket();
+  
+  const [typingIndicator, setTypingIndicator] = useState(null);
 
   // Load draft from localStorage when conversation changes
   useEffect(() => {
@@ -59,6 +77,67 @@ export default function PatientMessagesPage() {
   useEffect(() => {
     fetchConversations();
   }, []);
+
+  // Handle real-time incoming messages
+  useEffect(() => {
+    const cleanup = onNewMessage((message) => {
+      console.log('📨 New message received:', message);
+      
+      // Add message to current conversation if it matches
+      if (selectedConversation?.conversationId === message.conversationId ||
+          selectedConversation?.recipientId === message.senderId) {
+        setMessages(prev => {
+          // Avoid duplicates
+          if (prev.find(m => m.id === message.id)) return prev;
+          return [...prev, {
+            ...message,
+            sentByMe: false
+          }];
+        });
+        
+        // Send read receipt
+        if (message.senderId && selectedConversation?.conversationId) {
+          sendReadReceipt(message.id, selectedConversation.conversationId, message.senderId);
+        }
+        
+        scrollToBottom();
+      }
+      
+      // Update conversation list
+      fetchConversations();
+      
+      // Show notification toast if not in the same conversation
+      if (!selectedConversation || selectedConversation.recipientId !== message.senderId) {
+        toast({
+          title: `New message from ${message.senderName}`,
+          description: message.content?.substring(0, 50) || 'New message',
+        });
+      }
+    });
+    
+    return cleanup;
+  }, [onNewMessage, selectedConversation, sendReadReceipt]);
+
+  // Join/leave conversation room when selected conversation changes
+  useEffect(() => {
+    if (selectedConversation?.conversationId && isConnected) {
+      joinConversation(selectedConversation.conversationId);
+      
+      return () => {
+        leaveConversation(selectedConversation.conversationId);
+      };
+    }
+  }, [selectedConversation?.conversationId, isConnected, joinConversation, leaveConversation]);
+
+  // Update typing indicator
+  useEffect(() => {
+    if (selectedConversation?.conversationId) {
+      const typingUser = getTypingUser(selectedConversation.conversationId);
+      setTypingIndicator(typingUser);
+    } else {
+      setTypingIndicator(null);
+    }
+  }, [selectedConversation?.conversationId, getTypingUser]);
 
   const fetchProviders = async () => {
     setLoadingProviders(true);
@@ -159,11 +238,31 @@ export default function PatientMessagesPage() {
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedConversation) return;
 
+    // Stop typing indicator
+    if (selectedConversation.conversationId && selectedConversation.recipientId) {
+      sendTypingStop(selectedConversation.conversationId, selectedConversation.recipientId);
+    }
+
     setSending(true);
+    const messageContent = newMessage;
+    
+    // Optimistically add message to UI
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage = {
+      id: tempId,
+      content: messageContent,
+      sentByMe: true,
+      createdAt: new Date().toISOString(),
+      status: 'sending'
+    };
+    setMessages(prev => [...prev, optimisticMessage]);
+    setNewMessage('');
+    scrollToBottom();
+    
     try {
       const response = await api.post('/messages', {
         recipientId: selectedConversation.recipientId,
-        content: newMessage,
+        content: messageContent,
         isUrgent: false
       });
 
@@ -172,11 +271,21 @@ export default function PatientMessagesPage() {
         const draftKey = `message_draft_${selectedConversation.recipientId}`;
         localStorage.removeItem(draftKey);
         setHasDraft(false);
-        setNewMessage('');
-        fetchMessages(selectedConversation.recipientId);
+        
+        // Replace optimistic message with real one
+        setMessages(prev => prev.map(msg => 
+          msg.id === tempId 
+            ? { ...msg, id: response.data.data.id, status: 'sent' }
+            : msg
+        ));
+        
         fetchConversations();
       }
     } catch (error) {
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(msg => msg.id !== tempId));
+      setNewMessage(messageContent); // Restore message
+      
       toast({
         title: 'Send Failed',
         description: error.response?.data?.error || 'Failed to send message',
@@ -191,6 +300,20 @@ export default function PatientMessagesPage() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
+    }
+  };
+
+  // Handle typing indicator
+  const handleTyping = (e) => {
+    setNewMessage(e.target.value);
+    
+    // Emit typing event
+    if (selectedConversation?.conversationId && selectedConversation?.recipientId && isConnected) {
+      if (e.target.value.trim()) {
+        sendTypingStart(selectedConversation.conversationId, selectedConversation.recipientId);
+      } else {
+        sendTypingStop(selectedConversation.conversationId, selectedConversation.recipientId);
+      }
     }
   };
 
@@ -247,11 +370,29 @@ export default function PatientMessagesPage() {
     <div className="h-[calc(100vh-200px)] flex flex-col">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <MessageSquare className="w-6 h-6 text-purple-500" />
             Messages
+            {/* Real-time connection indicator */}
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+              isConnected 
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' 
+                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+            }`}>
+              {isConnected ? (
+                <>
+                  <Wifi className="w-3 h-3" />
+                  Live
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-3 h-3" />
+                  Offline
+                </>
+              )}
+            </span>
           </h1>
-          <p className="text-slate-500 mt-1">Communicate with your healthcare providers</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">Communicate with your healthcare providers in real-time</p>
         </div>
         <Button
           onClick={() => setShowNewMessageModal(true)}
@@ -296,14 +437,20 @@ export default function PatientMessagesPage() {
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white font-bold">
-                          {recipientName?.[0] || 'P'}
+                        <div className="relative">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white font-bold">
+                            {recipientName?.[0] || 'P'}
+                          </div>
+                          {/* Online indicator */}
+                          {isUserOnline(recipientId) && (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full" />
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-slate-900 truncate">
+                          <p className="font-semibold text-slate-900 dark:text-white truncate">
                             {recipientName}
                           </p>
-                          <p className="text-xs text-slate-500 truncate mt-1">
+                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-1">
                             {lastMessageText}
                           </p>
                         </div>
@@ -327,10 +474,25 @@ export default function PatientMessagesPage() {
             <>
               <CardHeader className="border-b">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-sm font-bold">
-                    {selectedConversation.recipientName?.[0] || 'P'}
+                  <div className="relative">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-sm font-bold">
+                      {selectedConversation.recipientName?.[0] || 'P'}
+                    </div>
+                    {/* Online status indicator */}
+                    {isUserOnline(selectedConversation.recipientId) && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full" />
+                    )}
                   </div>
-                  {selectedConversation.recipientName || 'Provider'}
+                  <div className="flex flex-col">
+                    <span>{selectedConversation.recipientName || 'Provider'}</span>
+                    <span className={`text-xs font-normal ${
+                      isUserOnline(selectedConversation.recipientId) 
+                        ? 'text-emerald-600 dark:text-emerald-400' 
+                        : 'text-slate-400'
+                    }`}>
+                      {isUserOnline(selectedConversation.recipientId) ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
                 </CardTitle>
               </CardHeader>
               
@@ -365,9 +527,23 @@ export default function PatientMessagesPage() {
               </CardContent>
 
               <div className="border-t p-4">
+                {/* Typing indicator */}
+                {typingIndicator && (
+                  <div className="mb-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center gap-1">
+                      <span className="flex gap-1">
+                        <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </span>
+                    </div>
+                    <span>{typingIndicator.userName} is typing...</span>
+                  </div>
+                )}
+                
                 {/* Draft indicator */}
-                {hasDraft && newMessage && (
-                  <div className="mb-2 flex items-center gap-2 text-xs text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-200">
+                {hasDraft && newMessage && !typingIndicator && (
+                  <div className="mb-2 flex items-center gap-2 text-xs text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 px-2 py-1 rounded border border-purple-200 dark:border-purple-800">
                     <FileText className="w-3 h-3" />
                     <span>Draft saved automatically</span>
                   </div>
@@ -375,10 +551,10 @@ export default function PatientMessagesPage() {
                 <div className="flex items-end gap-2">
                   <textarea
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    onChange={handleTyping}
                     onKeyPress={handleKeyPress}
                     placeholder="Type your message..."
-                    className="flex-1 min-h-[60px] max-h-[120px] p-3 border border-slate-300 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    className="flex-1 min-h-[60px] max-h-[120px] p-3 border border-slate-300 dark:border-slate-600 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                   />
                   <Button
                     onClick={sendMessage}

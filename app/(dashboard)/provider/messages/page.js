@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   MessageSquare, Send, Loader2, User, Search, 
-  Clock, Paperclip, Image as ImageIcon, AlertCircle, FileText, Plus, X
+  Clock, Paperclip, Image as ImageIcon, AlertCircle, FileText, Plus, X,
+  Circle, CheckCheck, Wifi, WifiOff
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { formatRelativeTime, formatDateTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
+import { useSocket } from '@/lib/useSocket';
 
 export default function ProviderMessagesPage() {
   const [conversations, setConversations] = useState([]);
@@ -27,6 +29,22 @@ export default function ProviderMessagesPage() {
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [newMessageContent, setNewMessageContent] = useState('');
   const [sendingNewMessage, setSendingNewMessage] = useState(false);
+
+  // Real-time socket connection
+  const {
+    isConnected,
+    onlineUsers,
+    joinConversation,
+    leaveConversation,
+    sendTypingStart,
+    sendTypingStop,
+    sendReadReceipt,
+    onNewMessage,
+    isUserOnline,
+    getTypingUser
+  } = useSocket();
+  
+  const [typingIndicator, setTypingIndicator] = useState(null);
 
   // Load draft from localStorage when conversation changes
   useEffect(() => {
@@ -60,6 +78,67 @@ export default function ProviderMessagesPage() {
   useEffect(() => {
     fetchConversations();
   }, []);
+
+  // Handle real-time incoming messages
+  useEffect(() => {
+    const cleanup = onNewMessage((message) => {
+      console.log('📨 New message received:', message);
+      
+      // Add message to current conversation if it matches
+      if (selectedConversation?.conversationId === message.conversationId ||
+          selectedConversation?.recipientId === message.senderId) {
+        setMessages(prev => {
+          // Avoid duplicates
+          if (prev.find(m => m.id === message.id)) return prev;
+          return [...prev, {
+            ...message,
+            sentByMe: false
+          }];
+        });
+        
+        // Send read receipt
+        if (message.senderId && selectedConversation?.conversationId) {
+          sendReadReceipt(message.id, selectedConversation.conversationId, message.senderId);
+        }
+        
+        scrollToBottom();
+      }
+      
+      // Update conversation list
+      fetchConversations();
+      
+      // Show notification toast if not in the same conversation
+      if (!selectedConversation || selectedConversation.recipientId !== message.senderId) {
+        toast({
+          title: `New message from ${message.senderName}`,
+          description: message.content?.substring(0, 50) || 'New message',
+        });
+      }
+    });
+    
+    return cleanup;
+  }, [onNewMessage, selectedConversation, sendReadReceipt]);
+
+  // Join/leave conversation room when selected conversation changes
+  useEffect(() => {
+    if (selectedConversation?.conversationId && isConnected) {
+      joinConversation(selectedConversation.conversationId);
+      
+      return () => {
+        leaveConversation(selectedConversation.conversationId);
+      };
+    }
+  }, [selectedConversation?.conversationId, isConnected, joinConversation, leaveConversation]);
+
+  // Update typing indicator
+  useEffect(() => {
+    if (selectedConversation?.conversationId) {
+      const typingUser = getTypingUser(selectedConversation.conversationId);
+      setTypingIndicator(typingUser);
+    } else {
+      setTypingIndicator(null);
+    }
+  }, [selectedConversation?.conversationId, getTypingUser]);
 
   const fetchPatients = async () => {
     setLoadingPatients(true);
@@ -155,11 +234,31 @@ export default function ProviderMessagesPage() {
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedConversation) return;
 
+    // Stop typing indicator
+    if (selectedConversation.conversationId && selectedConversation.recipientId) {
+      sendTypingStop(selectedConversation.conversationId, selectedConversation.recipientId);
+    }
+
     setSending(true);
+    const messageContent = newMessage;
+    
+    // Optimistically add message to UI
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage = {
+      id: tempId,
+      content: messageContent,
+      sentByMe: true,
+      createdAt: new Date().toISOString(),
+      status: 'sending'
+    };
+    setMessages(prev => [...prev, optimisticMessage]);
+    setNewMessage('');
+    scrollToBottom();
+
     try {
       const response = await api.post('/messages', {
         recipientId: selectedConversation.recipientId,
-        content: newMessage,
+        content: messageContent,
         isUrgent: false
       });
 
@@ -170,11 +269,21 @@ export default function ProviderMessagesPage() {
           localStorage.removeItem(draftKey);
         }
         setHasDraft(false);
-        setNewMessage('');
-        fetchMessages(selectedConversation.recipientId);
+        
+        // Replace optimistic message with real one
+        setMessages(prev => prev.map(msg => 
+          msg.id === tempId 
+            ? { ...msg, id: response.data.data.id, status: 'sent' }
+            : msg
+        ));
+        
         fetchConversations();
       }
     } catch (error) {
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(msg => msg.id !== tempId));
+      setNewMessage(messageContent); // Restore message
+      
       toast({
         title: 'Send Failed',
         description: error.response?.data?.error || 'Failed to send message',
@@ -189,6 +298,20 @@ export default function ProviderMessagesPage() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
+    }
+  };
+
+  // Handle typing indicator
+  const handleTyping = (e) => {
+    setNewMessage(e.target.value);
+    
+    // Emit typing event
+    if (selectedConversation?.conversationId && selectedConversation?.recipientId && isConnected) {
+      if (e.target.value.trim()) {
+        sendTypingStart(selectedConversation.conversationId, selectedConversation.recipientId);
+      } else {
+        sendTypingStop(selectedConversation.conversationId, selectedConversation.recipientId);
+      }
     }
   };
 
@@ -245,11 +368,29 @@ export default function ProviderMessagesPage() {
     <div className="h-[calc(100vh-200px)] flex flex-col">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <MessageSquare className="w-6 h-6 text-blue-500" />
             Messages
+            {/* Real-time connection indicator */}
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+              isConnected 
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' 
+                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+            }`}>
+              {isConnected ? (
+                <>
+                  <Wifi className="w-3 h-3" />
+                  Live
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-3 h-3" />
+                  Offline
+                </>
+              )}
+            </span>
           </h1>
-          <p className="text-slate-500 mt-1">Communicate with your patients</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">Communicate with your patients in real-time</p>
         </div>
         <Button
           onClick={() => setShowNewMessageModal(true)}
@@ -289,19 +430,25 @@ export default function ProviderMessagesPage() {
                         recipientName,
                         conversationId: conv.conversationId
                       })}
-                      className={`w-full p-4 text-left hover:bg-slate-50 transition-colors ${
-                        selectedConversation?.recipientId === recipientId ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+                      className={`w-full p-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
+                        selectedConversation?.recipientId === recipientId ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500' : ''
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white font-bold">
-                          {recipientName?.[0] || 'P'}
+                        <div className="relative">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white font-bold">
+                            {recipientName?.[0] || 'P'}
+                          </div>
+                          {/* Online indicator */}
+                          {isUserOnline(recipientId) && (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full" />
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-slate-900 truncate">
+                          <p className="font-semibold text-slate-900 dark:text-white truncate">
                             {recipientName}
                           </p>
-                          <p className="text-xs text-slate-500 truncate mt-1">
+                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-1">
                             {lastMessageText}
                           </p>
                         </div>
@@ -325,10 +472,25 @@ export default function ProviderMessagesPage() {
             <>
               <CardHeader className="border-b">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white text-sm font-bold">
-                    {selectedConversation.recipientName?.[0] || 'P'}
+                  <div className="relative">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white text-sm font-bold">
+                      {selectedConversation.recipientName?.[0] || 'P'}
+                    </div>
+                    {/* Online status indicator */}
+                    {isUserOnline(selectedConversation.recipientId) && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full" />
+                    )}
                   </div>
-                  {selectedConversation.recipientName || 'Patient'}
+                  <div className="flex flex-col">
+                    <span>{selectedConversation.recipientName || 'Patient'}</span>
+                    <span className={`text-xs font-normal ${
+                      isUserOnline(selectedConversation.recipientId) 
+                        ? 'text-emerald-600 dark:text-emerald-400' 
+                        : 'text-slate-400'
+                    }`}>
+                      {isUserOnline(selectedConversation.recipientId) ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
                 </CardTitle>
               </CardHeader>
               
@@ -347,7 +509,7 @@ export default function ProviderMessagesPage() {
                       <div className={`max-w-[70%] rounded-lg p-3 ${
                         msg.sentByMe 
                           ? 'bg-blue-500 text-white' 
-                          : 'bg-slate-100 text-slate-900'
+                          : 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white'
                       }`}>
                         {msg.isUrgent && !msg.sentByMe && (
                           <div className="flex items-center gap-1 text-red-600 mb-1">
@@ -356,11 +518,14 @@ export default function ProviderMessagesPage() {
                           </div>
                         )}
                         <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                        <p className={`text-xs mt-1 ${
-                          msg.sentByMe ? 'text-blue-50' : 'text-slate-500'
+                        <div className={`flex items-center gap-1 text-xs mt-1 ${
+                          msg.sentByMe ? 'text-blue-50' : 'text-slate-500 dark:text-slate-400'
                         }`}>
-                          {formatRelativeTime(msg.createdAt)}
-                        </p>
+                          <span>{formatRelativeTime(msg.createdAt)}</span>
+                          {msg.sentByMe && msg.status === 'sent' && (
+                            <CheckCheck className="w-3 h-3" />
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))
@@ -369,9 +534,23 @@ export default function ProviderMessagesPage() {
               </CardContent>
 
               <div className="border-t p-4">
+                {/* Typing indicator */}
+                {typingIndicator && (
+                  <div className="mb-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center gap-1">
+                      <span className="flex gap-1">
+                        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </span>
+                    </div>
+                    <span>{typingIndicator.userName} is typing...</span>
+                  </div>
+                )}
+                
                 {/* Draft indicator */}
-                {hasDraft && newMessage && (
-                  <div className="mb-2 flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                {hasDraft && newMessage && !typingIndicator && (
+                  <div className="mb-2 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded border border-blue-200 dark:border-blue-800">
                     <FileText className="w-3 h-3" />
                     <span>Draft saved automatically</span>
                   </div>
@@ -379,10 +558,10 @@ export default function ProviderMessagesPage() {
                 <div className="flex items-end gap-2">
                   <textarea
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    onChange={handleTyping}
                     onKeyPress={handleKeyPress}
                     placeholder="Type your message..."
-                    className="flex-1 min-h-[60px] max-h-[120px] p-3 border border-slate-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="flex-1 min-h-[60px] max-h-[120px] p-3 border border-slate-300 dark:border-slate-600 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                   />
                   <Button
                     onClick={sendMessage}
@@ -438,7 +617,7 @@ export default function ProviderMessagesPage() {
                   <select
                     value={selectedPatientId}
                     onChange={(e) => setSelectedPatientId(e.target.value)}
-                    className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-slate-800"
                   >
                     <option value="">Choose a patient...</option>
                     {patients.map((patient) => (
@@ -460,7 +639,7 @@ export default function ProviderMessagesPage() {
                   value={newMessageContent}
                   onChange={(e) => setNewMessageContent(e.target.value)}
                   placeholder="Type your message..."
-                  className="w-full min-h-[100px] p-3 border border-slate-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full min-h-[100px] p-3 border border-slate-300 dark:border-slate-600 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-slate-800"
                 />
               </div>
               <div className="flex justify-end gap-2">
@@ -496,6 +675,3 @@ export default function ProviderMessagesPage() {
     </div>
   );
 }
-
-
-

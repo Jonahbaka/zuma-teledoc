@@ -27,6 +27,16 @@ const server = app.listen(PORT, HOST, () => {
   });
 });
 
+// Initialize Socket.io for real-time chat
+let socketService = null;
+try {
+  socketService = require('./services/socketService');
+  socketService.initializeSocket(server);
+  console.log('🔌 Real-time chat enabled');
+} catch (err) {
+  console.error('⚠️ Socket.io initialization failed:', err.message);
+}
+
 // Minimal health check - available immediately
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady });
@@ -127,7 +137,10 @@ async function initializeApp() {
           'https://www.doctarx.com', 
           'http://localhost:3000', 
           'http://localhost:3001', 
+          'ws://localhost:8080',
+          'ws://localhost:3000',
           'wss://doctarx.com',
+          'wss://www.doctarx.com',
           'https://*.sentry.io'
         ],
         // Allow Google Fonts

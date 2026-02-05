@@ -15,6 +15,14 @@ const { validate, createMessageSchema, paginationSchema } = require('../../lib/v
 const { keysToCamel, parseQueryParams, getPaginationMeta } = require('../../lib/utils');
 const notificationService = require('../services/notifications');
 
+// Socket.io service for real-time messaging
+let socketService = null;
+try {
+  socketService = require('../services/socketService');
+} catch (err) {
+  console.warn('Socket service not available:', err.message);
+}
+
 const router = express.Router();
 
 /**
@@ -189,6 +197,27 @@ router.post('/',
         senderId: req.user.id, 
         recipientId: data.recipientId 
       });
+      
+      // Emit real-time message via Socket.io
+      if (socketService) {
+        try {
+          socketService.emitNewMessage(conversationId, data.recipientId, {
+            id: rows[0].id,
+            conversationId,
+            senderId: req.user.id,
+            senderName,
+            content: data.content,
+            isUrgent: data.isUrgent || false,
+            hasAttachment: !!data.attachmentName,
+            attachmentName: data.attachmentName,
+            status: 'sent',
+            sentByMe: false, // For recipient
+            createdAt: rows[0].created_at
+          });
+        } catch (socketError) {
+          logger.warn('Failed to emit socket message', { error: socketError.message });
+        }
+      }
       
       res.status(201).json({
         success: true,
@@ -539,6 +568,53 @@ router.delete('/:id', authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to delete message'
+    });
+  }
+});
+
+/**
+ * GET /api/messages/online-status/:userId
+ * Check if a user is online
+ */
+router.get('/online-status/:userId', authenticate, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const isOnline = socketService ? socketService.isUserOnline(userId) : false;
+    const lastSeen = socketService ? socketService.getUserLastSeen(userId) : null;
+    
+    res.json({
+      success: true,
+      userId,
+      isOnline,
+      lastSeen
+    });
+  } catch (error) {
+    logger.error('Get online status error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get online status'
+    });
+  }
+});
+
+/**
+ * GET /api/messages/online-users
+ * Get list of online users
+ */
+router.get('/online-users', authenticate, async (req, res) => {
+  try {
+    const onlineUsers = socketService ? socketService.getOnlineUsers() : [];
+    
+    res.json({
+      success: true,
+      users: onlineUsers
+    });
+  } catch (error) {
+    logger.error('Get online users error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get online users'
     });
   }
 });
