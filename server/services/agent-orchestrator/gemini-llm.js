@@ -20,21 +20,36 @@ let flashModel = null;   // Fast chat: conversation, introductions, status
 // INITIALIZATION — Dual Model Routing
 // =========================================================================
 
+// Model fallback chains — try newest first, fall back to universally available
+const PRO_CANDIDATES = ['gemini-2.5-pro', 'gemini-2.0-pro', 'gemini-1.5-pro'];
+const FLASH_CANDIDATES = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+
+let activeProModelName = null;
+let activeFlashModelName = null;
+let _initPromise = null;
+
 function initialize() {
   if (!GEMINI_API_KEY) {
     console.error('⚠️ GEMINI_API_KEY not set — agents will operate without reasoning.');
     return false;
   }
 
+  // If already initialized and working, skip
+  if (proModel && flashModel) return true;
+
   try {
     genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-    const PRO_MODEL = process.env.GEMINI_PRO_MODEL || 'gemini-3-pro-preview';
-    const FLASH_MODEL = process.env.GEMINI_FLASH_MODEL || 'gemini-3-flash-preview';
-    
-    // Pro — deep reasoning for complex tasks (code, research, proposals, matrix protocol)
+    // Use env override if set, otherwise we'll test models
+    const PRO_MODEL = process.env.GEMINI_PRO_MODEL || null;
+    const FLASH_MODEL = process.env.GEMINI_FLASH_MODEL || null;
+
+    // Set up models with the configured or default names
+    const proName = PRO_MODEL || 'gemini-2.5-flash';
+    const flashName = FLASH_MODEL || 'gemini-2.5-flash';
+
     proModel = genAI.getGenerativeModel({ 
-      model: PRO_MODEL,
+      model: proName,
       generationConfig: {
         temperature: 0.7,
         topP: 0.95,
@@ -43,9 +58,8 @@ function initialize() {
       }
     });
 
-    // Flash — fast responses for chat, introductions, status checks
     flashModel = genAI.getGenerativeModel({ 
-      model: FLASH_MODEL,
+      model: flashName,
       generationConfig: {
         temperature: 0.8,
         topP: 0.9,
@@ -54,12 +68,77 @@ function initialize() {
       }
     });
 
-    console.log(`  🧠 Gemini Pro: ${PRO_MODEL} — Deep Reasoning`);
-    console.log(`  ⚡ Gemini Flash: ${FLASH_MODEL} — Fast Chat`);
+    activeProModelName = proName;
+    activeFlashModelName = flashName;
+
+    console.log(`  🧠 Gemini Pro: ${proName} — Deep Reasoning`);
+    console.log(`  ⚡ Gemini Flash: ${flashName} — Fast Chat`);
+
+    // Fire-and-forget: test the flash model and fall back if needed
+    if (!_initPromise) {
+      _initPromise = testAndFallback().catch(e => console.error('  ❌ Model test failed:', e.message));
+    }
+
     return true;
   } catch (error) {
     console.error('  ❌ Gemini initialization failed:', error.message);
     return false;
+  }
+}
+
+/**
+ * Test the current model and fall back through candidates if it fails.
+ * This runs async after initialize() returns so the server isn't blocked.
+ */
+async function testAndFallback() {
+  // Test flash model first (it's used for chat)
+  const flashCandidates = [activeFlashModelName, ...FLASH_CANDIDATES].filter((v, i, a) => a.indexOf(v) === i);
+  
+  for (const modelName of flashCandidates) {
+    try {
+      const testModel = genAI.getGenerativeModel({ model: modelName });
+      const result = await testModel.generateContent('Say "online" in one word.');
+      const text = result.response.text();
+      if (text) {
+        flashModel = genAI.getGenerativeModel({ 
+          model: modelName,
+          generationConfig: { temperature: 0.8, topP: 0.9, topK: 40, maxOutputTokens: 4096 }
+        });
+        activeFlashModelName = modelName;
+        console.log(`  ✅ Gemini Flash VERIFIED: ${modelName} — responding to chat`);
+        break;
+      }
+    } catch (e) {
+      console.warn(`  ⚠️ Flash model "${modelName}" failed: ${e.message.substring(0, 80)}`);
+      continue;
+    }
+  }
+
+  // Test pro model
+  const proCandidates = [activeProModelName, ...PRO_CANDIDATES].filter((v, i, a) => a.indexOf(v) === i);
+  
+  for (const modelName of proCandidates) {
+    try {
+      const testModel = genAI.getGenerativeModel({ model: modelName });
+      const result = await testModel.generateContent('Say "ready" in one word.');
+      const text = result.response.text();
+      if (text) {
+        proModel = genAI.getGenerativeModel({ 
+          model: modelName,
+          generationConfig: { temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 8192 }
+        });
+        activeProModelName = modelName;
+        console.log(`  ✅ Gemini Pro VERIFIED: ${modelName} — deep reasoning active`);
+        break;
+      }
+    } catch (e) {
+      console.warn(`  ⚠️ Pro model "${modelName}" failed: ${e.message.substring(0, 80)}`);
+      continue;
+    }
+  }
+
+  if (!flashModel && !proModel) {
+    console.error('  ❌ ALL Gemini models failed — agents will use template fallback.');
   }
 }
 
@@ -132,6 +211,10 @@ ABOUT DOCTARX:
 // =========================================================================
 
 async function generateChatResponse(agentPersona, agentName, agentType, userMessage, conversationHistory = [], context = {}) {
+  // Wait for model test to complete if still running (max 10s)
+  if (_initPromise) {
+    try { await Promise.race([_initPromise, new Promise(r => setTimeout(r, 10000))]); } catch (e) { /* ok */ }
+  }
   if (!flashModel) return null;
 
   try {
@@ -250,6 +333,9 @@ async function synthesize(agentReports, query = '') {
 // =========================================================================
 
 async function generateIntroduction(agentPersona, agentName, agentType) {
+  if (_initPromise) {
+    try { await Promise.race([_initPromise, new Promise(r => setTimeout(r, 10000))]); } catch (e) { /* ok */ }
+  }
   if (!flashModel) return null;
 
   try {
