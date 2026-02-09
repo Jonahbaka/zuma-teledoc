@@ -263,6 +263,7 @@ async function initializeApp() {
   loadRoute('/api/enterprise', './routes/enterprise');
   loadRoute('/api/agent-ops', './routes/agentOps');
   loadRoute('/api/agent-chat', './routes/agentChat');
+  loadRoute('/api/inbox', './routes/inbox');
   loadRoute('/api/crm', './routes/crm');
   loadRoute('/api/financial', './routes/financial');
   loadRoute('/api/agent-ide', './routes/agentIde');

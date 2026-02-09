@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, Users, UserCheck, BarChart3, DollarSign, 
   Shield, FileText, Bell, Settings, Database, MessageSquare,
   Mail, Megaphone, Link2, UserPlus, Zap, FolderCog, Wallet,
   Bot, Brain, Radio, Contact, Target, Globe, Landmark, Briefcase,
-  Code2
+  Code2, Inbox
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
@@ -63,6 +63,7 @@ const navigationGroups = [
     name: 'AI & Intelligence',
     icon: Brain,
     items: [
+      { name: 'Agent Inbox', href: '/admin/inbox', icon: Inbox },
       { name: 'AI Agent Ops', href: '/admin/agent-ops', icon: Bot },
       { name: 'Agent Command Center', href: '/admin/agent-chat', icon: Radio },
       { name: 'AI CRM & Outreach', href: '/admin/crm', icon: Contact },
@@ -76,6 +77,7 @@ const navigationGroups = [
 export default function AdminLayout({ children }) {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
+  const [inboxUnread, setInboxUnread] = useState(0);
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -86,6 +88,38 @@ export default function AdminLayout({ children }) {
       router.push('/secure/admin');
     }
   }, [loading, isAuthenticated, user, router]);
+
+  // Fetch inbox unread count
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const fetchUnread = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+        if (!token) return;
+        const res = await fetch('/api/inbox/unread-count', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) setInboxUnread(data.data?.count || 0);
+      } catch (e) { /* silent */ }
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 30000); // every 30s
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
+  // Inject unread badge into navigation groups
+  const dynamicGroups = useMemo(() => {
+    return navigationGroups.map(group => ({
+      ...group,
+      items: group.items.map(item => {
+        if (item.href === '/admin/inbox' && inboxUnread > 0) {
+          return { ...item, badge: inboxUnread > 99 ? '99+' : String(inboxUnread) };
+        }
+        return item;
+      })
+    }));
+  }, [inboxUnread]);
 
   if (loading) {
     return (
@@ -102,7 +136,7 @@ export default function AdminLayout({ children }) {
   return (
     <DashboardLayout 
       navigation={navigation}
-      navigationGroups={navigationGroups}
+      navigationGroups={dynamicGroups}
       portalName="Admin"
       portalColor="from-purple-600 to-purple-800"
     >
