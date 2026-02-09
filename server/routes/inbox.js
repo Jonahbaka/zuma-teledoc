@@ -198,4 +198,27 @@ router.post('/run-missions', ...adminOnly, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+//  POST /api/inbox/wake-up — WAKE UP ALL AGENTS (full activation)
+// ═══════════════════════════════════════════════════════════════
+router.post('/wake-up', ...adminOnly, async (req, res) => {
+  try {
+    let orchestrator = null;
+    try { orchestrator = require('../services/agent-orchestrator'); } catch (e) {}
+
+    if (orchestrator && orchestrator.heartbeat) {
+      const result = await orchestrator.heartbeat.wakeUp();
+      res.json({
+        success: true,
+        message: `All agents activated. ${result.triggered.length} systems triggered.`,
+        data: result
+      });
+    } else {
+      res.status(503).json({ success: false, error: 'Heartbeat system not available. Server may still be starting.' });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

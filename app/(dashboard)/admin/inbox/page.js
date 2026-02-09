@@ -107,11 +107,21 @@ export default function InboxPage() {
   const runMissions = async () => {
     setMissionRunning(true);
     await apiCall('/run-missions', 'POST');
-    // Missions run async — poll for results after a delay
     setTimeout(async () => {
       await loadInbox();
       setMissionRunning(false);
     }, 5000);
+  };
+
+  const [waking, setWaking] = useState(false);
+  const wakeUpAgents = async () => {
+    setWaking(true);
+    const result = await apiCall('/wake-up', 'POST');
+    // Poll for inbox updates after wake-up completes
+    setTimeout(async () => {
+      await loadInbox();
+      setWaking(false);
+    }, 8000);
   };
 
   const markRead = async (ids) => {
@@ -179,6 +189,11 @@ export default function InboxPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button onClick={wakeUpAgents} disabled={waking}
+              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-purple-900/20 animate-pulse hover:animate-none">
+              <Zap className={`w-4 h-4 ${waking ? 'animate-spin' : ''}`} />
+              {waking ? 'Waking Up...' : 'Wake Up All Agents'}
+            </button>
             <button onClick={runMissions} disabled={missionRunning}
               className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-emerald-900/20">
               <Globe className={`w-4 h-4 ${missionRunning ? 'animate-spin' : ''}`} />

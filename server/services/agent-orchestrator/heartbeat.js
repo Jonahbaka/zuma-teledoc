@@ -67,12 +67,56 @@ class HeartbeatSystem {
     // Executive briefing — every 4 hours
     this.timers.push(setInterval(() => this.executiveBriefing(), 4 * 60 * 60 * 1000));
 
-    // Initial startup sequence (staggered)
-    setTimeout(() => this.healthCheck(), 15 * 1000);
-    setTimeout(() => this.startupBriefing(), 45 * 1000);
-    setTimeout(() => this.proactiveScan(), 2 * 60 * 1000);
-    // First web missions run 3 min after startup
-    setTimeout(() => this.runWebMissions(), 3 * 60 * 1000);
+    // Initial startup sequence (aggressive — agents wake up FAST)
+    setTimeout(() => this.healthCheck(), 10 * 1000);         // 10s after boot
+    setTimeout(() => this.startupBriefing(), 20 * 1000);     // 20s — immediate inbox message
+    setTimeout(() => this.proactiveScan(), 60 * 1000);       // 1 min — first data scan
+    setTimeout(() => this.runWebMissions(), 90 * 1000);      // 1.5 min — first web missions
+
+    // Keep-alive ping — prevents Cloud Run from idling agents
+    this.timers.push(setInterval(() => {
+      console.log(`💓 Heartbeat alive — cycle #${this.cycleCount}, uptime: ${Math.round((Date.now() - this.startedAt.getTime()) / 1000)}s`);
+    }, 5 * 60 * 1000));
+  }
+
+  /**
+   * Manual wake-up — Operator can trigger all agents to activate immediately
+   */
+  async wakeUp() {
+    console.log('💓 WAKE UP CALL — All agents activating NOW');
+    const results = [];
+
+    try {
+      await this.startupBriefing();
+      results.push('startup_briefing');
+    } catch (e) { results.push('startup_briefing:FAILED'); }
+
+    try {
+      await this.proactiveScan();
+      results.push('proactive_scan');
+    } catch (e) { results.push('proactive_scan:FAILED'); }
+
+    try {
+      await this.healthCheck();
+      results.push('health_check');
+    } catch (e) { results.push('health_check:FAILED'); }
+
+    try {
+      await this.runWebMissions();
+      results.push('web_missions');
+    } catch (e) { results.push('web_missions:FAILED'); }
+
+    try {
+      await this.executiveBriefing();
+      results.push('executive_briefing');
+    } catch (e) { results.push('executive_briefing:FAILED'); }
+
+    return {
+      triggered: results,
+      timestamp: new Date().toISOString(),
+      heartbeatRunning: this.isRunning,
+      uptime: Math.round((Date.now() - (this.startedAt?.getTime() || Date.now())) / 1000)
+    };
   }
 
   /**
