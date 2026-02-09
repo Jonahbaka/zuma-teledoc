@@ -371,6 +371,26 @@ router.get('/accounts', ...adminOnly, async (req, res) => {
 });
 
 // =========================================================================
+// LLM STATUS — Diagnostic endpoint
+// =========================================================================
+
+/**
+ * GET /api/agent-chat/llm-status
+ * Check which LLM provider is active (Claude or Gemini)
+ */
+router.get('/llm-status', ...adminOnly, (req, res) => {
+  const status = {
+    available: llmService ? llmService.isAvailable() : false,
+    anthropicKeySet: !!process.env.ANTHROPIC_API_KEY,
+    geminiKeySet: !!process.env.GEMINI_API_KEY,
+    serverTime: new Date().toISOString(),
+    uptime: Math.round(process.uptime() / 60) + ' minutes',
+    nodeVersion: process.version
+  };
+  res.json({ success: true, data: status });
+});
+
+// =========================================================================
 // HELPER: Generate Agent Response
 // =========================================================================
 

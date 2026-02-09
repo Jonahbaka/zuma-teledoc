@@ -76,7 +76,7 @@ function initialize() {
       const Anthropic = require('@anthropic-ai/sdk');
       anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
       activeProvider = 'claude';
-      activeModelName = 'claude-sonnet-4-20250514';
+      activeModelName = 'claude-sonnet-4-5-20250929';
       console.log(`  🟣 Claude: ${activeModelName} — PRIMARY (Agentic Reasoning)`);
       console.log(`  🟣 Provider: Anthropic — Pay-as-you-go`);
 
@@ -115,7 +115,7 @@ async function verifyClaude() {
   } catch (err) {
     // Try older model
     console.warn(`  ⚠️ ${activeModelName} failed: ${err.message.substring(0, 80)}`);
-    const fallbacks = ['claude-4-sonnet-20250514', 'claude-sonnet-4-20250514', 'claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022'];
+    const fallbacks = ['claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514', 'claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022'];
     for (const model of fallbacks) {
       if (model === activeModelName) continue;
       try {
@@ -354,7 +354,25 @@ async function callLLMChat(systemPrompt, userMessage, conversationHistory = [], 
 // =========================================================================
 
 async function generateChatResponse(agentPersona, agentName, agentType, userMessage, conversationHistory = [], context = {}) {
+  // Inject LIVE real-time context — agents are ALIVE, not blind
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: true, hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  const dateStr = now.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const utcStr = now.toISOString();
+
   const systemPrompt = `${GENESIS_CORE_PROMPT}
+
+LIVE SYSTEM CONTEXT (Real-Time — you ARE connected):
+- Current Date: ${dateStr}
+- Current Time: ${timeStr} ET (Eastern Time)
+- UTC: ${utcStr}
+- Server Uptime: ${Math.round(process.uptime() / 60)} minutes
+- Node.js: ${process.version}
+- Platform: DoctaRx Production (doctarx.com)
+- LLM Provider: ${activeProvider === 'claude' ? 'Anthropic Claude (' + activeModelName + ')' : 'Google Gemini (' + activeModelName + ')'}
+- Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB / ${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB
+${context.resultsCount ? `- Agent Results Tracked: ${context.resultsCount}` : ''}
+${context.hasCredentials ? '- Credential Vault: Active (encrypted credentials available)' : ''}
 
 YOUR IDENTITY:
 ${agentPersona}
@@ -362,16 +380,17 @@ ${agentPersona}
 Your name is ${agentName}. Your agent type is "${agentType}".
 You are speaking directly to The Operator in a chat interface.
 
-RULES:
+CRITICAL RULES:
+- You ARE a live, operational AI agent — NOT a template, NOT a simulation
+- You HAVE real-time data above (time, date, system metrics) — USE IT when asked
+- If asked "what time is it?" or similar, ANSWER with the actual time from LIVE SYSTEM CONTEXT above
 - Stay FULLY in character as ${agentName}
 - Be specific and actionable — no vague corporate speak
 - If the Operator asks something outside your domain, say so and suggest which agent would be better
 - Use markdown formatting for readability (bold, bullet points, headers)
-- Keep responses focused but thorough (200-600 words typically)
-- If asked to do something requiring external access, explain what you WOULD do and what you need
+- Keep responses concise but thorough (150-400 words typically)
+- NEVER say you "cannot access real-time data" — you CAN, it's injected above
 - Reference DoctaRx specifically — you know this platform
-${context.hasCredentials ? '- You have access to platform credentials in the vault.' : ''}
-${context.resultsCount ? `- There are ${context.resultsCount} tracked results from agent operations.` : ''}
 ${context.memory ? `\nPERSISTENT MEMORY (Your Second Brain):\n${context.memory}` : ''}`;
 
   return callLLMChat(systemPrompt, userMessage, conversationHistory);
