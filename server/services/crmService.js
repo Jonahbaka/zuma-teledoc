@@ -73,11 +73,152 @@ class CRMService {
         await db.query(sql);
       }
       this.initialized = true;
+
+      // Seed templates + scrape sources if empty
+      await this._seedDefaults();
+
+      // Auto-import any provider leads from agent web missions into CRM
+      await this._importAgentLeads();
+
       return true;
     } catch (err) {
       logger.error('CRM init error:', err.message);
       this.initialized = false;
       return false;
+    }
+  }
+
+  async _seedDefaults() {
+    try {
+      // Seed email templates if none exist
+      const { rows: tplCheck } = await db.query('SELECT COUNT(*) FROM crm_email_templates');
+      if (parseInt(tplCheck[0].count) === 0) {
+        const templates = [
+          {
+            name: 'Provider Cold Outreach',
+            category: 'cold_outreach',
+            subject: 'Earn more seeing patients from anywhere — DoctaRx',
+            body: `Hi {{first_name}},\n\nI noticed you practice {{specialty}} in {{organization}}. DoctaRx is a new AI-powered telehealth platform that lets you see patients remotely with:\n\n• AI-assisted triage that routes the right patients to you\n• Built-in e-prescribing (EPCS-ready)\n• HIPAA-compliant video visits\n• No platform fees for the first 90 days\n\nWould you be open to a 10-minute demo this week?\n\nBest,\nDoctaRx Team`
+          },
+          {
+            name: 'Investor Intro',
+            category: 'investor_pitch',
+            subject: 'DoctaRx — AI telehealth disrupting $250B market',
+            body: `Hi {{first_name}},\n\nDoctaRx is building the AI-first telehealth operating system. We combine:\n\n• 12-agent AI orchestra (compliance, growth, operations)\n• Real-time e-prescribing + insurance verification\n• Automated provider recruitment via NPI scraping\n• Zero-commission model for providers\n\nWe're bootstrapping and generating early revenue. Would love 15 minutes to share our traction.\n\nBest,\nJonah — Founder, DoctaRx`
+          },
+          {
+            name: 'Partnership Proposal',
+            category: 'partnership',
+            subject: 'Partnership opportunity — DoctaRx + {{organization}}',
+            body: `Hi {{first_name}},\n\nI'm reaching out from DoctaRx, an AI-powered telehealth platform. We think there's a strong synergy between our platforms.\n\nWe'd love to explore:\n• Patient referral pathways\n• Co-branded telehealth services\n• Technology integration\n\nWould you have 15 minutes this week for a quick call?\n\nBest,\nDoctaRx Team`
+          },
+          {
+            name: 'Follow-Up (No Reply)',
+            category: 'follow_up',
+            subject: 'Re: Quick question about telehealth at {{organization}}',
+            body: `Hi {{first_name}},\n\nJust circling back on my earlier note. I know you're busy — would a 5-minute call work better?\n\nWe're helping {{specialty}} practices see 30% more patients through AI triage. Happy to share specifics.\n\nBest,\nDoctaRx Team`
+          },
+          {
+            name: 'Nurse Practitioner Recruitment',
+            category: 'cold_outreach',
+            subject: 'Practice telehealth independently — DoctaRx platform',
+            body: `Hi {{first_name}},\n\nDoctaRx is building a network of independent NPs and PAs who want to practice telehealth on their own terms.\n\n• Set your own schedule\n• AI handles triage + scheduling\n• Built-in e-prescribing\n• Keep 100% of your consultation fees\n\nInterested in learning more?\n\nBest,\nDoctaRx Team`
+          }
+        ];
+
+        for (const t of templates) {
+          await db.query(`
+            INSERT INTO crm_email_templates (name, category, subject, body, created_by)
+            VALUES ($1, $2, $3, $4, 'system')
+            ON CONFLICT (name) DO NOTHING
+          `, [t.name, t.category, t.subject, t.body]).catch(() => {});
+        }
+        console.log('  📧 CRM: Seeded', templates.length, 'email templates');
+      }
+
+      // Seed scrape sources if none exist
+      const { rows: srcCheck } = await db.query('SELECT COUNT(*) FROM crm_scrape_sources');
+      if (parseInt(srcCheck[0].count) === 0) {
+        const sources = [
+          { name: 'NPI Registry (CMS)', url: 'https://npiregistry.cms.hhs.gov/', type: 'provider_directory', freq: 'daily' },
+          { name: 'Psychology Today', url: 'https://www.psychologytoday.com/us/therapists', type: 'provider_directory', freq: 'weekly' },
+          { name: 'Zocdoc Providers', url: 'https://www.zocdoc.com/', type: 'provider_directory', freq: 'weekly' },
+          { name: 'LinkedIn Healthcare', url: 'https://www.linkedin.com/search/results/people/?keywords=telehealth%20physician', type: 'social_scrape', freq: 'weekly' },
+          { name: 'Crunchbase HealthTech', url: 'https://www.crunchbase.com/search/organizations/field/organizations/categories/health-care', type: 'investor_research', freq: 'monthly' },
+          { name: 'AngelList Health', url: 'https://angel.co/health-care', type: 'investor_research', freq: 'monthly' },
+          { name: 'Fierce Healthcare', url: 'https://www.fiercehealthcare.com/', type: 'news_source', freq: 'daily' },
+          { name: 'Becker Hospital Review', url: 'https://www.beckershospitalreview.com/', type: 'news_source', freq: 'daily' },
+        ];
+
+        for (const s of sources) {
+          await db.query(`
+            INSERT INTO crm_scrape_sources (name, url, source_type, scrape_frequency, is_active)
+            VALUES ($1, $2, $3, $4, true)
+            ON CONFLICT (url) DO NOTHING
+          `, [s.name, s.url, s.type, s.freq]).catch(() => {});
+        }
+        console.log('  🌐 CRM: Seeded', sources.length, 'scrape sources');
+      }
+    } catch (err) {
+      logger.error('CRM seed error:', err.message);
+    }
+  }
+
+  async _importAgentLeads() {
+    try {
+      // Check if there are any provider leads from agent web missions that haven't been imported
+      const { rows: leads } = await db.query(`
+        SELECT evidence FROM ai_agent_results
+        WHERE result_type IN ('provider_leads', 'web_scrape', 'mission_data')
+          AND (evidence IS NOT NULL AND evidence::text != '{}' AND evidence::text != '[]' AND evidence::text != 'null')
+        ORDER BY created_at DESC LIMIT 20
+      `);
+
+      if (leads.length === 0) return;
+
+      let imported = 0;
+      for (const lead of leads) {
+        let providers = [];
+        try { providers = typeof lead.evidence === 'string' ? JSON.parse(lead.evidence) : (lead.evidence || []); } catch (e) { continue; }
+
+        for (const p of providers) {
+          if (!p.name || p.name === 'Unknown') continue;
+          const nameParts = p.name.split(' ');
+          const firstName = nameParts[0] || '';
+          const lastName = nameParts.slice(1).join(' ') || '';
+
+          // Check if already exists by NPI
+          if (p.npi) {
+            const { rows: existing } = await db.query('SELECT id FROM crm_contacts WHERE npi_number = $1', [p.npi]);
+            if (existing.length > 0) continue;
+          }
+
+          const result = await this.addContact({
+            firstName,
+            lastName,
+            title: p.credential || '',
+            specialty: p.specialty || '',
+            contactType: 'provider',
+            source: 'npi_registry',
+            sourceAgent: 'corporate_skills',
+            npiNumber: p.npi || null,
+            city: p.city || '',
+            state: p.state || '',
+            phone: p.phone || '',
+            notes: `Auto-imported from NPI Registry. Type: ${p.type || 'Individual'}`,
+            assignedAgent: 'growth',
+            priority: 'medium'
+          });
+
+          if (result) imported++;
+        }
+      }
+
+      if (imported > 0) {
+        console.log(`  📇 CRM: Auto-imported ${imported} provider leads from agent missions`);
+      }
+    } catch (err) {
+      // Non-critical — table might not exist yet
     }
   }
 

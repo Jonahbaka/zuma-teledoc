@@ -369,6 +369,133 @@ class WebActionEngine {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  WEB SEARCH — Real search results from DuckDuckGo
+  // ═══════════════════════════════════════════════════════════════
+
+  async webSearch(query, maxResults = 8) {
+    try {
+      // DuckDuckGo HTML search — no API key needed
+      const encodedQuery = encodeURIComponent(query);
+      const result = await this.fetchAndParse(`https://html.duckduckgo.com/html/?q=${encodedQuery}`);
+      if (!result.success) return { success: false, error: result.error, query };
+
+      const $ = result.$;
+      const results = [];
+
+      $('.result, .web-result').each((i, el) => {
+        if (i >= maxResults) return;
+        const title = $(el).find('.result__title, .result__a').first().text().trim();
+        const link = $(el).find('.result__url, .result__extras__url').first().text().trim();
+        const snippet = $(el).find('.result__snippet').first().text().trim();
+        const href = $(el).find('a.result__a').attr('href') || '';
+
+        if (title && title.length > 3) {
+          results.push({
+            title,
+            url: href.startsWith('//') ? 'https:' + href : (href || link),
+            snippet: snippet.substring(0, 300),
+            position: i + 1
+          });
+        }
+      });
+
+      return { success: true, query, results, count: results.length };
+    } catch (err) {
+      return { success: false, error: err.message, query };
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  TWITTER/X POSTING — Real tweets using stored credentials
+  // ═══════════════════════════════════════════════════════════════
+
+  async postToTwitter(tweetText) {
+    let credentialVault;
+    try { credentialVault = require('./credential-vault'); } catch (e) { return { success: false, error: 'Credential vault not available' }; }
+
+    try {
+      // Find Twitter credentials assigned to growth agent
+      const creds = await credentialVault.listCredentials({ platform: 'twitter' });
+      if (!creds || creds.length === 0) {
+        return { success: false, error: 'No Twitter credentials in vault. Add them in Agent Command Center → Credentials Vault.' };
+      }
+
+      const credId = creds[0].id;
+      const cred = await credentialVault.getCredential(credId, 'growth');
+
+      // Need API keys — check what's available
+      if (!cred.apiKey || !cred.apiSecret) {
+        return {
+          success: false,
+          error: 'Twitter API credentials incomplete. Need: API Key + API Secret + Access Token + Access Token Secret in the vault. Username/password alone cannot post — Twitter requires API keys from developer.twitter.com.'
+        };
+      }
+
+      // Try posting with twitter-api-v2
+      const { TwitterApi } = require('twitter-api-v2');
+      const client = new TwitterApi({
+        appKey: cred.apiKey,
+        appSecret: cred.apiSecret,
+        accessToken: cred.username, // Often stored as "username" field
+        accessSecret: cred.password, // Often stored as "password" field
+      });
+
+      const tweet = await client.v2.tweet(tweetText);
+      return {
+        success: true,
+        tweetId: tweet.data?.id,
+        tweetUrl: `https://x.com/i/status/${tweet.data?.id}`,
+        text: tweetText
+      };
+    } catch (err) {
+      return { success: false, error: `Twitter post failed: ${err.message}` };
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  DEEP SCRAPE — Read & extract content from any URL
+  // ═══════════════════════════════════════════════════════════════
+
+  async deepScrape(url) {
+    const result = await this.fetchAndParse(url);
+    if (!result.success) return { success: false, error: result.error, url };
+
+    const $ = result.$;
+
+    // Remove scripts, styles, nav, footer
+    $('script, style, nav, footer, header, iframe, noscript').remove();
+
+    const title = $('title').text().trim();
+    const h1 = $('h1').first().text().trim();
+    const metaDesc = $('meta[name="description"]').attr('content') || '';
+
+    // Extract main content
+    const mainContent = $('main, article, .content, .post, #content, .article-body').first().text().trim()
+      || $('body').text().trim();
+
+    // Clean up whitespace
+    const cleanContent = mainContent.replace(/\s+/g, ' ').substring(0, 5000);
+
+    // Extract all links
+    const links = [];
+    $('a[href]').each((i, el) => {
+      if (i >= 20) return;
+      const href = $(el).attr('href');
+      const text = $(el).text().trim();
+      if (href && text && text.length > 3 && href.startsWith('http')) {
+        links.push({ text: text.substring(0, 100), url: href });
+      }
+    });
+
+    return {
+      success: true, url, title, h1, metaDesc,
+      content: cleanContent,
+      links: links.slice(0, 15),
+      wordCount: cleanContent.split(/\s+/).length
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  STORE RESULTS
   // ═══════════════════════════════════════════════════════════════
 

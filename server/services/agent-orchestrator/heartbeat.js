@@ -471,6 +471,28 @@ class HeartbeatSystem {
           category: 'lead_gen', metrics: { providersFound: providers.length }
         });
         await webEngine.storeResult('corporate_skills', 'The Builder', 'provider_leads', 'NPI Provider Leads', providers);
+
+        // Auto-import into CRM
+        try {
+          const crmService = require('../crmService');
+          if (crmService.initialized) {
+            let imported = 0;
+            for (const p of providers) {
+              if (!p.name || p.name === 'Unknown') continue;
+              const nameParts = p.name.split(' ');
+              const result = await crmService.addContact({
+                firstName: nameParts[0] || '', lastName: nameParts.slice(1).join(' ') || '',
+                title: p.credential || '', specialty: p.specialty || '', contactType: 'provider',
+                source: 'npi_registry', sourceAgent: 'corporate_skills',
+                npiNumber: p.npi || null, city: p.city || '', state: p.state || '',
+                phone: p.phone || '', assignedAgent: 'growth', priority: 'medium',
+                notes: `NPI Registry lead. Type: ${p.type || 'Individual'}`
+              });
+              if (result) imported++;
+            }
+            if (imported > 0) console.log(`  📇 CRM: ${imported} new providers auto-imported`);
+          }
+        } catch (crmErr) { /* CRM not ready, that's ok */ }
       }
     } catch (e) {
       console.error('Mission provider leads failed:', e.message);

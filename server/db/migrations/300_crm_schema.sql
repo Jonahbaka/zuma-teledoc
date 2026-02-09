@@ -182,7 +182,7 @@ CREATE TABLE IF NOT EXISTS crm_scrape_sources (
   name VARCHAR(255) NOT NULL,
   url TEXT NOT NULL,
   source_type VARCHAR(50) NOT NULL
-    CHECK (source_type IN ('provider_directory', 'npi_registry', 'linkedin', 'twitter', 'hospital_staff', 'nursing_board', 'investor_list', 'accelerator', 'conference')),
+    CHECK (source_type IN ('provider_directory', 'npi_registry', 'linkedin', 'twitter', 'hospital_staff', 'nursing_board', 'investor_list', 'accelerator', 'conference', 'social_scrape', 'investor_research', 'news_source')),
   
   -- Scraping config
   scrape_frequency VARCHAR(20) DEFAULT 'weekly',
@@ -202,7 +202,23 @@ CREATE INDEX IF NOT EXISTS idx_crm_interactions_contact ON crm_interactions(cont
 CREATE INDEX IF NOT EXISTS idx_crm_interactions_campaign ON crm_interactions(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_crm_campaigns_status ON crm_campaigns(status);
 
--- Seed default scraping sources
+-- Fix CHECK constraint to allow all source types (safe: drops old constraint if exists, adds expanded one)
+DO $$ BEGIN
+  ALTER TABLE crm_scrape_sources DROP CONSTRAINT IF EXISTS crm_scrape_sources_source_type_check;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
+-- Re-add with all valid types
+DO $$ BEGIN
+  ALTER TABLE crm_scrape_sources ADD CONSTRAINT crm_scrape_sources_source_type_check
+    CHECK (source_type IN ('provider_directory', 'npi_registry', 'linkedin', 'twitter', 'hospital_staff', 'nursing_board', 'investor_list', 'accelerator', 'conference', 'social_scrape', 'investor_research', 'news_source'));
+EXCEPTION WHEN undefined_table OR duplicate_object THEN NULL;
+END $$;
+
+-- Unique constraint on scrape source URLs to prevent duplicates
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_scrape_sources_url ON crm_scrape_sources(url);
+
+-- Seed default scraping sources (use url for conflict detection)
 INSERT INTO crm_scrape_sources (name, url, source_type) VALUES
   ('NPI Registry', 'https://npiregistry.cms.hhs.gov/', 'npi_registry'),
   ('Doximity Provider Directory', 'https://www.doximity.com/', 'provider_directory'),
@@ -221,9 +237,12 @@ INSERT INTO crm_scrape_sources (name, url, source_type) VALUES
   ('Amwell Providers', 'https://www.amwell.com/', 'provider_directory'),
   ('MDLive Directory', 'https://www.mdlive.com/', 'provider_directory'),
   ('Healthcare Conference List', 'https://www.healthcareconferences.com/', 'conference')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (url) DO NOTHING;
 
--- Seed default email templates
+-- Unique constraint on template names
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_email_templates_name ON crm_email_templates(name);
+
+-- Seed default email templates (use name for conflict detection)
 INSERT INTO crm_email_templates (name, category, subject, body, created_by) VALUES
 (
   'Provider Cold Outreach',
@@ -316,4 +335,4 @@ DoctaRx Team',
   'Great insight, {{first_name}}. This aligns with what we''re building at DoctaRx — an AI-first telehealth platform where autonomous agents handle operations so doctors can focus on healing. The intersection of AI + healthcare is exactly where the next wave of value creation happens. Would love to connect.',
   'growth-agent'
 )
-ON CONFLICT DO NOTHING;
+ON CONFLICT (name) DO NOTHING;

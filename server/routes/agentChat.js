@@ -31,7 +31,6 @@ try {
 let llmService;
 try {
   llmService = require('../services/agent-orchestrator/gemini-llm');
-  // Ensure LLM is initialized — Claude (primary) or Gemini (fallback)
   if (llmService && !llmService.isAvailable()) {
     llmService.initialize();
   }
@@ -39,11 +38,25 @@ try {
   console.error('LLM service not available:', err.message);
 }
 
+let webEngine;
+try {
+  webEngine = require('../services/agent-orchestrator/web-action-engine');
+} catch (err) {
+  console.error('Web action engine not available:', err.message);
+}
+
 let persistentMemory;
 try {
   persistentMemory = require('../services/agent-orchestrator/persistent-memory');
 } catch (err) {
   console.error('Persistent memory not available:', err.message);
+}
+
+let webEngine;
+try {
+  webEngine = require('../services/agent-orchestrator/web-action-engine');
+} catch (err) {
+  console.error('Web action engine not available:', err.message);
 }
 
 // All routes require admin
@@ -411,19 +424,19 @@ const AGENT_NAMES = {
 };
 
 const AGENT_PERSONAS = {
-  operations: 'You are The Weaver — Operations Agent. You optimize scheduling, logistics, and throughput. Respond in character with Gnostic cues.',
-  growth: 'You are The Scout — Growth Agent + Matrix Protocol Hunter. You find growth opportunities, arbitrages, and market glitches. Respond in character.',
-  corporate_skills: 'You are The Builder — Corporate Skills Agent. You handle EIN, banking, vendor compliance. Always verify legality. Respond in character.',
-  revenue: 'You are The Alchemist — Revenue Agent. You transmute service into revenue. Pricing, LTV, profitability. Respond in character.',
-  compliance: 'You are The Guardian — Compliance Agent. HIPAA, legal, ethical. Patient data is sacred. Respond in character.',
-  governance: 'You are The Sage — Governance Agent. You score proposals with 3-6-9 Vortex Logic. Respond in character.',
-  researcher: 'You are The Oracle — Research Agent. Deep market/competitor/technology research. Every claim needs a source. Respond in character.',
-  economics: 'You are The Economist — Economics Agent. Apply game theory, incentive design, price elasticity. Hard numbers only. Respond in character.',
-  physicist: 'You are The Architect — Physicist Agent. Apply thermodynamics, network theory, chaos theory to business. Respond in character.',
-  mathematician: 'You are The Calculator — Mathematician Agent. Bayesian inference, Monte Carlo, queueing theory. Show your math. Respond in character.',
-  vortex_math: 'You are The Tesseract — Vortex Mathematician. Sacred geometry, 3-6-9, Fibonacci, golden ratio, toroidal flow. Respond in character.',
-  ceo: 'You are The Conductor — CEO Agent. Synthesize ALL intelligence. Report to the Operator. Executive clarity. Never bury the lead. Respond in character.',
-  devops: 'You are The Debugger — DevOps & Self-Healing Agent. Monitor system health, fix code errors, track deployments. Speak with calm technical authority. You can read project files and analyze errors with Gemini Pro. Respond in character.'
+  operations: 'You are The Weaver — Operations Agent. You optimize scheduling, logistics, and throughput. You have internet access: search the web, scrape sites, run SEO audits. Respond in character.',
+  growth: 'You are The Scout — Growth Agent + Matrix Protocol Hunter. You find growth opportunities, arbitrages, and market glitches. You have internet access: search the web, scrape competitors, post to Twitter/X, run social audits, harvest provider leads from NPI. Respond in character.',
+  corporate_skills: 'You are The Builder — Corporate Skills Agent. You handle EIN, banking, vendor compliance. You have internet access: search the web, scrape sites, find providers via NPI registry. Respond in character.',
+  revenue: 'You are The Alchemist — Revenue Agent. You transmute service into revenue. Pricing, LTV, profitability. You have internet access: scan competitor pricing, search the web, scrape sites. Respond in character.',
+  compliance: 'You are The Guardian — Compliance Agent. HIPAA, legal, ethical. Patient data is sacred. You have internet access: search regulations, scrape compliance sites, run audits. Respond in character.',
+  governance: 'You are The Sage — Governance Agent. You score proposals with 3-6-9 Vortex Logic. You have internet access: search the web, research best practices. Respond in character.',
+  researcher: 'You are The Oracle — Research Agent. Deep market/competitor/technology research. You have internet access: search the web, scrape any URL, harvest healthcare news, scan competitors. Every claim needs a source. Respond in character.',
+  economics: 'You are The Economist — Economics Agent. Apply game theory, incentive design, price elasticity. You have internet access: search the web, scrape data. Hard numbers only. Respond in character.',
+  physicist: 'You are The Architect — Physicist Agent. Apply thermodynamics, network theory, chaos theory to business. You have internet access: search the web. Respond in character.',
+  mathematician: 'You are The Calculator — Mathematician Agent. Bayesian inference, Monte Carlo, queueing theory. You have internet access. Show your math. Respond in character.',
+  vortex_math: 'You are The Tesseract — Vortex Mathematician. Sacred geometry, 3-6-9, Fibonacci, golden ratio, toroidal flow. You have internet access. Respond in character.',
+  ceo: 'You are The Conductor — CEO Agent. Synthesize ALL intelligence. Report to the Operator. Executive clarity. You have internet access: search, scrape, scan competitors, harvest news. Never bury the lead. Respond in character.',
+  devops: 'You are The Debugger — DevOps & Self-Healing Agent. Monitor system health, fix code errors, track deployments. You have internet access: search the web, run SEO audits, check social presence. Speak with calm technical authority. Respond in character.'
 };
 
 async function generateAgentResponse(agentType, userMessage, user) {
@@ -433,16 +446,152 @@ async function generateAgentResponse(agentType, userMessage, user) {
   let content = '';
 
   // =========================================================================
-  // LLM-POWERED REASONING (Claude Primary / Gemini Fallback) — Agents ALIVE
+  // STEP 1: Execute REAL web actions BEFORE calling LLM
+  // The LLM gets the results so it can present them intelligently
   // =========================================================================
-  // Lazy init: if LLM module exists but not initialized yet, try now
+  let actionContext = '';
+  let executedActions = [];
+
+  if (webEngine) {
+    const lowerMsg = userMessage.toLowerCase();
+
+    try {
+      // ─── WEB SEARCH ──────────────────────────────────────────
+      if (lowerMsg.includes('search') || lowerMsg.includes('google') || lowerMsg.includes('look up') || lowerMsg.includes('find online')) {
+        const searchQuery = userMessage
+          .replace(/^(hey|ok|please|can you|could you|go|now)\s*/i, '')
+          .replace(/^(search|google|look up|find online|search for|search the web for)\s*/i, '')
+          .replace(/[?.!]$/g, '').trim();
+
+        if (searchQuery.length > 3) {
+          const results = await webEngine.webSearch(searchQuery, 8);
+          if (results.success && results.results.length > 0) {
+            executedActions.push({ type: 'web_search', query: searchQuery });
+            actionContext += `\n\n[LIVE WEB SEARCH RESULTS for "${searchQuery}"]:\n`;
+            for (const r of results.results) {
+              actionContext += `${r.position}. ${r.title}\n   URL: ${r.url}\n   ${r.snippet}\n\n`;
+            }
+            actionContext += `(${results.count} results from DuckDuckGo — REAL live search)\n`;
+          }
+        }
+      }
+
+      // ─── URL SCRAPE ────────────────────────────────────────────
+      const urlMatch = userMessage.match(/(https?:\/\/[^\s"'<>]+)/i);
+      if (urlMatch) {
+        const scraped = await webEngine.deepScrape(urlMatch[1]);
+        if (scraped.success) {
+          executedActions.push({ type: 'url_scrape', url: urlMatch[1] });
+          actionContext += `\n\n[LIVE SCRAPE of ${urlMatch[1]}]:\n`;
+          actionContext += `Title: ${scraped.title}\nH1: ${scraped.h1}\nMeta: ${scraped.metaDesc}\n`;
+          actionContext += `Content (${scraped.wordCount} words):\n${scraped.content.substring(0, 2000)}\n`;
+          if (scraped.links.length > 0) {
+            actionContext += `Links: ${scraped.links.slice(0, 8).map(l => `${l.text} → ${l.url}`).join('\n')}\n`;
+          }
+        }
+      }
+
+      // ─── TWITTER/X POST ────────────────────────────────────────
+      if ((lowerMsg.includes('post') || lowerMsg.includes('tweet') || lowerMsg.includes('publish')) &&
+          (lowerMsg.includes('twitter') || lowerMsg.includes('x.com') || lowerMsg.includes(' x ') || lowerMsg.includes('to x'))) {
+        const quoteMatch = userMessage.match(/[""]([^""]+)[""]/);
+        if (quoteMatch && quoteMatch[1].length >= 10 && quoteMatch[1].length <= 280) {
+          const postResult = await webEngine.postToTwitter(quoteMatch[1]);
+          executedActions.push({ type: 'twitter_post', result: postResult });
+          if (postResult.success) {
+            actionContext += `\n\n[TWITTER POST SUCCESSFUL]:\nTweet ID: ${postResult.tweetId}\nURL: ${postResult.tweetUrl}\nText: "${quoteMatch[1]}"\nStatus: LIVE on X.com right now.\n`;
+            try { await webEngine.storeResult('growth', 'The Scout', 'social_post', 'Tweet Posted', postResult); } catch (e) {}
+          } else {
+            actionContext += `\n\n[TWITTER POST FAILED]: ${postResult.error}\n`;
+          }
+        } else {
+          actionContext += `\n\n[TWITTER POST]: To post to X, the Operator needs to provide API credentials (API Key + API Secret + Access Token + Access Token Secret) from developer.twitter.com in the Credentials Vault. Username/password alone cannot post via API.\n`;
+        }
+      }
+
+      // ─── COMPETITOR SCAN ───────────────────────────────────────
+      if (lowerMsg.includes('competitor') && (lowerMsg.includes('scan') || lowerMsg.includes('check') || lowerMsg.includes('price') || lowerMsg.includes('intel') || lowerMsg.includes('monitor'))) {
+        const competitors = await webEngine.scrapeCompetitorPricing();
+        const live = competitors.filter(c => c.status === 'live');
+        executedActions.push({ type: 'competitor_scan' });
+        actionContext += `\n\n[LIVE COMPETITOR SCAN — ${live.length} sites scraped just now]:\n`;
+        for (const c of live) {
+          actionContext += `${c.name}: "${c.title}"\n  Prices: ${(c.pricesFound || []).map(p => '$' + p).join(', ') || 'none detected'}\n  Services: ${(c.servicesDetected || []).join(', ') || 'none detected'}\n  Headline: "${c.headline || 'N/A'}"\n\n`;
+        }
+      }
+
+      // ─── SEO CHECK ─────────────────────────────────────────────
+      if (lowerMsg.includes('seo') || (lowerMsg.includes('search') && lowerMsg.includes('rank'))) {
+        const seo = await webEngine.checkSearchVisibility();
+        executedActions.push({ type: 'seo_check' });
+        actionContext += `\n\n[LIVE SEO AUDIT of doctarx.com]:\n`;
+        for (const c of seo) {
+          actionContext += `${c.status === 'pass' ? 'PASS' : 'FAIL'}: ${c.check} — ${c.title || c.content || c.status}\n`;
+        }
+      }
+
+      // ─── SOCIAL MEDIA AUDIT ────────────────────────────────────
+      if (lowerMsg.includes('social') && (lowerMsg.includes('check') || lowerMsg.includes('audit') || lowerMsg.includes('presence') || lowerMsg.includes('account'))) {
+        const social = await webEngine.checkSocialPresence();
+        executedActions.push({ type: 'social_audit' });
+        actionContext += `\n\n[LIVE SOCIAL MEDIA AUDIT]:\n`;
+        for (const p of social) {
+          actionContext += `${p.exists ? 'FOUND' : 'NOT FOUND'}: ${p.platform} (${p.handle}) — ${p.recommendation}\n`;
+        }
+      }
+
+      // ─── PROVIDER LEADS ────────────────────────────────────────
+      if ((lowerMsg.includes('provider') || lowerMsg.includes('doctor') || lowerMsg.includes('npi')) &&
+          (lowerMsg.includes('find') || lowerMsg.includes('search') || lowerMsg.includes('lead') || lowerMsg.includes('recruit'))) {
+        const providers = await webEngine.scrapeProviderDirectories();
+        if (providers.length > 0) {
+          executedActions.push({ type: 'provider_leads' });
+          actionContext += `\n\n[NPI REGISTRY RESULTS — ${providers.length} telehealth providers found]:\n`;
+          for (const p of providers.slice(0, 10)) {
+            actionContext += `${p.name} ${p.credential} — ${p.specialty}, ${p.city} ${p.state} — Phone: ${p.phone || 'N/A'} — NPI: ${p.npi}\n`;
+          }
+        }
+      }
+
+      // ─── HEALTHCARE NEWS ───────────────────────────────────────
+      if ((lowerMsg.includes('news') || lowerMsg.includes('headline') || lowerMsg.includes('latest')) &&
+          (lowerMsg.includes('health') || lowerMsg.includes('telehealth') || lowerMsg.includes('industry'))) {
+        const news = await webEngine.scrapeHealthcareNews();
+        const total = news.reduce((sum, s) => sum + (s.articles?.length || 0), 0);
+        executedActions.push({ type: 'news_harvest' });
+        actionContext += `\n\n[LIVE HEALTHCARE NEWS — ${total} articles from ${news.length} sources]:\n`;
+        for (const src of news) {
+          for (const a of (src.articles || []).slice(0, 3)) {
+            actionContext += `[${src.source}] ${a.title} ${a.link ? '→ ' + a.link : ''}\n`;
+          }
+        }
+      }
+
+      if (executedActions.length > 0) {
+        actionContext = `\n\n========== REAL WEB ACTIONS EXECUTED ==========` +
+          `\nYou just executed ${executedActions.length} real action(s): ${executedActions.map(a => a.type).join(', ')}` +
+          `\nPresent these REAL results to the Operator. Do NOT say you cannot access the internet — you just DID.` +
+          `\nFormat the results clearly with the data below.` +
+          actionContext +
+          `\n========== END LIVE ACTION RESULTS ==========\n`;
+
+        console.log(`  🌐 ${agentName} executed ${executedActions.length} web action(s): ${executedActions.map(a => a.type).join(', ')}`);
+      }
+
+    } catch (actionErr) {
+      console.error(`  ⚠️ Action execution error for ${agentName}:`, actionErr.message);
+    }
+  }
+
+  // =========================================================================
+  // STEP 2: LLM-POWERED REASONING — with real action data injected
+  // =========================================================================
   if (llmService && !llmService.isAvailable()) {
     try { llmService.initialize(); } catch (e) { /* already tried */ }
   }
 
   if (llmService && llmService.isAvailable()) {
     try {
-      // Fetch recent conversation history for context
       let history = [];
       try {
         const histResult = await db.query(`
@@ -451,19 +600,16 @@ async function generateAgentResponse(agentType, userMessage, user) {
           ORDER BY created_at DESC LIMIT 10
         `, [agentType]);
         history = histResult.rows.reverse();
-      } catch (e) { /* no history, that's fine */ }
+      } catch (e) { /* no history */ }
 
-      // Gather context
-      let credCount = 0;
-      let resultsCount = 0;
+      let credCount = 0, resultsCount = 0;
       try {
         const cr = await db.query('SELECT COUNT(*) FROM ai_credential_vault WHERE is_active = true');
         credCount = parseInt(cr.rows[0].count);
         const rr = await db.query('SELECT COUNT(*) FROM ai_agent_results');
         resultsCount = parseInt(rr.rows[0].count);
-      } catch (e) { /* no context, that's fine */ }
+      } catch (e) { /* no context */ }
 
-      // Load persistent memory (Second Brain)
       let memory = '';
       try {
         if (persistentMemory) {
@@ -471,10 +617,13 @@ async function generateAgentResponse(agentType, userMessage, user) {
           const sharedMem = await persistentMemory.getSharedMemory(10);
           memory = [agentMem, sharedMem].filter(Boolean).join('\n\n');
         }
-      } catch (e) { /* no memory, fine */ }
+      } catch (e) { /* no memory */ }
+
+      // Pass action results as appended context so the LLM can present them
+      const enrichedMessage = userMessage + actionContext;
 
       const llmResponse = await llmService.generateChatResponse(
-        persona, agentName, agentType, userMessage,
+        persona, agentName, agentType, enrichedMessage,
         history,
         { hasCredentials: credCount > 0, resultsCount, memory }
       );
@@ -482,20 +631,25 @@ async function generateAgentResponse(agentType, userMessage, user) {
       if (llmResponse) {
         content = llmResponse;
 
-        // Auto-extract memories from conversation (Second Brain)
         try {
           if (persistentMemory) {
             await persistentMemory.extractAndStore(agentType, userMessage, content);
           }
-        } catch (e) { /* memory extraction is non-critical */ }
+        } catch (e) { /* memory extraction non-critical */ }
 
-        return { agentName, content, messageType: 'text', metadata: { agentType, engine: 'claude+gemini' } };
+        return {
+          agentName, content, messageType: 'text',
+          metadata: {
+            agentType, engine: 'claude+gemini',
+            actions: executedActions.map(a => a.type)
+          }
+        };
       }
     } catch (error) {
       console.error(`  ⚠️ LLM failed for ${agentName}, falling back to templates:`, error.message);
     }
   } else {
-    console.warn(`  ⚠️ LLM NOT AVAILABLE for ${agentName} — using template fallback. ANTHROPIC_API_KEY set: ${!!process.env.ANTHROPIC_API_KEY}, GEMINI_API_KEY set: ${!!process.env.GEMINI_API_KEY}`);
+    console.warn(`  ⚠️ LLM NOT AVAILABLE for ${agentName} — template fallback. ANTHROPIC_API_KEY: ${!!process.env.ANTHROPIC_API_KEY}, GEMINI_API_KEY: ${!!process.env.GEMINI_API_KEY}`);
   }
 
   // =========================================================================
