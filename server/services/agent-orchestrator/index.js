@@ -57,7 +57,7 @@ const EngineeringAgent = require('./agents/engineering-agent');
 // Credential Vault
 const credentialVault = require('./credential-vault');
 
-// Gemini LLM — The Living Mind (Dual Model: Pro + Flash)
+// LLM Service — Claude (Primary) + Gemini (Fallback)
 const geminiLLM = require('./gemini-llm');
 
 // Heartbeat System — Proactive agent scheduling
@@ -123,12 +123,12 @@ class AgentOrchestrator {
       console.log(`   Mode: ${this.operatingMode.toUpperCase()}`);
       console.log('═══════════════════════════════════════════');
 
-      // Step 0: Initialize the LLM — Dual Model Routing
+      // Step 0: Initialize LLM — Claude (Primary) + Gemini (Fallback)
       const llmReady = geminiLLM.initialize();
       if (llmReady) {
-        console.log('  🧠 Gemini: ONLINE — Agents can REASON, RESEARCH, and ACT');
+        console.log('  🧠 LLM: ONLINE — Agents can REASON, RESEARCH, and ACT');
       } else {
-        console.log('  ⚠️ Gemini: OFFLINE — Agents running on templates only');
+        console.log('  ⚠️ LLM: OFFLINE — Agents running on templates only');
       }
 
       // Initialize Persistent Memory (Second Brain)

@@ -1,174 +1,31 @@
 /**
  * ═══════════════════════════════════════════════════════════════
- *  GEMINI LLM SERVICE — The Living Mind of Project Genesis
- *  Paid Tier 1 — Dual Model Routing
+ *  LLM SERVICE — The Living Mind of Project Genesis
+ *  DUAL PROVIDER: Claude (Primary) + Gemini (Fallback)
  *  
- *  Pro Model (gemini-2.5-pro): Deep reasoning, research, code analysis
- *  Flash Model (gemini-2.0-flash): Fast chat, status, real-time updates
+ *  Claude Sonnet 4: Primary reasoning, chat, agentic tasks
+ *  Gemini 2.0 Flash: Fallback if Claude is unavailable
  * ═══════════════════════════════════════════════════════════════
  */
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
+// ─── Provider State ──────────────────────────────────────────
 let genAI = null;
-let proModel = null;     // Deep reasoning: research, code fix, analysis, proposals
-let flashModel = null;   // Fast chat: conversation, introductions, status
+let geminiProModel = null;
+let geminiFlashModel = null;
+let anthropic = null;
 
-// =========================================================================
-// INITIALIZATION — Dual Model Routing
-// =========================================================================
-
-// Model fallback chains — try newest first, fall back to universally available
-const PRO_CANDIDATES = ['gemini-2.5-pro', 'gemini-2.0-pro', 'gemini-1.5-pro'];
-const FLASH_CANDIDATES = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-
-let activeProModelName = null;
-let activeFlashModelName = null;
+let activeProvider = null;   // 'claude' | 'gemini'
+let activeModelName = null;
 let _initPromise = null;
 
-function initialize() {
-  if (!GEMINI_API_KEY) {
-    console.error('⚠️ GEMINI_API_KEY not set — agents will operate without reasoning.');
-    return false;
-  }
-
-  // If already initialized and working, skip
-  if (proModel && flashModel) return true;
-
-  try {
-    genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-
-    // Use env override if set, otherwise we'll test models
-    const PRO_MODEL = process.env.GEMINI_PRO_MODEL || null;
-    const FLASH_MODEL = process.env.GEMINI_FLASH_MODEL || null;
-
-    // Set up models with the configured or default names
-    const proName = PRO_MODEL || 'gemini-2.5-flash';
-    const flashName = FLASH_MODEL || 'gemini-2.5-flash';
-
-    proModel = genAI.getGenerativeModel({ 
-      model: proName,
-      generationConfig: {
-        temperature: 0.7,
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 8192,
-      }
-    });
-
-    flashModel = genAI.getGenerativeModel({ 
-      model: flashName,
-      generationConfig: {
-        temperature: 0.8,
-        topP: 0.9,
-        topK: 40,
-        maxOutputTokens: 4096,
-      }
-    });
-
-    activeProModelName = proName;
-    activeFlashModelName = flashName;
-
-    console.log(`  🧠 Gemini Pro: ${proName} — Deep Reasoning`);
-    console.log(`  ⚡ Gemini Flash: ${flashName} — Fast Chat`);
-
-    // Fire-and-forget: test the flash model and fall back if needed
-    if (!_initPromise) {
-      _initPromise = testAndFallback().catch(e => console.error('  ❌ Model test failed:', e.message));
-    }
-
-    return true;
-  } catch (error) {
-    console.error('  ❌ Gemini initialization failed:', error.message);
-    return false;
-  }
-}
-
-/**
- * Test the current model and fall back through candidates if it fails.
- * This runs async after initialize() returns so the server isn't blocked.
- */
-async function testAndFallback() {
-  // Test flash model first (it's used for chat)
-  const flashCandidates = [activeFlashModelName, ...FLASH_CANDIDATES].filter((v, i, a) => a.indexOf(v) === i);
-  
-  for (const modelName of flashCandidates) {
-    try {
-      const testModel = genAI.getGenerativeModel({ model: modelName });
-      const result = await testModel.generateContent('Say "online" in one word.');
-      const text = result.response.text();
-      if (text) {
-        flashModel = genAI.getGenerativeModel({ 
-          model: modelName,
-          generationConfig: { temperature: 0.8, topP: 0.9, topK: 40, maxOutputTokens: 4096 }
-        });
-        activeFlashModelName = modelName;
-        console.log(`  ✅ Gemini Flash VERIFIED: ${modelName} — responding to chat`);
-        break;
-      }
-    } catch (e) {
-      console.warn(`  ⚠️ Flash model "${modelName}" failed: ${e.message.substring(0, 80)}`);
-      continue;
-    }
-  }
-
-  // Test pro model
-  const proCandidates = [activeProModelName, ...PRO_CANDIDATES].filter((v, i, a) => a.indexOf(v) === i);
-  
-  for (const modelName of proCandidates) {
-    try {
-      const testModel = genAI.getGenerativeModel({ model: modelName });
-      const result = await testModel.generateContent('Say "ready" in one word.');
-      const text = result.response.text();
-      if (text) {
-        proModel = genAI.getGenerativeModel({ 
-          model: modelName,
-          generationConfig: { temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 8192 }
-        });
-        activeProModelName = modelName;
-        console.log(`  ✅ Gemini Pro VERIFIED: ${modelName} — deep reasoning active`);
-        break;
-      }
-    } catch (e) {
-      console.warn(`  ⚠️ Pro model "${modelName}" failed: ${e.message.substring(0, 80)}`);
-      continue;
-    }
-  }
-
-  if (!flashModel && !proModel) {
-    console.error('  ❌ ALL Gemini models failed — agents will use template fallback.');
-  }
-}
-
-function isAvailable() {
-  return proModel !== null || flashModel !== null;
-}
-
-function getProModel() { return proModel; }
-function getFlashModel() { return flashModel; }
-
-// =========================================================================
-// RETRY WITH BACKOFF
-// =========================================================================
-
-async function withRetry(fn, maxRetries = 3) {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      const isRateLimit = error.message && (error.message.includes('429') || error.message.includes('quota') || error.message.includes('Too Many Requests'));
-      if (isRateLimit && attempt < maxRetries) {
-        const delay = Math.min(2000 * Math.pow(2, attempt) + Math.random() * 1000, 30000);
-        console.log(`  ⏳ Rate limited, retrying in ${Math.round(delay / 1000)}s... (attempt ${attempt + 1}/${maxRetries})`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-      throw error;
-    }
-  }
-}
+// Expose for legacy compat
+let proModel = null;
+let flashModel = null;
 
 // =========================================================================
 // CORE SYSTEM PROMPT
@@ -207,18 +64,297 @@ ABOUT DOCTARX:
   - Goal: Disrupt healthcare with maximum efficiency and integrity`;
 
 // =========================================================================
-// CHAT — Flash model for real-time conversation
+// INITIALIZATION — Claude Primary, Gemini Fallback
+// =========================================================================
+
+function initialize() {
+  if (activeProvider) return true;  // Already initialized
+
+  // ─── TRY CLAUDE FIRST ─────────────────────────────────────
+  if (ANTHROPIC_API_KEY && ANTHROPIC_API_KEY.startsWith('sk-ant-')) {
+    try {
+      const Anthropic = require('@anthropic-ai/sdk');
+      anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+      activeProvider = 'claude';
+      activeModelName = 'claude-sonnet-4-20250514';
+      console.log(`  🟣 Claude: ${activeModelName} — PRIMARY (Agentic Reasoning)`);
+      console.log(`  🟣 Provider: Anthropic — Pay-as-you-go`);
+
+      // Verify Claude works async
+      if (!_initPromise) {
+        _initPromise = verifyClaude().catch(e => {
+          console.error('  ❌ Claude verification failed, falling back to Gemini:', e.message);
+          activeProvider = null;
+          anthropic = null;
+          initializeGemini();
+        });
+      }
+      return true;
+    } catch (err) {
+      console.warn('  ⚠️ Claude SDK not available:', err.message);
+    }
+  }
+
+  // ─── FALLBACK: GEMINI ─────────────────────────────────────
+  return initializeGemini();
+}
+
+async function verifyClaude() {
+  try {
+    const response = await anthropic.messages.create({
+      model: activeModelName,
+      max_tokens: 20,
+      messages: [{ role: 'user', content: 'Say "online" in one word.' }]
+    });
+    const text = response.content?.[0]?.text || '';
+    if (text) {
+      console.log(`  ✅ Claude VERIFIED: ${activeModelName} — agents are ALIVE`);
+    } else {
+      throw new Error('Empty response');
+    }
+  } catch (err) {
+    // Try older model
+    console.warn(`  ⚠️ ${activeModelName} failed: ${err.message.substring(0, 80)}`);
+    const fallbacks = ['claude-4-sonnet-20250514', 'claude-sonnet-4-20250514', 'claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022'];
+    for (const model of fallbacks) {
+      if (model === activeModelName) continue;
+      try {
+        const r = await anthropic.messages.create({
+          model,
+          max_tokens: 20,
+          messages: [{ role: 'user', content: 'Say "ready" in one word.' }]
+        });
+        if (r.content?.[0]?.text) {
+          activeModelName = model;
+          console.log(`  ✅ Claude VERIFIED (fallback): ${model} — agents are ALIVE`);
+          return;
+        }
+      } catch (e) {
+        console.warn(`  ⚠️ Claude model "${model}" failed: ${e.message.substring(0, 60)}`);
+      }
+    }
+    throw new Error('All Claude models failed');
+  }
+}
+
+function initializeGemini() {
+  if (!GEMINI_API_KEY) {
+    console.error('  ⚠️ No LLM keys available — agents will use template fallback.');
+    return false;
+  }
+
+  try {
+    genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+    const modelName = process.env.GEMINI_FLASH_MODEL || GEMINI_MODELS[0];
+
+    geminiFlashModel = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { temperature: 0.8, topP: 0.9, topK: 40, maxOutputTokens: 4096 }
+    });
+    geminiProModel = genAI.getGenerativeModel({
+      model: process.env.GEMINI_PRO_MODEL || 'gemini-2.5-pro',
+      generationConfig: { temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 8192 }
+    });
+
+    // Legacy compat
+    flashModel = geminiFlashModel;
+    proModel = geminiProModel;
+
+    activeProvider = 'gemini';
+    activeModelName = modelName;
+    console.log(`  🔵 Gemini: ${modelName} — FALLBACK ACTIVE`);
+
+    // Verify async
+    if (!_initPromise) {
+      _initPromise = verifyGemini(GEMINI_MODELS).catch(e => console.error('  ❌ Gemini verify failed:', e.message));
+    }
+    return true;
+  } catch (err) {
+    console.error('  ❌ Gemini initialization failed:', err.message);
+    return false;
+  }
+}
+
+async function verifyGemini(models) {
+  for (const modelName of models) {
+    try {
+      const m = genAI.getGenerativeModel({ model: modelName });
+      const r = await m.generateContent('Say "online" in one word.');
+      if (r.response.text()) {
+        geminiFlashModel = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: { temperature: 0.8, topP: 0.9, topK: 40, maxOutputTokens: 4096 }
+        });
+        flashModel = geminiFlashModel;
+        activeModelName = modelName;
+        console.log(`  ✅ Gemini VERIFIED: ${modelName}`);
+        return;
+      }
+    } catch (e) {
+      console.warn(`  ⚠️ Gemini "${modelName}" failed: ${e.message.substring(0, 60)}`);
+    }
+  }
+}
+
+function isAvailable() {
+  return activeProvider !== null;
+}
+
+function getProModel() { return proModel; }
+function getFlashModel() { return flashModel; }
+
+// =========================================================================
+// RETRY WITH BACKOFF
+// =========================================================================
+
+async function withRetry(fn, maxRetries = 3) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isRetryable = error.message && (
+        error.message.includes('429') || error.message.includes('quota') ||
+        error.message.includes('Too Many Requests') || error.message.includes('overloaded') ||
+        error.message.includes('529')
+      );
+      if (isRetryable && attempt < maxRetries) {
+        const delay = Math.min(2000 * Math.pow(2, attempt) + Math.random() * 1000, 30000);
+        console.log(`  ⏳ Rate limited, retrying in ${Math.round(delay / 1000)}s... (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+// =========================================================================
+// UNIFIED CALL — Routes to Claude or Gemini
+// =========================================================================
+
+async function callLLM(systemPrompt, userMessage, options = {}) {
+  // Wait for init verification
+  if (_initPromise) {
+    try { await Promise.race([_initPromise, new Promise(r => setTimeout(r, 12000))]); } catch (e) { /* ok */ }
+  }
+
+  const maxTokens = options.maxTokens || 4096;
+  const temperature = options.temperature || 0.8;
+  const expectJSON = options.expectJSON || false;
+
+  // ─── CLAUDE (Primary) ─────────────────────────────────────
+  if (activeProvider === 'claude' && anthropic) {
+    try {
+      return await withRetry(async () => {
+        const response = await anthropic.messages.create({
+          model: activeModelName,
+          max_tokens: maxTokens,
+          temperature,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userMessage }]
+        });
+        return response.content?.[0]?.text || null;
+      });
+    } catch (err) {
+      console.error(`  ❌ Claude call failed: ${err.message.substring(0, 100)}`);
+      // Fall through to Gemini
+    }
+  }
+
+  // ─── GEMINI (Fallback) ────────────────────────────────────
+  if (geminiFlashModel) {
+    try {
+      return await withRetry(async () => {
+        const result = await geminiFlashModel.generateContent(
+          `${systemPrompt}\n\n${userMessage}`
+        );
+        return result.response.text();
+      });
+    } catch (err) {
+      console.error(`  ❌ Gemini fallback failed: ${err.message.substring(0, 100)}`);
+    }
+  }
+
+  return null;
+}
+
+async function callLLMChat(systemPrompt, userMessage, conversationHistory = [], options = {}) {
+  if (_initPromise) {
+    try { await Promise.race([_initPromise, new Promise(r => setTimeout(r, 12000))]); } catch (e) { /* ok */ }
+  }
+
+  const maxTokens = options.maxTokens || 4096;
+  const temperature = options.temperature || 0.8;
+
+  // ─── CLAUDE (Primary) ─────────────────────────────────────
+  if (activeProvider === 'claude' && anthropic) {
+    try {
+      // Build Claude message history
+      const messages = [];
+      for (const msg of conversationHistory.slice(-12)) {
+        const role = msg.sender_type === 'operator' ? 'user' : 'assistant';
+        const lastRole = messages.length > 0 ? messages[messages.length - 1].role : null;
+        if (role === lastRole) continue;  // Claude requires alternating roles
+        messages.push({ role, content: msg.content });
+      }
+      // Ensure starts with user
+      if (messages.length > 0 && messages[0].role !== 'user') messages.shift();
+      // Add current message
+      messages.push({ role: 'user', content: userMessage });
+
+      return await withRetry(async () => {
+        const response = await anthropic.messages.create({
+          model: activeModelName,
+          max_tokens: maxTokens,
+          temperature,
+          system: systemPrompt,
+          messages
+        });
+        return response.content?.[0]?.text || null;
+      });
+    } catch (err) {
+      console.error(`  ❌ Claude chat failed: ${err.message.substring(0, 100)}`);
+    }
+  }
+
+  // ─── GEMINI (Fallback) ────────────────────────────────────
+  if (geminiFlashModel) {
+    try {
+      const validHistory = [];
+      for (const msg of conversationHistory.slice(-12)) {
+        const role = msg.sender_type === 'operator' ? 'user' : 'model';
+        const lastRole = validHistory.length > 0 ? validHistory[validHistory.length - 1].role : null;
+        if (role === lastRole) continue;
+        validHistory.push({
+          role,
+          parts: [{ text: msg.content }]
+        });
+      }
+      if (validHistory.length > 0 && validHistory[0].role !== 'user') validHistory.shift();
+
+      return await withRetry(async () => {
+        const chat = geminiFlashModel.startChat({
+          history: validHistory,
+          systemInstruction: { parts: [{ text: systemPrompt }] }
+        });
+        const result = await chat.sendMessage(userMessage);
+        return result.response.text();
+      });
+    } catch (err) {
+      console.error(`  ❌ Gemini chat fallback failed: ${err.message.substring(0, 100)}`);
+    }
+  }
+
+  return null;
+}
+
+// =========================================================================
+// CHAT — Agent chat with Operator
 // =========================================================================
 
 async function generateChatResponse(agentPersona, agentName, agentType, userMessage, conversationHistory = [], context = {}) {
-  // Wait for model test to complete if still running (max 10s)
-  if (_initPromise) {
-    try { await Promise.race([_initPromise, new Promise(r => setTimeout(r, 10000))]); } catch (e) { /* ok */ }
-  }
-  if (!flashModel) return null;
-
-  try {
-    const systemInstruction = `${GENESIS_CORE_PROMPT}
+  const systemPrompt = `${GENESIS_CORE_PROMPT}
 
 YOUR IDENTITY:
 ${agentPersona}
@@ -238,234 +374,121 @@ ${context.hasCredentials ? '- You have access to platform credentials in the vau
 ${context.resultsCount ? `- There are ${context.resultsCount} tracked results from agent operations.` : ''}
 ${context.memory ? `\nPERSISTENT MEMORY (Your Second Brain):\n${context.memory}` : ''}`;
 
-    // Build valid alternating history
-    const validHistory = [];
-    for (const msg of conversationHistory.slice(-12)) {
-      const role = msg.sender_type === 'operator' ? 'user' : 'model';
-      const lastRole = validHistory.length > 0 ? validHistory[validHistory.length - 1].role : null;
-      if (role === lastRole) continue;
-      validHistory.push({
-        role,
-        parts: [{ text: msg.sender_type === 'operator' ? msg.content : `[${msg.sender_name || 'Agent'}]: ${msg.content}` }]
-      });
-    }
-    if (validHistory.length > 0 && validHistory[0].role !== 'user') validHistory.shift();
-
-    return await withRetry(async () => {
-      const chat = flashModel.startChat({
-        history: validHistory,
-        systemInstruction: { parts: [{ text: systemInstruction }] }
-      });
-      const result = await chat.sendMessage(userMessage);
-      return result.response.text();
-    });
-  } catch (error) {
-    console.error(`  ❌ Gemini chat error (${agentType}):`, error.message);
-    return null;
-  }
+  return callLLMChat(systemPrompt, userMessage, conversationHistory);
 }
 
 // =========================================================================
-// DEEP THINK — Pro model for complex reasoning
+// DEEP THINK — Complex reasoning
 // =========================================================================
 
 async function agentThink(agentPersona, agentName, taskType, data = {}) {
-  if (!proModel) return null;
+  const prompts = {
+    observe: `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName}. TASK: OBSERVE.\nScan the following data and identify patterns, anomalies, opportunities, and risks.\nReturn a JSON array: [{ "type": "opportunity|risk|anomaly|pattern", "title": "...", "description": "...", "severity": "low|medium|high", "confidence": 0.0-1.0 }]\n\nDATA:\n${JSON.stringify(data, null, 2)}\n\nReturn ONLY valid JSON.`,
+    analyze: `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName}. TASK: ANALYZE.\nDerive insights using your specialized lens. Apply Vortex Logic (3-6-9).\nReturn JSON: { "insights": [{ "title": "...", "description": "...", "severity": "low|medium|high", "actionable": true/false }], "metrics": { ... }, "alerts": [{ "title": "...", "description": "...", "severity": "..." }] }\n\nOBSERVATIONS:\n${JSON.stringify(data, null, 2)}\n\nReturn ONLY valid JSON.`,
+    propose: `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName}. TASK: PROPOSE.\nGenerate concrete actionable proposals.\nReturn JSON array: [{ "title": "...", "summary": "...", "plan": "...", "rationale": "...", "category": "operations|growth|finance|compliance|corporate", "priority": "low|medium|high|critical", "estimatedImpact": { "revenue": 0, "efficiency": 0, "risk_reduction": 0 }, "estimatedCost": 0 }]\n\nANALYSIS:\n${JSON.stringify(data, null, 2)}\n\nReturn ONLY valid JSON.`
+  };
+
+  const prompt = prompts[taskType];
+  if (!prompt) return null;
+
+  const text = await callLLM(prompt, 'Execute the task above. Return ONLY valid JSON.', { maxTokens: 8192, temperature: 0.7 });
+  if (!text) return null;
 
   try {
-    const prompts = {
-      observe: `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName}. TASK: OBSERVE.\nScan the following data and identify patterns, anomalies, opportunities, and risks.\nReturn a JSON array: [{ "type": "opportunity|risk|anomaly|pattern", "title": "...", "description": "...", "severity": "low|medium|high", "confidence": 0.0-1.0 }]\n\nDATA:\n${JSON.stringify(data, null, 2)}\n\nReturn ONLY valid JSON.`,
-      analyze: `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName}. TASK: ANALYZE.\nDerive insights using your specialized lens. Apply Vortex Logic (3-6-9).\nReturn JSON: { "insights": [{ "title": "...", "description": "...", "severity": "low|medium|high", "actionable": true/false }], "metrics": { ... }, "alerts": [{ "title": "...", "description": "...", "severity": "..." }] }\n\nOBSERVATIONS:\n${JSON.stringify(data, null, 2)}\n\nReturn ONLY valid JSON.`,
-      propose: `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName}. TASK: PROPOSE.\nGenerate concrete actionable proposals.\nReturn JSON array: [{ "title": "...", "summary": "...", "plan": "...", "rationale": "...", "category": "operations|growth|finance|compliance|corporate", "priority": "low|medium|high|critical", "estimatedImpact": { "revenue": 0, "efficiency": 0, "risk_reduction": 0 }, "estimatedCost": 0 }]\n\nANALYSIS:\n${JSON.stringify(data, null, 2)}\n\nReturn ONLY valid JSON.`
-    };
-
-    const prompt = prompts[taskType];
-    if (!prompt) return null;
-
-    const result = await withRetry(() => proModel.generateContent(prompt));
-    const text = result.response.text();
     const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, text];
     return JSON.parse((jsonMatch[1] || text).trim());
-  } catch (error) {
-    console.error(`  ❌ Gemini think error (${agentName}/${taskType}):`, error.message);
+  } catch (e) {
+    console.error(`  ❌ JSON parse error (${agentName}/${taskType}):`, e.message);
     return null;
   }
 }
 
 // =========================================================================
-// RESEARCH — Pro model for deep research
+// RESEARCH — Deep research
 // =========================================================================
 
 async function research(agentPersona, agentName, query, context = {}) {
-  if (!proModel) return null;
+  const systemPrompt = `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName}. TASK: DEEP RESEARCH.\n\nClassify every finding as:\n- 🟢 FACT (verified, high confidence)\n- 🟡 SIGNAL (likely, moderate confidence)\n- 🔴 HYPOTHESIS (unverified, needs investigation)\n\nInclude sources. Be specific to telehealth/healthcare.\n\n${context.additionalContext ? `ADDITIONAL CONTEXT:\n${context.additionalContext}` : ''}`;
 
-  try {
-    const prompt = `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName}. TASK: DEEP RESEARCH.\n\nRESEARCH QUERY: "${query}"\n\nClassify every finding as:\n- 🟢 FACT (verified, high confidence)\n- 🟡 SIGNAL (likely, moderate confidence)\n- 🔴 HYPOTHESIS (unverified, needs investigation)\n\nInclude sources. Be specific to telehealth/healthcare.\n\n${context.additionalContext ? `ADDITIONAL CONTEXT:\n${context.additionalContext}` : ''}`;
-
-    const result = await withRetry(() => proModel.generateContent(prompt));
-    return result.response.text();
-  } catch (error) {
-    console.error(`  ❌ Gemini research error:`, error.message);
-    return null;
-  }
+  return callLLM(systemPrompt, `RESEARCH QUERY: "${query}"`, { maxTokens: 8192, temperature: 0.7 });
 }
 
 // =========================================================================
-// EXECUTIVE SYNTHESIS — Pro model
+// EXECUTIVE SYNTHESIS
 // =========================================================================
 
 async function synthesize(agentReports, query = '') {
-  if (!proModel) return null;
+  const systemPrompt = `${GENESIS_CORE_PROMPT}\n\nYou are The Conductor — CEO Agent.\n\nTASK: EXECUTIVE SYNTHESIS`;
+  const userMsg = `Agent reports:\n${JSON.stringify(agentReports, null, 2)}\n\n${query ? `Operator asks: "${query}"\n\n` : ''}Synthesize into ONE executive brief:\n1. **The Situation** (3 sentences max)\n2. **Top Priorities** (ranked, max 5)\n3. **Risks & Alerts**\n4. **Recommendation**\n5. **Cost/Benefit**\n\nMost important thing first.`;
 
-  try {
-    const prompt = `${GENESIS_CORE_PROMPT}\n\nYou are The Conductor — CEO Agent.\n\nTASK: EXECUTIVE SYNTHESIS\n\nAgent reports:\n${JSON.stringify(agentReports, null, 2)}\n\n${query ? `Operator asks: "${query}"\n\n` : ''}Synthesize into ONE executive brief:\n1. **The Situation** (3 sentences max)\n2. **Top Priorities** (ranked, max 5)\n3. **Risks & Alerts**\n4. **Recommendation**\n5. **Cost/Benefit**\n\nMost important thing first.`;
-
-    const result = await withRetry(() => proModel.generateContent(prompt));
-    return result.response.text();
-  } catch (error) {
-    console.error(`  ❌ Gemini synthesis error:`, error.message);
-    return null;
-  }
+  return callLLM(systemPrompt, userMsg, { maxTokens: 8192, temperature: 0.7 });
 }
 
 // =========================================================================
-// INTRODUCTION — Flash model
+// INTRODUCTION
 // =========================================================================
 
 async function generateIntroduction(agentPersona, agentName, agentType) {
-  if (_initPromise) {
-    try { await Promise.race([_initPromise, new Promise(r => setTimeout(r, 10000))]); } catch (e) { /* ok */ }
-  }
-  if (!flashModel) return null;
+  const prompt = `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName} (${agentType} agent). The Operator just summoned you.\n\nIntroduce yourself:\n1. **Who You Are**\n2. **Your Role** — what you DO for DoctaRx\n3. **What You Hope to Accomplish**\n4. **Your Dream**\n5. **For Fun** — show personality\n6. **Your Promise**\n\nBe vivid, specific, in-character. 300-500 words.`;
 
-  try {
-    const prompt = `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName} (${agentType} agent). The Operator just summoned you.\n\nIntroduce yourself:\n1. **Who You Are**\n2. **Your Role** — what you DO for DoctaRx\n3. **What You Hope to Accomplish**\n4. **Your Dream**\n5. **For Fun** — show personality\n6. **Your Promise**\n\nBe vivid, specific, in-character. 300-500 words.`;
-
-    const result = await withRetry(() => flashModel.generateContent(prompt));
-    return result.response.text();
-  } catch (error) {
-    console.error(`  ❌ Gemini intro error:`, error.message);
-    return null;
-  }
+  return callLLM(prompt, 'Introduce yourself now, in character.', { maxTokens: 4096, temperature: 0.85 });
 }
 
 // =========================================================================
-// MATRIX PROTOCOL — Pro model
+// MATRIX PROTOCOL — Glitch & Arbitrage Hunting
 // =========================================================================
 
 async function huntGlitches(agentPersona, agentName, domain, data = {}) {
-  if (!proModel) return null;
+  const prompt = `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName}. TASK: GLITCH HUNTING\n\nDomain: ${domain}\nData: ${JSON.stringify(data, null, 2)}\n\nFind "Glitches" where Old World is slow/overpriced and we can dominate.\nReturn JSON: [{ "type": "time_asymmetry|cost_asymmetry|bureaucracy_bypass", "title": "...", "description": "...", "competitorWeakness": "...", "ourAdvantage": "...", "exploitability": 0.0-1.0, "action": "..." }]\n\nReturn ONLY valid JSON.`;
+
+  const text = await callLLM(prompt, 'Hunt for glitches. Return ONLY valid JSON.', { maxTokens: 8192, temperature: 0.7 });
+  if (!text) return null;
   try {
-    const prompt = `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName}. TASK: GLITCH HUNTING\n\nDomain: ${domain}\nData: ${JSON.stringify(data, null, 2)}\n\nFind "Glitches" where Old World is slow/overpriced and we can dominate.\nReturn JSON: [{ "type": "time_asymmetry|cost_asymmetry|bureaucracy_bypass", "title": "...", "description": "...", "competitorWeakness": "...", "ourAdvantage": "...", "exploitability": 0.0-1.0, "action": "..." }]\n\nReturn ONLY valid JSON.`;
-    const result = await withRetry(() => proModel.generateContent(prompt));
-    const text = result.response.text();
     const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, text];
     return JSON.parse((jsonMatch[1] || text).trim());
-  } catch (error) {
-    console.error(`  ❌ Gemini glitch hunt error:`, error.message);
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
 async function huntArbitrages(agentPersona, agentName, domain, data = {}) {
-  if (!proModel) return null;
+  const prompt = `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName}. TASK: ARBITRAGE HUNTING\n\nDomain: ${domain}\nData: ${JSON.stringify(data, null, 2)}\n\nFind value disconnects: buy cheap, apply high-value.\nReturn JSON: [{ "type": "value_disconnect|attention_arbitrage|talent_arbitrage|geographic_arbitrage", "title": "...", "description": "...", "inputCost": "...", "outputValue": "...", "multiplier": 0, "action": "..." }]\n\nReturn ONLY valid JSON.`;
+
+  const text = await callLLM(prompt, 'Hunt for arbitrages. Return ONLY valid JSON.', { maxTokens: 8192, temperature: 0.7 });
+  if (!text) return null;
   try {
-    const prompt = `${GENESIS_CORE_PROMPT}\n\n${agentPersona}\n\nYou are ${agentName}. TASK: ARBITRAGE HUNTING\n\nDomain: ${domain}\nData: ${JSON.stringify(data, null, 2)}\n\nFind value disconnects: buy cheap, apply high-value.\nReturn JSON: [{ "type": "value_disconnect|attention_arbitrage|talent_arbitrage|geographic_arbitrage", "title": "...", "description": "...", "inputCost": "...", "outputValue": "...", "multiplier": 0, "action": "..." }]\n\nReturn ONLY valid JSON.`;
-    const result = await withRetry(() => proModel.generateContent(prompt));
-    const text = result.response.text();
     const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, text];
     return JSON.parse((jsonMatch[1] || text).trim());
-  } catch (error) {
-    console.error(`  ❌ Gemini arbitrage hunt error:`, error.message);
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
 // =========================================================================
-// CODE ANALYSIS & FIX — Pro model (The Debugger's power)
+// CODE ANALYSIS & FIX
 // =========================================================================
 
 async function analyzeCode(filePath, code, errorMessage, stackTrace = '') {
-  if (!proModel) return null;
+  const systemPrompt = `You are The Debugger — DevOps Agent for DoctaRx, a Node.js/Next.js telehealth application.\n\nTASK: ANALYZE & FIX CODE ERROR\n\nFile: ${filePath}\nError: ${errorMessage}\n${stackTrace ? `Stack Trace:\n${stackTrace}\n` : ''}\n\nProvide:\n1. **Root Cause** — What exactly caused this error (1-2 sentences)\n2. **Fix** — The exact code change needed. Return as a JSON object with:\n   - "rootCause": "...",\n   - "fixDescription": "...",\n   - "oldCode": "exact string to find in the file",\n   - "newCode": "exact replacement string",\n   - "severity": "critical|high|medium|low",\n   - "confidence": 0.0-1.0\n3. If the error cannot be fixed automatically, set "autoFixable": false and explain why.\n\nReturn ONLY valid JSON.`;
 
+  const text = await callLLM(systemPrompt, `Source Code:\n\`\`\`javascript\n${code}\n\`\`\`\n\nAnalyze and fix. Return ONLY valid JSON.`, { maxTokens: 8192, temperature: 0.3 });
+  if (!text) return null;
   try {
-    const prompt = `You are The Debugger — DevOps Agent for DoctaRx, a Node.js/Next.js telehealth application.
-
-TASK: ANALYZE & FIX CODE ERROR
-
-File: ${filePath}
-Error: ${errorMessage}
-${stackTrace ? `Stack Trace:\n${stackTrace}\n` : ''}
-
-Source Code:
-\`\`\`javascript
-${code}
-\`\`\`
-
-Provide:
-1. **Root Cause** — What exactly caused this error (1-2 sentences)
-2. **Fix** — The exact code change needed. Return as a JSON object with:
-   - "rootCause": "...",
-   - "fixDescription": "...",
-   - "oldCode": "exact string to find in the file",
-   - "newCode": "exact replacement string",
-   - "severity": "critical|high|medium|low",
-   - "confidence": 0.0-1.0
-3. If the error cannot be fixed automatically, set "autoFixable": false and explain why.
-
-Return ONLY valid JSON.`;
-
-    const result = await withRetry(() => proModel.generateContent(prompt));
-    const text = result.response.text();
     const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, text];
     return JSON.parse((jsonMatch[1] || text).trim());
-  } catch (error) {
-    console.error(`  ❌ Gemini code analysis error:`, error.message);
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
 // =========================================================================
-// HEARTBEAT CHECK — Flash model for proactive monitoring
+// HEARTBEAT CHECK
 // =========================================================================
 
 async function heartbeatAnalysis(systemStatus, recentErrors, metrics) {
-  if (!flashModel) return null;
+  const systemPrompt = `${GENESIS_CORE_PROMPT}\n\nYou are Project Genesis performing a HEARTBEAT CHECK — proactive system monitoring.`;
+  const userMsg = `SYSTEM STATUS:\n${JSON.stringify(systemStatus, null, 2)}\n\nRECENT ERRORS:\n${JSON.stringify(recentErrors, null, 2)}\n\nMETRICS:\n${JSON.stringify(metrics, null, 2)}\n\nAnalyze and return JSON:\n{\n  "status": "healthy|warning|critical",\n  "summary": "1-2 sentence status",\n  "alerts": [{ "title": "...", "severity": "low|medium|high|critical", "action": "..." }],\n  "recommendations": ["..."],\n  "notifyOperator": true/false,\n  "notifyMessage": "message to send operator if notifyOperator is true"\n}\n\nReturn ONLY valid JSON.`;
 
+  const text = await callLLM(systemPrompt, userMsg, { maxTokens: 4096, temperature: 0.5 });
+  if (!text) return null;
   try {
-    const prompt = `${GENESIS_CORE_PROMPT}
-
-You are Project Genesis performing a HEARTBEAT CHECK — proactive system monitoring.
-
-SYSTEM STATUS:
-${JSON.stringify(systemStatus, null, 2)}
-
-RECENT ERRORS (last hour):
-${JSON.stringify(recentErrors, null, 2)}
-
-METRICS:
-${JSON.stringify(metrics, null, 2)}
-
-Analyze and return JSON:
-{
-  "status": "healthy|warning|critical",
-  "summary": "1-2 sentence status",
-  "alerts": [{ "title": "...", "severity": "low|medium|high|critical", "action": "..." }],
-  "recommendations": ["..."],
-  "notifyOperator": true/false,
-  "notifyMessage": "message to send operator if notifyOperator is true"
-}
-
-Return ONLY valid JSON.`;
-
-    const result = await withRetry(() => flashModel.generateContent(prompt));
-    const text = result.response.text();
     const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, text];
     return JSON.parse((jsonMatch[1] || text).trim());
-  } catch (error) {
-    console.error(`  ❌ Heartbeat analysis error:`, error.message);
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
 // =========================================================================
@@ -487,5 +510,7 @@ module.exports = {
   analyzeCode,
   heartbeatAnalysis,
   GENESIS_CORE_PROMPT,
-  withRetry
+  withRetry,
+  callLLM,
+  callLLMChat
 };

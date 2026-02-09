@@ -28,15 +28,15 @@ try {
   console.error('Agent orchestrator not available:', err.message);
 }
 
-let geminiLLM;
+let llmService;
 try {
-  geminiLLM = require('../services/agent-orchestrator/gemini-llm');
-  // Ensure Gemini is initialized — the orchestrator may not have started yet
-  if (geminiLLM && !geminiLLM.isAvailable()) {
-    geminiLLM.initialize();
+  llmService = require('../services/agent-orchestrator/gemini-llm');
+  // Ensure LLM is initialized — Claude (primary) or Gemini (fallback)
+  if (llmService && !llmService.isAvailable()) {
+    llmService.initialize();
   }
 } catch (err) {
-  console.error('Gemini LLM not available:', err.message);
+  console.error('LLM service not available:', err.message);
 }
 
 let persistentMemory;
@@ -203,15 +203,15 @@ router.post('/summon-all', ...adminOnly, async (req, res) => {
       const agentName = AGENT_NAMES[agentType];
       if (!agentName) continue;
 
-      // Try Gemini-powered introduction first, then template fallback
+      // Try LLM-powered introduction first (Claude primary, Gemini fallback), then template
       let content = null;
-      if (geminiLLM && !geminiLLM.isAvailable()) {
-        try { geminiLLM.initialize(); } catch (e) { /* already tried */ }
+      if (llmService && !llmService.isAvailable()) {
+        try { llmService.initialize(); } catch (e) { /* already tried */ }
       }
-      if (geminiLLM && geminiLLM.isAvailable()) {
+      if (llmService && llmService.isAvailable()) {
         try {
           const persona = AGENT_PERSONAS[agentType] || `You are the ${agentType} agent.`;
-          content = await geminiLLM.generateIntroduction(persona, agentName, agentType);
+          content = await llmService.generateIntroduction(persona, agentName, agentType);
         } catch (e) { /* fallback below */ }
       }
       if (!content) {
@@ -413,14 +413,14 @@ async function generateAgentResponse(agentType, userMessage, user) {
   let content = '';
 
   // =========================================================================
-  // GEMINI-POWERED REASONING (Primary) — The agents are ALIVE
+  // LLM-POWERED REASONING (Claude Primary / Gemini Fallback) — Agents ALIVE
   // =========================================================================
-  // Lazy init: if Gemini module exists but models aren't loaded yet, try now
-  if (geminiLLM && !geminiLLM.isAvailable()) {
-    try { geminiLLM.initialize(); } catch (e) { /* already tried */ }
+  // Lazy init: if LLM module exists but not initialized yet, try now
+  if (llmService && !llmService.isAvailable()) {
+    try { llmService.initialize(); } catch (e) { /* already tried */ }
   }
 
-  if (geminiLLM && geminiLLM.isAvailable()) {
+  if (llmService && llmService.isAvailable()) {
     try {
       // Fetch recent conversation history for context
       let history = [];
@@ -453,14 +453,14 @@ async function generateAgentResponse(agentType, userMessage, user) {
         }
       } catch (e) { /* no memory, fine */ }
 
-      const geminiResponse = await geminiLLM.generateChatResponse(
+      const llmResponse = await llmService.generateChatResponse(
         persona, agentName, agentType, userMessage,
         history,
         { hasCredentials: credCount > 0, resultsCount, memory }
       );
 
-      if (geminiResponse) {
-        content = geminiResponse;
+      if (llmResponse) {
+        content = llmResponse;
 
         // Auto-extract memories from conversation (Second Brain)
         try {
@@ -469,13 +469,13 @@ async function generateAgentResponse(agentType, userMessage, user) {
           }
         } catch (e) { /* memory extraction is non-critical */ }
 
-        return { agentName, content, messageType: 'text', metadata: { agentType, engine: 'gemini', model: 'gemini-3-pro/flash' } };
+        return { agentName, content, messageType: 'text', metadata: { agentType, engine: 'claude+gemini' } };
       }
     } catch (error) {
-      console.error(`  ⚠️ Gemini failed for ${agentName}, falling back to templates:`, error.message);
+      console.error(`  ⚠️ LLM failed for ${agentName}, falling back to templates:`, error.message);
     }
   } else {
-    console.warn(`  ⚠️ Gemini NOT AVAILABLE for ${agentName} — using template fallback. GEMINI_API_KEY set: ${!!process.env.GEMINI_API_KEY}`);
+    console.warn(`  ⚠️ LLM NOT AVAILABLE for ${agentName} — using template fallback. ANTHROPIC_API_KEY set: ${!!process.env.ANTHROPIC_API_KEY}, GEMINI_API_KEY set: ${!!process.env.GEMINI_API_KEY}`);
   }
 
   // =========================================================================
