@@ -4,21 +4,22 @@
 #  Docker Production Build
 # ═══════════════════════════════════════════════════════════════
 
-# 1. Install dependencies only when needed
+# 1. Build the source code (needs ALL dependencies including dev)
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+COPY . .
+# Build Next.js (requires tailwindcss, postcss, autoprefixer from devDeps)
+RUN npm run build
+
+# 2. Install production-only dependencies
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 
-# 2. Build the source code
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-# Build Next.js
-RUN npm run build
-
-# 3. Production image
+# 3. Production image — lean, no dev dependencies
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
@@ -27,11 +28,13 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy build output
+# Copy production node_modules (no dev deps)
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+# Copy Next.js build output
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
 
 # Copy server (Express API + Agent Orchestrator)
 COPY --from=builder /app/server ./server
@@ -45,7 +48,7 @@ COPY --from=builder /app/postcss.config.js ./postcss.config.js
 COPY --from=builder /app/tailwind.config.js ./tailwind.config.js
 COPY --from=builder /app/jsconfig.json ./jsconfig.json
 
-# Copy components (needed for Next.js SSR)
+# Copy components and app (needed for Next.js SSR)
 COPY --from=builder /app/components ./components
 COPY --from=builder /app/app ./app
 
