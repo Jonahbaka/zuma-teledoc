@@ -237,8 +237,8 @@ class AgentOrchestrator {
       for (const wf of DEFAULT_WORKFLOWS) {
         this.runLoop.registerWorkflow(wf);
       }
-      // Start the run loop (30s base tick, adaptive sleep)
-      this.runLoop.start(30000);
+      // Start the run loop (2 min base tick, adaptive sleep — conserve resources)
+      this.runLoop.start(120000);
 
       // Emit system.started event
       await this.eventBus.emit('system.started', {

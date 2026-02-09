@@ -459,7 +459,7 @@ class RunLoop {
   /**
    * START — Begin the continuous consciousness
    */
-  start(intervalMs = 30000) {
+  start(intervalMs = 120000) {  // 2 min base — conserve DB connections & API calls (bootstrapping)
     if (this.isRunning) return;
     this.isRunning = true;
     this.stats.startedAt = new Date();

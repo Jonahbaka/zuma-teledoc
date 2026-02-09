@@ -27,9 +27,9 @@ if (process.env.DATABASE_URL && (process.env.DATABASE_URL.includes('aivencloud.c
 const dbConfig = {
   connectionString,
   ssl: sslConfig,
-  max: parseInt(process.env.DB_POOL_MAX) || 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  max: parseInt(process.env.DB_POOL_MAX) || 10,  // Conservative — Aiven free tier has ~20 conn limit
+  idleTimeoutMillis: 15000,   // Release idle connections faster
+  connectionTimeoutMillis: 15000,
   allowExitOnIdle: false
 };
 
@@ -57,7 +57,8 @@ const query = async (text, params) => {
     const result = await pool.query(text, params);
     const duration = Date.now() - start;
 
-    if (process.env.NODE_ENV !== 'production') {
+    // Only log slow queries (>500ms) or in verbose mode to reduce noise
+    if (duration > 500 || process.env.DB_VERBOSE === 'true') {
       console.log('Executed query', { text: text.substring(0, 100), duration, rows: result.rowCount });
     }
 
