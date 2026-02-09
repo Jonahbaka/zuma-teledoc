@@ -16,6 +16,8 @@
  */
 
 const db = require('../../db');
+let webEngine = null;
+try { webEngine = require('./web-action-engine'); } catch (e) { /* optional */ }
 
 class HeartbeatSystem {
   constructor(orchestrator, llm) {
@@ -43,6 +45,7 @@ class HeartbeatSystem {
     console.log('    ├─ Error monitor: every 60s');
     console.log('    ├─ Health check: every 5 min');
     console.log('    ├─ Proactive scan: every 30 min');
+    console.log('    ├─ WEB MISSIONS: every 3 hours (real internet work)');
     console.log('    ├─ Agent cycle: every 2 hours');
     console.log('    └─ Executive briefing: every 4 hours');
 
@@ -55,7 +58,10 @@ class HeartbeatSystem {
     // Proactive scan — every 30 minutes (post findings to inbox)
     this.timers.push(setInterval(() => this.proactiveScan(), 30 * 60 * 1000));
 
-    // Agent proactive cycle — every 2 hours (was 6h — too slow for OpenClaw-style)
+    // WEB MISSIONS — every 3 hours (real internet work)
+    this.timers.push(setInterval(() => this.runWebMissions(), 3 * 60 * 60 * 1000));
+
+    // Agent proactive cycle — every 2 hours
     this.timers.push(setInterval(() => this.agentCycle(), 2 * 60 * 60 * 1000));
 
     // Executive briefing — every 4 hours
@@ -65,6 +71,8 @@ class HeartbeatSystem {
     setTimeout(() => this.healthCheck(), 15 * 1000);
     setTimeout(() => this.startupBriefing(), 45 * 1000);
     setTimeout(() => this.proactiveScan(), 2 * 60 * 1000);
+    // First web missions run 3 min after startup
+    setTimeout(() => this.runWebMissions(), 3 * 60 * 1000);
   }
 
   /**
@@ -364,6 +372,181 @@ class HeartbeatSystem {
     } catch (e) {
       console.error('Executive briefing error:', e.message);
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  WEB MISSIONS — Agents go OUT and harvest real intelligence
+  // ═══════════════════════════════════════════════════════════════
+
+  async runWebMissions() {
+    if (!webEngine) return;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: true, hour: 'numeric', minute: '2-digit' });
+
+    console.log('\n🌐 Heartbeat: Starting web missions...');
+
+    // ─── Mission 1: The Scout — Competitor Intelligence ──────
+    try {
+      const competitors = await webEngine.scrapeCompetitorPricing();
+      const live = competitors.filter(c => c.status === 'live');
+      const allPrices = live.flatMap(c => c.pricesFound || []);
+      const avgPrice = allPrices.length > 0 ? Math.round(allPrices.reduce((a, b) => a + b, 0) / allPrices.length) : 0;
+
+      let report = `🎯 **Competitor Intelligence Report** (${timeStr} ET)\n\n`;
+      report += `Scanned **${competitors.length}** competitors. **${live.length}** are live.\n\n`;
+
+      for (const c of live) {
+        report += `**${c.name}** — ${c.title || 'No title'}\n`;
+        if (c.pricesFound.length > 0) report += `  💰 Prices detected: ${c.pricesFound.map(p => '$' + p).join(', ')}\n`;
+        if (c.servicesDetected.length > 0) report += `  🏥 Services: ${c.servicesDetected.join(', ')}\n`;
+        report += `  📝 "${c.description || c.headline || 'No description'}"\n\n`;
+      }
+
+      if (avgPrice > 0) {
+        report += `📊 **Market avg visit price: ~$${avgPrice}** — DoctaRx should price competitively.\n`;
+      }
+      report += `\n_Automated web scrape — The Scout hunts._`;
+
+      await this.postToInbox('growth', 'The Scout', report, 'report', {
+        category: 'competitor_intel', aiGenerated: false,
+        metrics: { competitorsScanned: competitors.length, liveSites: live.length, avgPrice }
+      });
+      await webEngine.storeResult('growth', 'The Scout', 'competitor_intel', 'Competitor Pricing Scan', competitors);
+    } catch (e) {
+      console.error('Mission competitor intel failed:', e.message);
+    }
+
+    // ─── Mission 2: The Oracle — Healthcare News ─────────────
+    try {
+      const news = await webEngine.scrapeHealthcareNews();
+      const totalArticles = news.reduce((sum, s) => sum + (s.articles?.length || 0), 0);
+
+      let report = `🔮 **Healthcare Industry Intel** (${timeStr} ET)\n\n`;
+      report += `Harvested **${totalArticles}** articles from **${news.length}** sources.\n\n`;
+
+      for (const source of news) {
+        if (source.articles?.length > 0) {
+          report += `**${source.source}**\n`;
+          for (const article of source.articles.slice(0, 3)) {
+            report += `  • ${article.title}`;
+            if (article.link) report += ` [→](${article.link})`;
+            report += `\n`;
+            if (article.summary) report += `    _${article.summary.substring(0, 150)}_\n`;
+          }
+          report += '\n';
+        }
+      }
+      report += `_Automated web harvest — The Oracle sees all._`;
+
+      await this.postToInbox('researcher', 'The Oracle', report, 'report', {
+        category: 'industry_news', metrics: { sources: news.length, articles: totalArticles }
+      });
+      await webEngine.storeResult('researcher', 'The Oracle', 'news_harvest', 'Healthcare News Harvest', news);
+    } catch (e) {
+      console.error('Mission healthcare news failed:', e.message);
+    }
+
+    // ─── Mission 3: The Builder — Provider Lead Gen (NPI) ────
+    try {
+      const providers = await webEngine.scrapeProviderDirectories();
+
+      if (providers.length > 0) {
+        let report = `🔧 **Provider Lead Generation** (${timeStr} ET)\n\n`;
+        report += `Found **${providers.length}** potential providers from NPI Registry.\n\n`;
+
+        for (const p of providers.slice(0, 10)) {
+          report += `• **${p.name}** ${p.credential ? `(${p.credential})` : ''}\n`;
+          report += `  ${p.specialty} — ${p.city}, ${p.state}\n`;
+          if (p.phone) report += `  📞 ${p.phone}\n`;
+          report += `  NPI: ${p.npi}\n\n`;
+        }
+
+        if (providers.length > 10) {
+          report += `_...and ${providers.length - 10} more. Full list stored in Results._\n\n`;
+        }
+        report += `**Action:** These providers could be recruited to DoctaRx. Outreach recommended.\n`;
+        report += `\n_Automated NPI Registry harvest — The Builder constructs._`;
+
+        await this.postToInbox('corporate_skills', 'The Builder', report, 'report', {
+          category: 'lead_gen', metrics: { providersFound: providers.length }
+        });
+        await webEngine.storeResult('corporate_skills', 'The Builder', 'provider_leads', 'NPI Provider Leads', providers);
+      }
+    } catch (e) {
+      console.error('Mission provider leads failed:', e.message);
+    }
+
+    // ─── Mission 4: The Scout — SEO & Search Visibility ──────
+    try {
+      const seo = await webEngine.checkSearchVisibility();
+
+      let report = `🎯 **DoctaRx SEO & Visibility Report** (${timeStr} ET)\n\n`;
+      for (const check of seo) {
+        const icon = check.status === 'pass' ? '✅' : check.status === 'fail' ? '❌' : '⚠️';
+        report += `${icon} **${check.check}**: ${check.status.toUpperCase()}\n`;
+        if (check.title) report += `  Title: "${check.title}"\n`;
+        if (check.description) report += `  Meta: "${check.description}"\n`;
+        if (check.h1) report += `  H1: "${check.h1}"\n`;
+        if (check.error) report += `  Error: ${check.error}\n`;
+        report += '\n';
+      }
+
+      const missing = seo.filter(s => s.status !== 'pass');
+      if (missing.length > 0) {
+        report += `⚠️ **${missing.length} issue(s) need fixing** for better search rankings.\n`;
+      }
+      report += `\n_Automated SEO audit — The Scout optimizes visibility._`;
+
+      await this.postToInbox('growth', 'The Scout', report, 'report', {
+        category: 'seo_audit', metrics: { checks: seo.length, passed: seo.filter(s => s.status === 'pass').length }
+      });
+    } catch (e) {
+      console.error('Mission SEO check failed:', e.message);
+    }
+
+    // ─── Mission 5: The Scout — Social Media Presence ────────
+    try {
+      const social = await webEngine.checkSocialPresence();
+
+      let report = `🎯 **Social Media Presence Audit** (${timeStr} ET)\n\n`;
+      for (const p of social) {
+        const icon = p.exists ? '✅' : '❌';
+        report += `${icon} **${p.platform}** (${p.handle}) — ${p.status}\n`;
+        report += `  ${p.recommendation}\n\n`;
+      }
+
+      const missing = social.filter(s => !s.exists);
+      if (missing.length > 0) {
+        report += `🚨 **${missing.length} platform(s) have NO DoctaRx presence!** Create accounts immediately:\n`;
+        missing.forEach(m => { report += `  → ${m.url}\n`; });
+      }
+      report += `\n_Automated social audit — The Scout maps the territory._`;
+
+      await this.postToInbox('growth', 'The Scout', report, 'report', {
+        category: 'social_audit', metrics: { platforms: social.length, present: social.filter(s => s.exists).length, missing: missing.length }
+      });
+    } catch (e) {
+      console.error('Mission social presence failed:', e.message);
+    }
+
+    // ─── AI Synthesis of all missions ────────────────────────
+    if (this.llm && this.llm.isAvailable()) {
+      try {
+        const synthesis = await this.llm.callLLM(
+          `${this.llm.GENESIS_CORE_PROMPT}\n\nYou are The Conductor — CEO Agent. You just received real web intelligence from the agent missions.`,
+          `Agents just completed their internet missions. Summarize the TOP 3 actionable items the Operator should act on TODAY. Be specific, include dollar values or percentages where possible. Under 150 words. Start with the most valuable action.`,
+          { maxTokens: 512, temperature: 0.7 }
+        );
+        if (synthesis) {
+          await this.postToInbox('ceo', 'The Conductor',
+            `🎼 **Mission Debrief** (${timeStr} ET)\n\n${synthesis}`,
+            'report', { category: 'mission_debrief', aiGenerated: true }
+          );
+        }
+      } catch (e) { /* synthesis is a bonus */ }
+    }
+
+    console.log('🌐 Heartbeat: Web missions complete.');
   }
 
   /**

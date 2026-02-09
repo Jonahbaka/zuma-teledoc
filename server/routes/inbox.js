@@ -178,4 +178,24 @@ router.get('/summary', ...adminOnly, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+//  POST /api/inbox/run-missions — Manually trigger web missions
+// ═══════════════════════════════════════════════════════════════
+router.post('/run-missions', ...adminOnly, async (req, res) => {
+  try {
+    let orchestrator = null;
+    try { orchestrator = require('../services/agent-orchestrator'); } catch (e) {}
+
+    if (orchestrator && orchestrator.heartbeat) {
+      // Run async — don't block the response
+      orchestrator.heartbeat.runWebMissions().catch(e => console.error('Manual web mission error:', e.message));
+      res.json({ success: true, message: 'Web missions started. Results will appear in your inbox within 1-2 minutes.' });
+    } else {
+      res.status(503).json({ success: false, error: 'Heartbeat system not available' });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

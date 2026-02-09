@@ -6,7 +6,7 @@ import {
   Crown, Activity, Zap, Search, Radar, Eye, Hexagon, Calculator,
   Atom, Check, CheckCheck, Trash2, Filter, RefreshCw, Clock,
   Bot, Radio, ChevronDown, Bell, FileText, TrendingUp, DollarSign,
-  Brain, AlertCircle, ArrowUpRight, Sparkles
+  Brain, AlertCircle, ArrowUpRight, Sparkles, Globe, Play
 } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -44,6 +44,7 @@ export default function InboxPage() {
   const [filter, setFilter] = useState('all'); // all | unread | alert | report
   const [expandedId, setExpandedId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [missionRunning, setMissionRunning] = useState(false);
 
   const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 
@@ -101,6 +102,16 @@ export default function InboxPage() {
     setRefreshing(true);
     await loadInbox();
     setRefreshing(false);
+  };
+
+  const runMissions = async () => {
+    setMissionRunning(true);
+    await apiCall('/run-missions', 'POST');
+    // Missions run async — poll for results after a delay
+    setTimeout(async () => {
+      await loadInbox();
+      setMissionRunning(false);
+    }, 5000);
   };
 
   const markRead = async (ids) => {
@@ -168,6 +179,11 @@ export default function InboxPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button onClick={runMissions} disabled={missionRunning}
+              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-emerald-900/20">
+              <Globe className={`w-4 h-4 ${missionRunning ? 'animate-spin' : ''}`} />
+              {missionRunning ? 'Missions Running...' : 'Run Web Missions'}
+            </button>
             {unreadCount > 0 && (
               <button onClick={markAllRead}
                 className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 text-gray-300 border border-gray-700">
