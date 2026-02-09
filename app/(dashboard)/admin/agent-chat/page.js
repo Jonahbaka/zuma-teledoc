@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   MessageSquare, Send, Bot, Shield, Activity, TrendingUp, Zap,
   Brain, Eye, FileText, Lock, Key, Plus, Trash2, Check, X,
@@ -9,6 +9,70 @@ import {
   Heart, Database, Cpu, Network, Hand, Play, Pause,
   Target, DollarSign, Gauge, Sparkles, ArrowUpRight
 } from 'lucide-react';
+
+// ═══════════════════════════════════════════════════════════════
+//  TYPING ANIMATION — Makes agents feel ALIVE
+//  Fast word-by-word reveal like a human typing rapidly
+// ═══════════════════════════════════════════════════════════════
+function TypingMessage({ text, speed = 12, onComplete, scrollRef }) {
+  const [displayed, setDisplayed] = useState('');
+  const [done, setDone] = useState(false);
+  const frameRef = useRef(null);
+  const indexRef = useRef(0);
+  const lastTimeRef = useRef(0);
+
+  useEffect(() => {
+    if (!text) { setDone(true); return; }
+    indexRef.current = 0;
+    setDisplayed('');
+    setDone(false);
+    lastTimeRef.current = 0;
+
+    const words = text.split(/(\s+)/); // preserve whitespace
+    let wordIdx = 0;
+    let built = '';
+
+    const tick = (timestamp) => {
+      if (!lastTimeRef.current) lastTimeRef.current = timestamp;
+      const elapsed = timestamp - lastTimeRef.current;
+
+      // Reveal multiple words per frame for speed
+      const wordsPerTick = Math.max(1, Math.floor(elapsed / speed));
+
+      if (wordIdx < words.length) {
+        for (let i = 0; i < wordsPerTick && wordIdx < words.length; i++) {
+          built += words[wordIdx];
+          wordIdx++;
+        }
+        setDisplayed(built);
+        lastTimeRef.current = timestamp;
+
+        // Auto-scroll as text appears
+        if (scrollRef?.current) {
+          scrollRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
+        }
+
+        frameRef.current = requestAnimationFrame(tick);
+      } else {
+        setDisplayed(text);
+        setDone(true);
+        if (onComplete) onComplete();
+      }
+    };
+
+    frameRef.current = requestAnimationFrame(tick);
+    return () => { if (frameRef.current) cancelAnimationFrame(frameRef.current); };
+  }, [text, speed, onComplete, scrollRef]);
+
+  return (
+    <>
+      <pre className="whitespace-pre-wrap font-sans">{displayed}</pre>
+      {!done && (
+        <span className="inline-block w-2 h-4 bg-purple-400 animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+      )}
+    </>
+  );
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -62,6 +126,7 @@ export default function AgentChatPage() {
   const [showCredForm, setShowCredForm] = useState(false);
   const [credForm, setCredForm] = useState({ platform: '', accountLabel: '', username: '', password: '', apiKey: '', apiSecret: '', assignedAgents: [], notes: '' });
   const [loading, setLoading] = useState(true);
+  const [typingIds, setTypingIds] = useState(new Set()); // message IDs currently typing
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -132,14 +197,22 @@ export default function AgentChatPage() {
       if (selectedAgent === 'all') {
         const data = await apiCall('/broadcast', 'POST', { content: msg });
         if (data) {
+          // Mark all broadcast responses for typing animation
+          if (data.responses) {
+            const newIds = new Set(data.responses.map(r => r.id).filter(Boolean));
+            setTypingIds(prev => new Set([...prev, ...newIds]));
+          }
           await loadMessages();
         } else {
-          // API returned null (auth or server error) — keep the temp message visible
           console.warn('Broadcast failed — message may not have been saved');
         }
       } else {
         const data = await apiCall('/messages', 'POST', { recipientId: selectedAgent, content: msg });
         if (data) {
+          // Mark agent response for typing animation
+          if (data.agentResponse?.id) {
+            setTypingIds(prev => new Set([...prev, data.agentResponse.id]));
+          }
           // Replace temp message and add agent response
           setMessages(prev => {
             const filtered = prev.filter(m => m.id !== tempMsg.id);
@@ -148,7 +221,6 @@ export default function AgentChatPage() {
             return [...filtered, ...newMsgs];
           });
         } else {
-          // If API call failed, keep temp message but show it wasn't sent
           setMessages(prev => prev.map(m => m.id === tempMsg.id ? { ...m, content: msg + '\n\n⚠️ Failed to send — check your login session and try again.' } : m));
         }
       }
@@ -167,6 +239,11 @@ export default function AgentChatPage() {
       setSelectedAgent('all');
       const data = await apiCall('/summon-all', 'POST', { prompt: 'All agents — introduce yourselves. Tell me who you are, your role, your dreams, and what you do for fun.' });
       if (data) {
+        // Mark all summon responses for typing animation
+        if (data.responses) {
+          const newIds = new Set(data.responses.map(r => r.id).filter(Boolean));
+          setTypingIds(prev => new Set([...prev, ...newIds]));
+        }
         await loadMessages();
       }
     } catch (err) {
@@ -217,8 +294,8 @@ export default function AgentChatPage() {
             <div>
               <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-indigo-300 bg-clip-text text-transparent">AGENT COMMAND CENTER</h1>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Gemini 3 Pro + Flash
+                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" /> Claude + Gemini
                 </span>
                 <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
                   <Heart className="w-2.5 h-2.5" /> Heartbeat
@@ -327,8 +404,23 @@ export default function AgentChatPage() {
               {messages.map((msg, idx) => {
                 const isOperator = msg.sender_type === 'operator';
                 const isSystem = msg.sender_type === 'system';
-                const msgAgent = !isOperator && !isSystem ? AGENTS.find(a => a.id === msg.sender_id) : null;
+                const isAgent = !isOperator && !isSystem;
+                const msgAgent = isAgent ? AGENTS.find(a => a.id === msg.sender_id) : null;
                 const MsgIcon = msgAgent?.icon || Bot;
+                const shouldType = isAgent && msg.id && typingIds.has(msg.id);
+
+                // Parse engine metadata
+                let engineLabel = null;
+                try {
+                  const meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata || '{}') : (msg.metadata || {});
+                  if (meta.engine === 'claude+gemini' || meta.engine === 'claude') {
+                    engineLabel = <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-mono">Claude AI</span>;
+                  } else if (meta.engine === 'gemini') {
+                    engineLabel = <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">Gemini AI</span>;
+                  } else if (meta.engine === 'template') {
+                    engineLabel = <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-500 font-mono">Template</span>;
+                  }
+                } catch { /* ignore */ }
 
                 return (
                   <div key={msg.id || idx} className={`flex gap-3 ${isOperator ? 'flex-row-reverse' : ''}`}>
@@ -348,18 +440,26 @@ export default function AgentChatPage() {
                           {msg.sender_name || (isOperator ? 'You' : msg.sender_id)}
                         </span>
                         <span className="text-xs text-gray-600">{new Date(msg.created_at).toLocaleTimeString()}</span>
-                        {(() => {
-                          try {
-                            const meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata || '{}') : (msg.metadata || {});
-                            return meta.engine === 'gemini' ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">Gemini AI</span> : null;
-                          } catch { return null; }
-                        })()}
+                        {engineLabel}
                       </div>
                       <div className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
                         isOperator ? 'bg-purple-600/20 border border-purple-500/20 text-gray-200' :
                         isSystem ? 'bg-gray-800/50 border border-gray-700 text-gray-400 italic' :
                         'bg-gray-800/80 border border-gray-700/50 text-gray-300'}`}>
-                        <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+                        {shouldType ? (
+                          <TypingMessage
+                            text={msg.content}
+                            speed={12}
+                            scrollRef={messagesEndRef}
+                            onComplete={() => setTypingIds(prev => {
+                              const next = new Set(prev);
+                              next.delete(msg.id);
+                              return next;
+                            })}
+                          />
+                        ) : (
+                          <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+                        )}
                       </div>
                     </div>
                   </div>
