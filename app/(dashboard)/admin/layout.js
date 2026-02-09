@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, Users, UserCheck, BarChart3, DollarSign, 
   Shield, FileText, Bell, Settings, Database, MessageSquare,
-  Mail, Megaphone, Link2, UserPlus, Zap, FolderCog, Wallet
+  Mail, Megaphone, Link2, UserPlus, Zap, FolderCog, Wallet,
+  Bot, Brain, Radio, Contact, Target, Globe, Landmark, Briefcase,
+  Code2
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
@@ -47,12 +49,26 @@ const navigationGroups = [
     ]
   },
   {
-    name: 'Finance & Analytics',
-    icon: Wallet,
+    name: 'Finance & Treasury',
+    icon: Landmark,
     items: [
+      { name: 'Corporate Treasury', href: '/admin/bank', icon: Landmark },
       { name: 'Revenue', href: '/admin/revenue', icon: DollarSign },
       { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
+      { name: 'Pitch Deck', href: '/admin/pitch-deck', icon: Briefcase },
       { name: 'Audit Logs', href: '/admin/audit-logs', icon: Shield },
+    ]
+  },
+  {
+    name: 'AI & Intelligence',
+    icon: Brain,
+    items: [
+      { name: 'AI Agent Ops', href: '/admin/agent-ops', icon: Bot },
+      { name: 'Agent Command Center', href: '/admin/agent-chat', icon: Radio },
+      { name: 'AI CRM & Outreach', href: '/admin/crm', icon: Contact },
+      { name: 'Predictive Engine', href: '/admin/predictive', icon: Brain },
+      { name: 'Agent IDE', href: '/admin/agent-ide', icon: Code2 },
+      { name: 'The Agora', href: '/admin/agent-social', icon: Globe },
     ]
   }
 ];
@@ -63,11 +79,11 @@ export default function AdminLayout({ children }) {
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
-      router.push('/login');
+      router.push('/secure/admin');
     }
     
     if (!loading && isAuthenticated && user?.role !== 'admin' && user?.role !== 'super_admin') {
-      router.push(`/${user?.role}/dashboard`);
+      router.push('/secure/admin');
     }
   }, [loading, isAuthenticated, user, router]);
 

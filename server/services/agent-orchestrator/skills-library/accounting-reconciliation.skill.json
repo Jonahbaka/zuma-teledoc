@@ -1,0 +1,40 @@
+{
+  "name": "accounting.reconciliation",
+  "description": "Reconcile Stripe payments with the financial ledger. Matches every real Stripe charge to a journal entry and bank transaction. Flags mismatches.",
+  "trigger": "scheduled",
+  "schedule": "daily",
+  "agent": "accounting",
+  "clerk": "reconciliation",
+  "steps": [
+    {
+      "name": "Fetch unreconciled Stripe transactions",
+      "type": "query",
+      "query": "SELECT id, stripe_payment_intent_id, real_amount, net_amount, enrollment_type, created_at FROM fin_stripe_bridge WHERE reconciled = false AND status = 'completed' ORDER BY created_at DESC LIMIT 50",
+      "id": "unreconciled"
+    },
+    {
+      "name": "Verify trial balance",
+      "type": "query",
+      "query": "SELECT COALESCE(SUM(debit), 0) as total_debits, COALESCE(SUM(credit), 0) as total_credits, ABS(COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0)) as imbalance FROM fin_journal_lines jl JOIN fin_journal_entries je ON jl.journal_entry_id = je.id AND je.is_posted = true",
+      "id": "trial_balance"
+    },
+    {
+      "name": "Check bank account balances vs ledger",
+      "type": "query",
+      "query": "SELECT ba.account_name, ba.current_balance as bank_balance, COALESCE(SUM(CASE WHEN coa.normal_balance = 'debit' THEN jl.debit - jl.credit ELSE jl.credit - jl.debit END), 0) as ledger_balance FROM fin_bank_accounts ba LEFT JOIN fin_chart_of_accounts coa ON ba.coa_account = coa.account_number LEFT JOIN fin_journal_lines jl ON coa.account_number = jl.account_number LEFT JOIN fin_journal_entries je ON jl.journal_entry_id = je.id AND je.is_posted = true WHERE ba.is_active = true GROUP BY ba.account_name, ba.current_balance, coa.normal_balance",
+      "id": "bank_vs_ledger"
+    },
+    {
+      "name": "Generate reconciliation report",
+      "type": "llm_generate",
+      "model": "flash",
+      "prompt_template": "Analyze this reconciliation data and produce a brief report:\n\nUnreconciled Stripe: {{unreconciled}}\nTrial Balance: {{trial_balance}}\nBank vs Ledger: {{bank_vs_ledger}}\n\nReport: (1) Any mismatches? (2) Actions needed? (3) Overall status: CLEAN or NEEDS ATTENTION",
+      "id": "reconciliation_report"
+    },
+    {
+      "name": "Report results",
+      "type": "notify",
+      "input": "$reconciliation_report"
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "id": "autonomous-coding",
+  "name": "Autonomous Code Engineering",
+  "description": "Enables the Engineering Agent to autonomously write, fix, optimize, and deploy code across the DoctaRx platform. Uses novel algorithmic approaches and state-of-the-art patterns.",
+  "version": "1.0.0",
+  "category": "engineering",
+  "agent": "engineering-agent",
+  "trigger": {
+    "type": "event",
+    "events": ["system.error", "code.review.requested", "code.generation.requested"],
+    "schedule": "0 */4 * * *"
+  },
+  "capabilities": [
+    "read_file",
+    "write_file",
+    "execute_code",
+    "search_codebase",
+    "ai_generate",
+    "git_operations"
+  ],
+  "steps": [
+    {
+      "id": "assess",
+      "action": "query_database",
+      "description": "Gather recent errors, performance bottlenecks, and code health metrics",
+      "query": "SELECT * FROM agent_task_queue WHERE task_type IN ('bugfix', 'feature', 'optimization') AND status = 'pending' ORDER BY priority DESC LIMIT 10"
+    },
+    {
+      "id": "analyze_architecture",
+      "action": "code_intelligence",
+      "description": "Map the current codebase architecture and identify improvement opportunities",
+      "operations": [
+        "scan_routes",
+        "scan_services",
+        "scan_components",
+        "dependency_graph",
+        "dead_code_detection"
+      ]
+    },
+    {
+      "id": "generate_solution",
+      "action": "ai_generate",
+      "description": "Use Gemini to generate optimal code solutions",
+      "model": "gemini-2.0-flash",
+      "prompt_template": "As the DoctaRx Engineering Agent, analyze {{task}} and generate a production-ready solution using novel algorithms. Consider: performance O(n) complexity, HIPAA compliance, error resilience, real-time capability. Use advanced patterns: event sourcing, CQRS, circuit breakers, adaptive rate limiting."
+    },
+    {
+      "id": "validate",
+      "action": "execute_code",
+      "description": "Run generated code in sandbox to validate correctness",
+      "sandbox": true,
+      "timeout": 30000
+    },
+    {
+      "id": "apply",
+      "action": "write_file",
+      "description": "Apply validated changes to the codebase with backup",
+      "require_backup": true
+    }
+  ],
+  "constraints": {
+    "max_files_per_session": 10,
+    "require_backup": true,
+    "blocked_paths": [".env", "node_modules", ".git", "package-lock.json"],
+    "max_code_size_bytes": 100000
+  },
+  "novel_algorithms": {
+    "adaptive_circuit_breaker": "Self-adjusting failure threshold based on exponential moving average of error rates. Transitions: CLOSED -> HALF_OPEN -> OPEN with probabilistic recovery.",
+    "predictive_cache": "ML-driven cache pre-warming using access pattern prediction with Markov chain models for patient data retrieval patterns.",
+    "smart_rate_limiter": "Token bucket with dynamic refill rate adjusted by time-of-day demand curves and user behavioral clustering.",
+    "resilient_queue": "Dead letter queue with automatic retry scheduling using fibonacci backoff and poison pill detection.",
+    "zero_copy_serialization": "Schema-aware binary serialization for internal service communication eliminating JSON parse overhead."
+  }
+}

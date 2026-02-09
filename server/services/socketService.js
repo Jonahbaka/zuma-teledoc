@@ -46,7 +46,9 @@ const initializeSocket = (httpServer) => {
         return next(new Error('Authentication required'));
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      // Use same secret as main auth system
+      const accessSecret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || global.__JWT_ACCESS_SECRET;
+      const decoded = jwt.verify(token, accessSecret);
       socket.userId = decoded.userId || decoded.id;
       socket.userRole = decoded.role;
       socket.userName = decoded.name || `${decoded.firstName || ''} ${decoded.lastName || ''}`.trim();

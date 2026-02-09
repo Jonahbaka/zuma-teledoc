@@ -1,0 +1,51 @@
+{
+  "name": "crm.social.engagement",
+  "displayName": "CRM Social Media Engagement Engine",
+  "description": "Tactically engage with investors and healthcare influencers on social media. Comment on posts, share insights, build relationships. Targets LinkedIn, Twitter, healthcare forums.",
+  "version": "1.0.0",
+  "category": "growth",
+  "domain": "social-engagement",
+  "tags": ["social-media", "investor", "engagement", "linkedin", "twitter", "commenting", "networking"],
+  "triggers": ["system.scheduled.check"],
+  "schedule": "4h",
+  "riskLevel": "medium",
+  "requiresApproval": true,
+  "involvesPhi": false,
+  "involvesFinancial": false,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "identify_targets",
+      "name": "Identify high-value social media targets",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "Identify 10 healthcare investors and influencers who are active on LinkedIn and Twitter right now. For each: name, platform, profile URL, recent post topic, and a strategic engagement angle for DoctaRx (AI-first telehealth). Focus on VCs who invest in digital health, health tech founders, and healthcare thought leaders. Make the engagement genuine and value-adding, not spammy.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "craft_comments",
+      "name": "Craft tactical comments and engagement content",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "For each identified target, write a thoughtful, value-adding comment that: 1) Shows genuine understanding of their post 2) Subtly positions DoctaRx expertise 3) Invites further conversation 4) Is under 200 characters for Twitter, 300 for LinkedIn. Never be salesy. Be the person in the comments everyone respects.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "submit_engagement_plan",
+      "name": "Submit engagement plan for Operator review",
+      "type": "approval",
+      "approver": "operator",
+      "input": ["$identify_targets", "$craft_comments"]
+    }
+  ],
+  "inputSchema": {},
+  "outputSchema": {
+    "properties": {
+      "targetsIdentified": { "type": "number" },
+      "commentsGenerated": { "type": "number" },
+      "platformsCovered": { "type": "array" }
+    }
+  },
+  "sideEffects": ["creates_engagement_drafts", "requires_operator_approval"]
+}

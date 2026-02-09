@@ -1,0 +1,50 @@
+{
+  "name": "revenue.optimization.engine",
+  "displayName": "Revenue Optimization Engine",
+  "description": "Proactively analyze revenue streams, identify leaks, optimize pricing, and forecast financial growth. The Alchemist transmutes service into sustainable currency.",
+  "version": "1.0.0",
+  "category": "revenue",
+  "domain": "financial-intelligence",
+  "tags": ["revenue", "optimization", "pricing", "churn", "LTV", "MRR", "forecasting"],
+  "triggers": ["payment.received", "subscription.created", "subscription.cancelled", "system.scheduled.check"],
+  "schedule": "6h",
+  "riskLevel": "low",
+  "requiresApproval": false,
+  "involvesPhi": false,
+  "involvesFinancial": true,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "collect_revenue_data",
+      "name": "Collect current revenue metrics",
+      "type": "query",
+      "query": "SELECT DATE_TRUNC('day', created_at) as day, COUNT(*) as transactions, SUM(amount) as total_revenue, payment_type FROM payments WHERE created_at > NOW() - INTERVAL '30 days' AND status = 'completed' GROUP BY DATE_TRUNC('day', created_at), payment_type ORDER BY day"
+    },
+    {
+      "id": "analyze_churn",
+      "name": "Analyze subscription churn patterns",
+      "type": "query",
+      "query": "SELECT DATE_TRUNC('week', cancelled_at) as week, COUNT(*) as churned FROM subscriptions WHERE cancelled_at > NOW() - INTERVAL '90 days' GROUP BY week ORDER BY week"
+    },
+    {
+      "id": "generate_insights",
+      "name": "Generate revenue optimization insights",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "Analyze the revenue and churn data. Provide: 1) Revenue trend analysis, 2) Churn risk factors, 3) Three specific pricing/packaging optimizations, 4) Upsell opportunities, 5) 30/60/90 day revenue forecast. Be specific with numbers.",
+      "model": "gemini-3-flash-preview",
+      "input": ["$collect_revenue_data", "$analyze_churn"]
+    }
+  ],
+  "inputSchema": {},
+  "outputSchema": {
+    "properties": {
+      "currentMRR": { "type": "number" },
+      "projectedMRR30": { "type": "number" },
+      "churnRate": { "type": "number" },
+      "optimizationCount": { "type": "number" }
+    }
+  },
+  "sideEffects": ["creates_revenue_report"]
+}

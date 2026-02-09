@@ -1,0 +1,62 @@
+{
+  "name": "crm.web.scraper",
+  "displayName": "CRM Web Scraper & Crawler",
+  "description": "Scrape and crawl provider directories, NPI registries, telehealth hubs, nursing boards, and social media profiles to build the CRM contact database. Targets: Doximity, Zocdoc, Healthgrades, Vitals, AMA, AANP, LinkedIn, Twitter.",
+  "version": "1.0.0",
+  "category": "growth",
+  "domain": "crm-intelligence",
+  "tags": ["scraping", "crawling", "contacts", "providers", "NPI", "linkedin", "telehealth", "nurses"],
+  "triggers": ["system.scheduled.check", "crm.scrape.requested"],
+  "schedule": "12h",
+  "riskLevel": "medium",
+  "requiresApproval": true,
+  "involvesPhi": false,
+  "involvesFinancial": false,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "identify_targets",
+      "name": "Identify target provider segments and sources",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "As a healthcare market intelligence agent, identify the top 10 specific search queries or directory pages to scrape for: 1) Telehealth-ready physicians (Family Med, Internal Med, Psych, Dermatology) 2) Nurse Practitioners open to telehealth 3) Healthcare investors active on LinkedIn/Twitter. For each: exact URL pattern, expected data fields, contact volume estimate. Be specific.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "npi_lookup",
+      "name": "Query NPI Registry for providers by specialty",
+      "type": "query",
+      "query": "SELECT name, url, source_type, last_scraped_at FROM crm_scrape_sources WHERE is_active = true ORDER BY last_scraped_at ASC NULLS FIRST LIMIT 5"
+    },
+    {
+      "id": "compile_scrape_plan",
+      "name": "Compile scraping plan for operator approval",
+      "type": "transform",
+      "input": ["$identify_targets", "$npi_lookup"],
+      "format": "scrape_plan"
+    },
+    {
+      "id": "submit_plan",
+      "name": "Submit scraping plan for Operator approval",
+      "type": "approval",
+      "approver": "operator",
+      "input": "$compile_scrape_plan"
+    }
+  ],
+  "inputSchema": {
+    "properties": {
+      "targetSpecialties": { "type": "array" },
+      "targetRegions": { "type": "array" },
+      "maxContacts": { "type": "number" }
+    }
+  },
+  "outputSchema": {
+    "properties": {
+      "sourcesScanned": { "type": "number" },
+      "contactsFound": { "type": "number" },
+      "contactsAdded": { "type": "number" }
+    }
+  },
+  "sideEffects": ["adds_contacts_to_crm", "requires_operator_approval"]
+}

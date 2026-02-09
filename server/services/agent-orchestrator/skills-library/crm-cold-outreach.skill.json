@@ -1,0 +1,57 @@
+{
+  "name": "crm.cold.outreach",
+  "displayName": "CRM Cold Email Outreach Engine",
+  "description": "Automatically send personalized cold emails to providers, investors, and partners using Zoho Mail (info@doctarx.com). Rate-limited and CAN-SPAM compliant. Requires campaign approval.",
+  "version": "1.0.0",
+  "category": "growth",
+  "domain": "crm-outreach",
+  "tags": ["cold-email", "outreach", "zoho", "provider-acquisition", "investor", "email-campaign"],
+  "triggers": ["crm.campaign.approved", "system.scheduled.check"],
+  "schedule": "6h",
+  "riskLevel": "medium",
+  "requiresApproval": true,
+  "involvesPhi": false,
+  "involvesFinancial": false,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "check_pending_campaigns",
+      "name": "Check for approved campaigns ready to send",
+      "type": "query",
+      "query": "SELECT c.*, (SELECT COUNT(*) FROM crm_contacts ct WHERE ct.contact_type = c.target_contact_type AND ct.is_active = true AND ct.opt_out = false AND ct.email IS NOT NULL AND ct.id NOT IN (SELECT contact_id FROM crm_interactions WHERE campaign_id = c.id AND interaction_type = 'email_sent')) as remaining_contacts FROM crm_campaigns c WHERE c.status IN ('approved', 'running') ORDER BY c.created_at"
+    },
+    {
+      "id": "personalize_emails",
+      "name": "Generate personalized email variations using Gemini",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "Given a cold email template, generate 3 personalized variations that maintain the core message but vary the opening hook and CTA. Target: healthcare providers. Tone: professional, warm, value-first. Include personalization tokens: {{first_name}}, {{specialty}}, {{organization}}.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "send_batch",
+      "name": "Send batch of emails via Zoho Mail",
+      "type": "action",
+      "action": "crm.sendCampaignEmails",
+      "parameters": {
+        "batchSize": 10,
+        "delayMs": 2000
+      }
+    }
+  ],
+  "inputSchema": {
+    "properties": {
+      "campaignId": { "type": "string" },
+      "batchSize": { "type": "number", "default": 10 }
+    }
+  },
+  "outputSchema": {
+    "properties": {
+      "emailsSent": { "type": "number" },
+      "emailsFailed": { "type": "number" },
+      "dailyRemaining": { "type": "number" }
+    }
+  },
+  "sideEffects": ["sends_emails", "updates_contact_status", "requires_campaign_approval"]
+}

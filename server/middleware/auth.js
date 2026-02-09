@@ -105,10 +105,11 @@ const authenticate = async (req, res, next) => {
       });
     }
     
-    logger.error('Authentication error', { error: error.message });
+    logger.error('Authentication error', { error: error.message, stack: error.stack });
+    console.error('Auth middleware error:', error.message);
     return res.status(500).json({
       success: false,
-      error: 'Authentication failed'
+      error: 'Authentication failed: ' + error.message
     });
   }
 };

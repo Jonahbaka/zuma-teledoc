@@ -1,0 +1,65 @@
+{
+  "name": "crm.investor.pipeline",
+  "displayName": "CRM Investor Pipeline Manager",
+  "description": "Manage the investor outreach pipeline. Research VCs, angels, and accelerators in digital health. Prepare pitch decks, track interactions, and optimize the fundraising funnel.",
+  "version": "1.0.0",
+  "category": "growth",
+  "domain": "fundraising",
+  "tags": ["investor", "fundraising", "VC", "angel", "accelerator", "pitch", "pipeline"],
+  "triggers": ["system.scheduled.check"],
+  "schedule": "24h",
+  "riskLevel": "medium",
+  "requiresApproval": true,
+  "involvesPhi": false,
+  "involvesFinancial": true,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "research_investors",
+      "name": "Research active digital health investors",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "Research and compile a list of 20 investors (VCs, angels, accelerators) actively investing in digital health / telehealth in 2025-2026. For each: firm name, partner name, portfolio examples, investment range, thesis alignment with DoctaRx, and best contact approach. Prioritize those who have recently invested in similar companies.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "score_investors",
+      "name": "Score and rank investor targets",
+      "type": "transform",
+      "input": "$research_investors",
+      "algorithm": "investor_scoring",
+      "criteria": {
+        "thesis_alignment": 0.3,
+        "investment_size_fit": 0.2,
+        "portfolio_synergy": 0.2,
+        "accessibility": 0.15,
+        "recent_activity": 0.15
+      }
+    },
+    {
+      "id": "create_outreach_plan",
+      "name": "Create personalized investor outreach plan",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "For the top 10 scored investors, create a personalized outreach sequence: 1) Warm intro attempt (mutual connections, events) 2) Cold email with tailored angle 3) Social media engagement strategy 4) Follow-up cadence. Each sequence should reference their specific portfolio and thesis.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "submit_plan",
+      "name": "Submit investor pipeline to Operator",
+      "type": "approval",
+      "approver": "operator",
+      "input": "$create_outreach_plan"
+    }
+  ],
+  "inputSchema": {},
+  "outputSchema": {
+    "properties": {
+      "investorsResearched": { "type": "number" },
+      "investorsScored": { "type": "number" },
+      "outreachPlansCreated": { "type": "number" }
+    }
+  },
+  "sideEffects": ["adds_contacts_to_crm", "creates_campaign_drafts", "requires_operator_approval"]
+}

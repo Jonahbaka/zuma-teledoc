@@ -1,0 +1,74 @@
+{
+  "name": "predictive.model.runner",
+  "displayName": "Predictive AI Model Runner",
+  "description": "Proactively run predictive models to update patient risk scores, revenue forecasts, operational predictions, and population health analytics. Agents trigger this to keep the predictive intelligence fresh.",
+  "version": "1.0.0",
+  "category": "analytics",
+  "domain": "predictive-intelligence",
+  "tags": ["predictive", "AI", "model", "proactive", "risk", "forecast", "population-health"],
+  "triggers": ["system.scheduled.check", "patient.appointment.completed", "payment.received"],
+  "schedule": "2h",
+  "riskLevel": "low",
+  "requiresApproval": false,
+  "involvesPhi": true,
+  "involvesFinancial": true,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "run_patient_risk",
+      "name": "Run patient risk stratification model",
+      "type": "action",
+      "action": "predictive_engine.runModel",
+      "parameters": {
+        "modelType": "patient_risk_stratification",
+        "scope": "active_patients"
+      }
+    },
+    {
+      "id": "run_revenue_forecast",
+      "name": "Run revenue forecast model",
+      "type": "action",
+      "action": "predictive_engine.runModel",
+      "parameters": {
+        "modelType": "revenue_forecast",
+        "horizon": "30d"
+      }
+    },
+    {
+      "id": "run_operations_prediction",
+      "name": "Run operations optimization model",
+      "type": "action",
+      "action": "predictive_engine.runModel",
+      "parameters": {
+        "modelType": "operational_efficiency",
+        "scope": "scheduling"
+      }
+    },
+    {
+      "id": "compile_insights",
+      "name": "Compile predictive insights for agents",
+      "type": "transform",
+      "input": ["$run_patient_risk", "$run_revenue_forecast", "$run_operations_prediction"],
+      "format": "predictive_intelligence_brief"
+    },
+    {
+      "id": "distribute_to_agents",
+      "name": "Distribute insights to relevant agents",
+      "type": "notify",
+      "input": "$compile_insights",
+      "recipients": ["operations-agent", "revenue-agent", "ceo-agent"]
+    }
+  ],
+  "inputSchema": {},
+  "outputSchema": {
+    "properties": {
+      "modelsRun": { "type": "number" },
+      "patientsScored": { "type": "number" },
+      "revenueForecast30d": { "type": "number" },
+      "highRiskPatients": { "type": "number" },
+      "schedulingOptimizations": { "type": "number" }
+    }
+  },
+  "sideEffects": ["updates_risk_scores", "updates_forecasts", "sends_agent_notifications"]
+}

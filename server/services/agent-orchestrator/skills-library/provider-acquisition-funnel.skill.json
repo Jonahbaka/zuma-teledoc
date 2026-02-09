@@ -1,0 +1,59 @@
+{
+  "name": "growth.provider.acquisition",
+  "displayName": "Provider Acquisition Funnel",
+  "description": "Systematically identify, reach out to, and onboard new healthcare providers. The funnel: Identify → Qualify → Reach → Convert → Onboard.",
+  "version": "1.0.0",
+  "category": "growth",
+  "domain": "provider-acquisition",
+  "tags": ["provider", "acquisition", "funnel", "outreach", "onboarding", "enrollment"],
+  "triggers": ["system.scheduled.check", "growth.provider.target.identified"],
+  "schedule": "12h",
+  "riskLevel": "medium",
+  "requiresApproval": true,
+  "involvesPhi": false,
+  "involvesFinancial": false,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "identify_targets",
+      "name": "Identify target provider segments",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "Identify the top 5 underserved medical specialties that would benefit most from telehealth. For each: specialty name, estimated TAM, pain points telehealth solves, and best outreach channel. Think strategically.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "craft_outreach",
+      "name": "Craft personalized outreach templates",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "Create 3 outreach email templates for inviting doctors to join DoctaRx telehealth platform. Tone: professional, empathetic, value-first. Include: subject line, body, CTA. Highlight: instant credentialing, patient access, revenue growth.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "plan_campaign",
+      "name": "Create multi-channel acquisition campaign plan",
+      "type": "transform",
+      "input": ["$identify_targets", "$craft_outreach"],
+      "format": "campaign_plan"
+    },
+    {
+      "id": "submit_campaign",
+      "name": "Submit campaign for Operator approval",
+      "type": "approval",
+      "approver": "operator",
+      "input": "$plan_campaign"
+    }
+  ],
+  "inputSchema": {},
+  "outputSchema": {
+    "properties": {
+      "targetsIdentified": { "type": "number" },
+      "outreachTemplatesCreated": { "type": "number" },
+      "estimatedConversionRate": { "type": "number" },
+      "estimatedProviderSignups": { "type": "number" }
+    }
+  },
+  "sideEffects": ["creates_campaign_draft", "requires_operator_approval"]
+}

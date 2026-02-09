@@ -1,0 +1,105 @@
+{
+  "id": "tool-creator",
+  "name": "Novel Tool & Algorithm Creator",
+  "description": "Creates new tools, utilities, middleware, and algorithms for the DoctaRx platform. Uses state-of-the-art patterns and novel approaches to solve unique telehealth challenges.",
+  "version": "1.0.0",
+  "category": "engineering",
+  "agent": "engineering-agent",
+  "trigger": {
+    "type": "event",
+    "events": ["tool.creation.requested"],
+    "schedule": "0 3 * * 1"
+  },
+  "capabilities": [
+    "read_file",
+    "write_file",
+    "execute_code",
+    "search_codebase",
+    "ai_generate",
+    "npm_install"
+  ],
+  "steps": [
+    {
+      "id": "assess_needs",
+      "action": "analyze_codebase",
+      "description": "Identify gaps in the current toolset and areas needing new utilities",
+      "checks": [
+        "missing_error_handling_patterns",
+        "repeated_code_patterns",
+        "missing_middleware",
+        "performance_bottlenecks",
+        "security_gaps"
+      ]
+    },
+    {
+      "id": "design_tool",
+      "action": "ai_generate",
+      "description": "Design the tool architecture using novel algorithms",
+      "model": "gemini-2.0-flash",
+      "prompt_template": "Design a new {{tool_type}} for the DoctaRx telehealth platform.\n\nRequirements: {{requirements}}\n\nUse these novel approaches:\n1. Adaptive algorithms that learn from usage patterns\n2. Zero-allocation hot paths for real-time operations\n3. Probabilistic data structures (bloom filters, HyperLogLog) where applicable\n4. Event-driven architecture with backpressure support\n5. Self-healing patterns with automatic degradation\n\nGenerate complete production code with:\n- Full JSDoc documentation\n- Error handling for all edge cases\n- Performance benchmarks in comments\n- Integration examples\n- Configuration options"
+    },
+    {
+      "id": "implement",
+      "action": "write_file",
+      "description": "Create the tool file with full implementation",
+      "target_dir": "server/services",
+      "naming": "camelCase with descriptive name"
+    },
+    {
+      "id": "create_routes",
+      "action": "write_file",
+      "description": "Create API routes if the tool needs HTTP access",
+      "target_dir": "server/routes",
+      "conditional": "tool.needs_api === true"
+    },
+    {
+      "id": "integrate",
+      "action": "code_edit",
+      "description": "Wire the new tool into the application",
+      "files": ["server/index.js"],
+      "operation": "add_require_and_initialize"
+    },
+    {
+      "id": "test",
+      "action": "execute_code",
+      "description": "Run the tool in sandbox to verify it works",
+      "sandbox": true
+    }
+  ],
+  "tool_templates": {
+    "middleware": {
+      "pattern": "Express middleware",
+      "location": "server/middleware/",
+      "exports": "(req, res, next) => {}"
+    },
+    "service": {
+      "pattern": "Service module with initialize()",
+      "location": "server/services/",
+      "exports": "{ initialize, ...methods }"
+    },
+    "utility": {
+      "pattern": "Pure utility functions",
+      "location": "lib/",
+      "exports": "{ ...functions }"
+    },
+    "component": {
+      "pattern": "React component",
+      "location": "components/",
+      "exports": "default function Component()"
+    },
+    "agent_skill": {
+      "pattern": "Agent skill JSON",
+      "location": "server/services/agent-orchestrator/skills-library/",
+      "exports": "JSON skill definition"
+    }
+  },
+  "novel_tool_ideas": [
+    "Adaptive Query Optimizer — learns from PostgreSQL query patterns to suggest index creation and query rewrites",
+    "Smart Session Manager — uses behavioral clustering to predict session expiry and pre-emptively refresh",
+    "HIPAA Compliance Scanner — static analysis tool that scans code for PHI exposure risks",
+    "Real-time Anomaly Detector — streaming algorithm using Robust Random Cut Forest for detecting unusual API patterns",
+    "Self-Documenting API — automatically generates OpenAPI spec from Express routes and JSDoc",
+    "Intelligent Load Balancer — request routing based on predicted response time using lightweight regression",
+    "Automated Schema Migrator — detects model changes and generates migration SQL automatically"
+  ]
+}

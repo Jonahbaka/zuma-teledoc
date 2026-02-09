@@ -43,7 +43,22 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady, version: 'v2-no-ratelimit' });
+  const health = {
+    status: 'healthy',
+    uptime: Math.round(process.uptime()),
+    timestamp: new Date().toISOString(),
+    memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+    initialized,
+    nextReady,
+    version: 'genesis-v3'
+  };
+  try {
+    const orchestrator = require('./services/agent-orchestrator');
+    health.agents = orchestrator.agents?.size || 0;
+    health.heartbeat = orchestrator.getHeartbeatStatus?.() || {};
+    health.operatingMode = orchestrator.operatingMode;
+  } catch (e) { /* not ready yet */ }
+  res.json(health);
 });
 
 /**
@@ -124,8 +139,9 @@ async function initializeApp() {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        // Next.js requires 'unsafe-inline' and 'unsafe-eval' for scripts
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        // Next.js requires 'unsafe-inline' and 'unsafe-eval' for scripts + Google Analytics
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://www.googletagmanager.com", "https://www.google-analytics.com"],
+        scriptSrcElem: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://www.google-analytics.com"],
         // Allow inline styles and Google Fonts
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
@@ -141,7 +157,10 @@ async function initializeApp() {
           'ws://localhost:3000',
           'wss://doctarx.com',
           'wss://www.doctarx.com',
-          'https://*.sentry.io'
+          'https://*.sentry.io',
+          'https://www.googletagmanager.com',
+          'https://www.google-analytics.com',
+          'https://analytics.google.com'
         ],
         // Allow Google Fonts
         fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://fonts.googleapis.com', 'data:'],
@@ -240,16 +259,100 @@ async function initializeApp() {
   loadRoute('/api/clinical-encounters', './routes/clinicalEncounters');
   loadRoute('/api/testing-links', './routes/testingLinks');
   loadRoute('/api/interop', './routes/interoperability');
+  loadRoute('/api/predictive', './routes/predictive');
+  loadRoute('/api/enterprise', './routes/enterprise');
+  loadRoute('/api/agent-ops', './routes/agentOps');
+  loadRoute('/api/agent-chat', './routes/agentChat');
+  loadRoute('/api/crm', './routes/crm');
+  loadRoute('/api/financial', './routes/financial');
+  loadRoute('/api/agent-ide', './routes/agentIde');
+  loadRoute('/api/agent-social', './routes/agentSocial');
   console.log('✅ API routes loading complete');
+  
+  // Initialize Predictive Intelligence Engine (non-blocking)
+  try {
+    const predictiveEngine = require('./services/predictive-engine');
+    predictiveEngine.initialize().then(() => {
+      console.log('🧠 Predictive Intelligence Engine: Online');
+    }).catch(err => {
+      console.error('🧠 Predictive Engine: Init warning -', err.message);
+    });
+  } catch (err) {
+    console.error('🧠 Predictive Engine: Not available -', err.message);
+  }
+
+  // Initialize AI Agent Orchestrator (non-blocking)
+  try {
+    const agentOrchestrator = require('./services/agent-orchestrator');
+    agentOrchestrator.initialize().then(() => {
+      console.log('🤖 AI Agent Orchestrator: Online');
+    }).catch(err => {
+      console.error('🤖 Agent Orchestrator: Init warning -', err.message);
+    });
+  } catch (err) {
+    console.error('🤖 Agent Orchestrator: Not available -', err.message);
+  }
+
+  // ═══ APP NERVE BRIDGE — Connect real app actions to agent nervous system ═══
+  try {
+    const nerveBridge = require('./services/agent-orchestrator/app-nerve-bridge');
+    app.use(nerveBridge.middleware());
+    console.log('🧬 App Nerve Bridge: CONNECTED — Agents can sense real app activity');
+  } catch (err) {
+    console.error('🧬 App Nerve Bridge: Not available -', err.message);
+  }
+
+  // ═══ FINANCIAL SERVICE — Corporate Treasury & Accounting ═══
+  try {
+    const financialService = require('./services/financialService');
+    financialService.initialize().then(() => {
+      console.log('💰 Financial Service: ONLINE — Corporate Treasury active');
+    }).catch(err => {
+      console.error('💰 Financial Service: Init warning -', err.message);
+    });
+  } catch (err) {
+    console.error('💰 Financial Service: Not available -', err.message);
+  }
+
+  // ═══ AGENT SOCIAL — The Agora ═══
+  try {
+    const agentSocialService = require('./services/agentSocialService');
+    agentSocialService.initialize().then(() => {
+      console.log('🏛️ Agent Social (The Agora): ONLINE — Agent society active');
+    }).catch(err => {
+      console.error('🏛️ Agent Social: Init warning -', err.message);
+    });
+  } catch (err) {
+    console.error('🏛️ Agent Social: Not available -', err.message);
+  }
+
+  // ═══ CRM SERVICE — AI Agent Customer Relationship Management ═══
+  try {
+    const crmService = require('./services/crmService');
+    crmService.initialize().then(() => {
+      console.log('📇 CRM Service: ONLINE — Agent outreach system ready');
+    }).catch(err => {
+      console.error('📇 CRM: Init warning -', err.message);
+    });
+  } catch (err) {
+    console.error('📇 CRM: Not available -', err.message);
+  }
   
   // 404 for API
   app.use('/api/*', (req, res) => {
     res.status(404).json({ success: false, error: 'Endpoint not found' });
   });
   
-  // Global error handler
+  // Global error handler — feeds The Debugger
   app.use((err, req, res, next) => {
     console.error('Error:', err.message);
+    
+    // Feed error to The Debugger for analysis
+    try {
+      const orchestrator = require('./services/agent-orchestrator');
+      orchestrator.captureError(err, `${req.method} ${req.originalUrl}`);
+    } catch (e) { /* orchestrator not ready yet */ }
+
     const statusCode = err.status || err.statusCode || 500;
     res.status(statusCode).json({
       success: false,
@@ -272,6 +375,22 @@ async function initializeApp() {
   };
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+  // Capture uncaught exceptions → feed The Debugger
+  process.on('uncaughtException', (err) => {
+    console.error('💥 Uncaught Exception:', err.message);
+    try {
+      const orchestrator = require('./services/agent-orchestrator');
+      orchestrator.captureError(err, 'uncaughtException');
+    } catch (e) { /* orchestrator not ready */ }
+  });
+  process.on('unhandledRejection', (reason) => {
+    console.error('💥 Unhandled Rejection:', reason);
+    try {
+      const orchestrator = require('./services/agent-orchestrator');
+      orchestrator.captureError(new Error(String(reason)), 'unhandledRejection');
+    } catch (e) { /* orchestrator not ready */ }
+  });
   
   initialized = true;
   console.log('✅ Express API ready');

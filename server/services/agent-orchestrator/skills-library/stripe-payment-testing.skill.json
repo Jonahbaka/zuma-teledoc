@@ -1,0 +1,43 @@
+{
+  "name": "finance.stripe.test_payments",
+  "description": "Test the complete Stripe payment pipeline end-to-end. Create test customers, simulate subscriptions and one-time payments, verify funds flow from Stripe through to the financial ledger. Ensures no customer ever hits a payment glitch.",
+  "trigger": "scheduled",
+  "schedule": "daily",
+  "agent": "accounting",
+  "clerk": "ar",
+  "steps": [
+    {
+      "name": "Run Stripe health check",
+      "type": "api_call",
+      "endpoint": "/api/financial/stripe/health",
+      "method": "GET",
+      "id": "health_check"
+    },
+    {
+      "name": "Verify full payment pipeline",
+      "type": "api_call",
+      "endpoint": "/api/financial/stripe/verify-pipeline",
+      "method": "POST",
+      "id": "pipeline_test"
+    },
+    {
+      "name": "Get Stripe dashboard summary",
+      "type": "api_call",
+      "endpoint": "/api/financial/stripe/dashboard",
+      "method": "GET",
+      "id": "stripe_dashboard"
+    },
+    {
+      "name": "Analyze results",
+      "type": "llm_generate",
+      "model": "flash",
+      "prompt_template": "You are The Treasurer's AR Clerk running Stripe payment pipeline verification.\n\nHealth Check: {{health_check}}\nPipeline Test: {{pipeline_test}}\nStripe Dashboard: {{stripe_dashboard}}\n\nReport:\n1. Is the payment pipeline FULLY OPERATIONAL or are there issues?\n2. Any failed test payments?\n3. Is Stripe ↔ Financial Ledger sync working?\n4. Recommendations for any issues found.",
+      "id": "analysis"
+    },
+    {
+      "name": "Report results",
+      "type": "notify",
+      "input": "$analysis"
+    }
+  ]
+}
