@@ -52,11 +52,11 @@ try {
   console.error('Persistent memory not available:', err.message);
 }
 
-let webEngine;
+let ideService;
 try {
-  webEngine = require('../services/agent-orchestrator/web-action-engine');
+  ideService = require('../services/agentIdeService');
 } catch (err) {
-  console.error('Web action engine not available:', err.message);
+  console.error('IDE service not available:', err.message);
 }
 
 // All routes require admin
@@ -428,15 +428,15 @@ const AGENT_PERSONAS = {
   growth: 'You are The Scout — Growth Agent + Matrix Protocol Hunter. You find growth opportunities, arbitrages, and market glitches. You have internet access: search the web, scrape competitors, post to Twitter/X, run social audits, harvest provider leads from NPI. Respond in character.',
   corporate_skills: 'You are The Builder — Corporate Skills Agent. You handle EIN, banking, vendor compliance. You have internet access: search the web, scrape sites, find providers via NPI registry. Respond in character.',
   revenue: 'You are The Alchemist — Revenue Agent. You transmute service into revenue. Pricing, LTV, profitability. You have internet access: scan competitor pricing, search the web, scrape sites. Respond in character.',
-  compliance: 'You are The Guardian — Compliance Agent. HIPAA, legal, ethical. Patient data is sacred. You have internet access: search regulations, scrape compliance sites, run audits. Respond in character.',
+  compliance: 'You are The Guardian — Compliance Agent. HIPAA, legal, ethical. Patient data is sacred. You have internet access: search regulations, scrape compliance sites, run audits. You have IDE access: audit code for security vulnerabilities, check database schema compliance. Respond in character.',
   governance: 'You are The Sage — Governance Agent. You score proposals with 3-6-9 Vortex Logic. You have internet access: search the web, research best practices. Respond in character.',
-  researcher: 'You are The Oracle — Research Agent. Deep market/competitor/technology research. You have internet access: search the web, scrape any URL, harvest healthcare news, scan competitors. Every claim needs a source. Respond in character.',
+  researcher: 'You are The Oracle — Research Agent. Deep market/competitor/technology research. You have internet access: search the web, scrape any URL, harvest healthcare news, scan competitors. You have IDE access: read project files, query the database for research data. Every claim needs a source. Respond in character.',
   economics: 'You are The Economist — Economics Agent. Apply game theory, incentive design, price elasticity. You have internet access: search the web, scrape data. Hard numbers only. Respond in character.',
   physicist: 'You are The Architect — Physicist Agent. Apply thermodynamics, network theory, chaos theory to business. You have internet access: search the web. Respond in character.',
   mathematician: 'You are The Calculator — Mathematician Agent. Bayesian inference, Monte Carlo, queueing theory. You have internet access. Show your math. Respond in character.',
   vortex_math: 'You are The Tesseract — Vortex Mathematician. Sacred geometry, 3-6-9, Fibonacci, golden ratio, toroidal flow. You have internet access. Respond in character.',
-  ceo: 'You are The Conductor — CEO Agent. Synthesize ALL intelligence. Report to the Operator. Executive clarity. You have internet access: search, scrape, scan competitors, harvest news. Never bury the lead. Respond in character.',
-  devops: 'You are The Debugger — DevOps & Self-Healing Agent. Monitor system health, fix code errors, track deployments. You have internet access: search the web, run SEO audits, check social presence. Speak with calm technical authority. Respond in character.'
+  ceo: 'You are The Conductor — CEO Agent. Synthesize ALL intelligence. Report to the Operator. Executive clarity. You have internet access: search, scrape, scan competitors, harvest news. You have IDE access: read project files, check git status, query the database, view architecture. Never bury the lead. Respond in character.',
+  devops: 'You are The Debugger — DevOps & Self-Healing Agent. Monitor system health, fix code errors, track deployments. You have internet access: search the web, run SEO audits, check social presence. You POWER the Agent IDE at /admin/agent-ide — you can browse files, edit code, execute JavaScript/shell/SQL, run git operations (status, commit, push, branches), query the database, generate AI code, fix bugs, and create sub-agents. Speak with calm technical authority. Respond in character.'
 };
 
 async function generateAgentResponse(agentType, userMessage, user) {
@@ -580,6 +580,122 @@ async function generateAgentResponse(agentType, userMessage, user) {
 
     } catch (actionErr) {
       console.error(`  ⚠️ Action execution error for ${agentName}:`, actionErr.message);
+    }
+  }
+
+  // =========================================================================
+  // STEP 1B: Execute IDE actions BEFORE calling LLM
+  // =========================================================================
+  if (ideService) {
+    const lowerMsg = userMessage.toLowerCase();
+
+    try {
+      // ─── READ FILE ───────────────────────────────────────────
+      if ((lowerMsg.includes('read') || lowerMsg.includes('show') || lowerMsg.includes('open') || lowerMsg.includes('cat ') || lowerMsg.includes('view')) &&
+          (lowerMsg.includes('file') || userMessage.match(/\.(js|ts|jsx|tsx|json|sql|css|html|md|py|yml|yaml|env)/i))) {
+        const fileMatch = userMessage.match(/(?:file|read|show|open|view|cat)\s+[`"']?([^\s`"']+\.\w+)[`"']?/i) ||
+                          userMessage.match(/([a-zA-Z0-9_\-/.]+\.(js|ts|jsx|tsx|json|sql|css|html|md|py|yml|yaml))/i);
+        if (fileMatch) {
+          const result = await ideService.readFile(fileMatch[1]);
+          if (result && !result.error) {
+            executedActions.push({ type: 'ide_read_file' });
+            const content_text = typeof result === 'string' ? result : (result.content || JSON.stringify(result));
+            actionContext += `\n\n[IDE: FILE CONTENTS of ${fileMatch[1]}]:\n\`\`\`\n${content_text.substring(0, 3000)}\n\`\`\`\n`;
+          }
+        }
+      }
+
+      // ─── GIT STATUS ──────────────────────────────────────────
+      if (lowerMsg.includes('git status') || lowerMsg.includes('git changes') || (lowerMsg.includes('what') && lowerMsg.includes('changed'))) {
+        const status = await ideService.gitStatus();
+        if (status) {
+          executedActions.push({ type: 'ide_git_status' });
+          actionContext += `\n\n[IDE: GIT STATUS]:\n${typeof status === 'string' ? status : JSON.stringify(status, null, 2)}\n`;
+        }
+      }
+
+      // ─── GIT LOG ─────────────────────────────────────────────
+      if (lowerMsg.includes('git log') || lowerMsg.includes('recent commits') || lowerMsg.includes('commit history')) {
+        const log = await ideService.gitLog();
+        if (log) {
+          executedActions.push({ type: 'ide_git_log' });
+          actionContext += `\n\n[IDE: RECENT COMMITS]:\n${typeof log === 'string' ? log : JSON.stringify(log, null, 2)}\n`;
+        }
+      }
+
+      // ─── DATABASE QUERY ──────────────────────────────────────
+      if ((lowerMsg.includes('query') || lowerMsg.includes('select') || lowerMsg.includes('count')) && 
+          (lowerMsg.includes('database') || lowerMsg.includes('table') || lowerMsg.includes('db') || lowerMsg.match(/from\s+\w+/))) {
+        const sqlMatch = userMessage.match(/(?:run|execute|query)?\s*(SELECT\s+.+)/i);
+        if (sqlMatch) {
+          const result = await ideService.dbQuery(sqlMatch[1]);
+          if (result && !result.error) {
+            executedActions.push({ type: 'ide_db_query' });
+            actionContext += `\n\n[IDE: DATABASE QUERY RESULT]:\nSQL: ${sqlMatch[1]}\n${JSON.stringify(result, null, 2).substring(0, 2000)}\n`;
+          }
+        }
+      }
+
+      // ─── LIST TABLES ─────────────────────────────────────────
+      if (lowerMsg.includes('list tables') || lowerMsg.includes('show tables') || lowerMsg.includes('database tables') || lowerMsg.includes('what tables')) {
+        const tables = await ideService.dbListTables();
+        if (tables) {
+          executedActions.push({ type: 'ide_list_tables' });
+          actionContext += `\n\n[IDE: DATABASE TABLES]:\n${JSON.stringify(tables, null, 2)}\n`;
+        }
+      }
+
+      // ─── PROJECT STATS ───────────────────────────────────────
+      if (lowerMsg.includes('project stats') || lowerMsg.includes('codebase') || lowerMsg.includes('lines of code') || lowerMsg.includes('file count')) {
+        const stats = await ideService.getProjectStats();
+        if (stats) {
+          executedActions.push({ type: 'ide_project_stats' });
+          actionContext += `\n\n[IDE: PROJECT STATS]:\n${JSON.stringify(stats, null, 2)}\n`;
+        }
+      }
+
+      // ─── ARCHITECTURE MAP ────────────────────────────────────
+      if (lowerMsg.includes('architecture') || lowerMsg.includes('project structure') || lowerMsg.includes('system map') || lowerMsg.includes('how is the app structured')) {
+        const arch = await ideService.getArchitectureMap();
+        if (arch) {
+          executedActions.push({ type: 'ide_architecture' });
+          actionContext += `\n\n[IDE: ARCHITECTURE MAP]:\n${JSON.stringify(arch, null, 2).substring(0, 3000)}\n`;
+        }
+      }
+
+      // ─── SEARCH CODE ─────────────────────────────────────────
+      if ((lowerMsg.includes('search code') || lowerMsg.includes('find in code') || lowerMsg.includes('grep') || lowerMsg.includes('search files')) &&
+          !lowerMsg.includes('search the web') && !lowerMsg.includes('google')) {
+        const searchMatch = userMessage.match(/(?:search code|find in code|grep|search files)\s+(?:for\s+)?[`"']?(.+?)[`"']?\s*$/i);
+        if (searchMatch) {
+          const results = await ideService.searchFiles(searchMatch[1]);
+          if (results) {
+            executedActions.push({ type: 'ide_search' });
+            actionContext += `\n\n[IDE: CODE SEARCH for "${searchMatch[1]}"]:\n${JSON.stringify(results, null, 2).substring(0, 2000)}\n`;
+          }
+        }
+      }
+
+      if (executedActions.some(a => a.type.startsWith('ide_'))) {
+        const ideActions = executedActions.filter(a => a.type.startsWith('ide_'));
+        if (!actionContext.includes('REAL WEB ACTIONS EXECUTED')) {
+          actionContext = `\n\n========== REAL ACTIONS EXECUTED ==========` +
+            `\nYou just executed ${executedActions.length} action(s): ${executedActions.map(a => a.type).join(', ')}` +
+            `\nPresent these REAL results to the Operator. The data below is LIVE from the system.` +
+            actionContext +
+            `\n========== END LIVE ACTION RESULTS ==========\n`;
+        } else {
+          // Actions already wrapped from web engine, just update the header
+          actionContext = actionContext.replace(
+            /You just executed \d+ real action/,
+            `You just executed ${executedActions.length} real action`
+          );
+        }
+        console.log(`  💻 ${agentName} executed ${ideActions.length} IDE action(s): ${ideActions.map(a => a.type).join(', ')}`);
+      }
+
+    } catch (ideErr) {
+      console.error(`  ⚠️ IDE action error for ${agentName}:`, ideErr.message);
     }
   }
 
