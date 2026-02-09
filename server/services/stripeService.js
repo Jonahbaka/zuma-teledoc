@@ -661,8 +661,14 @@ async function handleWebhook(event) {
  * Handle completed checkout session
  */
 async function handleCheckoutComplete(session) {
-  const { userId, type, appointmentId, packageType, planKey } = session.metadata;
+  const metadata = session.metadata || {};
+  const { userId, type, appointmentId, packageType, planKey } = metadata;
   
+  if (!userId) {
+    logger.warn('Checkout completed without userId in metadata', { sessionId: session.id });
+    return;
+  }
+
   try {
     if (type === 'consultation') {
       // Mark appointment as paid
@@ -680,7 +686,7 @@ async function handleCheckoutComplete(session) {
       await db.query(
         `INSERT INTO payments (user_id, appointment_id, type, status, amount, currency, stripe_payment_id, metadata)
          VALUES ($1, $2, 'consultation', 'completed', $3, 'usd', $4, $5)`,
-        [userId, appointmentId, session.amount_total / 100, session.payment_intent, JSON.stringify(session.metadata)]
+        [userId, appointmentId, session.amount_total / 100, session.payment_intent, JSON.stringify(metadata)]
       );
       
       logger.info('Consultation payment completed', { userId, appointmentId });
@@ -702,10 +708,34 @@ async function handleCheckoutComplete(session) {
       await db.query(
         `INSERT INTO payments (user_id, type, status, amount, currency, stripe_payment_id, metadata)
          VALUES ($1, 'credentialing', 'completed', $2, 'usd', $3, $4)`,
-        [userId, session.amount_total / 100, session.payment_intent, JSON.stringify(session.metadata)]
+        [userId, session.amount_total / 100, session.payment_intent, JSON.stringify(metadata)]
       );
       
       logger.info('Credentialing payment completed', { userId, packageType });
+
+    } else if (type === 'subscription') {
+      // Subscription checkout completed — Stripe will fire customer.subscription.created next,
+      // but we record the payment here as a safety net
+      await db.query(
+        `INSERT INTO payments (user_id, type, status, amount, currency, stripe_payment_id, metadata)
+         VALUES ($1, 'subscription', 'completed', $2, 'usd', $3, $4)
+         ON CONFLICT DO NOTHING`,
+        [userId, (session.amount_total || 0) / 100, session.payment_intent || session.subscription, JSON.stringify(metadata)]
+      );
+
+      // If Stripe subscription ID is available, link it immediately
+      if (session.subscription) {
+        const mapped = { basic: 'basic', gold: 'gold', goldYearly: 'gold', platinum: 'platinum' };
+        const tier = mapped[planKey] || 'gold';
+        await db.query(
+          `UPDATE subscriptions 
+           SET stripe_subscription_id = $1, status = 'active', tier = $2, updated_at = CURRENT_TIMESTAMP 
+           WHERE user_id = $3 AND stripe_subscription_id IS NULL`,
+          [session.subscription, tier, userId]
+        );
+      }
+
+      logger.info('Subscription checkout completed', { userId, planKey });
     }
   } catch (error) {
     logger.error('Error handling checkout complete', { error: error.message, sessionId: session.id });
@@ -718,14 +748,21 @@ async function handleCheckoutComplete(session) {
  */
 async function handleSubscriptionUpdate(subscription) {
   const userId = subscription.metadata?.userId;
-  if (!userId) return;
+  if (!userId) {
+    logger.warn('Subscription update missing userId in metadata', { subscriptionId: subscription.id });
+    return;
+  }
   
   try {
     const status = subscription.status;
     const currentPeriodEnd = new Date(subscription.current_period_end * 1000);
     const currentPeriodStart = new Date(subscription.current_period_start * 1000);
 
-    const planKey = subscription.metadata?.planKey || 'gold';
+    const planKey = subscription.metadata?.planKey;
+
+    if (!planKey) {
+      logger.warn('Subscription update missing planKey, inferring from price', { subscriptionId: subscription.id });
+    }
 
     // Map Stripe planKey -> DB tier + access level
     const planMap = {
@@ -734,7 +771,18 @@ async function handleSubscriptionUpdate(subscription) {
       goldYearly: { tier: 'gold', accessLevel: 'gold_yearly' },
       platinum: { tier: 'platinum', accessLevel: 'platinum_monthly' }
     };
-    const mapped = planMap[planKey] || planMap.gold;
+
+    // If planKey missing, try to infer from price amount
+    let effectivePlanKey = planKey;
+    if (!effectivePlanKey) {
+      const priceAmount = subscription.items?.data?.[0]?.price?.unit_amount || 0;
+      if (priceAmount <= 1999) effectivePlanKey = 'basic';
+      else if (priceAmount <= 3999) effectivePlanKey = 'gold';
+      else if (priceAmount >= 29900 && subscription.items?.data?.[0]?.price?.recurring?.interval === 'year') effectivePlanKey = 'goldYearly';
+      else effectivePlanKey = 'platinum';
+    }
+
+    const mapped = planMap[effectivePlanKey] || planMap.basic;
 
     // Map Stripe subscription status -> DB subscription_status enum
     const statusMap = {

@@ -1,25 +1,42 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { stripeAPI, membershipAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check, Crown, CreditCard, Shield, Zap } from 'lucide-react';
+import { Check, Crown, CreditCard, Shield, Zap, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import MembershipCard from '@/components/membership/MembershipCard';
 import InsuranceCardUploader from '@/components/insurance/InsuranceCardUploader';
 
-export default function SubscriptionPage() {
+function SubscriptionContent() {
   const { user, refreshUser } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [membership, setMembership] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [accessLevel, setAccessLevel] = useState('read_only');
+  const [paymentStatus, setPaymentStatus] = useState(null); // 'success' | 'cancelled' | null
 
   useEffect(() => {
+    // Handle Stripe redirect
+    const success = searchParams.get('success');
+    const cancelled = searchParams.get('cancelled');
+    if (success === 'true') {
+      setPaymentStatus('success');
+      toast({ title: 'Payment Successful!', description: 'Your subscription is now active. Welcome to Docta!' });
+      // Refresh user data so access level updates
+      if (refreshUser) refreshUser();
+      // Clean the URL
+      window.history.replaceState({}, '', '/patient/subscription');
+    } else if (cancelled === 'true') {
+      setPaymentStatus('cancelled');
+      toast({ title: 'Payment Cancelled', description: 'No charges were made. You can try again anytime.', variant: 'destructive' });
+      window.history.replaceState({}, '', '/patient/subscription');
+    }
     fetchMembership();
   }, []);
 
@@ -133,6 +150,30 @@ export default function SubscriptionPage() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
+      {/* Payment Status Banners */}
+      {paymentStatus === 'success' && (
+        <div className="mb-6 p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 flex items-center gap-3">
+          <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0" />
+          <div>
+            <p className="font-semibold text-green-800 dark:text-green-300">Payment Successful!</p>
+            <p className="text-sm text-green-700 dark:text-green-400">Your subscription is active. You now have full access to Docta telehealth services.</p>
+          </div>
+          <Button variant="default" size="sm" className="ml-auto" onClick={() => router.push('/patient/dashboard')}>
+            Go to Dashboard
+          </Button>
+        </div>
+      )}
+
+      {paymentStatus === 'cancelled' && (
+        <div className="mb-6 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex items-center gap-3">
+          <XCircle className="w-6 h-6 text-amber-600 flex-shrink-0" />
+          <div>
+            <p className="font-semibold text-amber-800 dark:text-amber-300">Payment Cancelled</p>
+            <p className="text-sm text-amber-700 dark:text-amber-400">No charges were made. Choose a plan below when you are ready.</p>
+          </div>
+        </div>
+      )}
+
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold mb-2">Choose Your Plan</h1>
         <p className="text-muted-foreground">
@@ -267,6 +308,14 @@ export default function SubscriptionPage() {
         </CardFooter>
       </Card>
     </div>
+  );
+}
+
+export default function SubscriptionPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[400px]"><Loader2 className="w-8 h-8 animate-spin text-purple-600" /></div>}>
+      <SubscriptionContent />
+    </Suspense>
   );
 }
 

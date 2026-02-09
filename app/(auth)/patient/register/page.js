@@ -52,11 +52,20 @@ export default function PatientRegisterPage() {
       });
 
       if (response.data.success) {
+        // Store tokens so user is immediately logged in
+        if (response.data.accessToken) {
+          localStorage.setItem('accessToken', response.data.accessToken);
+        }
+        if (response.data.refreshToken) {
+          localStorage.setItem('refreshToken', response.data.refreshToken);
+        }
+
         toast({
           title: 'Account Created!',
-          description: 'Please check your email to verify your account.',
+          description: 'Choose a plan to get started.',
         });
-        router.push('/patient/login');
+        // Send directly to subscription page — no need to log in again
+        router.push('/patient/subscription');
       }
     } catch (error) {
       const message = error.response?.data?.error || 'Registration failed';
