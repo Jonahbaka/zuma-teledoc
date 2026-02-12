@@ -110,6 +110,29 @@ router.delete('/:id', ...adminOnly, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+//  POST /api/inbox/delete-bulk — Delete multiple messages at once
+// ═══════════════════════════════════════════════════════════════
+router.post('/delete-bulk', ...adminOnly, async (req, res) => {
+  try {
+    const { ids, mode } = req.body;
+    // mode: 'selected' (delete specific IDs), 'read' (delete all read), 'all' (delete everything)
+    let result;
+    if (mode === 'all') {
+      result = await db.query("DELETE FROM ai_chat_messages WHERE recipient_type = 'operator'");
+    } else if (mode === 'read') {
+      result = await db.query("DELETE FROM ai_chat_messages WHERE recipient_type = 'operator' AND read_at IS NOT NULL");
+    } else if (Array.isArray(ids) && ids.length > 0) {
+      result = await db.query("DELETE FROM ai_chat_messages WHERE id = ANY($1) AND recipient_type = 'operator'", [ids]);
+    } else {
+      return res.status(400).json({ success: false, error: 'Provide ids array, or mode: "read" or "all"' });
+    }
+    res.json({ success: true, data: { deleted: result.rowCount } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
 //  GET /api/inbox/summary — AI-generated daily summary
 // ═══════════════════════════════════════════════════════════════
 router.get('/summary', ...adminOnly, async (req, res) => {

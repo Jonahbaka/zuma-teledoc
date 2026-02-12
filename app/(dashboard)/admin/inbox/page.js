@@ -114,10 +114,13 @@ export default function InboxPage() {
   };
 
   const [waking, setWaking] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [deleting, setDeleting] = useState(false);
+
   const wakeUpAgents = async () => {
     setWaking(true);
     const result = await apiCall('/wake-up', 'POST');
-    // Poll for inbox updates after wake-up completes
     setTimeout(async () => {
       await loadInbox();
       setWaking(false);
@@ -137,11 +140,42 @@ export default function InboxPage() {
   const deleteItem = async (id) => {
     await apiCall(`/${id}`, 'DELETE');
     setItems(prev => prev.filter(i => i.id !== id));
+    setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+  };
+
+  const deleteBulk = async (mode) => {
+    setDeleting(true);
+    if (mode === 'selected') {
+      await apiCall('/delete-bulk', 'POST', { ids: Array.from(selectedIds) });
+    } else {
+      await apiCall('/delete-bulk', 'POST', { mode });
+    }
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    await loadInbox();
+    setDeleting(false);
+  };
+
+  const toggleSelect = (id, e) => {
+    e?.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selectedIds.size === items.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(items.map(i => i.id)));
+    }
   };
 
   const toggleExpand = (id) => {
+    if (selectMode) return; // Don't expand in select mode
     setExpandedId(prev => prev === id ? null : id);
-    // Mark as read when expanded
     const item = items.find(i => i.id === id);
     if (item && !item.read_at) {
       markRead([id]);
@@ -188,27 +222,63 @@ export default function InboxPage() {
               <p className="text-sm text-gray-500 mt-0.5">Proactive briefings, alerts, and accomplishments from your AI agents</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={wakeUpAgents} disabled={waking}
-              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-purple-900/20 animate-pulse hover:animate-none">
-              <Zap className={`w-4 h-4 ${waking ? 'animate-spin' : ''}`} />
-              {waking ? 'Waking Up...' : 'Wake Up All Agents'}
-            </button>
-            <button onClick={runMissions} disabled={missionRunning}
-              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-emerald-900/20">
-              <Globe className={`w-4 h-4 ${missionRunning ? 'animate-spin' : ''}`} />
-              {missionRunning ? 'Missions Running...' : 'Run Web Missions'}
-            </button>
-            {unreadCount > 0 && (
-              <button onClick={markAllRead}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 text-gray-300 border border-gray-700">
-                <CheckCheck className="w-4 h-4" /> Mark all read ({unreadCount})
-              </button>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {/* Select / Delete Mode Controls */}
+            {selectMode ? (
+              <>
+                <button onClick={selectAll}
+                  className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-medium flex items-center gap-1.5 text-gray-300 border border-gray-700">
+                  <CheckCheck className="w-3.5 h-3.5" /> {selectedIds.size === items.length ? 'Deselect All' : 'Select All'}
+                </button>
+                {selectedIds.size > 0 && (
+                  <button onClick={() => deleteBulk('selected')} disabled={deleting}
+                    className="px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
+                    <Trash2 className="w-3.5 h-3.5" /> Delete {selectedIds.size} selected
+                  </button>
+                )}
+                <button onClick={() => deleteBulk('read')} disabled={deleting}
+                  className="px-3 py-2 bg-red-900/60 hover:bg-red-800/80 rounded-lg text-xs font-medium flex items-center gap-1.5 text-red-300 border border-red-500/30 disabled:opacity-50">
+                  <Trash2 className="w-3.5 h-3.5" /> Delete All Read
+                </button>
+                <button onClick={() => { if (confirm('Delete ALL inbox messages? This cannot be undone.')) deleteBulk('all'); }} disabled={deleting}
+                  className="px-3 py-2 bg-red-900/40 hover:bg-red-800/60 rounded-lg text-xs font-medium flex items-center gap-1.5 text-red-400 border border-red-500/20 disabled:opacity-50">
+                  <Trash2 className="w-3.5 h-3.5" /> Delete All
+                </button>
+                <button onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}
+                  className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-medium text-gray-400">
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={wakeUpAgents} disabled={waking}
+                  className="px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 shadow-lg shadow-purple-900/20 animate-pulse hover:animate-none">
+                  <Zap className={`w-3.5 h-3.5 ${waking ? 'animate-spin' : ''}`} />
+                  {waking ? 'Waking...' : 'Wake Up Agents'}
+                </button>
+                <button onClick={runMissions} disabled={missionRunning}
+                  className="px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 shadow-lg shadow-emerald-900/20">
+                  <Globe className={`w-3.5 h-3.5 ${missionRunning ? 'animate-spin' : ''}`} />
+                  {missionRunning ? 'Running...' : 'Web Missions'}
+                </button>
+                {unreadCount > 0 && (
+                  <button onClick={markAllRead}
+                    className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-medium flex items-center gap-1.5 text-gray-300 border border-gray-700">
+                    <CheckCheck className="w-3.5 h-3.5" /> Mark read ({unreadCount})
+                  </button>
+                )}
+                {items.length > 0 && (
+                  <button onClick={() => setSelectMode(true)}
+                    className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-medium flex items-center gap-1.5 text-red-400 border border-gray-700 hover:border-red-500/30">
+                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                  </button>
+                )}
+                <button onClick={handleRefresh} disabled={refreshing}
+                  className="px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-xs font-medium flex items-center gap-1.5 disabled:opacity-50">
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} /> Refresh
+                </button>
+              </>
             )}
-            <button onClick={handleRefresh} disabled={refreshing}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50">
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /> Refresh
-            </button>
           </div>
         </div>
       </div>
@@ -301,19 +371,31 @@ export default function InboxPage() {
 
             return (
               <div key={item.id}
-                onClick={() => toggleExpand(item.id)}
-                className={`rounded-xl border transition-all cursor-pointer ${
+                onClick={() => selectMode ? toggleSelect(item.id) : toggleExpand(item.id)}
+                className={`rounded-xl border transition-all cursor-pointer group ${
+                  selectedIds.has(item.id) ? 'bg-red-950/40 border-red-500/40 ring-1 ring-red-500/20' :
                   isUnread
                     ? `bg-gray-900/90 ${agent.border} border-l-4 shadow-lg`
                     : 'bg-gray-900/50 border-gray-800 hover:border-gray-700'
                 } ${isExpanded ? 'ring-1 ring-purple-500/30' : ''}`}>
 
                 {/* Collapsed Row */}
-                <div className="flex items-center gap-4 px-5 py-4">
-                  {/* Agent Avatar */}
-                  <div className={`w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center ${agent.bg}`}>
-                    <AgentIcon className={`w-5 h-5 ${agent.color}`} />
-                  </div>
+                <div className="flex items-center gap-3 px-5 py-4">
+                  {/* Checkbox (select mode) or Agent Avatar */}
+                  {selectMode ? (
+                    <div onClick={(e) => toggleSelect(item.id, e)}
+                      className={`w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center border-2 transition-all ${
+                        selectedIds.has(item.id)
+                          ? 'bg-red-600 border-red-500'
+                          : 'bg-gray-800 border-gray-600 hover:border-red-400'
+                      }`}>
+                      {selectedIds.has(item.id) && <Check className="w-5 h-5 text-white" />}
+                    </div>
+                  ) : (
+                    <div className={`w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center ${agent.bg}`}>
+                      <AgentIcon className={`w-5 h-5 ${agent.color}`} />
+                    </div>
+                  )}
 
                   {/* Content Preview */}
                   <div className="flex-1 min-w-0">
@@ -339,17 +421,25 @@ export default function InboxPage() {
                     </p>
                   </div>
 
-                  {/* Time & Actions */}
-                  <div className="flex items-center gap-3 flex-shrink-0">
+                  {/* Time & Quick Actions */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-xs text-gray-500 flex items-center gap-1">
                       <Clock className="w-3 h-3" /> {formatTime(item.created_at)}
                     </span>
                     {isUnread && <span className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse" />}
+                    {/* Quick delete — visible on hover when not in select mode */}
+                    {!selectMode && (
+                      <button onClick={(e) => { e.stopPropagation(); deleteItem(item.id); }}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-900/30 rounded-lg transition-all"
+                        title="Delete message">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
                 {/* Expanded Content */}
-                {isExpanded && (
+                {isExpanded && !selectMode && (
                   <div className="px-5 pb-5 border-t border-gray-800 mt-0">
                     <div className="pt-4">
                       <pre className="whitespace-pre-wrap font-sans text-sm text-gray-300 leading-relaxed">
