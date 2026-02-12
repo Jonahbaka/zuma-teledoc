@@ -215,6 +215,10 @@ DO $$ BEGIN
 EXCEPTION WHEN undefined_table OR duplicate_object THEN NULL;
 END $$;
 
+-- Deduplicate scrape sources before adding unique constraint
+DELETE FROM crm_scrape_sources a USING crm_scrape_sources b
+WHERE a.id > b.id AND a.url = b.url;
+
 -- Unique constraint on scrape source URLs to prevent duplicates
 CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_scrape_sources_url ON crm_scrape_sources(url);
 
@@ -238,6 +242,10 @@ INSERT INTO crm_scrape_sources (name, url, source_type) VALUES
   ('MDLive Directory', 'https://www.mdlive.com/', 'provider_directory'),
   ('Healthcare Conference List', 'https://www.healthcareconferences.com/', 'conference')
 ON CONFLICT (url) DO NOTHING;
+
+-- Deduplicate templates before adding unique constraint
+DELETE FROM crm_email_templates a USING crm_email_templates b
+WHERE a.id > b.id AND a.name = b.name;
 
 -- Unique constraint on template names
 CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_email_templates_name ON crm_email_templates(name);
