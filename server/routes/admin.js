@@ -646,12 +646,12 @@ router.get('/analytics/revenue', async (req, res) => {
     res.json({
       success: true,
       revenue: {
-        totalRevenue: (totalMRR + totalPayments + parseFloat(sessionRevenue.total || 0)).toFixed(2),
-        mrr: totalMRR.toFixed(2),
-        arr: (totalMRR * 12).toFixed(2),
-        monthlyRevenue: (totalMRR + monthlyPayments).toFixed(2),
-        weeklyRevenue: weeklyPayments.toFixed(2),
-        yearlyRevenue: ((totalMRR * 12) + totalPayments).toFixed(2),
+        totalRevenue: Math.round((totalMRR + totalPayments + parseFloat(sessionRevenue.total || 0)) * 100) / 100,
+        mrr: Math.round(totalMRR * 100) / 100,
+        arr: Math.round(totalMRR * 12 * 100) / 100,
+        monthlyRevenue: Math.round((totalMRR + monthlyPayments) * 100) / 100,
+        weeklyRevenue: Math.round(weeklyPayments * 100) / 100,
+        yearlyRevenue: Math.round(((totalMRR * 12) + totalPayments) * 100) / 100,
         byTier: subscriptions.map(keysToCamel),
         byPlan: subscriptions.map(s => ({
           plan: s.tier,
@@ -663,14 +663,14 @@ router.get('/analytics/revenue', async (req, res) => {
         payments: {
           totalCount: parseInt(payments.total_payments || 0),
           successfulCount: parseInt(payments.successful_count || 0),
-          totalAmount: totalPayments.toFixed(2),
-          monthlyAmount: monthlyPayments.toFixed(2)
+          totalAmount: Math.round(totalPayments * 100) / 100,
+          monthlyAmount: Math.round(monthlyPayments * 100) / 100
         },
         sessions: {
           completedPaid: parseInt(sessionRevenue.count || 0),
-          sessionRevenue: parseFloat(sessionRevenue.total || 0).toFixed(2)
+          sessionRevenue: Math.round(parseFloat(sessionRevenue.total || 0) * 100) / 100
         },
-        growth: totalMRR > 0 ? ((monthlyPayments / totalMRR) * 100).toFixed(1) : '0.0'
+        growth: totalMRR > 0 ? Math.round((monthlyPayments / totalMRR) * 1000) / 10 : 0
       }
     });
   } catch (error) {
@@ -679,19 +679,19 @@ router.get('/analytics/revenue', async (req, res) => {
     res.json({
       success: true,
       revenue: {
-        totalRevenue: '0.00',
-        mrr: '0.00',
-        arr: '0.00',
-        monthlyRevenue: '0.00',
-        weeklyRevenue: '0.00',
-        yearlyRevenue: '0.00',
+        totalRevenue: 0,
+        mrr: 0,
+        arr: 0,
+        monthlyRevenue: 0,
+        weeklyRevenue: 0,
+        yearlyRevenue: 0,
         byTier: [],
         byPlan: [],
         monthlyTrend: [],
         paymentsTrend: [],
-        payments: { totalCount: 0, successfulCount: 0, totalAmount: '0.00', monthlyAmount: '0.00' },
-        sessions: { completedPaid: 0, sessionRevenue: '0.00' },
-        growth: '0.0'
+        payments: { totalCount: 0, successfulCount: 0, totalAmount: 0, monthlyAmount: 0 },
+        sessions: { completedPaid: 0, sessionRevenue: 0 },
+        growth: 0
       }
     });
   }

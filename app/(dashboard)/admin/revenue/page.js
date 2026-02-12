@@ -59,13 +59,19 @@ export default function RevenuePage() {
     );
   }
 
-  const data = revenue || {
-    totalRevenue: 0,
-    monthlyRevenue: 0,
-    yearlyRevenue: 0,
-    byPlan: [],
-    byMonth: [],
-    growth: 0
+  const raw = revenue || {};
+  const data = {
+    totalRevenue: parseFloat(raw.totalRevenue) || 0,
+    monthlyRevenue: parseFloat(raw.monthlyRevenue) || parseFloat(raw.mrr) || 0,
+    yearlyRevenue: parseFloat(raw.yearlyRevenue) || parseFloat(raw.arr) || 0,
+    weeklyRevenue: parseFloat(raw.weeklyRevenue) || 0,
+    byPlan: raw.byPlan || raw.byTier || [],
+    byMonth: raw.byMonth || raw.monthlyTrend || [],
+    growth: parseFloat(raw.growth) || 0,
+    payments: raw.payments || {},
+    sessions: raw.sessions || {},
+    mrr: parseFloat(raw.mrr) || 0,
+    arr: parseFloat(raw.arr) || 0,
   };
 
   return (
