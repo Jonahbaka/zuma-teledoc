@@ -814,6 +814,184 @@ async function generateAgentResponse(agentType, userMessage, user) {
         }
       }
 
+      // ─── SEND EMAIL TO CONTACT ─────────────────────────────────
+      // Triggered by: "email <name or email>" or "send email to <name>"
+      if ((lowerMsg.includes('send email') || lowerMsg.includes('email ') || lowerMsg.includes('reach out')) &&
+          (lowerMsg.includes(' to ') || lowerMsg.includes('contact'))) {
+        // Try to find the contact by email or name
+        const emailMatch = userMessage.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+        const nameMatch = userMessage.match(/(?:email|reach out|send.*to)\s+(?:to\s+)?([A-Z][a-z]+ [A-Z][a-z]+)/i);
+        
+        let contact = null;
+        if (emailMatch) {
+          const contacts = await crmService.getContacts({ search: emailMatch[0], limit: 1 });
+          contact = contacts?.[0];
+        } else if (nameMatch) {
+          const contacts = await crmService.getContacts({ search: nameMatch[1], limit: 1 });
+          contact = contacts?.[0];
+        }
+
+        if (contact && contact.email) {
+          // Get the right template based on contact type
+          let template = null;
+          try {
+            const templates = await crmService.getTemplates(
+              contact.contact_type === 'investor' ? 'investor_pitch' : 
+              contact.contact_type === 'nurse' ? 'provider_invite' : 'cold_outreach'
+            );
+            template = templates?.[0];
+          } catch(e) {}
+
+          if (template) {
+            const result = await crmService.sendEmail(
+              contact.id, template.subject, template.body, agentType
+            );
+            executedActions.push({ type: 'crm_send_email' });
+            if (result.success) {
+              actionContext += `\n\n[EMAIL SENT — REAL via Zoho SMTP]:\n`;
+              actionContext += `To: ${contact.first_name} ${contact.last_name} <${contact.email}>\n`;
+              actionContext += `Subject: "${template.subject}"\n`;
+              actionContext += `Template: "${template.name}"\n`;
+              actionContext += `Message ID: ${result.messageId}\n`;
+              actionContext += `Status: DELIVERED via info@doctarx.com\n`;
+              // Update pipeline stage
+              try { await crmService.updatePipelineStage(contact.id, 'contacted', agentType); } catch(e) {}
+            } else {
+              actionContext += `\n\n[EMAIL FAILED]: ${result.error || 'Unknown error'}\n`;
+            }
+          } else {
+            actionContext += `\n\n[EMAIL]: Found contact ${contact.first_name} ${contact.last_name} (${contact.email}) but no email template matched. Create a template first.\n`;
+          }
+        } else if (emailMatch || nameMatch) {
+          actionContext += `\n\n[EMAIL]: Contact "${emailMatch?.[0] || nameMatch?.[1]}" not found in CRM. Add them first.\n`;
+        }
+      }
+
+      // ─── ADD CONTACT TO CRM ────────────────────────────────────
+      // Triggered by: "add contact" or "add lead" with details
+      if ((lowerMsg.includes('add contact') || lowerMsg.includes('add lead') || lowerMsg.includes('add provider') || lowerMsg.includes('new contact')) &&
+          !lowerMsg.includes('list') && !lowerMsg.includes('show')) {
+        const emailMatch = userMessage.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+        const nameMatch = userMessage.match(/(?:add\s+(?:contact|lead|provider))\s+(?:for\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
+        const typeMatch = lowerMsg.match(/(provider|investor|partner|nurse|lead)/);
+
+        if (emailMatch || nameMatch) {
+          const nameParts = nameMatch ? nameMatch[1].split(' ') : ['Unknown'];
+          const contactData = {
+            first_name: nameParts[0] || 'Unknown',
+            last_name: nameParts[1] || '',
+            email: emailMatch ? emailMatch[0] : null,
+            contact_type: typeMatch ? typeMatch[1] : 'lead',
+            source: `agent_chat_${agentType}`,
+            source_agent: agentType,
+            pipeline_stage: 'new',
+            lead_score: 50
+          };
+
+          const result = await crmService.addContact(contactData);
+          executedActions.push({ type: 'crm_add_contact' });
+          if (result) {
+            actionContext += `\n\n[CONTACT ADDED TO CRM]:\n`;
+            actionContext += `• Name: ${result.first_name} ${result.last_name}\n`;
+            actionContext += `• Email: ${result.email || 'not provided'}\n`;
+            actionContext += `• Type: ${result.contact_type}\n`;
+            actionContext += `• Pipeline: ${result.pipeline_stage}\n`;
+            actionContext += `• ID: ${result.id}\n`;
+          } else {
+            actionContext += `\n\n[CRM]: Contact may already exist or could not be added.\n`;
+          }
+        } else {
+          actionContext += `\n\n[CRM ADD]: Provide at least a name or email. Example: "add provider contact Dr. Jane Smith jane@hospital.com"\n`;
+        }
+      }
+
+      // ─── CREATE CAMPAIGN ───────────────────────────────────────
+      if (lowerMsg.includes('create campaign') || lowerMsg.includes('new campaign') || lowerMsg.includes('start campaign')) {
+        const typeMatch = lowerMsg.match(/(provider|investor|partner|nurse|cold|follow)/);
+        const targetType = typeMatch ? typeMatch[1] : 'provider';
+        const campaignType = targetType === 'investor' ? 'investor_pitch' : 
+                             targetType === 'follow' ? 'follow_up' : 'cold_email';
+
+        // Get matching template
+        let template = null;
+        try {
+          const templates = await crmService.getTemplates(
+            targetType === 'investor' ? 'investor_pitch' : 'cold_outreach'
+          );
+          template = templates?.[0];
+        } catch(e) {}
+
+        // Count target contacts
+        let contactCount = 0;
+        try {
+          const contacts = await crmService.getContacts({ contactType: targetType, limit: 1000 });
+          contactCount = contacts?.length || 0;
+        } catch(e) {}
+
+        if (template && contactCount > 0) {
+          const campaign = await crmService.createCampaign({
+            name: `${targetType.charAt(0).toUpperCase() + targetType.slice(1)} Outreach — ${new Date().toLocaleDateString()}`,
+            description: `Auto-created by ${agentName} for ${targetType} outreach`,
+            campaign_type: campaignType,
+            target_contact_type: targetType,
+            subject_line: template.subject,
+            email_template: template.body,
+            daily_limit: 20,
+            created_by: agentType
+          });
+
+          executedActions.push({ type: 'crm_create_campaign' });
+          if (campaign) {
+            actionContext += `\n\n[CAMPAIGN CREATED]:\n`;
+            actionContext += `• Name: "${campaign.name}"\n`;
+            actionContext += `• Type: ${campaign.campaign_type}\n`;
+            actionContext += `• Target: ${contactCount} ${targetType} contacts\n`;
+            actionContext += `• Template: "${template.name}"\n`;
+            actionContext += `• Status: DRAFT — needs Operator approval before sending\n`;
+            actionContext += `• To approve: go to CRM > Campaigns > Approve, or say "approve campaign"\n`;
+          }
+        } else {
+          actionContext += `\n\n[CAMPAIGN]: ${contactCount === 0 ? `No ${targetType} contacts in CRM yet. Add contacts first.` : 'No email template found for this contact type.'}\n`;
+        }
+      }
+
+      // ─── APPROVE CAMPAIGN ──────────────────────────────────────
+      if (lowerMsg.includes('approve campaign') || lowerMsg.includes('launch campaign')) {
+        const campaigns = await crmService.getCampaigns({ status: 'draft' });
+        if (campaigns && campaigns.length > 0) {
+          const campaign = campaigns[0]; // approve the most recent draft
+          const approved = await crmService.approveCampaign(campaign.id, user.id);
+          executedActions.push({ type: 'crm_approve_campaign' });
+          if (approved) {
+            actionContext += `\n\n[CAMPAIGN APPROVED]:\n`;
+            actionContext += `• "${approved.name}" is now APPROVED and ready to send\n`;
+            actionContext += `• Say "run campaign" or "send campaign emails" to start sending\n`;
+          }
+        } else {
+          actionContext += `\n\n[CAMPAIGNS]: No draft campaigns to approve.\n`;
+        }
+      }
+
+      // ─── RUN/SEND CAMPAIGN EMAILS ──────────────────────────────
+      if ((lowerMsg.includes('run campaign') || lowerMsg.includes('send campaign') || lowerMsg.includes('execute campaign')) && 
+          !lowerMsg.includes('create')) {
+        const campaigns = await crmService.getCampaigns({ status: 'approved' });
+        if (campaigns && campaigns.length > 0) {
+          const campaign = campaigns[0];
+          const results = await crmService.sendCampaignEmails(campaign.id, 10); // send 10 at a time
+          executedActions.push({ type: 'crm_run_campaign' });
+          actionContext += `\n\n[CAMPAIGN EMAILS SENT — REAL via Zoho SMTP]:\n`;
+          actionContext += `• Campaign: "${campaign.name}"\n`;
+          actionContext += `• Sent: ${results.sent} emails\n`;
+          actionContext += `• Failed: ${results.failed}\n`;
+          actionContext += `• Skipped: ${results.skipped}\n`;
+          actionContext += `• From: info@doctarx.com via Zoho Mail\n`;
+        } else {
+          const drafts = await crmService.getCampaigns({ status: 'draft' });
+          actionContext += `\n\n[CAMPAIGNS]: No approved campaigns ready to send. ${drafts?.length > 0 ? `${drafts.length} draft(s) need approval first. Say "approve campaign".` : 'Create one first.'}\n`;
+        }
+      }
+
       if (executedActions.some(a => a.type.startsWith('crm_'))) {
         const crmActions = executedActions.filter(a => a.type.startsWith('crm_'));
         if (!actionContext.includes('REAL ACTIONS EXECUTED') && !actionContext.includes('REAL WEB ACTIONS EXECUTED')) {
