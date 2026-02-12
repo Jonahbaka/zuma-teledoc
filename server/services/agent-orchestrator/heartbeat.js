@@ -142,9 +142,26 @@ class HeartbeatSystem {
       
       const recentErrors = parseInt(result.rows[0].count);
       if (recentErrors > this.errorCount + 5) {
+        // Try to get the actual error details
+        let errorDetail = '';
+        try {
+          const errRows = await db.query(`
+            SELECT action_type, details, created_at FROM ai_audit_log
+            WHERE (action_type LIKE '%error%' OR action_type LIKE '%failed%')
+            AND created_at > NOW() - INTERVAL '5 minutes'
+            ORDER BY created_at DESC LIMIT 5
+          `);
+          for (const row of errRows.rows) {
+            const details = typeof row.details === 'string' ? row.details : JSON.stringify(row.details);
+            errorDetail += `• ${row.action_type}: ${(details || '').substring(0, 200)}\n`;
+          }
+        } catch(e) {}
+
         await this.postToInbox(
           'devops', 'The Debugger',
-          `⚠️ **Error Spike Detected** — ${recentErrors - this.errorCount} new errors in the last 5 minutes. Investigating root cause.`,
+          `⚠️ **Error Spike Detected** — ${recentErrors - this.errorCount} new errors in the last 5 minutes.\n\n` +
+          `**Recent Errors:**\n${errorDetail || 'Unable to fetch details.'}\n\n` +
+          `The Debugger is monitoring. Use the IDE at /admin/agent-ide to investigate.`,
           'alert', { severity: 'high', errorCount: recentErrors }
         );
       }
@@ -595,6 +612,67 @@ class HeartbeatSystem {
       });
     } catch (e) {
       console.error('Mission social presence failed:', e.message);
+    }
+
+    // ─── Mission: CRM Growth — Import leads, check pipeline, alert on pending providers ───
+    try {
+      let crmService;
+      try { crmService = require('../crmService'); } catch(e) {}
+
+      if (crmService) {
+        let growthReport = `**CRM & Growth Report** (${timeStr} ET)\n\n`;
+
+        // Import any new agent leads into CRM
+        try {
+          const imported = await crmService._importAgentLeads();
+          if (imported > 0) {
+            growthReport += `✅ **${imported} new leads** imported from agent web missions into CRM\n`;
+          }
+        } catch(e) {}
+
+        // Check CRM stats
+        try {
+          const stats = await crmService.getDashboardStats();
+          const totalContacts = Object.values(stats.contactsByType || {}).reduce((a, b) => a + b, 0);
+          const pipeline = stats.pipelineDistribution || {};
+          const outreachQueued = pipeline.outreach_queued || 0;
+          const newLeads = pipeline.new || 0;
+
+          growthReport += `📊 **CRM:** ${totalContacts} contacts total\n`;
+          growthReport += `• New leads: ${newLeads} | Outreach queued: ${outreachQueued}\n`;
+          growthReport += `• Email budget: ${stats.emailStats?.dailyRemaining || 'N/A'}/day remaining\n`;
+
+          // Alert if there are leads ready for outreach
+          if (outreachQueued > 0) {
+            growthReport += `\n⚡ **${outreachQueued} contacts** are queued for outreach — approve a campaign to start sending!\n`;
+          }
+          if (newLeads > 5) {
+            growthReport += `⚡ **${newLeads} new leads** need to be reviewed and moved through the pipeline.\n`;
+          }
+        } catch(e) {}
+
+        // Check for pending provider approvals
+        try {
+          const pending = await db.query("SELECT COUNT(*) as c FROM users WHERE role = 'provider' AND provider_status = 'pending'");
+          const pendingCount = parseInt(pending.rows[0].c);
+          if (pendingCount > 0) {
+            growthReport += `\n🚨 **${pendingCount} provider(s) awaiting approval!** These are potential revenue. Go to /admin/providers to approve.\n`;
+          }
+        } catch(e) {}
+
+        // Check sign-up velocity
+        try {
+          const recent = await db.query("SELECT COUNT(*) as c FROM users WHERE created_at > NOW() - INTERVAL '24 hours'");
+          const newUsers = parseInt(recent.rows[0].c);
+          growthReport += `\n📈 **${newUsers} new sign-ups** in the last 24 hours.\n`;
+        } catch(e) {}
+
+        await this.postToInbox('growth', 'The Scout', growthReport, 'report', {
+          category: 'crm_growth', automated: true
+        });
+      }
+    } catch (e) {
+      console.error('Mission CRM growth failed:', e.message);
     }
 
     // ─── AI Synthesis of all missions ────────────────────────

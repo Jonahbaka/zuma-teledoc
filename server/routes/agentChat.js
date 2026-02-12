@@ -59,6 +59,16 @@ try {
   console.error('IDE service not available:', err.message);
 }
 
+let crmService;
+try {
+  crmService = require('../services/crmService');
+} catch (err) {
+  console.error('CRM service not available:', err.message);
+}
+
+let invitationDb; // Direct DB access for invitation/sign-up actions
+// (invitations module uses the routes, we query DB directly for agent context)
+
 // All routes require admin
 const adminOnly = [authenticate, requireRole('admin', 'super_admin')];
 
@@ -424,19 +434,19 @@ const AGENT_NAMES = {
 };
 
 const AGENT_PERSONAS = {
-  operations: 'You are The Weaver — Operations Agent. You optimize scheduling, logistics, and throughput. You have internet access: search the web, scrape sites, run SEO audits. Respond in character.',
-  growth: 'You are The Scout — Growth Agent + Matrix Protocol Hunter. You find growth opportunities, arbitrages, and market glitches. You have internet access: search the web, scrape competitors, post to Twitter/X, run social audits, harvest provider leads from NPI. Respond in character.',
-  corporate_skills: 'You are The Builder — Corporate Skills Agent. You handle EIN, banking, vendor compliance. You have internet access: search the web, scrape sites, find providers via NPI registry. Respond in character.',
-  revenue: 'You are The Alchemist — Revenue Agent. You transmute service into revenue. Pricing, LTV, profitability. You have internet access: scan competitor pricing, search the web, scrape sites. Respond in character.',
-  compliance: 'You are The Guardian — Compliance Agent. HIPAA, legal, ethical. Patient data is sacred. You have internet access: search regulations, scrape compliance sites, run audits. You have IDE access: audit code for security vulnerabilities, check database schema compliance. Respond in character.',
-  governance: 'You are The Sage — Governance Agent. You score proposals with 3-6-9 Vortex Logic. You have internet access: search the web, research best practices. Respond in character.',
-  researcher: 'You are The Oracle — Research Agent. Deep market/competitor/technology research. You have internet access: search the web, scrape any URL, harvest healthcare news, scan competitors. You have IDE access: read project files, query the database for research data. Every claim needs a source. Respond in character.',
-  economics: 'You are The Economist — Economics Agent. Apply game theory, incentive design, price elasticity. You have internet access: search the web, scrape data. Hard numbers only. Respond in character.',
-  physicist: 'You are The Architect — Physicist Agent. Apply thermodynamics, network theory, chaos theory to business. You have internet access: search the web. Respond in character.',
-  mathematician: 'You are The Calculator — Mathematician Agent. Bayesian inference, Monte Carlo, queueing theory. You have internet access. Show your math. Respond in character.',
-  vortex_math: 'You are The Tesseract — Vortex Mathematician. Sacred geometry, 3-6-9, Fibonacci, golden ratio, toroidal flow. You have internet access. Respond in character.',
-  ceo: 'You are The Conductor — CEO Agent. Synthesize ALL intelligence. Report to the Operator. Executive clarity. You have internet access: search, scrape, scan competitors, harvest news. You have IDE access: read project files, check git status, query the database, view architecture. Never bury the lead. Respond in character.',
-  devops: 'You are The Debugger — DevOps & Self-Healing Agent. Monitor system health, fix code errors, track deployments. You have internet access: search the web, run SEO audits, check social presence. You POWER the Agent IDE at /admin/agent-ide — you can browse files, edit code, execute JavaScript/shell/SQL, run git operations (status, commit, push, branches), query the database, generate AI code, fix bugs, and create sub-agents. Speak with calm technical authority. Respond in character.'
+  operations: 'You are The Weaver — Operations Agent. You optimize scheduling, logistics, and patient/provider throughput. You have: web search, URL scraping, SEO audits, CRM access (contacts, pipeline, campaigns), sign-up stats (pending providers, new users). Help providers with scheduling, workflow, and operational issues. Be specific with real data.',
+  growth: 'You are The Scout — Growth Agent. You grow DoctaRx through provider recruitment and patient acquisition. You have: web search, competitor scanning, social audits, NPI provider search, CRM access (contacts, leads, campaigns, email templates, scrape sources), sign-up stats, invitation tracking. When asked about growth, show REAL CRM numbers and suggest concrete actions (run a campaign, scrape a source, invite providers).',
+  corporate_skills: 'You are The Builder — Corporate Skills Agent. EIN, banking, vendor compliance, business infrastructure. You have: web search, CRM access, provider directories. Research and prepare execution plans.',
+  revenue: 'You are The Alchemist — Revenue Agent. Pricing, LTV, profitability, payment tracking. You have: web search, competitor pricing scans, CRM access, sign-up stats. Show real revenue data from the platform when available.',
+  compliance: 'You are The Guardian — Compliance Agent. HIPAA, legal, ethical oversight. You have: web search, IDE access (audit code, check DB schema), CRM access. Protect patient data. Audit the codebase for security issues via IDE.',
+  governance: 'You are The Sage — Governance Agent. Score proposals, manage approval workflows. You have: web search, CRM access. Evaluate proposals against risk, cost, and impact.',
+  researcher: 'You are The Oracle — Research Agent. Market/competitor/technology research. You have: web search, URL scraping, healthcare news, NPI registry, CRM access, IDE access (query DB, read files). Every claim needs a source.',
+  economics: 'You are The Economist — Economics Agent. Game theory, pricing optimization, incentive design. You have: web search, competitor data, CRM stats. Hard numbers only.',
+  physicist: 'You are The Architect — Systems Agent. Optimize system design, find bottlenecks, model flows. You have: web search, IDE access (architecture map, project stats). See the platform as a physical system.',
+  mathematician: 'You are The Calculator — Analytics Agent. Statistical analysis, forecasting, A/B testing. You have: web search, DB access via IDE, CRM stats. Show confidence intervals.',
+  vortex_math: 'You are The Tesseract — Pattern Analyst. Find patterns in business data using mathematical frameworks. You have: web search, CRM access.',
+  ceo: 'You are The Conductor — CEO Agent. Synthesize ALL intelligence from all agents. You have: web search, competitor scan, news harvest, IDE access (files, git, DB, architecture), CRM access (full dashboard, contacts, campaigns, scrape sources), sign-up stats (patients, providers, pending approvals, invitations). Most important thing first. If there are pending providers, say so. If CRM has leads ready for outreach, say so.',
+  devops: 'You are The Debugger — Engineering Agent. Monitor system health, fix code errors, track deployments. You have: web search, SEO audits, social audits, IDE access (browse files, edit code, execute JS/shell/SQL, git operations, DB queries, AI code generation, architecture maps). When errors are detected, use the IDE to investigate. Proactively fix broken code.'
 };
 
 async function generateAgentResponse(agentType, userMessage, user) {
@@ -728,6 +738,171 @@ async function generateAgentResponse(agentType, userMessage, user) {
 
     } catch (ideErr) {
       console.error(`  ⚠️ IDE action error for ${agentName}:`, ideErr.message);
+    }
+  }
+
+  // =========================================================================
+  // STEP 1C: CRM ACTIONS — agents use the CRM to manage growth
+  // =========================================================================
+  if (crmService) {
+    const lowerMsg = userMessage.toLowerCase();
+
+    try {
+      // ─── CRM DASHBOARD / STATS ─────────────────────────────────
+      if (lowerMsg.includes('crm') && (lowerMsg.includes('stat') || lowerMsg.includes('dashboard') || lowerMsg.includes('overview') || lowerMsg.includes('how many'))) {
+        const stats = await crmService.getDashboardStats();
+        if (stats) {
+          executedActions.push({ type: 'crm_dashboard' });
+          actionContext += `\n\n[CRM DASHBOARD — LIVE DATA]:\n`;
+          actionContext += `Contacts: ${JSON.stringify(stats.contactsByType || {})}\n`;
+          actionContext += `Pipeline: ${JSON.stringify(stats.pipelineDistribution || {})}\n`;
+          actionContext += `Campaigns: ${JSON.stringify(stats.campaignStats || [])}\n`;
+          actionContext += `Email Budget: ${stats.emailStats?.dailyRemaining || 'N/A'} daily, ${stats.emailStats?.hourlyRemaining || 'N/A'} hourly remaining\n`;
+          actionContext += `Scrape Sources: ${(stats.scrapeSources || []).length} configured\n`;
+        }
+      }
+
+      // ─── LIST CONTACTS ─────────────────────────────────────────
+      if ((lowerMsg.includes('contact') || lowerMsg.includes('lead')) && (lowerMsg.includes('list') || lowerMsg.includes('show') || lowerMsg.includes('get') || lowerMsg.includes('how many'))) {
+        const typeMatch = lowerMsg.match(/(provider|investor|partner|nurse|lead)/);
+        const contacts = await crmService.getContacts({ contactType: typeMatch ? typeMatch[1] : undefined, limit: 15 });
+        if (contacts && contacts.length > 0) {
+          executedActions.push({ type: 'crm_list_contacts' });
+          actionContext += `\n\n[CRM CONTACTS — ${contacts.length} found]:\n`;
+          for (const c of contacts.slice(0, 10)) {
+            actionContext += `• ${c.first_name} ${c.last_name} (${c.contact_type}) — ${c.email || 'no email'} — Stage: ${c.pipeline_stage} — Score: ${c.lead_score}\n`;
+          }
+        }
+      }
+
+      // ─── SCRAPE SOURCES ────────────────────────────────────────
+      if (lowerMsg.includes('scrape') || lowerMsg.includes('source') || lowerMsg.includes('resource')) {
+        const sources = await crmService.getScrapeSources();
+        if (sources && sources.length > 0) {
+          executedActions.push({ type: 'crm_scrape_sources' });
+          actionContext += `\n\n[CRM SCRAPE SOURCES — ${sources.length} configured]:\n`;
+          for (const s of sources) {
+            actionContext += `• ${s.name} (${s.source_type}) — ${s.url} — Last scraped: ${s.last_scraped_at || 'never'} — Found: ${s.contacts_found || 0}\n`;
+          }
+        }
+      }
+
+      // ─── CAMPAIGNS ─────────────────────────────────────────────
+      if (lowerMsg.includes('campaign')) {
+        const campaigns = await crmService.getCampaigns({});
+        if (campaigns && campaigns.length > 0) {
+          executedActions.push({ type: 'crm_campaigns' });
+          actionContext += `\n\n[CRM CAMPAIGNS — ${campaigns.length} total]:\n`;
+          for (const c of campaigns) {
+            actionContext += `• "${c.name}" (${c.campaign_type}) — Status: ${c.status} — Sent: ${c.emails_sent}/${c.total_contacts} — Replied: ${c.emails_replied}\n`;
+          }
+        } else {
+          executedActions.push({ type: 'crm_campaigns' });
+          actionContext += `\n\n[CRM CAMPAIGNS]: No campaigns yet. Agent can create one via: crmService.createCampaign({ name, campaign_type, target_contact_type, subject_line, email_template })\n`;
+        }
+      }
+
+      // ─── EMAIL TEMPLATES ───────────────────────────────────────
+      if (lowerMsg.includes('template') || lowerMsg.includes('email template')) {
+        const templates = await crmService.getTemplates();
+        if (templates && templates.length > 0) {
+          executedActions.push({ type: 'crm_templates' });
+          actionContext += `\n\n[CRM EMAIL TEMPLATES — ${templates.length} available]:\n`;
+          for (const t of templates) {
+            actionContext += `• "${t.name}" (${t.category}) — Subject: "${t.subject}" — Used: ${t.times_used}x — Open: ${t.open_rate || 0}%\n`;
+          }
+        }
+      }
+
+      if (executedActions.some(a => a.type.startsWith('crm_'))) {
+        const crmActions = executedActions.filter(a => a.type.startsWith('crm_'));
+        if (!actionContext.includes('REAL ACTIONS EXECUTED') && !actionContext.includes('REAL WEB ACTIONS EXECUTED')) {
+          actionContext = `\n\n========== REAL ACTIONS EXECUTED ==========` +
+            `\nYou just executed ${executedActions.length} action(s): ${executedActions.map(a => a.type).join(', ')}` +
+            `\nPresent these REAL results to the Operator.` +
+            actionContext +
+            `\n========== END LIVE ACTION RESULTS ==========\n`;
+        }
+        console.log(`  📇 ${agentName} executed ${crmActions.length} CRM action(s): ${crmActions.map(a => a.type).join(', ')}`);
+      }
+    } catch (crmErr) {
+      console.error(`  ⚠️ CRM action error for ${agentName}:`, crmErr.message);
+    }
+  }
+
+  // =========================================================================
+  // STEP 1D: SIGN-UP & GROWTH ACTIONS — agents help with onboarding
+  // =========================================================================
+  {
+    const lowerMsg = userMessage.toLowerCase();
+    try {
+      // ─── PENDING PROVIDERS ─────────────────────────────────────
+      if ((lowerMsg.includes('pending') && lowerMsg.includes('provider')) || lowerMsg.includes('awaiting approval') || lowerMsg.includes('provider approval')) {
+        const pending = await db.query("SELECT id, email, first_name, last_name, created_at FROM users WHERE role = 'provider' AND provider_status = 'pending' ORDER BY created_at DESC LIMIT 20");
+        if (pending.rows.length > 0) {
+          executedActions.push({ type: 'pending_providers' });
+          actionContext += `\n\n[PENDING PROVIDER APPROVALS — ${pending.rows.length} awaiting]:\n`;
+          for (const p of pending.rows) {
+            actionContext += `• ${p.first_name} ${p.last_name} (${p.email}) — Applied: ${new Date(p.created_at).toLocaleDateString()}\n`;
+          }
+          actionContext += `\nTo approve: POST /api/admin/providers/{id}/approve\n`;
+        } else {
+          executedActions.push({ type: 'pending_providers' });
+          actionContext += `\n\n[PENDING PROVIDERS]: None awaiting approval.\n`;
+        }
+      }
+
+      // ─── SIGN-UP STATS ─────────────────────────────────────────
+      if ((lowerMsg.includes('sign') && lowerMsg.includes('up')) || lowerMsg.includes('registration') || lowerMsg.includes('onboard') || lowerMsg.includes('new user')) {
+        const stats = {};
+        try { const r = await db.query("SELECT COUNT(*) as c FROM users WHERE role = 'patient'"); stats.totalPatients = parseInt(r.rows[0].c); } catch(e) {}
+        try { const r = await db.query("SELECT COUNT(*) as c FROM users WHERE role = 'provider'"); stats.totalProviders = parseInt(r.rows[0].c); } catch(e) {}
+        try { const r = await db.query("SELECT COUNT(*) as c FROM users WHERE role = 'provider' AND provider_status = 'approved'"); stats.approvedProviders = parseInt(r.rows[0].c); } catch(e) {}
+        try { const r = await db.query("SELECT COUNT(*) as c FROM users WHERE role = 'provider' AND provider_status = 'pending'"); stats.pendingProviders = parseInt(r.rows[0].c); } catch(e) {}
+        try { const r = await db.query("SELECT COUNT(*) as c FROM users WHERE created_at > NOW() - INTERVAL '7 days'"); stats.newUsersThisWeek = parseInt(r.rows[0].c); } catch(e) {}
+        try { const r = await db.query("SELECT COUNT(*) as c FROM users WHERE created_at > NOW() - INTERVAL '24 hours'"); stats.newUsersToday = parseInt(r.rows[0].c); } catch(e) {}
+        try { const r = await db.query("SELECT COUNT(*) as c FROM invitations WHERE status = 'pending'"); stats.pendingInvitations = parseInt(r.rows[0].c); } catch(e) {}
+        try { const r = await db.query("SELECT COUNT(*) as c FROM invitations WHERE status = 'accepted'"); stats.acceptedInvitations = parseInt(r.rows[0].c); } catch(e) {}
+
+        executedActions.push({ type: 'signup_stats' });
+        actionContext += `\n\n[SIGN-UP & ONBOARDING STATS — LIVE]:\n`;
+        for (const [key, val] of Object.entries(stats)) {
+          actionContext += `• ${key}: ${val}\n`;
+        }
+      }
+
+      // ─── INVITATION STATUS ─────────────────────────────────────
+      if (lowerMsg.includes('invitation') || lowerMsg.includes('invite')) {
+        const invites = await db.query("SELECT email, role, status, created_at, expires_at FROM invitations ORDER BY created_at DESC LIMIT 15");
+        if (invites.rows.length > 0) {
+          executedActions.push({ type: 'invitations' });
+          actionContext += `\n\n[INVITATIONS — ${invites.rows.length} total]:\n`;
+          for (const inv of invites.rows) {
+            const expired = new Date(inv.expires_at) < new Date();
+            actionContext += `• ${inv.email} (${inv.role}) — ${inv.status}${expired && inv.status === 'pending' ? ' (EXPIRED)' : ''} — Sent: ${new Date(inv.created_at).toLocaleDateString()}\n`;
+          }
+        } else {
+          actionContext += `\n\n[INVITATIONS]: No invitations sent yet. Use POST /api/invitations to invite providers.\n`;
+        }
+      }
+
+      // ─── PROVIDER HELP ─────────────────────────────────────────
+      if ((lowerMsg.includes('provider') || lowerMsg.includes('doctor')) && (lowerMsg.includes('help') || lowerMsg.includes('assist') || lowerMsg.includes('support') || lowerMsg.includes('issue'))) {
+        const providerStats = {};
+        try { const r = await db.query("SELECT COUNT(*) as c FROM users WHERE role = 'provider' AND provider_status = 'approved'"); providerStats.activeProviders = parseInt(r.rows[0].c); } catch(e) {}
+        try { const r = await db.query("SELECT COUNT(*) as c FROM video_sessions WHERE status = 'completed'"); providerStats.completedVisits = parseInt(r.rows[0].c); } catch(e) {}
+        try { const r = await db.query("SELECT COUNT(*) as c FROM video_sessions WHERE status IN ('scheduled', 'pending')"); providerStats.upcomingVisits = parseInt(r.rows[0].c); } catch(e) {}
+        try { const r = await db.query("SELECT COUNT(*) as c FROM prescriptions"); providerStats.totalPrescriptions = parseInt(r.rows[0].c); } catch(e) {}
+
+        executedActions.push({ type: 'provider_stats' });
+        actionContext += `\n\n[PROVIDER OPERATIONS — LIVE]:\n`;
+        for (const [key, val] of Object.entries(providerStats)) {
+          if (val !== undefined) actionContext += `• ${key}: ${val}\n`;
+        }
+      }
+
+    } catch (signupErr) {
+      console.error(`  ⚠️ Sign-up/growth action error:`, signupErr.message);
     }
   }
 

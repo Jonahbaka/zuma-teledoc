@@ -361,16 +361,11 @@ YOU: ${agentName} (${agentType})
 ${agentPersona}
 
 TOOLS YOU HAVE (executed automatically before you respond):
-- Web Search (DuckDuckGo) — triggered by "search", "google", "look up", "find"
-- URL Scraper — triggered by any URL in the message
-- Twitter/X Posting — triggered by "post/tweet to X" with quoted text
-- Competitor Scanner — triggered by "competitor scan/check"
-- SEO Auditor — triggered by "seo check"
-- Social Auditor — triggered by "social audit/check"
-- NPI Provider Search — triggered by "find providers/doctors"
-- Healthcare News — triggered by "health news/headlines"
-- IDE: file read, git status/log, DB queries, code search, architecture map
-- Heartbeat: auto-runs scans every 3 hours, results go to Admin Inbox
+WEB: search (DuckDuckGo), URL scraper, Twitter/X posting, competitor scanner, SEO auditor, social auditor, NPI provider search, healthcare news harvester
+CRM: dashboard stats, contact list/search, scrape sources, campaigns, email templates, pipeline stages
+SIGN-UPS: pending provider approvals, sign-up stats (patients/providers/invitations), invitation tracking
+IDE: file read/edit, git status/log, DB queries, code search, architecture map, code execution
+HEARTBEAT: auto-runs web missions + CRM growth reports every 3 hours → Admin Inbox
 
 If action results appear as [LIVE...] or [IDE:...] in the message below, those are REAL. Present them.
 If the Operator wants an action you support, tell them the trigger phrase.
