@@ -337,22 +337,27 @@ class HeartbeatSystem {
       agentCount = parseInt(r.rows[0].count);
     } catch (e) { /* ok */ }
 
+    // Pull REAL data for startup briefing
+    let userCount = 0, apptCount = 0, credCount = 0, crmCount = 0, resultsCount = 0;
+    try { const r = await db.query('SELECT COUNT(*) as c FROM users'); userCount = parseInt(r.rows[0].c); } catch(e) {}
+    try { const r = await db.query('SELECT COUNT(*) as c FROM video_sessions'); apptCount = parseInt(r.rows[0].c); } catch(e) {}
+    try { const r = await db.query('SELECT COUNT(*) as c FROM ai_credential_vault WHERE is_active = true'); credCount = parseInt(r.rows[0].c); } catch(e) {}
+    try { const r = await db.query('SELECT COUNT(*) as c FROM crm_contacts'); crmCount = parseInt(r.rows[0].c); } catch(e) {}
+    try { const r = await db.query('SELECT COUNT(*) as c FROM ai_agent_results'); resultsCount = parseInt(r.rows[0].c); } catch(e) {}
+
     await this.postToInbox(
       'ceo', 'The Conductor',
-      `🎼 **System Startup Briefing**\n` +
-      `📅 ${dateStr} — ${timeStr} ET\n\n` +
-      `**All systems operational.** Project Genesis is awake.\n\n` +
-      `• **Agents online:** ${agentCount}\n` +
-      `• **LLM Engine:** ${llmStatus}\n` +
-      `• **Heartbeat:** Active (proactive scans every 30 min)\n` +
-      `• **Node.js:** ${process.version}\n` +
-      `• **Memory:** ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n\n` +
-      `The Council is assembled and scanning. You'll receive proactive reports in this inbox from:\n` +
-      `• 📊 **The Weaver** — Operations metrics\n` +
-      `• 💎 **The Alchemist** — Revenue & payments\n` +
-      `• 🛡️ **The Guardian** — Security & compliance\n` +
-      `• 🚨 **The Debugger** — Errors & infrastructure\n\n` +
-      `_No action required unless flagged. The Conductor is synthesizing._`,
+      `**System Online** — ${dateStr}, ${timeStr} ET\n\n` +
+      `**Platform:**\n` +
+      `• Users: ${userCount} | Appointments: ${apptCount}\n` +
+      `• CRM Contacts: ${crmCount} | Agent Results: ${resultsCount}\n` +
+      `• Credentials Vault: ${credCount} active\n\n` +
+      `**Infrastructure:**\n` +
+      `• Agents: ${agentCount} | LLM: ${llmStatus}\n` +
+      `• Node: ${process.version} | Heap: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n` +
+      `• Heartbeat: Active (web missions every 3h)\n\n` +
+      `${credCount === 0 ? '⚠️ **No platform credentials stored.** Add Twitter/LinkedIn API keys in Credential Vault to enable social posting.\n\n' : ''}` +
+      `${userCount < 5 ? '⚠️ **Low user count.** Focus on provider recruitment and patient acquisition.\n' : ''}`,
       'report', { category: 'startup', severity: 'info' }
     );
 
@@ -387,18 +392,15 @@ class HeartbeatSystem {
       const now = new Date();
       const timeStr = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: true, hour: 'numeric', minute: '2-digit' });
 
-      // Gather platform data
+      // Gather REAL platform data from PostgreSQL
       let metrics = {};
-      try {
-        const users = await db.query("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as new FROM users");
-        metrics.totalUsers = parseInt(users.rows[0].total);
-        metrics.newUsers24h = parseInt(users.rows[0].new);
-      } catch (e) { /* ok */ }
-      try {
-        const payments = await db.query("SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM payments WHERE created_at > NOW() - INTERVAL '24 hours'");
-        metrics.payments24h = parseInt(payments.rows[0].count);
-        metrics.revenue24h = parseFloat(payments.rows[0].total);
-      } catch (e) { /* ok */ }
+      try { const r = await db.query("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as new FROM users"); metrics.totalUsers = parseInt(r.rows[0].total); metrics.newUsers24h = parseInt(r.rows[0].new); } catch (e) {}
+      try { const r = await db.query("SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM payments WHERE created_at > NOW() - INTERVAL '24 hours'"); metrics.payments24h = parseInt(r.rows[0].count); metrics.revenue24h = parseFloat(r.rows[0].total); } catch (e) {}
+      try { const r = await db.query('SELECT COUNT(*) as c FROM video_sessions'); metrics.totalAppointments = parseInt(r.rows[0].c); } catch(e) {}
+      try { const r = await db.query("SELECT COUNT(*) as c FROM video_sessions WHERE created_at > NOW() - INTERVAL '24 hours'"); metrics.appointments24h = parseInt(r.rows[0].c); } catch(e) {}
+      try { const r = await db.query('SELECT COUNT(*) as c FROM crm_contacts'); metrics.crmContacts = parseInt(r.rows[0].c); } catch(e) {}
+      try { const r = await db.query('SELECT COUNT(*) as c FROM ai_agent_results'); metrics.agentResults = parseInt(r.rows[0].c); } catch(e) {}
+      try { const r = await db.query('SELECT COUNT(*) as c FROM ai_credential_vault WHERE is_active = true'); metrics.activeCredentials = parseInt(r.rows[0].c); } catch(e) {}
 
       const briefing = await this.llm.callLLM(
         `${this.llm.GENESIS_CORE_PROMPT}\n\nYou are The Conductor — CEO Agent performing a periodic executive briefing.`,
