@@ -515,6 +515,253 @@ class WebActionEngine {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  OPPORTUNITY SCOUTING — VC, Investors, Provider Leads
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Scout for VC / investment opportunities relevant to DoctaRx
+   */
+  async scoutVCOpportunities() {
+    const queries = [
+      'telehealth healthtech VC funding 2025 2026',
+      'digital health startup accelerator program accepting applications',
+      'healthcare AI investment fund open applications',
+      'SBIR STTR health IT small business grant 2026',
+      'telehealth startup pitch competition 2026'
+    ];
+
+    const allOpportunities = [];
+
+    for (const query of queries) {
+      try {
+        const results = await this.webSearch(query, 5);
+        if (results.success && results.results) {
+          for (const r of results.results) {
+            allOpportunities.push({
+              title: r.title,
+              url: r.url,
+              snippet: r.snippet,
+              query,
+              category: query.includes('SBIR') || query.includes('grant') ? 'grant' :
+                        query.includes('accelerator') ? 'accelerator' :
+                        query.includes('pitch') ? 'competition' : 'vc_fund'
+            });
+          }
+        }
+      } catch (e) { /* continue to next query */ }
+    }
+
+    // Deduplicate by URL
+    const seen = new Set();
+    const unique = allOpportunities.filter(o => {
+      if (seen.has(o.url)) return false;
+      seen.add(o.url);
+      return true;
+    });
+
+    return { success: true, opportunities: unique, count: unique.length };
+  }
+
+  /**
+   * Scout for provider recruitment opportunities — low-hanging fruit
+   */
+  async scoutProviderRecruitment() {
+    const queries = [
+      'independent physician looking for telehealth platform',
+      'doctors frustrated with teladoc MDLive looking for alternative',
+      'physician telehealth side gig remote practice 2025 2026',
+      'nurse practitioner telehealth independent practice',
+      'new medical practice opening telehealth services needed',
+      'rural healthcare provider needs telehealth solution'
+    ];
+
+    const allLeads = [];
+
+    for (const query of queries) {
+      try {
+        const results = await this.webSearch(query, 4);
+        if (results.success && results.results) {
+          for (const r of results.results) {
+            allLeads.push({
+              title: r.title,
+              url: r.url,
+              snippet: r.snippet,
+              query,
+              leadType: query.includes('nurse') ? 'nurse_practitioner' :
+                        query.includes('rural') ? 'rural_provider' :
+                        query.includes('independent') ? 'independent_physician' :
+                        query.includes('frustrated') ? 'competitor_switch' : 'general'
+            });
+          }
+        }
+      } catch (e) { /* continue */ }
+    }
+
+    const seen = new Set();
+    const unique = allLeads.filter(o => {
+      if (seen.has(o.url)) return false;
+      seen.add(o.url);
+      return true;
+    });
+
+    return { success: true, leads: unique, count: unique.length };
+  }
+
+  /**
+   * Scout for partnership and distribution opportunities
+   */
+  async scoutPartnerships() {
+    const queries = [
+      'telehealth platform partnership program healthcare',
+      'health system looking for telehealth vendor RFP',
+      'employer telehealth benefit program vendor needed',
+      'pharmacy chain telehealth partnership opportunity'
+    ];
+
+    const allPartners = [];
+
+    for (const query of queries) {
+      try {
+        const results = await this.webSearch(query, 4);
+        if (results.success && results.results) {
+          for (const r of results.results) {
+            allPartners.push({
+              title: r.title,
+              url: r.url,
+              snippet: r.snippet,
+              partnerType: query.includes('employer') ? 'employer_benefit' :
+                           query.includes('pharmacy') ? 'pharmacy_chain' :
+                           query.includes('RFP') ? 'health_system_rfp' : 'platform_partner'
+            });
+          }
+        }
+      } catch (e) { /* continue */ }
+    }
+
+    const seen = new Set();
+    const unique = allPartners.filter(o => {
+      if (seen.has(o.url)) return false;
+      seen.add(o.url);
+      return true;
+    });
+
+    return { success: true, partnerships: unique, count: unique.length };
+  }
+
+  /**
+   * Check what credentials agents currently have and what's missing for key actions
+   */
+  async auditCredentials() {
+    let vault;
+    try { vault = require('./credential-vault'); } catch(e) { return { success: false, error: 'Vault not available' }; }
+
+    const existing = await vault.listCredentials({});
+    const existingPlatforms = existing.map(c => c.platform);
+
+    // Define what credentials unlock what capabilities
+    const credentialMap = [
+      {
+        platform: 'twitter',
+        name: 'Twitter / X',
+        requiredFields: ['api_key', 'api_secret', 'access_token', 'access_secret'],
+        unlocks: ['Auto-post tweets', 'Reply to mentions', 'Monitor engagement', 'Grow follower base'],
+        howToGet: 'Go to developer.twitter.com → Create project → Generate API keys + Access tokens',
+        priority: 'HIGH',
+        estimatedValue: 'Social proof, brand awareness, direct provider/patient acquisition'
+      },
+      {
+        platform: 'linkedin',
+        name: 'LinkedIn',
+        requiredFields: ['access_token'],
+        unlocks: ['Post company updates', 'Connect with healthcare professionals', 'Job postings'],
+        howToGet: 'Go to linkedin.com/developers → Create app → Request Marketing API access → Get access token',
+        priority: 'HIGH',
+        estimatedValue: 'Provider recruitment, B2B partnerships, investor visibility'
+      },
+      {
+        platform: 'google_business',
+        name: 'Google Business Profile',
+        requiredFields: ['api_key'],
+        unlocks: ['Manage business listing', 'Respond to reviews', 'Update hours/services', 'Improve local SEO'],
+        howToGet: 'Go to business.google.com → Claim "DoctaRx" → Enable API via Google Cloud Console',
+        priority: 'MEDIUM',
+        estimatedValue: 'Local search visibility, patient trust'
+      },
+      {
+        platform: 'google_analytics',
+        name: 'Google Analytics',
+        requiredFields: ['api_key'],
+        unlocks: ['Track website visitors', 'Conversion funnel analysis', 'User behavior insights', 'Marketing ROI'],
+        howToGet: 'Go to analytics.google.com → Admin → Data API → Create credentials',
+        priority: 'MEDIUM',
+        estimatedValue: 'Data-driven marketing decisions, conversion optimization'
+      },
+      {
+        platform: 'reddit',
+        name: 'Reddit',
+        requiredFields: ['api_key', 'api_secret', 'username', 'password'],
+        unlocks: ['Post in r/telehealth, r/healthtech, r/medicine', 'Community engagement', 'Lead generation'],
+        howToGet: 'Go to reddit.com/prefs/apps → Create "script" app → Note client_id and secret',
+        priority: 'MEDIUM',
+        estimatedValue: 'Organic community growth, authentic brand building'
+      },
+      {
+        platform: 'sendgrid',
+        name: 'SendGrid (Scalable Email)',
+        requiredFields: ['api_key'],
+        unlocks: ['Send 100+ emails/day (vs Zoho 100/day limit)', 'Email analytics', 'Template management', 'Deliverability optimization'],
+        howToGet: 'Go to sendgrid.com → Create free account (100 emails/day free) → Settings → API Keys → Create key',
+        priority: 'LOW',
+        estimatedValue: 'Scale outreach beyond Zoho 100/day cap'
+      }
+    ];
+
+    const audit = {
+      existing: existing.map(c => ({
+        platform: c.platform,
+        name: c.platform_display_name,
+        label: c.account_label,
+        hasApiKey: c.has_api_key,
+        hasApiSecret: c.has_api_secret,
+        hasUsername: c.has_username,
+        hasPassword: c.has_password,
+        status: c.status
+      })),
+      missing: [],
+      requests: []
+    };
+
+    for (const cred of credentialMap) {
+      if (!existingPlatforms.includes(cred.platform)) {
+        audit.missing.push(cred);
+        audit.requests.push({
+          platform: cred.platform,
+          name: cred.name,
+          priority: cred.priority,
+          unlocks: cred.unlocks,
+          howToGet: cred.howToGet,
+          estimatedValue: cred.estimatedValue
+        });
+      } else {
+        // Check if existing credential is complete
+        const existing_cred = existing.find(c => c.platform === cred.platform);
+        if (existing_cred && !existing_cred.has_api_key && cred.requiredFields.includes('api_key')) {
+          audit.requests.push({
+            platform: cred.platform,
+            name: cred.name,
+            priority: cred.priority,
+            issue: 'INCOMPLETE — missing API key',
+            howToGet: cred.howToGet,
+            unlocks: cred.unlocks
+          });
+        }
+      }
+    }
+
+    return { success: true, audit };
+  }
+
   getStatus() {
     return {
       requestCount: this.requestCount,

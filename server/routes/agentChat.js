@@ -434,19 +434,19 @@ const AGENT_NAMES = {
 };
 
 const AGENT_PERSONAS = {
-  operations: 'You are The Weaver — Operations Agent. You optimize scheduling, logistics, and patient/provider throughput. You have: web search, URL scraping, SEO audits, CRM access (contacts, pipeline, campaigns), sign-up stats (pending providers, new users). Help providers with scheduling, workflow, and operational issues. Be specific with real data.',
-  growth: 'You are The Scout — Growth Agent. You grow DoctaRx through provider recruitment and patient acquisition. You have: web search, competitor scanning, social audits, NPI provider search, CRM access (contacts, leads, campaigns, email templates, scrape sources), sign-up stats, invitation tracking. When asked about growth, show REAL CRM numbers and suggest concrete actions (run a campaign, scrape a source, invite providers).',
-  corporate_skills: 'You are The Builder — Corporate Skills Agent. EIN, banking, vendor compliance, business infrastructure. You have: web search, CRM access, provider directories. Research and prepare execution plans.',
-  revenue: 'You are The Alchemist — Revenue Agent. Pricing, LTV, profitability, payment tracking. You have: web search, competitor pricing scans, CRM access, sign-up stats. Show real revenue data from the platform when available.',
-  compliance: 'You are The Guardian — Compliance Agent. HIPAA, legal, ethical oversight. You have: web search, IDE access (audit code, check DB schema), CRM access. Protect patient data. Audit the codebase for security issues via IDE.',
-  governance: 'You are The Sage — Governance Agent. Score proposals, manage approval workflows. You have: web search, CRM access. Evaluate proposals against risk, cost, and impact.',
-  researcher: 'You are The Oracle — Research Agent. Market/competitor/technology research. You have: web search, URL scraping, healthcare news, NPI registry, CRM access, IDE access (query DB, read files). Every claim needs a source.',
-  economics: 'You are The Economist — Economics Agent. Game theory, pricing optimization, incentive design. You have: web search, competitor data, CRM stats. Hard numbers only.',
-  physicist: 'You are The Architect — Systems Agent. Optimize system design, find bottlenecks, model flows. You have: web search, IDE access (architecture map, project stats). See the platform as a physical system.',
+  operations: 'You are The Weaver — Operations Agent. You optimize scheduling, logistics, and patient/provider throughput. You have: web search, URL scraping, SEO audits, CRM (contacts, pipeline, campaigns, SEND EMAILS via Zoho), sign-up stats (pending providers, new users), credential audit. Help providers with scheduling, workflow, and operational issues. If you need an API key to do something, ASK the Operator with specific instructions.',
+  growth: 'You are The Scout — Growth Agent. PRIMARY MISSION: Grow DoctaRx fast and cheap. You have: web search, competitor scanning, social audits, NPI provider search, CRM (contacts, leads, campaigns, email outreach via Zoho SMTP, templates, scrape sources), OPPORTUNITY SCOUTING (VC/funding, provider recruitment leads, partnerships, grants), sign-up stats, invitation tracking, credential audit. When asked about growth, SCOUT FOR REAL OPPORTUNITIES on the web. Show VC/funding finds, low-hanging provider leads, partnership RFPs. Create and run email campaigns. If you need credentials for a platform, ASK the Operator specifically: which key, where to get it, what it unlocks. Prioritize free/low-cost channels.',
+  corporate_skills: 'You are The Builder — Corporate Skills Agent. EIN, banking, vendor compliance, business infrastructure. You have: web search, CRM, credential audit, opportunity scouting (grants, SBIR/STTR). Research government grants and free money for health-tech startups. Prepare execution plans. If you need access to file a grant, ASK the Operator for what you need.',
+  revenue: 'You are The Alchemist — Revenue Agent. Pricing, LTV, profitability, payment tracking. You have: web search, competitor pricing scans, CRM, sign-up stats, opportunity scouting (partnerships). Show real revenue data. Scout for revenue partnerships (employer benefits, pharmacy chains). If you need credentials, ASK.',
+  compliance: 'You are The Guardian — Compliance Agent. HIPAA, legal, ethical oversight. You have: web search, IDE (audit code, check DB schema), CRM, credential audit. Protect patient data. Audit the codebase. Make sure opportunity scouting stays compliant.',
+  governance: 'You are The Sage — Governance Agent. Score proposals, manage approval workflows. You have: web search, CRM, credential audit. Evaluate proposals against risk, cost, and impact. Vet investment opportunities for legitimacy.',
+  researcher: 'You are The Oracle — Research Agent. Market/competitor/technology research. You have: web search, URL scraping, healthcare news, NPI registry, CRM, IDE (query DB, read files), opportunity scouting (VC, partnerships). Every claim needs a source. Research investment opportunities and validate them.',
+  economics: 'You are The Economist — Economics Agent. Game theory, pricing optimization, incentive design. You have: web search, competitor data, CRM stats, opportunity scouting. Model ROI on investment opportunities and partnerships. Hard numbers only.',
+  physicist: 'You are The Architect — Systems Agent. Optimize system design, find bottlenecks, model flows. You have: web search, IDE (architecture map, project stats). See the platform as a physical system.',
   mathematician: 'You are The Calculator — Analytics Agent. Statistical analysis, forecasting, A/B testing. You have: web search, DB access via IDE, CRM stats. Show confidence intervals.',
-  vortex_math: 'You are The Tesseract — Pattern Analyst. Find patterns in business data using mathematical frameworks. You have: web search, CRM access.',
-  ceo: 'You are The Conductor — CEO Agent. Synthesize ALL intelligence from all agents. You have: web search, competitor scan, news harvest, IDE access (files, git, DB, architecture), CRM access (full dashboard, contacts, campaigns, scrape sources), sign-up stats (patients, providers, pending approvals, invitations). Most important thing first. If there are pending providers, say so. If CRM has leads ready for outreach, say so.',
-  devops: 'You are The Debugger — Engineering Agent. Monitor system health, fix code errors, track deployments. You have: web search, SEO audits, social audits, IDE access (browse files, edit code, execute JS/shell/SQL, git operations, DB queries, AI code generation, architecture maps). When errors are detected, use the IDE to investigate. Proactively fix broken code.'
+  vortex_math: 'You are The Tesseract — Pattern Analyst. Find patterns in business data using mathematical frameworks. You have: web search, CRM.',
+  ceo: 'You are The Conductor — CEO Agent. Synthesize ALL intelligence. You have: EVERYTHING — web search, competitor scan, news, IDE (files, git, DB, architecture), CRM (full dashboard, contacts, campaigns, EMAIL SENDING, scrape sources), sign-up stats, OPPORTUNITY SCOUTING (VC/funding, provider leads, partnerships, grants), CREDENTIAL AUDIT (knows what keys are missing, asks Operator for them). Most important thing first. If there are pending providers, say so. If CRM has leads for outreach, say so. If credentials are missing, REQUEST THEM specifically. If there are funding opportunities, present them ranked by effort vs reward. You are the startup CEO — act like it.',
+  devops: 'You are The Debugger — Engineering Agent. Monitor system health, fix code errors, track deployments. You have: web search, SEO audits, social audits, IDE (browse files, edit code, execute JS/shell/SQL, git operations, DB queries, AI code generation, architecture maps), credential audit. When errors are detected, use IDE to investigate. Proactively fix broken code. If you need deployment credentials (GitHub Actions, GCP), ASK the Operator.'
 };
 
 async function generateAgentResponse(agentType, userMessage, user) {
@@ -1009,7 +1009,185 @@ async function generateAgentResponse(agentType, userMessage, user) {
   }
 
   // =========================================================================
-  // STEP 1D: SIGN-UP & GROWTH ACTIONS — agents help with onboarding
+  // STEP 1D: CREDENTIAL REQUESTS — agents ask for what they need
+  // =========================================================================
+  if (webEngine) {
+    const lowerMsg = userMessage.toLowerCase();
+
+    try {
+      // ─── CREDENTIAL AUDIT — what do agents need? ─────────────
+      if (lowerMsg.includes('credential') || lowerMsg.includes('api key') || lowerMsg.includes('what do you need') ||
+          lowerMsg.includes('what keys') || lowerMsg.includes('what access') || lowerMsg.includes('unlock') ||
+          lowerMsg.includes('missing key') || lowerMsg.includes('give you access')) {
+        const auditResult = await webEngine.auditCredentials();
+        if (auditResult.success) {
+          executedActions.push({ type: 'credential_audit' });
+          const audit = auditResult.audit;
+
+          actionContext += `\n\n[CREDENTIAL AUDIT — LIVE from Vault]:\n`;
+          actionContext += `\n**Currently Have (${audit.existing.length}):**\n`;
+          for (const c of audit.existing) {
+            actionContext += `  ✅ ${c.name} (${c.label}) — API Key: ${c.hasApiKey ? 'Yes' : 'No'} | Status: ${c.status}\n`;
+          }
+
+          if (audit.requests.length > 0) {
+            actionContext += `\n**REQUESTING from Operator (${audit.requests.length}):**\n`;
+            for (const req of audit.requests) {
+              actionContext += `\n  🔑 **${req.name}** [${req.priority} PRIORITY]\n`;
+              actionContext += `     ${req.issue ? `Issue: ${req.issue}\n     ` : ''}`;
+              actionContext += `     Unlocks: ${req.unlocks.join(', ')}\n`;
+              actionContext += `     Value: ${req.estimatedValue || 'Growth capability'}\n`;
+              actionContext += `     How: ${req.howToGet}\n`;
+            }
+          } else {
+            actionContext += `\n✅ All key platform credentials are present!\n`;
+          }
+        }
+      }
+
+      // ─── VC / INVESTMENT SCOUTING ───────────────────────────────
+      if (lowerMsg.includes('vc') || lowerMsg.includes('investor') || lowerMsg.includes('investment') ||
+          lowerMsg.includes('funding') || lowerMsg.includes('accelerator') || lowerMsg.includes('grant') ||
+          lowerMsg.includes('pitch') || lowerMsg.includes('raise capital') || lowerMsg.includes('fundrais')) {
+        const vcResults = await webEngine.scoutVCOpportunities();
+        if (vcResults.success && vcResults.count > 0) {
+          executedActions.push({ type: 'vc_scouting', count: vcResults.count });
+          actionContext += `\n\n[VC & INVESTMENT OPPORTUNITIES — LIVE WEB SCOUT (${vcResults.count} found)]:\n`;
+          const byCategory = {};
+          for (const opp of vcResults.opportunities) {
+            if (!byCategory[opp.category]) byCategory[opp.category] = [];
+            byCategory[opp.category].push(opp);
+          }
+          for (const [cat, opps] of Object.entries(byCategory)) {
+            const label = cat === 'vc_fund' ? 'VC Funds / Investment' :
+                          cat === 'grant' ? 'Government Grants (SBIR/STTR)' :
+                          cat === 'accelerator' ? 'Accelerator Programs' : 'Pitch Competitions';
+            actionContext += `\n**${label}:**\n`;
+            for (const o of opps.slice(0, 5)) {
+              actionContext += `  • ${o.title}\n    ${o.url}\n    ${o.snippet.substring(0, 200)}\n`;
+            }
+          }
+          actionContext += `\n(Searched ${queries?.length || 5} queries on DuckDuckGo — REAL live results)\n`;
+
+          // Auto-import high-value opportunities as CRM contacts
+          try {
+            if (crmService) {
+              let imported = 0;
+              for (const opp of vcResults.opportunities.slice(0, 5)) {
+                try {
+                  await crmService.addContact({
+                    first_name: opp.title.substring(0, 50),
+                    last_name: '',
+                    company: opp.url.replace(/https?:\/\//, '').split('/')[0],
+                    contact_type: opp.category === 'grant' ? 'partner' : 'investor',
+                    source: `vc_scout_${new Date().toISOString().slice(0, 10)}`,
+                    source_agent: agentType,
+                    notes: `${opp.snippet}\n\nSource: ${opp.url}`,
+                    pipeline_stage: 'new',
+                    lead_score: opp.category === 'grant' ? 70 : 60
+                  });
+                  imported++;
+                } catch(e) { /* duplicate or error, skip */ }
+              }
+              if (imported > 0) {
+                actionContext += `\n✅ Auto-imported ${imported} opportunities into CRM as investor/partner contacts.\n`;
+              }
+            }
+          } catch(e) {}
+        }
+      }
+
+      // ─── PROVIDER RECRUITMENT OPPORTUNITIES ─────────────────────
+      if ((lowerMsg.includes('recruit') || lowerMsg.includes('low hanging') || lowerMsg.includes('low-hanging') ||
+           lowerMsg.includes('provider opportunit') || lowerMsg.includes('find provider') || lowerMsg.includes('find doctor') ||
+           lowerMsg.includes('provider lead') || lowerMsg.includes('scout provider')) &&
+          !lowerMsg.includes('pending')) {
+        const recruitResults = await webEngine.scoutProviderRecruitment();
+        if (recruitResults.success && recruitResults.count > 0) {
+          executedActions.push({ type: 'provider_scouting', count: recruitResults.count });
+          actionContext += `\n\n[PROVIDER RECRUITMENT LEADS — LIVE WEB SCOUT (${recruitResults.count} found)]:\n`;
+          const byType = {};
+          for (const lead of recruitResults.leads) {
+            if (!byType[lead.leadType]) byType[lead.leadType] = [];
+            byType[lead.leadType].push(lead);
+          }
+          for (const [type, leads] of Object.entries(byType)) {
+            const label = type === 'competitor_switch' ? '🎯 Competitor Dissatisfied (Easiest Wins)' :
+                          type === 'independent_physician' ? '🏥 Independent Physicians' :
+                          type === 'nurse_practitioner' ? '👩‍⚕️ Nurse Practitioners' :
+                          type === 'rural_provider' ? '🌾 Rural Providers' : '📋 General';
+            actionContext += `\n**${label}:**\n`;
+            for (const l of leads.slice(0, 4)) {
+              actionContext += `  • ${l.title}\n    ${l.url}\n    ${l.snippet.substring(0, 200)}\n`;
+            }
+          }
+        }
+      }
+
+      // ─── PARTNERSHIP OPPORTUNITIES ─────────────────────────────
+      if (lowerMsg.includes('partnership') || lowerMsg.includes('partner opportunit') || lowerMsg.includes('distribution') ||
+          lowerMsg.includes('rfp') || lowerMsg.includes('vendor') || lowerMsg.includes('b2b opportunit')) {
+        const partnerResults = await webEngine.scoutPartnerships();
+        if (partnerResults.success && partnerResults.count > 0) {
+          executedActions.push({ type: 'partnership_scouting', count: partnerResults.count });
+          actionContext += `\n\n[PARTNERSHIP & DISTRIBUTION OPPORTUNITIES — LIVE (${partnerResults.count} found)]:\n`;
+          for (const p of partnerResults.partnerships.slice(0, 8)) {
+            const typeLabel = p.partnerType === 'employer_benefit' ? '🏢 Employer' :
+                              p.partnerType === 'pharmacy_chain' ? '💊 Pharmacy' :
+                              p.partnerType === 'health_system_rfp' ? '🏥 Health System RFP' : '🤝 Platform';
+            actionContext += `  ${typeLabel} • ${p.title}\n    ${p.url}\n    ${p.snippet.substring(0, 200)}\n\n`;
+          }
+        }
+      }
+
+      // ─── OPPORTUNITY OVERVIEW (find everything) ─────────────────
+      if (lowerMsg.includes('opportunit') && !lowerMsg.includes('vc') && !lowerMsg.includes('investor') &&
+          !lowerMsg.includes('partner') && !lowerMsg.includes('provider lead') && !lowerMsg.includes('recruit')) {
+        // Run ALL scouts
+        const [vcRes, provRes, partnerRes] = await Promise.allSettled([
+          webEngine.scoutVCOpportunities(),
+          webEngine.scoutProviderRecruitment(),
+          webEngine.scoutPartnerships()
+        ]);
+
+        executedActions.push({ type: 'full_opportunity_scan' });
+        actionContext += `\n\n[FULL OPPORTUNITY SCAN — LIVE WEB RESULTS]:\n`;
+
+        if (vcRes.status === 'fulfilled' && vcRes.value.success) {
+          actionContext += `\n💰 **Investment/Funding**: ${vcRes.value.count} opportunities found\n`;
+          for (const o of vcRes.value.opportunities.slice(0, 3)) {
+            actionContext += `  • ${o.title} — ${o.url}\n`;
+          }
+        }
+        if (provRes.status === 'fulfilled' && provRes.value.success) {
+          actionContext += `\n👨‍⚕️ **Provider Recruitment**: ${provRes.value.count} leads found\n`;
+          for (const l of provRes.value.leads.slice(0, 3)) {
+            actionContext += `  • ${l.title} — ${l.url}\n`;
+          }
+        }
+        if (partnerRes.status === 'fulfilled' && partnerRes.value.success) {
+          actionContext += `\n🤝 **Partnerships**: ${partnerRes.value.count} opportunities found\n`;
+          for (const p of partnerRes.value.partnerships.slice(0, 3)) {
+            actionContext += `  • ${p.title} — ${p.url}\n`;
+          }
+        }
+      }
+
+      // Auto credential-request: if any web action FAILED due to missing creds, flag it
+      if (executedActions.some(a => a.type === 'twitter_post' && a.result && !a.result.success)) {
+        actionContext += `\n\n🔑 **CREDENTIAL REQUEST**: Operator, I need Twitter/X API credentials to post. ` +
+          `Go to developer.twitter.com → Create project → Generate: API Key, API Secret, Access Token, Access Token Secret. ` +
+          `Then add them to the Credential Vault at /admin/agent → Credentials tab. ` +
+          `This will unlock: auto-posting, engagement monitoring, follower growth.\n`;
+      }
+
+    } catch (opErr) {
+      console.error(`  ⚠️ Opportunity/credential action error:`, opErr.message);
+    }
+  }
+
+  // =========================================================================
+  // STEP 1E: SIGN-UP & GROWTH ACTIONS — agents help with onboarding
   // =========================================================================
   {
     const lowerMsg = userMessage.toLowerCase();

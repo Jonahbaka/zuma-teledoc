@@ -675,6 +675,126 @@ class HeartbeatSystem {
       console.error('Mission CRM growth failed:', e.message);
     }
 
+    // ─── Mission: Opportunity Scout — VC, providers, partnerships ───
+    try {
+      const timeStrNow = new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: true, hour: 'numeric', minute: '2-digit' });
+
+      // VC / Investment opportunities
+      const vcResults = await webEngine.scoutVCOpportunities();
+      if (vcResults.success && vcResults.count > 0) {
+        let vcReport = `💰 **Investment & Funding Opportunities** (${timeStrNow} ET)\n\n`;
+        vcReport += `Found **${vcResults.count}** opportunities:\n\n`;
+
+        const byCategory = {};
+        for (const opp of vcResults.opportunities) {
+          if (!byCategory[opp.category]) byCategory[opp.category] = [];
+          byCategory[opp.category].push(opp);
+        }
+
+        for (const [cat, opps] of Object.entries(byCategory)) {
+          const label = cat === 'vc_fund' ? 'VC Funds' : cat === 'grant' ? 'Grants' : cat === 'accelerator' ? 'Accelerators' : 'Competitions';
+          vcReport += `**${label}:**\n`;
+          for (const o of opps.slice(0, 3)) {
+            vcReport += `• [${o.title}](${o.url})\n  ${o.snippet.substring(0, 150)}\n`;
+          }
+          vcReport += '\n';
+        }
+
+        vcReport += `\n⚡ **Action**: Review these and decide which to apply to. I can help draft pitch decks and applications.\n`;
+
+        await this.postToInbox('growth', 'The Scout', vcReport, 'report', {
+          category: 'vc_scouting', automated: true, opportunityCount: vcResults.count
+        });
+
+        // Auto-import into CRM
+        try {
+          let crmServiceLocal;
+          try { crmServiceLocal = require('../crmService'); } catch(e) {}
+          if (crmServiceLocal) {
+            let imported = 0;
+            for (const opp of vcResults.opportunities.slice(0, 8)) {
+              try {
+                await crmServiceLocal.addContact({
+                  first_name: opp.title.substring(0, 50),
+                  last_name: '',
+                  company: opp.url.replace(/https?:\/\//, '').split('/')[0],
+                  contact_type: opp.category === 'grant' ? 'partner' : 'investor',
+                  source: `vc_scout_auto_${new Date().toISOString().slice(0, 10)}`,
+                  source_agent: 'growth',
+                  notes: `${opp.snippet}\n\nSource: ${opp.url}\nCategory: ${opp.category}`,
+                  pipeline_stage: 'new',
+                  lead_score: opp.category === 'grant' ? 75 : 65
+                });
+                imported++;
+              } catch(e) { /* duplicate */ }
+            }
+            if (imported > 0) {
+              vcReport += `\n✅ Auto-imported ${imported} opportunities into CRM.\n`;
+            }
+          }
+        } catch(e) {}
+
+        await webEngine.storeResult('growth', 'The Scout', 'vc_scouting', 'VC & Investment Scout', vcResults.opportunities.slice(0, 10));
+      }
+
+      // Provider recruitment leads
+      const provResults = await webEngine.scoutProviderRecruitment();
+      if (provResults.success && provResults.count > 0) {
+        let provReport = `👨‍⚕️ **Provider Recruitment Opportunities** (${timeStrNow} ET)\n\n`;
+        provReport += `Found **${provResults.count}** potential provider leads:\n\n`;
+
+        const byType = {};
+        for (const lead of provResults.leads) {
+          if (!byType[lead.leadType]) byType[lead.leadType] = [];
+          byType[lead.leadType].push(lead);
+        }
+
+        for (const [type, leads] of Object.entries(byType)) {
+          const label = type === 'competitor_switch' ? '🎯 Competitor Dissatisfied (Easiest Wins)' :
+                        type === 'independent_physician' ? '🏥 Independent Physicians' :
+                        type === 'nurse_practitioner' ? '👩‍⚕️ Nurse Practitioners' :
+                        type === 'rural_provider' ? '🌾 Rural Providers (Underserved Markets)' : '📋 General';
+          provReport += `**${label}:**\n`;
+          for (const l of leads.slice(0, 3)) {
+            provReport += `• [${l.title}](${l.url})\n  ${l.snippet.substring(0, 150)}\n`;
+          }
+          provReport += '\n';
+        }
+
+        provReport += `\n⚡ **Low-Hanging Fruit**: Focus on "Competitor Dissatisfied" and "Independent Physicians" first — they're actively looking.\n`;
+
+        await this.postToInbox('growth', 'The Scout', provReport, 'report', {
+          category: 'provider_recruitment', automated: true, leadCount: provResults.count
+        });
+
+        await webEngine.storeResult('growth', 'The Scout', 'provider_scouting', 'Provider Recruitment Scout', provResults.leads.slice(0, 10));
+      }
+
+      // Credential audit — what's missing?
+      const credAudit = await webEngine.auditCredentials();
+      if (credAudit.success && credAudit.audit.requests.length > 0) {
+        let credReport = `🔑 **Credential Request** (${timeStrNow} ET)\n\n`;
+        credReport += `I need **${credAudit.audit.requests.length} API key(s)** to unlock more capabilities:\n\n`;
+
+        for (const req of credAudit.audit.requests) {
+          credReport += `**${req.name}** [${req.priority}]\n`;
+          credReport += `• Unlocks: ${req.unlocks.join(', ')}\n`;
+          credReport += `• Value: ${req.estimatedValue || 'Growth capability'}\n`;
+          credReport += `• How to get: ${req.howToGet}\n\n`;
+        }
+
+        credReport += `Already have: ${credAudit.audit.existing.map(c => c.name).join(', ') || 'None'}\n`;
+        credReport += `\n⚡ **Operator Action Needed**: Add these keys to unlock agent capabilities. Go to /admin/agent → Credentials tab.\n`;
+
+        await this.postToInbox('ceo', 'The Conductor', credReport, 'alert', {
+          category: 'credential_request', automated: true, missingCount: credAudit.audit.requests.length
+        });
+      }
+
+    } catch (e) {
+      console.error('Mission opportunity scout failed:', e.message);
+    }
+
     // ─── AI Synthesis of all missions ────────────────────────
     if (this.llm && this.llm.isAvailable()) {
       try {
