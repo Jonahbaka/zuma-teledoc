@@ -6,7 +6,8 @@ import {
   Mic, MicOff, Video as VideoIcon, VideoOff,
   PhoneOff, Settings, ShieldCheck, User,
   MessageSquare, Sparkles, Image as ImageIcon,
-  X, Calendar, Clock, ArrowLeft
+  X, Calendar, Clock, ArrowLeft, FileText,
+  Save, Loader2, ClipboardList, Brain
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -332,6 +333,8 @@ const ActiveCallRoom = ({
   activeEffect, setActiveEffect,
   processingEnabled, setProcessingEnabled
 }) => {
+  const [sidebarTab, setSidebarTab] = useState('notes'); // 'chat' | 'notes'
+
   return (
     <div className="flex-1 flex bg-slate-900 relative overflow-hidden">
       {/* Main Stage (Remote Patient) */}
@@ -348,6 +351,9 @@ const ActiveCallRoom = ({
             <h3 className="font-semibold text-sm">{appointment.patientFirstName} {appointment.patientLastName}</h3>
             <p className="text-xs text-slate-300">Patient</p>
           </div>
+
+          {/* Call Timer */}
+          <CallTimer />
 
           {/* Self View (PiP) */}
           <div className="absolute bottom-4 right-4 w-48 md:w-64 aspect-video bg-slate-800 rounded-xl overflow-hidden shadow-2xl border-2 border-slate-700/50 transition-all hover:scale-105 z-20">
@@ -382,9 +388,13 @@ const ActiveCallRoom = ({
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-600">Enable AI Processing</span>
+              <span className="text-sm font-medium text-slate-600">Virtual Background</span>
               <button
-                onClick={() => setProcessingEnabled(!processingEnabled)}
+                onClick={() => {
+                  const next = !processingEnabled;
+                  setProcessingEnabled(next);
+                  if (!next) setActiveEffect(null);
+                }}
                 className={`w-11 h-6 flex items-center rounded-full transition-colors ${processingEnabled ? 'bg-blue-600' : 'bg-slate-300'}`}
               >
                 <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${processingEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
@@ -395,7 +405,15 @@ const ActiveCallRoom = ({
                  {VIDEO_BG_PRESETS.map((preset) => (
                    <button
                      key={preset.id}
-                     onClick={() => setActiveEffect(preset.value)}
+                     onClick={() => {
+                       if (preset.value === null) {
+                         // "None" preset — disable processing
+                         setActiveEffect(null);
+                         setProcessingEnabled(false);
+                       } else {
+                         setActiveEffect(preset.value);
+                       }
+                     }}
                      className={`p-2 rounded-lg border text-[11px] flex flex-col items-center gap-2 transition-colors ${
                        activeEffect === preset.value
                          ? 'border-blue-500 bg-blue-50 text-blue-700'
@@ -409,7 +427,9 @@ const ActiveCallRoom = ({
                      ) : preset.type === 'gradient' || preset.type === 'color' ? (
                        <div className="w-7 h-7 rounded" style={getBgPreviewStyle(preset)} />
                      ) : (
-                       <div className="w-7 h-7 rounded bg-slate-200" />
+                       <div className="w-7 h-7 rounded bg-slate-200 flex items-center justify-center text-slate-500">
+                         <VideoOff size={12} />
+                       </div>
                      )}
                      {preset.name}
                    </button>
@@ -445,12 +465,27 @@ const ActiveCallRoom = ({
         />
 
         <ControlBtn
-          active={isSidebarOpen}
-          onClick={toggleSidebar}
+          active={isSidebarOpen && sidebarTab === 'notes'}
+          onClick={() => {
+            if (isSidebarOpen && sidebarTab === 'notes') { toggleSidebar(); }
+            else { setSidebarTab('notes'); if (!isSidebarOpen) toggleSidebar(); }
+          }}
+          onIcon={FileText}
+          offIcon={FileText}
+          tooltip="Notes"
+        />
+
+        <ControlBtn
+          active={isSidebarOpen && sidebarTab === 'chat'}
+          onClick={() => {
+            if (isSidebarOpen && sidebarTab === 'chat') { toggleSidebar(); }
+            else { setSidebarTab('chat'); if (!isSidebarOpen) toggleSidebar(); }
+          }}
           onIcon={MessageSquare}
           offIcon={MessageSquare}
           tooltip="Chat"
         />
+
         <button
           onClick={onEndCall}
           className="ml-4 bg-red-500 hover:bg-red-600 text-white p-4 rounded-full transition-all shadow-lg shadow-red-500/30"
@@ -459,24 +494,283 @@ const ActiveCallRoom = ({
         </button>
       </div>
 
-      {/* Sidebar */}
+      {/* Sidebar — Notes & Chat */}
       {isSidebarOpen && (
-        <div className="w-80 bg-white h-full border-l border-slate-200 animate-in slide-in-from-right absolute right-0 top-0 z-30 flex flex-col">
-          <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-            <h3 className="font-bold text-slate-800">Secure Chat</h3>
-            <button onClick={toggleSidebar}><X size={18} className="text-slate-400" /></button>
+        <div className="w-96 bg-white h-full border-l border-slate-200 animate-in slide-in-from-right absolute right-0 top-0 z-30 flex flex-col">
+          {/* Sidebar Tabs */}
+          <div className="flex border-b border-slate-200">
+            <button
+              onClick={() => setSidebarTab('notes')}
+              className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                sidebarTab === 'notes' ? 'text-violet-600 border-b-2 border-violet-500 bg-violet-50/50' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <FileText size={16} /> Notes
+            </button>
+            <button
+              onClick={() => setSidebarTab('chat')}
+              className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                sidebarTab === 'chat' ? 'text-blue-600 border-b-2 border-blue-500 bg-blue-50/50' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <MessageSquare size={16} /> Chat
+            </button>
+            <button onClick={toggleSidebar} className="px-3 text-slate-400 hover:text-slate-600">
+              <X size={18} />
+            </button>
           </div>
-          <div className="flex-1 p-4 overflow-y-auto space-y-4">
-            <div className="bg-blue-50 p-3 rounded-lg rounded-tl-none max-w-[85%]">
-              <p className="text-sm text-blue-900">Hello! I'm ready for our appointment. How are you feeling today?</p>
-              <span className="text-[10px] text-blue-700/60 block mt-1">Dr. {appointment.providerLastName} • {formatTime(new Date())}</span>
-            </div>
-          </div>
-          <div className="p-4 border-t border-slate-100">
-            <input type="text" placeholder="Type a secure message..." className="w-full px-3 py-2 bg-slate-100 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500" />
-          </div>
+
+          {/* Notes Tab */}
+          {sidebarTab === 'notes' && (
+            <LiveNotesPanel appointment={appointment} />
+          )}
+
+          {/* Chat Tab */}
+          {sidebarTab === 'chat' && (
+            <>
+              <div className="flex-1 p-4 overflow-y-auto space-y-4">
+                <div className="bg-blue-50 p-3 rounded-lg rounded-tl-none max-w-[85%]">
+                  <p className="text-sm text-blue-900">Hello! I'm ready for our appointment. How are you feeling today?</p>
+                  <span className="text-[10px] text-blue-700/60 block mt-1">Dr. {appointment.providerLastName} • {formatTime(new Date())}</span>
+                </div>
+              </div>
+              <div className="p-4 border-t border-slate-100">
+                <input type="text" placeholder="Type a secure message..." className="w-full px-3 py-2 bg-slate-100 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+              </div>
+            </>
+          )}
         </div>
       )}
+    </div>
+  );
+};
+
+// --- CALL TIMER ---
+const CallTimer = () => {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  return (
+    <div className="absolute top-4 right-4 bg-black/40 backdrop-blur px-3 py-1.5 rounded-lg text-white border border-white/10 flex items-center gap-2 z-10">
+      <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+      <span className="text-sm font-mono tabular-nums">{String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}</span>
+    </div>
+  );
+};
+
+// --- LIVE NOTES PANEL (During Video Call) ---
+const LiveNotesPanel = ({ appointment }) => {
+  const [notes, setNotes] = useState({
+    chiefComplaint: appointment.reasonForVisit || '',
+    subjective: '',
+    objective: '',
+    assessment: '',
+    plan: '',
+    freeform: ''
+  });
+  const [saving, setSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [activeSection, setActiveSection] = useState('freeform'); // freeform | soap
+  const autoSaveTimer = useRef(null);
+
+  // Auto-save every 30 seconds if notes changed
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
+
+  useEffect(() => {
+    autoSaveTimer.current = setInterval(() => {
+      const n = notesRef.current;
+      const hasContent = n.freeform || n.subjective || n.objective || n.assessment || n.plan;
+      if (hasContent) saveNotes(true);
+    }, 30000);
+    return () => clearInterval(autoSaveTimer.current);
+  }, []);
+
+  const saveNotes = async (silent = false) => {
+    setSaving(true);
+    try {
+      // Save to visit endpoint if appointment exists
+      if (appointment.id && appointment.id !== 'standalone') {
+        await api.post('/visits', {
+          appointmentId: appointment.id,
+          chiefComplaint: notes.chiefComplaint,
+          subjective: notes.subjective || notes.freeform,
+          objective: notes.objective,
+          assessment: notes.assessment,
+          plan: notes.plan,
+          status: 'in_progress'
+        }).catch(() => {
+          // If create fails (already exists), try update
+          return api.put(`/visits/appointment/${appointment.id}`, {
+            chiefComplaint: notes.chiefComplaint,
+            subjective: notes.subjective || notes.freeform,
+            objective: notes.objective,
+            assessment: notes.assessment,
+            plan: notes.plan
+          });
+        });
+      }
+      setLastSaved(new Date());
+      if (!silent) toast({ title: 'Notes saved', description: 'Visit notes saved successfully' });
+    } catch (err) {
+      if (!silent) toast({ title: 'Save failed', description: 'Could not save notes', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const generateSOAP = async () => {
+    setAiLoading(true);
+    try {
+      const response = await api.post('/ai-assist/soap', {
+        appointmentId: appointment.id,
+        chiefComplaint: notes.chiefComplaint,
+        symptoms: notes.freeform || notes.chiefComplaint,
+        existingConditions: '',
+        medications: ''
+      });
+      if (response.data.success) {
+        const s = response.data.suggestion;
+        setNotes(prev => ({
+          ...prev,
+          subjective: s.subjective || prev.subjective,
+          objective: s.objective || prev.objective,
+          assessment: s.assessment || prev.assessment,
+          plan: s.plan || prev.plan
+        }));
+        setActiveSection('soap');
+        toast({ title: 'AI Notes Generated', description: 'SOAP notes populated — review and edit as needed' });
+      }
+    } catch (err) {
+      toast({ title: 'AI Generation Failed', description: 'Could not generate SOAP notes', variant: 'destructive' });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const updateNote = (field, value) => {
+    setNotes(prev => ({ ...prev, [field]: value }));
+  };
+
+  const soapSections = [
+    { key: 'subjective', label: 'S — Subjective', icon: '🗣️', placeholder: 'Patient reports...' },
+    { key: 'objective', label: 'O — Objective', icon: '🔍', placeholder: 'Vitals, exam findings...' },
+    { key: 'assessment', label: 'A — Assessment', icon: '🧠', placeholder: 'Diagnosis, clinical impression...' },
+    { key: 'plan', label: 'P — Plan', icon: '📋', placeholder: 'Treatment plan, follow-up, referrals...' },
+  ];
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Notes Header */}
+      <div className="px-4 py-3 bg-gradient-to-r from-violet-50 to-purple-50 border-b border-violet-100">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="w-4 h-4 text-violet-600" />
+            <span className="text-sm font-semibold text-violet-900">Visit Notes</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {lastSaved && (
+              <span className="text-[10px] text-slate-400">
+                Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+            <button
+              onClick={() => saveNotes(false)}
+              disabled={saving}
+              className="px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg flex items-center gap-1 disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+              Save
+            </button>
+          </div>
+        </div>
+
+        {/* Section Toggle */}
+        <div className="flex gap-1">
+          <button
+            onClick={() => setActiveSection('freeform')}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+              activeSection === 'freeform' ? 'bg-violet-600 text-white' : 'bg-white text-slate-600 hover:bg-violet-100'
+            }`}
+          >
+            Quick Notes
+          </button>
+          <button
+            onClick={() => setActiveSection('soap')}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+              activeSection === 'soap' ? 'bg-violet-600 text-white' : 'bg-white text-slate-600 hover:bg-violet-100'
+            }`}
+          >
+            SOAP Format
+          </button>
+          <button
+            onClick={generateSOAP}
+            disabled={aiLoading || (!notes.freeform && !notes.chiefComplaint)}
+            className="ml-auto px-3 py-1 text-xs font-medium rounded-md bg-gradient-to-r from-purple-500 to-violet-600 text-white hover:from-purple-600 hover:to-violet-700 disabled:opacity-40 flex items-center gap-1"
+          >
+            {aiLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
+            AI SOAP
+          </button>
+        </div>
+      </div>
+
+      {/* Notes Content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {/* Chief Complaint — always visible */}
+        <div>
+          <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Chief Complaint</label>
+          <input
+            value={notes.chiefComplaint}
+            onChange={(e) => updateNote('chiefComplaint', e.target.value)}
+            placeholder="Reason for visit..."
+            className="w-full mt-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none"
+          />
+        </div>
+
+        {activeSection === 'freeform' ? (
+          /* Quick Notes — free-form text area for rapid note-taking during call */
+          <div>
+            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Notes (type during the call)</label>
+            <textarea
+              value={notes.freeform}
+              onChange={(e) => updateNote('freeform', e.target.value)}
+              placeholder="Type notes as the patient talks...&#10;&#10;- Symptoms, history, observations&#10;- Click 'AI SOAP' when ready to structure into SOAP format"
+              className="w-full mt-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none resize-none"
+              style={{ minHeight: '280px' }}
+              autoFocus
+            />
+            <p className="text-[10px] text-slate-400 mt-1">Tip: Jot down notes freely, then tap "AI SOAP" to auto-structure them</p>
+          </div>
+        ) : (
+          /* SOAP Format — structured sections */
+          soapSections.map(({ key, label, icon, placeholder }) => (
+            <div key={key}>
+              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1">
+                <span>{icon}</span> {label}
+              </label>
+              <textarea
+                value={notes[key]}
+                onChange={(e) => updateNote(key, e.target.value)}
+                placeholder={placeholder}
+                className="w-full mt-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none resize-none"
+                rows={3}
+              />
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Notes Footer */}
+      <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 text-[10px] text-slate-400 flex items-center justify-between">
+        <span>Auto-saves every 30s</span>
+        <span>HIPAA-compliant</span>
+      </div>
     </div>
   );
 };
@@ -502,151 +796,109 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
     activeEffectRef.current = activeEffect;
   }, [activeEffect]);
 
-  // Load MediaPipe Script
+  // Load MediaPipe Script — robust loader with retries
+  const initAttemptRef = useRef(0);
+
   useEffect(() => {
     if (!processingEnabled) {
-      // Clean up if processing is disabled
-      if (segmentationRef.current) {
-        try {
-          segmentationRef.current.close();
-        } catch (error) {
-          // Silently handle cleanup errors
-        }
-        segmentationRef.current = null;
-      }
       if (requestRef.current) {
         cancelAnimationFrame(requestRef.current);
         requestRef.current = null;
       }
+      // Don't close segmentation on disable — reuse it when re-enabled
       setModelLoaded(false);
       return;
     }
 
-    const scriptUrl = "https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js";
-
-    // Check if script is already loaded
-    if (document.querySelector(`script[src="${scriptUrl}"]`)) {
-      // Wait a bit for the script to fully initialize
-      setTimeout(() => {
-        initMediaPipe();
-      }, 100);
+    // If already initialized, just mark as loaded and start processing
+    if (segmentationRef.current) {
+      setModelLoaded(true);
       return;
     }
 
-    const script = document.createElement("script");
-    script.src = scriptUrl;
-    script.async = true;
-    script.onload = () => {
-      // Wait a bit for MediaPipe to be fully available
-      setTimeout(() => {
-        initMediaPipe();
-      }, 200);
-    };
-    script.onerror = () => {
-      console.error('Failed to load MediaPipe script');
-      setCameraError('Failed to load AI background feature.');
+    let cancelled = false;
+    const SCRIPT_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/selfie_segmentation.js";
+
+    const loadScript = () => new Promise((resolve, reject) => {
+      // If global is already available, resolve immediately
+      if (window.SelfieSegmentation) { resolve(); return; }
+
+      const existing = document.querySelector(`script[src="${SCRIPT_URL}"]`);
+      if (existing) {
+        // Script tag exists but may still be loading
+        const check = setInterval(() => {
+          if (window.SelfieSegmentation) { clearInterval(check); resolve(); }
+        }, 100);
+        setTimeout(() => { clearInterval(check); reject(new Error('MediaPipe script timeout')); }, 10000);
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = SCRIPT_URL;
+      script.async = true;
+      script.onload = () => {
+        // Script loaded but global may need a tick to register
+        const check = setInterval(() => {
+          if (window.SelfieSegmentation) { clearInterval(check); resolve(); }
+        }, 50);
+        setTimeout(() => { clearInterval(check); reject(new Error('SelfieSegmentation not found after load')); }, 5000);
+      };
+      script.onerror = () => reject(new Error('Failed to load MediaPipe CDN script'));
+      document.head.appendChild(script);
+    });
+
+    const initMediaPipe = async () => {
       try {
-        toast({
-          title: 'AI Background Error',
-          description: 'Failed to load AI background feature. Please try again.',
-          variant: 'destructive',
-          duration: 5000
+        await loadScript();
+        if (cancelled) return;
+
+        if (segmentationRef.current) { setModelLoaded(true); return; }
+
+        const seg = new window.SelfieSegmentation({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/${file}`,
         });
-      } catch (toastError) {
-        // Silently handle toast errors
+
+        seg.setOptions({ modelSelection: 1, selfieMode: true });
+        seg.onResults(onResults);
+
+        // Warm up the model with a blank send if video is ready
+        if (videoRef.current && videoRef.current.readyState >= 2) {
+          try { await seg.send({ image: videoRef.current }); } catch(e) { /* warm-up may fail, ok */ }
+        }
+
+        if (cancelled) { try { seg.close(); } catch(e) {} return; }
+
+        segmentationRef.current = seg;
+        setModelLoaded(true);
+        initAttemptRef.current = 0;
+      } catch (error) {
+        if (cancelled) return;
+        initAttemptRef.current++;
+        console.warn(`MediaPipe init attempt ${initAttemptRef.current} failed:`, error.message);
+
+        if (initAttemptRef.current < 3) {
+          // Retry after a delay
+          setTimeout(() => { if (!cancelled) initMediaPipe(); }, 1000 * initAttemptRef.current);
+        } else {
+          // Give up after 3 attempts
+          toast({
+            title: 'Virtual Background Unavailable',
+            description: 'Could not load AI background model. Your camera still works normally.',
+            variant: 'destructive',
+            duration: 5000
+          });
+          if (setProcessingEnabled) setProcessingEnabled(false);
+        }
       }
     };
-    document.body.appendChild(script);
+
+    initMediaPipe();
 
     return () => {
-      if (requestRef.current) {
-        cancelAnimationFrame(requestRef.current);
-        requestRef.current = null;
-      }
-      if (segmentationRef.current) {
-        try {
-          segmentationRef.current.close();
-        } catch (error) {
-          // Silently handle cleanup errors
-        }
-        segmentationRef.current = null;
-      }
-      setModelLoaded(false);
+      cancelled = true;
+      if (requestRef.current) { cancelAnimationFrame(requestRef.current); requestRef.current = null; }
     };
   }, [processingEnabled]);
-
-  const initMediaPipe = async () => {
-    try {
-      if (!window.SelfieSegmentation) {
-        // Wait a bit and try again if SelfieSegmentation isn't available yet
-        setTimeout(() => {
-          if (window.SelfieSegmentation) {
-            initMediaPipe();
-          }
-        }, 100);
-        return;
-      }
-
-      // Check if already initialized
-      if (segmentationRef.current) {
-        setModelLoaded(true);
-        return;
-      }
-
-      // Create MediaPipe instance with comprehensive error handling
-      let selfieSegmentation;
-      try {
-        // Wrap in try-catch to catch WASM initialization errors
-        selfieSegmentation = new window.SelfieSegmentation({
-          locateFile: (file) => {
-            // Return full CDN URL for WASM files
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`;
-          },
-        });
-      } catch (initError) {
-        console.warn('MediaPipe constructor error:', initError);
-        // Don't disable immediately - let user try again
-        // Only disable if this is a persistent issue
-        return;
-      }
-
-      // Set options with error handling
-      try {
-        if (selfieSegmentation && typeof selfieSegmentation.setOptions === 'function') {
-          await selfieSegmentation.setOptions({
-            modelSelection: 1,
-          });
-        } else {
-          console.warn('MediaPipe setOptions not available');
-          return;
-        }
-      } catch (optionsError) {
-        console.warn('MediaPipe setOptions error:', optionsError);
-        // Don't disable - might be temporary
-        return;
-      }
-
-      // Set results handler with error handling
-      try {
-        if (selfieSegmentation && typeof selfieSegmentation.onResults === 'function') {
-          selfieSegmentation.onResults(onResults);
-        } else {
-          console.warn('MediaPipe onResults not available');
-          return;
-        }
-      } catch (resultsError) {
-        console.warn('MediaPipe onResults error:', resultsError);
-        return;
-      }
-      
-      segmentationRef.current = selfieSegmentation;
-      setModelLoaded(true);
-    } catch (error) {
-      // Catch any other errors but don't disable immediately
-      console.warn('MediaPipe initialization error:', error);
-      // Let the error handler deal with persistent failures
-    }
-  };
 
   // Preload background image when activeEffect changes
   useEffect(() => {
@@ -946,105 +1198,65 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
   }, [modelLoaded, processingEnabled]);
 
   const startProcessing = () => {
-    if (!segmentationRef.current || !videoRef.current || !modelLoaded) {
-      // Don't start if not ready - will be called again when ready
-      return;
+    if (!segmentationRef.current || !videoRef.current || !modelLoaded) return;
+
+    // Cancel any existing processing loop
+    if (requestRef.current) { cancelAnimationFrame(requestRef.current); requestRef.current = null; }
+
+    let alive = true;
+    let errorCount = 0;
+    let lastSendTime = 0;
+    const FPS_CAP = 24; // Lower FPS cap = more stable, less CPU
+    const MIN_INTERVAL = 1000 / FPS_CAP;
+    const MAX_ERRORS = 15;
+
+    // Match canvas to actual video dimensions
+    const vw = videoRef.current.videoWidth || 1280;
+    const vh = videoRef.current.videoHeight || 720;
+    if (canvasRef.current) {
+      canvasRef.current.width = vw;
+      canvasRef.current.height = vh;
     }
 
-    let isProcessing = true;
-    let errorCount = 0;
-    let lastFrameTime = 0;
-    const MAX_ERRORS = 10; // Allow more errors before disabling
-    const MIN_FRAME_INTERVAL = 33; // ~30fps max to prevent timestamp issues (33ms = 30fps)
+    const loop = async (timestamp) => {
+      if (!alive || !processingEnabled) return;
 
-    const process = async () => {
-      if (!isProcessing || !processingEnabled) return;
-      
-      const currentTime = Date.now();
-      const timeSinceLastFrame = currentTime - lastFrameTime;
-      
-      // Skip frame if sent too recently to prevent timestamp mismatches
-      if (timeSinceLastFrame < MIN_FRAME_INTERVAL) {
-        requestRef.current = requestAnimationFrame(process);
+      const now = performance.now();
+      if (now - lastSendTime < MIN_INTERVAL) {
+        requestRef.current = requestAnimationFrame(loop);
         return;
       }
-      
+
       try {
-        if (videoRef.current && videoRef.current.readyState === 4 && segmentationRef.current) {
-          // Check if segmentation is still valid before sending
-          if (segmentationRef.current && typeof segmentationRef.current.send === 'function') {
-            await segmentationRef.current.send({ image: videoRef.current });
-            lastFrameTime = currentTime;
-            errorCount = 0; // Reset error count on success
-          } else {
-            // MediaPipe instance is invalid, but don't disable immediately
-            errorCount++;
-            if (errorCount >= MAX_ERRORS) {
-              isProcessing = false;
-              if (requestRef.current) {
-                cancelAnimationFrame(requestRef.current);
-                requestRef.current = null;
-              }
-              // Only disable after many failures
-              if (setProcessingEnabled) {
-                setProcessingEnabled(false);
-              }
-              return;
-            }
-            // Continue trying
-          }
+        const vid = videoRef.current;
+        const seg = segmentationRef.current;
+        if (vid && vid.readyState >= 2 && seg && typeof seg.send === 'function') {
+          await seg.send({ image: vid });
+          lastSendTime = now;
+          errorCount = 0;
         }
-        if (isProcessing && processingEnabled) {
-          requestRef.current = requestAnimationFrame(process);
-        }
-      } catch (error) {
-        // Check if error is a timestamp mismatch (common MediaPipe issue)
-        const errorMessage = error.message || error.toString() || '';
-        const isTimestampError = errorMessage.includes('timestamp') || 
-                                 errorMessage.includes('Aborted') ||
-                                 errorMessage.includes('INVALID_ARGUMENT');
-        
-        if (isTimestampError) {
-          // Ignore timestamp errors - they're not real failures, just frame timing issues
-          // Reset error count on timestamp errors since they're expected
-          errorCount = Math.max(0, errorCount - 1);
-          // Continue processing
-          if (isProcessing && processingEnabled) {
-            requestRef.current = requestAnimationFrame(process);
-          }
-          return;
-        }
-        
-        // For other errors, count them
-        errorCount++;
-        // Only disable after multiple consecutive non-timestamp errors
-        if (errorCount >= MAX_ERRORS) {
-          isProcessing = false;
-          if (requestRef.current) {
-            cancelAnimationFrame(requestRef.current);
-            requestRef.current = null;
-          }
-          // Only disable after many failures
-          if (setProcessingEnabled) {
-            setProcessingEnabled(false);
-          }
-          console.warn('MediaPipe processing stopped after multiple errors:', error.message || error);
+      } catch (err) {
+        const msg = (err.message || '').toLowerCase();
+        // Timestamp/abort errors are benign — just skip that frame
+        if (msg.includes('timestamp') || msg.includes('aborted') || msg.includes('invalid_argument')) {
+          // skip, don't count
         } else {
-          // Continue trying on first few errors
-          if (isProcessing && processingEnabled) {
-            requestRef.current = requestAnimationFrame(process);
+          errorCount++;
+          if (errorCount >= MAX_ERRORS) {
+            alive = false;
+            console.warn('Virtual background stopped after repeated errors');
+            if (setProcessingEnabled) setProcessingEnabled(false);
+            return;
           }
         }
       }
+
+      if (alive && processingEnabled) {
+        requestRef.current = requestAnimationFrame(loop);
+      }
     };
-    
-    // Wrap in try-catch to prevent any initialization errors
-    try {
-      process();
-    } catch (error) {
-      console.warn('Failed to start MediaPipe processing:', error.message || error);
-      // Don't disable on first error - let it retry
-    }
+
+    requestRef.current = requestAnimationFrame(loop);
   };
 
   const onResults = (results) => {
