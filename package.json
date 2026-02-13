@@ -14,7 +14,8 @@
     "migrate": "node server/db/migrate.js",
     "migrate:rollback": "node server/db/rollback.js",
     "seed:links": "node server/scripts/seed-testing-links.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "postinstall": "node scripts/copy-mediapipe.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",

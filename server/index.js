@@ -139,8 +139,8 @@ async function initializeApp() {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        // Next.js requires 'unsafe-inline' and 'unsafe-eval' for scripts + Google Analytics
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://www.googletagmanager.com", "https://www.google-analytics.com"],
+        // Next.js requires 'unsafe-inline' and 'unsafe-eval' + wasm-unsafe-eval for MediaPipe WASM
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-eval'", "https://www.googletagmanager.com", "https://www.google-analytics.com"],
         scriptSrcElem: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://www.google-analytics.com"],
         // Allow inline styles and Google Fonts
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
@@ -160,12 +160,13 @@ async function initializeApp() {
           'https://*.sentry.io',
           'https://www.googletagmanager.com',
           'https://www.google-analytics.com',
-          'https://analytics.google.com'
+          'https://analytics.google.com',
+          'https://images.unsplash.com'
         ],
         // Allow Google Fonts
         fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://fonts.googleapis.com', 'data:'],
         objectSrc: ["'none'"],
-        mediaSrc: ["'self'", 'blob:'],
+        mediaSrc: ["'self'", 'blob:', 'mediastream:'],
         frameSrc: ["'self'", 'https://js.stripe.com', 'https://hooks.stripe.com'],
         workerSrc: ["'self'", 'blob:']
       }

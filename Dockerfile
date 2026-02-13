@@ -8,8 +8,12 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json* ./
+# Copy postinstall helper so it runs during npm ci
+COPY scripts/copy-mediapipe.js ./scripts/copy-mediapipe.js
 RUN npm ci
 COPY . .
+# Ensure MediaPipe assets are in public/ (postinstall may have already done this)
+RUN node scripts/copy-mediapipe.js
 # Build Next.js (requires tailwindcss, postcss, autoprefixer from devDeps)
 RUN npm run build
 

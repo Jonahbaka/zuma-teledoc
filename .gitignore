@@ -56,6 +56,9 @@ coverage/
 *.tmp
 *~
 
+# MediaPipe self-hosted assets (generated from npm by postinstall)
+public/mediapipe/
+
 # Vercel
 .vercel
 
