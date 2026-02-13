@@ -226,8 +226,37 @@ class CRMService {
   //  CONTACTS
   // ═══════════════════════════════════════════════════════════════
 
+  _normalizeContactData(data = {}) {
+    return {
+      firstName: data.firstName ?? data.first_name ?? '',
+      lastName: data.lastName ?? data.last_name ?? '',
+      email: data.email ?? null,
+      phone: data.phone ?? null,
+      title: data.title ?? null,
+      organization: data.organization ?? null,
+      contactType: data.contactType ?? data.contact_type ?? 'lead',
+      specialty: data.specialty ?? null,
+      subType: data.subType ?? data.sub_type ?? null,
+      source: data.source ?? null,
+      sourceUrl: data.sourceUrl ?? data.source_url ?? null,
+      sourceAgent: data.sourceAgent ?? data.source_agent ?? null,
+      linkedinUrl: data.linkedinUrl ?? data.linkedin_url ?? null,
+      twitterHandle: data.twitterHandle ?? data.twitter_handle ?? null,
+      website: data.website ?? null,
+      npiNumber: data.npiNumber ?? data.npi_number ?? null,
+      city: data.city ?? null,
+      state: data.state ?? null,
+      country: data.country ?? 'US',
+      tags: data.tags ?? [],
+      notes: data.notes ?? null,
+      assignedAgent: data.assignedAgent ?? data.assigned_agent ?? null,
+      priority: data.priority ?? 'medium'
+    };
+  }
+
   async addContact(data) {
     try {
+      const contact = this._normalizeContactData(data);
       const { rows } = await db.query(`
         INSERT INTO crm_contacts (
           first_name, last_name, email, phone, title, organization,
@@ -238,19 +267,20 @@ class CRMService {
         ON CONFLICT DO NOTHING
         RETURNING *
       `, [
-        data.firstName, data.lastName, data.email, data.phone,
-        data.title, data.organization, data.contactType || 'lead',
-        data.specialty, data.subType, data.source, data.sourceUrl,
-        data.sourceAgent, data.linkedinUrl, data.twitterHandle,
-        data.website, data.npiNumber, data.city, data.state,
-        data.country || 'US', data.tags || [], data.notes,
-        data.assignedAgent, data.priority || 'medium'
+        contact.firstName, contact.lastName, contact.email, contact.phone,
+        contact.title, contact.organization, contact.contactType,
+        contact.specialty, contact.subType, contact.source, contact.sourceUrl,
+        contact.sourceAgent, contact.linkedinUrl, contact.twitterHandle,
+        contact.website, contact.npiNumber, contact.city, contact.state,
+        contact.country, contact.tags, contact.notes,
+        contact.assignedAgent, contact.priority
       ]);
       return rows[0] || null;
     } catch (err) {
       // If duplicate email, try to update instead
-      if (err.code === '23505' && data.email) {
-        return this.updateContactByEmail(data.email, data);
+      const contact = this._normalizeContactData(data);
+      if (err.code === '23505' && contact.email) {
+        return this.updateContactByEmail(contact.email, contact);
       }
       logger.error('CRM addContact error:', err.message);
       return null;
@@ -548,6 +578,14 @@ class CRMService {
 
   async createCampaign(data) {
     try {
+      const campaignType = data.campaignType || data.campaign_type || 'cold_email';
+      const targetContactType = data.targetContactType || data.target_contact_type || null;
+      const targetSpecialty = data.targetSpecialty || data.target_specialty || null;
+      const subjectLine = data.subjectLine || data.subject_line || '';
+      const emailTemplate = data.emailTemplate || data.email_template || '';
+      const sendTime = data.sendTime || data.send_time || 'optimal';
+      const dailyLimit = data.dailyLimit || data.daily_limit || 50;
+      const createdBy = data.createdBy || data.created_by || 'growth-agent';
       const { rows } = await db.query(`
         INSERT INTO crm_campaigns (
           name, description, campaign_type, target_contact_type,
@@ -555,11 +593,11 @@ class CRMService {
           send_time, daily_limit, created_by
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
       `, [
-        data.name, data.description, data.campaignType || 'cold_email',
-        data.targetContactType, data.targetSpecialty,
-        data.subjectLine, data.emailTemplate,
-        data.sendTime || 'optimal', data.dailyLimit || 50,
-        data.createdBy || 'growth-agent'
+        data.name, data.description, campaignType,
+        targetContactType, targetSpecialty,
+        subjectLine, emailTemplate,
+        sendTime, dailyLimit,
+        createdBy
       ]);
       return rows[0];
     } catch (err) {
@@ -687,7 +725,9 @@ class CRMService {
         totalContacts,
         contactsByType: contacts.rows,
         pipeline: pipeline.rows,
+        pipelineDistribution: pipeline.rows,
         campaigns: campaigns.rows,
+        campaignStats: campaigns.rows,
         recentInteractions: recent.rows,
         scrapeSources: sources.rows,
         emailStats: {

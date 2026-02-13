@@ -582,6 +582,53 @@ async function generateAgentResponse(agentType, userMessage, user) {
         }
       }
 
+      // ─── FREE TRAFFIC GENESIS MISSION ─────────────────────────
+      if (
+        lowerMsg.includes('bring traffic') ||
+        lowerMsg.includes('get traffic') ||
+        lowerMsg.includes('free traffic') ||
+        lowerMsg.includes('traffic growth')
+      ) {
+        const [seo, social, providers] = await Promise.allSettled([
+          webEngine.checkSearchVisibility(),
+          webEngine.checkSocialPresence(),
+          webEngine.scrapeProviderDirectories()
+        ]);
+
+        executedActions.push({ type: 'growth_free_traffic_mission' });
+        actionContext += `\n\n[FREE TRAFFIC GENESIS MISSION — LIVE]:\n`;
+
+        if (seo.status === 'fulfilled') {
+          const failed = seo.value.filter((x) => x.status !== 'pass').length;
+          actionContext += `• SEO checks: ${seo.value.length}, issues: ${failed}\n`;
+        }
+        if (social.status === 'fulfilled') {
+          const missing = social.value.filter((x) => !x.exists).length;
+          actionContext += `• Social platforms audited: ${social.value.length}, missing: ${missing}\n`;
+        }
+        if (providers.status === 'fulfilled' && providers.value.length > 0) {
+          const importSummary = await crmService.addContactsBulk(
+            providers.value.slice(0, 20).map((p) => {
+              const parts = String(p.name || '').split(' ');
+              return {
+                firstName: parts[0] || 'Provider',
+                lastName: parts.slice(1).join(' ') || '',
+                phone: p.phone || null,
+                specialty: p.specialty || null,
+                contactType: 'provider',
+                source: 'free_traffic_genesis',
+                sourceAgent: agentType,
+                npiNumber: p.npi || null,
+                city: p.city || null,
+                state: p.state || null
+              };
+            })
+          );
+          actionContext += `• Provider leads harvested: ${providers.value.length}; imported to CRM: ${importSummary.added}\n`;
+        }
+        actionContext += `• Next: generate outreach template and run approved provider campaign from CRM for zero ad spend.\n`;
+      }
+
       // ─── PROVIDER LEADS ────────────────────────────────────────
       if ((lowerMsg.includes('provider') || lowerMsg.includes('doctor') || lowerMsg.includes('npi')) &&
           (lowerMsg.includes('find') || lowerMsg.includes('search') || lowerMsg.includes('lead') || lowerMsg.includes('recruit'))) {
@@ -814,6 +861,55 @@ async function generateAgentResponse(agentType, userMessage, user) {
         }
       }
 
+      // ─── GENERATE OUTREACH TEMPLATE (LLM) ──────────────────────
+      if (
+        lowerMsg.includes('generate outreach template') ||
+        lowerMsg.includes('draft outreach email') ||
+        lowerMsg.includes('create outreach template') ||
+        lowerMsg.includes('write outreach email')
+      ) {
+        let generated = null;
+        if (llmService && llmService.isAvailable()) {
+          const templateRequest = userMessage.replace(/\s+/g, ' ').trim();
+          const generationPrompt = `You are creating a cold outreach email template for DoctaRx. Return strict JSON with keys: subject, body, category.
+Rules:
+- Subject <= 80 chars.
+- Body 120-220 words.
+- Professional, warm, and direct.
+- Include one clear CTA for a 10-minute call.
+- Keep it compliant and avoid medical claims.
+- Category must be one of: cold_outreach, investor_pitch, partnership, follow_up.
+User request: ${templateRequest}`;
+          const llmText = await llmService.callLLM(llmService.GENESIS_CORE_PROMPT, generationPrompt, { maxTokens: 1024, temperature: 0.6 });
+          if (llmText) {
+            try {
+              const jsonMatch = llmText.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, llmText];
+              generated = JSON.parse((jsonMatch[1] || llmText).trim());
+            } catch (e) {
+              generated = null;
+            }
+          }
+        }
+
+        if (generated?.subject && generated?.body) {
+          const saved = await crmService.createTemplate({
+            name: `Agent Outreach ${new Date().toISOString().slice(0, 10)}`,
+            category: generated.category || 'cold_outreach',
+            subject: generated.subject,
+            body: generated.body,
+            createdBy: agentType
+          });
+          executedActions.push({ type: 'crm_generate_template' });
+          actionContext += `\n\n[OUTREACH TEMPLATE READY TO SEND]:\n`;
+          actionContext += `Subject: ${generated.subject}\n`;
+          actionContext += `Category: ${generated.category || 'cold_outreach'}\n`;
+          actionContext += `Saved Template: ${saved?.name || 'unsaved'}\n`;
+          actionContext += `Body:\n${generated.body}\n`;
+        } else {
+          actionContext += `\n\n[OUTREACH TEMPLATE]: LLM generation unavailable. Please verify ANTHROPIC_API_KEY or GEMINI_API_KEY.\n`;
+        }
+      }
+
       // ─── SEND EMAIL TO CONTACT ─────────────────────────────────
       // Triggered by: "email <name or email>" or "send email to <name>"
       if ((lowerMsg.includes('send email') || lowerMsg.includes('email ') || lowerMsg.includes('reach out')) &&
@@ -878,14 +974,14 @@ async function generateAgentResponse(agentType, userMessage, user) {
         if (emailMatch || nameMatch) {
           const nameParts = nameMatch ? nameMatch[1].split(' ') : ['Unknown'];
           const contactData = {
-            first_name: nameParts[0] || 'Unknown',
-            last_name: nameParts[1] || '',
+            firstName: nameParts[0] || 'Unknown',
+            lastName: nameParts[1] || '',
             email: emailMatch ? emailMatch[0] : null,
-            contact_type: typeMatch ? typeMatch[1] : 'lead',
+            contactType: typeMatch ? typeMatch[1] : 'lead',
             source: `agent_chat_${agentType}`,
-            source_agent: agentType,
-            pipeline_stage: 'new',
-            lead_score: 50
+            sourceAgent: agentType,
+            pipelineStage: 'new',
+            leadScore: 50
           };
 
           const result = await crmService.addContact(contactData);
@@ -902,6 +998,29 @@ async function generateAgentResponse(agentType, userMessage, user) {
           }
         } else {
           actionContext += `\n\n[CRM ADD]: Provide at least a name or email. Example: "add provider contact Dr. Jane Smith jane@hospital.com"\n`;
+        }
+      }
+
+      // ─── BULK ADD CONTACTS FROM EMAIL LIST ─────────────────────
+      if (lowerMsg.includes('bulk add contact') || lowerMsg.includes('add contacts') || lowerMsg.includes('import contacts')) {
+        const emails = [...new Set((userMessage.match(/[\w.+-]+@[\w-]+\.[\w.]+/g) || []).map((e) => e.toLowerCase()))];
+        if (emails.length > 1) {
+          const bulk = emails.map((email) => {
+            const local = email.split('@')[0];
+            const parts = local.split(/[._-]+/).filter(Boolean);
+            return {
+              firstName: parts[0] ? parts[0][0].toUpperCase() + parts[0].slice(1) : 'Lead',
+              lastName: parts[1] ? parts[1][0].toUpperCase() + parts[1].slice(1) : '',
+              email,
+              contactType: lowerMsg.includes('investor') ? 'investor' : lowerMsg.includes('partner') ? 'partner' : 'lead',
+              source: `bulk_import_${new Date().toISOString().slice(0, 10)}`,
+              sourceAgent: agentType,
+              priority: 'medium'
+            };
+          });
+          const summary = await crmService.addContactsBulk(bulk);
+          executedActions.push({ type: 'crm_bulk_add_contacts' });
+          actionContext += `\n\n[BULK CONTACT IMPORT]: Added ${summary.added}, skipped ${summary.skipped}, errors ${summary.errors}.\n`;
         }
       }
 
@@ -1067,7 +1186,7 @@ async function generateAgentResponse(agentType, userMessage, user) {
               actionContext += `  • ${o.title}\n    ${o.url}\n    ${o.snippet.substring(0, 200)}\n`;
             }
           }
-          actionContext += `\n(Searched ${queries?.length || 5} queries on DuckDuckGo — REAL live results)\n`;
+          actionContext += `\n(Searched multiple live web queries on DuckDuckGo)\n`;
 
           // Auto-import high-value opportunities as CRM contacts
           try {

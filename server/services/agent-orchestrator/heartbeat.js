@@ -44,10 +44,10 @@ class HeartbeatSystem {
     console.log('  💓 Heartbeat System: ACTIVE (Proactive Mode)');
     console.log('    ├─ Error monitor: every 60s');
     console.log('    ├─ Health check: every 5 min');
-    console.log('    ├─ Proactive scan: every 30 min');
-    console.log('    ├─ WEB MISSIONS: every 3 hours (real internet work)');
-    console.log('    ├─ Agent cycle: every 2 hours');
-    console.log('    └─ Executive briefing: every 4 hours');
+    console.log('    ├─ Proactive scan: every 15 min');
+    console.log('    ├─ WEB MISSIONS: every 2 hours (real internet work)');
+    console.log('    ├─ Agent cycle: every 1 hour');
+    console.log('    └─ Executive briefing: every 3 hours');
 
     // Error monitor — every 60 seconds
     this.timers.push(setInterval(() => this.errorCheck(), 60 * 1000));
@@ -55,17 +55,17 @@ class HeartbeatSystem {
     // Health check — every 5 minutes
     this.timers.push(setInterval(() => this.healthCheck(), 5 * 60 * 1000));
 
-    // Proactive scan — every 30 minutes (post findings to inbox)
-    this.timers.push(setInterval(() => this.proactiveScan(), 30 * 60 * 1000));
+    // Proactive scan — every 15 minutes (post findings to inbox)
+    this.timers.push(setInterval(() => this.proactiveScan(), 15 * 60 * 1000));
 
-    // WEB MISSIONS — every 3 hours (real internet work)
-    this.timers.push(setInterval(() => this.runWebMissions(), 3 * 60 * 60 * 1000));
+    // WEB MISSIONS — every 2 hours (real internet work)
+    this.timers.push(setInterval(() => this.runWebMissions(), 2 * 60 * 60 * 1000));
 
-    // Agent proactive cycle — every 2 hours
-    this.timers.push(setInterval(() => this.agentCycle(), 2 * 60 * 60 * 1000));
+    // Agent proactive cycle — every 1 hour
+    this.timers.push(setInterval(() => this.agentCycle(), 1 * 60 * 60 * 1000));
 
-    // Executive briefing — every 4 hours
-    this.timers.push(setInterval(() => this.executiveBriefing(), 4 * 60 * 60 * 1000));
+    // Executive briefing — every 3 hours
+    this.timers.push(setInterval(() => this.executiveBriefing(), 3 * 60 * 60 * 1000));
 
     // Initial startup sequence (aggressive — agents wake up FAST)
     setTimeout(() => this.healthCheck(), 10 * 1000);         // 10s after boot
@@ -442,7 +442,10 @@ class HeartbeatSystem {
   // ═══════════════════════════════════════════════════════════════
 
   async runWebMissions() {
-    if (!webEngine) return;
+    if (!webEngine) {
+      console.warn('💓 Heartbeat: Web missions skipped — web-action-engine not loaded');
+      return;
+    }
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: true, hour: 'numeric', minute: '2-digit' });
 

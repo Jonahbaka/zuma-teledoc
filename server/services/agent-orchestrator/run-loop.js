@@ -635,14 +635,16 @@ class RunLoop {
   shouldRunSchedule(def) {
     if (!def._lastRunAt) {
       def._lastRunAt = Date.now();
-      return false; // Don't run on first check
+      return true; // Run immediately on first check to avoid idle startup.
     }
 
     const intervals = {
       '5min': 5 * 60 * 1000,
       '15min': 15 * 60 * 1000,
       '30min': 30 * 60 * 1000,
+      '1hour': 60 * 60 * 1000,
       'hourly': 60 * 60 * 1000,
+      '4hours': 4 * 60 * 60 * 1000,
       'daily': 24 * 60 * 60 * 1000,
       '6hours': 6 * 60 * 60 * 1000
     };

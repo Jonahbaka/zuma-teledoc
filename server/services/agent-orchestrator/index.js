@@ -671,6 +671,17 @@ class AgentOrchestrator {
       await agent.resume();
     }
 
+    // Restart core runtime organs after emergency shutdown.
+    if (this.heartbeat) {
+      this.heartbeat.start();
+    }
+    if (this.skillLoader) {
+      this.skillLoader.startWatching(30000);
+    }
+    if (this.runLoop) {
+      this.runLoop.start(60000);
+    }
+
     this.operatingMode = 'observation';
     return { success: true, resumedAt: new Date().toISOString() };
   }
