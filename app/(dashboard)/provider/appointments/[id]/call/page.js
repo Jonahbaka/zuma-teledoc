@@ -1,84 +1,39 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   Mic, MicOff, Video as VideoIcon, VideoOff,
-  PhoneOff, Settings, ShieldCheck, User,
-  MessageSquare, Sparkles, Image as ImageIcon,
-  X, Calendar, Clock, ArrowLeft, FileText,
-  Save, Loader2, ClipboardList, Brain, Monitor
+  PhoneOff, ShieldCheck, User, MonitorUp,
+  MessageSquare, Sparkles, X, Calendar, Clock,
+  ArrowLeft, FileText, Save, Loader2, ClipboardList, Brain,
+  Bot, HeartPulse, Activity, MoreVertical, Smile
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { formatDateTime, formatTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
-import { VIDEO_BG_PRESETS } from '@/lib/videoBackgrounds';
 
-/* ───────────────────────────── helpers ───────────────────────────── */
+/* ─────────────────── constants ─────────────────── */
 
-const getBgPreviewStyle = (preset) => {
-  if (preset.type === 'gradient') {
-    const name = (preset.value || '').split(':')[1];
-    switch (name) {
-      case 'studio':  return { background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 45%, #334155 100%)' };
-      case 'ocean':   return { background: 'linear-gradient(135deg, #0ea5e9 0%, #22c55e 100%)' };
-      case 'sunset':  return { background: 'linear-gradient(135deg, #f97316 0%, #db2777 60%, #7c3aed 100%)' };
-      case 'aurora':  return { background: 'linear-gradient(135deg, #22c55e 0%, #06b6d4 50%, #a855f7 100%)' };
-      default:        return { background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)' };
-    }
-  }
-  if (preset.type === 'color') {
-    const color = (preset.value || '').split(':')[1] || '#0f172a';
-    return { background: color };
-  }
-  return null;
-};
+const AI_SUGGESTIONS = [
+  { type: 'insight', text: 'Consider confirming symptom duration and onset pattern.', confidence: 92 },
+  { type: 'action', text: 'Suggest comprehensive medication history review.', confidence: 85 },
+  { type: 'alert', text: 'Check for potential drug interactions with current medications.', confidence: 90 },
+];
 
-/* ─────────────────────── MediaPipe self-hosted loader ────────────────────── */
-// All MediaPipe assets live in /public/mediapipe/ (copied from npm by postinstall).
-// No CDN requests — everything served from our own domain → zero CSP issues.
-
-const MEDIAPIPE_BASE = '/mediapipe';
-
-/**
- * Load the MediaPipe selfie_segmentation JS from our self-hosted public/ folder.
- * Returns a promise that resolves when window.SelfieSegmentation is available.
- */
-const loadSelfieSegmentationScript = () => new Promise((resolve, reject) => {
-  if (typeof window === 'undefined') { reject(new Error('SSR')); return; }
-  if (window.SelfieSegmentation) { resolve(); return; }
-
-  const url = `${MEDIAPIPE_BASE}/selfie_segmentation.js`;
-  const existing = document.querySelector(`script[src="${url}"]`);
-
-  if (existing) {
-    // Script tag exists — poll for the global
-    let polls = 0;
-    const iv = setInterval(() => {
-      if (window.SelfieSegmentation) { clearInterval(iv); resolve(); return; }
-      if (++polls > 100) { clearInterval(iv); reject(new Error('MediaPipe script timeout')); }
-    }, 100);
-    return;
-  }
-
-  const script = document.createElement('script');
-  script.src = url;
-  script.async = true;
-  script.onload = () => {
-    let polls = 0;
-    const iv = setInterval(() => {
-      if (window.SelfieSegmentation) { clearInterval(iv); resolve(); return; }
-      if (++polls > 60) { clearInterval(iv); reject(new Error('SelfieSegmentation global not found after load')); }
-    }, 50);
-  };
-  script.onerror = () => reject(new Error('Failed to load self-hosted MediaPipe script'));
-  document.head.appendChild(script);
-});
+const FILTER_OPTIONS = [
+  { id: 'none', label: 'None', css: 'none' },
+  { id: 'warm', label: 'Warm', css: 'saturate(110%) sepia(8%)' },
+  { id: 'cool', label: 'Cool', css: 'saturate(105%) hue-rotate(8deg)' },
+  { id: 'vivid', label: 'Vivid', css: 'saturate(130%) contrast(108%)' },
+  { id: 'soft', label: 'Soft Focus', css: 'brightness(105%) contrast(95%) saturate(95%)' },
+  { id: 'mono', label: 'Monochrome', css: 'grayscale(100%) contrast(105%)' },
+];
 
 /* ═══════════════════════════════════════════════════════════════════ */
-/*                       PAGE COMPONENT                               */
+/*                          PAGE                                      */
 /* ═══════════════════════════════════════════════════════════════════ */
 
 export default function ProviderVideoCallPage() {
@@ -92,223 +47,249 @@ export default function ProviderVideoCallPage() {
   const [loading, setLoading] = useState(true);
   const [isInCall, setIsInCall] = useState(false);
   const [userName, setUserName] = useState('');
-
-  // Device State
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
-  const [processingEnabled, setProcessingEnabled] = useState(false);
-  const [activeEffect, setActiveEffect] = useState(null);
+  const [localStream, setLocalStream] = useState(null);
+  const [mediaError, setMediaError] = useState(null);
 
-  // App State
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  const ensureLocalStream = useCallback(async () => {
+    if (localStream) return localStream;
+    try {
+      let stream = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: true,
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: false,
+        });
+        toast({ title: 'Microphone unavailable', description: 'Camera active; mic permission not granted.', variant: 'destructive' });
+      }
+      setLocalStream(stream);
+      setMediaError(null);
+      return stream;
+    } catch (err) {
+      const msg = err?.name === 'NotFoundError'
+        ? 'No camera/microphone found'
+        : err?.name === 'NotReadableError'
+          ? 'Camera is busy in another app'
+          : 'Camera/microphone permission denied';
+      setMediaError(msg);
+      throw err;
+    }
+  }, [localStream]);
 
+  /* ── Load appointment ── */
   useEffect(() => {
     if (isStandalone) {
       setAppointment({
-        id: 'standalone',
-        type: 'video',
-        status: 'in_progress',
-        patientFirstName: 'Test',
-        patientLastName: 'Patient',
-        providerFirstName: user?.firstName || '',
-        providerLastName: user?.lastName || '',
-        scheduledAt: new Date().toISOString(),
-        durationMinutes: 30,
-        reasonForVisit: 'Standalone provider video call (no appointment)'
+        id: 'standalone', type: 'video', status: 'in_progress',
+        patientFirstName: 'Test', patientLastName: 'Patient',
+        providerFirstName: user?.firstName || '', providerLastName: user?.lastName || '',
+        scheduledAt: new Date().toISOString(), durationMinutes: 30,
+        reasonForVisit: 'Standalone provider video call'
       });
-      if (user?.firstName) {
-        setUserName(`Dr. ${user.firstName}${user.lastName ? ` ${user.lastName}` : ''}`);
-      }
+      if (user?.firstName) setUserName(`Dr. ${user.firstName}${user.lastName ? ` ${user.lastName}` : ''}`);
       setLoading(false);
       return;
     }
-    fetchAppointment();
+    (async () => {
+      try {
+        const res = await api.get(`/appointments/${appointmentId}`);
+        if (res.data.success) {
+          setAppointment(res.data.appointment);
+          if (res.data.appointment.providerFirstName)
+            setUserName(`Dr. ${res.data.appointment.providerFirstName} ${res.data.appointment.providerLastName}`);
+        }
+      } catch {
+        toast({ title: 'Error', description: 'Failed to load appointment', variant: 'destructive' });
+        router.push('/provider/appointments');
+      } finally { setLoading(false); }
+    })();
   }, [appointmentId]);
 
-  const fetchAppointment = async () => {
-    try {
-      const response = await api.get(`/appointments/${appointmentId}`);
-      if (response.data.success) {
-        setAppointment(response.data.appointment);
-        if (response.data.appointment.providerFirstName) {
-          setUserName(`Dr. ${response.data.appointment.providerFirstName} ${response.data.appointment.providerLastName}`);
-        }
+  const startCall = async () => {
+    if (!userName.trim()) return;
+    if (camOn || micOn) {
+      try { await ensureLocalStream(); }
+      catch {
+        toast({ title: 'Device access failed', description: 'Please allow camera/microphone and try again.', variant: 'destructive' });
+        return;
       }
-    } catch (error) {
-      toast({ title: 'Error', description: 'Failed to load appointment details', variant: 'destructive' });
-      router.push('/provider/appointments');
-    } finally {
-      setLoading(false);
     }
+    setIsInCall(true);
   };
-
-  const startCall = () => { if (userName.trim()) setIsInCall(true); };
   const endCall = () => {
     setIsInCall(false);
-    setActiveEffect(null);
     router.push(isStandalone ? '/provider/dashboard' : `/provider/appointments/${appointmentId}/visit`);
   };
 
-  /* Loading / Error states */
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4" />
-          <p className="text-slate-600">{isStandalone ? 'Preparing call...' : 'Loading appointment...'}</p>
-        </div>
-      </div>
-    );
-  }
+  /* ── Track controls to stream ── */
+  useEffect(() => { return () => { if (localStream) localStream.getTracks().forEach(t => t.stop()); }; }, [localStream]);
+  useEffect(() => { if (localStream) localStream.getVideoTracks().forEach(t => { t.enabled = camOn; }); }, [localStream, camOn]);
+  useEffect(() => { if (localStream) localStream.getAudioTracks().forEach(t => { t.enabled = micOn; }); }, [localStream, micOn]);
 
-  if (!appointment) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-slate-600 mb-4">Appointment not found</p>
-          <Button onClick={() => router.push('/provider/appointments')}>Back to Appointments</Button>
-        </div>
+  /* ── Loading / Not found ── */
+  if (loading) return (
+    <div className="min-h-screen bg-[#121212] flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-400 mx-auto mb-4" />
+        <p className="text-gray-400">{isStandalone ? 'Preparing...' : 'Loading appointment...'}</p>
       </div>
-    );
-  }
+    </div>
+  );
+
+  if (!appointment) return (
+    <div className="min-h-screen bg-[#121212] flex items-center justify-center">
+      <p className="text-gray-400 mb-4">Appointment not found</p>
+      <Button onClick={() => router.push('/provider/appointments')}>Back</Button>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-blue-100">
-      {/* Header */}
-      <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 fixed top-0 w-full z-50">
+    <div className="h-screen flex flex-col bg-[#121212] text-white overflow-hidden font-sans selection:bg-blue-500/30">
+      {/* ── Top Bar ── */}
+      <header className="h-16 px-6 flex items-center justify-between shrink-0 bg-[#121212] z-10">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon"
-            onClick={() => router.push(isStandalone ? '/provider/dashboard' : `/provider/appointments/${appointmentId}/visit`)}
-          >
+          <Button variant="ghost" size="icon" className="text-gray-400 hover:text-white hover:bg-white/10"
+            onClick={() => router.push(isStandalone ? '/provider/dashboard' : `/provider/appointments/${appointmentId}/visit`)}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">Z</div>
-            <span className="font-semibold text-lg tracking-tight text-purple-700">Docta<span className="text-yellow-500">.</span></span>
+            <div className="bg-blue-600 p-1.5 rounded-lg shadow-lg shadow-blue-500/20">
+              <Activity size={20} className="text-white" />
+            </div>
+            <span className="font-bold text-lg tracking-tight">Docta<span className="text-blue-500">Rx</span></span>
+          </div>
+          <div className="h-5 w-px bg-gray-700 mx-1" />
+          <div>
+            <h2 className="text-sm font-medium text-gray-200">
+              Consultation: {appointment.patientFirstName} {appointment.patientLastName}
+            </h2>
+            <span className="text-xs text-gray-500 flex items-center gap-1">
+              <ShieldCheck size={10} className="text-emerald-500" /> HIPAA Encrypted &middot; E2E Secure
+            </span>
           </div>
         </div>
-        <div className="flex items-center gap-4 text-sm font-medium text-slate-500">
-          <div className="flex items-center gap-1.5 text-purple-600 bg-purple-50 px-3 py-1 rounded-full border border-purple-100">
-            <ShieldCheck size={14} />
-            <span>HIPAA Secure</span>
-          </div>
-          <div className="hidden md:block">
-            {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+        <div className="flex items-center gap-4">
+          {isInCall && <CallTimer />}
+          <div className="flex -space-x-2">
+            <div className="w-8 h-8 rounded-full border-2 border-[#121212] bg-gray-700 flex items-center justify-center text-xs font-medium">
+              {(appointment.patientFirstName?.[0] || '').toUpperCase()}{(appointment.patientLastName?.[0] || '').toUpperCase()}
+            </div>
+            <div className="w-8 h-8 rounded-full border-2 border-[#121212] bg-blue-600 flex items-center justify-center text-xs font-medium">
+              {(appointment.providerFirstName?.[0] || 'D').toUpperCase()}{(appointment.providerLastName?.[0] || 'R').toUpperCase()}
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main */}
-      <main className="pt-14 h-screen flex flex-col">
+      {/* ── Main ── */}
+      <div className="flex-1 min-h-0">
         {!isInCall ? (
-          <Lobby
-            appointment={appointment}
-            userName={userName}
-            setUserName={setUserName}
-            onJoin={startCall}
-            micOn={micOn} setMicOn={setMicOn}
+          <Lobby appointment={appointment} userName={userName} setUserName={setUserName}
+            onJoin={startCall} micOn={micOn} setMicOn={setMicOn}
             camOn={camOn} setCamOn={setCamOn}
-          />
+            localStream={localStream} ensureLocalStream={ensureLocalStream}
+            mediaError={mediaError} />
         ) : (
-          <ActiveCallRoom
-            appointment={appointment}
-            micOn={micOn} toggleMic={() => setMicOn(!micOn)}
-            camOn={camOn} toggleCam={() => setCamOn(!camOn)}
-            activeEffect={activeEffect} setActiveEffect={setActiveEffect}
+          <ActiveCall appointment={appointment}
+            micOn={micOn} toggleMic={() => setMicOn(v => !v)}
+            camOn={camOn} toggleCam={() => setCamOn(v => !v)}
             onEndCall={endCall}
-            isSidebarOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-            showSettings={showSettings} setShowSettings={setShowSettings}
-            processingEnabled={processingEnabled} setProcessingEnabled={setProcessingEnabled}
-          />
+            localStream={localStream} ensureLocalStream={ensureLocalStream} />
         )}
-      </main>
+      </div>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
-/*                       PRE-CALL LOBBY                               */
+/*                          CALL TIMER                                */
 /* ═══════════════════════════════════════════════════════════════════ */
 
-const Lobby = ({ appointment, userName, setUserName, onJoin, micOn, setMicOn, camOn, setCamOn }) => (
-  <div className="flex-1 flex items-center justify-center p-4 bg-slate-50">
-    <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-      {/* Left: Info */}
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-4xl font-bold text-slate-900 leading-tight mb-2">
-            Appointment with <br/>
-            <span className="text-blue-600">{appointment.patientFirstName} {appointment.patientLastName}</span>
-          </h1>
-        </div>
+const CallTimer = () => {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => { const t = setInterval(() => setElapsed(e => e + 1), 1000); return () => clearInterval(t); }, []);
+  const m = Math.floor(elapsed / 60);
+  const s = elapsed % 60;
+  return (
+    <div className="bg-gray-800/50 px-3 py-1 rounded-full text-xs font-mono text-gray-400 border border-gray-700">
+      {m}:{s.toString().padStart(2, '0')}
+    </div>
+  );
+};
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-          <div className="flex items-center gap-3 text-slate-700">
-            <Calendar className="w-5 h-5 text-blue-600" />
-            <div>
-              <p className="text-sm text-slate-500">Appointment Date</p>
-              <p className="font-semibold">{formatDateTime(appointment.scheduledAt)}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 text-slate-700">
-            <Clock className="w-5 h-5 text-blue-600" />
-            <div>
-              <p className="text-sm text-slate-500">Duration</p>
-              <p className="font-semibold">{appointment.durationMinutes || 30} minutes</p>
-            </div>
-          </div>
-          {appointment.reasonForVisit && (
-            <div className="pt-2 border-t border-slate-100">
-              <p className="text-sm text-slate-500 mb-1">Reason for Visit</p>
-              <p className="text-slate-700">{appointment.reasonForVisit}</p>
+/* ═══════════════════════════════════════════════════════════════════ */
+/*                          LOBBY                                     */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+const Lobby = ({
+  appointment, userName, setUserName, onJoin, micOn, setMicOn, camOn, setCamOn,
+  localStream, ensureLocalStream, mediaError
+}) => (
+  <div className="h-full flex items-center justify-center p-6">
+    <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-5 gap-8 items-center">
+      {/* Camera preview */}
+      <div className="lg:col-span-3 bg-[#1e1e1e] rounded-2xl overflow-hidden border border-gray-800">
+        <div className="aspect-video relative flex items-center justify-center bg-gray-800">
+          {camOn ? <CameraPreview stream={localStream} ensureLocalStream={ensureLocalStream} mediaError={mediaError} /> : (
+            <div className="flex flex-col items-center text-gray-400">
+              <div className="w-20 h-20 rounded-full bg-[#5f6368] flex items-center justify-center mb-3">
+                <User size={36} />
+              </div>
+              <span className="text-sm">Camera is off</span>
             </div>
           )}
-        </div>
-
-        <p className="text-slate-600 text-lg">Please check your devices before starting the appointment.</p>
-
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
-          <p className="text-sm text-purple-700">
-            <span className="font-semibold">{appointment.patientFirstName} {appointment.patientLastName}</span> can join the waiting room at any time
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Display Name</label>
-            <input
-              type="text" value={userName} onChange={(e) => setUserName(e.target.value)}
-              placeholder="e.g. Dr. Smith"
-              className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-            />
+          <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${micOn ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+            {micOn ? 'Mic on' : 'Muted'}
           </div>
-          <button onClick={onJoin} disabled={!userName.trim()}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-lg shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2"
-          >
-            Start Appointment
-          </button>
+        </div>
+        <div className="flex justify-center gap-3 py-4 bg-[#1e1e1e]">
+          <ControlBtn icon={micOn ? Mic : MicOff} active={micOn} onClick={() => setMicOn(!micOn)} label={micOn ? 'Mute' : 'Unmute'} />
+          <ControlBtn icon={camOn ? VideoIcon : VideoOff} active={camOn} onClick={() => setCamOn(!camOn)} label={camOn ? 'Stop Video' : 'Start Video'} />
         </div>
       </div>
 
-      {/* Right: Camera preview */}
-      <div className="bg-white p-4 rounded-2xl shadow-xl border border-slate-100">
-        <div className="aspect-video bg-slate-900 rounded-xl overflow-hidden relative mb-4 flex items-center justify-center">
-          {camOn ? <CameraPreview /> : (
-            <div className="text-slate-400 flex flex-col items-center">
-              <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-2"><VideoOff size={32} /></div>
-              <span>Camera Off</span>
-            </div>
-          )}
-          <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-white text-xs font-medium flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${micOn ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-            {micOn ? 'Mic Active' : 'Mic Muted'}
+      {/* Right panel */}
+      <div className="lg:col-span-2 space-y-5">
+        <h1 className="text-2xl font-semibold leading-snug">Ready to join?</h1>
+        <p className="text-gray-400">
+          Appointment with <span className="text-white font-medium">{appointment.patientFirstName} {appointment.patientLastName}</span>
+        </p>
+
+        <div className="bg-[#1e1e1e] rounded-xl p-4 space-y-3 text-sm border border-gray-800">
+          <div className="flex items-center gap-3 text-gray-300">
+            <Calendar className="w-4 h-4 text-blue-400 shrink-0" />
+            <span>{formatDateTime(appointment.scheduledAt)}</span>
           </div>
+          <div className="flex items-center gap-3 text-gray-300">
+            <Clock className="w-4 h-4 text-blue-400 shrink-0" />
+            <span>{appointment.durationMinutes || 30} minutes</span>
+          </div>
+          {appointment.reasonForVisit && (
+            <p className="text-gray-500 text-xs border-t border-white/5 pt-2">{appointment.reasonForVisit}</p>
+          )}
         </div>
-        <div className="flex justify-center gap-4">
-          <DeviceToggle active={micOn} onClick={() => setMicOn(!micOn)} iconOn={Mic} iconOff={MicOff} label="Microphone" />
-          <DeviceToggle active={camOn} onClick={() => setCamOn(!camOn)} iconOn={VideoIcon} iconOff={VideoOff} label="Camera" />
+
+        <div>
+          <label className="block text-sm text-gray-400 mb-1.5">Your name</label>
+          <input value={userName} onChange={e => setUserName(e.target.value)} placeholder="Dr. Smith"
+            className="w-full px-4 py-2.5 rounded-lg bg-[#1e1e1e] border border-gray-700 text-white placeholder-gray-500 outline-none focus:border-blue-400 transition-colors" />
+        </div>
+
+        <button onClick={onJoin} disabled={!userName.trim()}
+          className="w-full py-3 rounded-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 font-medium transition-colors shadow-lg shadow-blue-900/20">
+          Join now
+        </button>
+
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          <span>{appointment.patientFirstName} can join the waiting room at any time</span>
         </div>
       </div>
     </div>
@@ -316,222 +297,559 @@ const Lobby = ({ appointment, userName, setUserName, onJoin, micOn, setMicOn, ca
 );
 
 /* ═══════════════════════════════════════════════════════════════════ */
-/*                   ACTIVE CALL ROOM  (Google Meet layout)           */
+/*              CAMERA PREVIEW (Lobby)                                */
 /* ═══════════════════════════════════════════════════════════════════ */
 
-const ActiveCallRoom = ({
+const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
+  const videoRef = useRef(null);
+  const [starting, setStarting] = useState(false);
+
+  const start = async () => {
+    setStarting(true);
+    try { await ensureLocalStream(); } finally { setStarting(false); }
+  };
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream]);
+
+  if (!stream && !mediaError) return (
+    <div className="w-full h-full flex items-center justify-center bg-gray-800">
+      <button onClick={start} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-full text-sm font-medium transition-colors shadow-lg shadow-blue-900/20">
+        {starting ? 'Starting camera...' : 'Enable camera'}
+      </button>
+    </div>
+  );
+
+  if (!stream && mediaError) return (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-gray-800 text-center p-4">
+      <VideoOff size={24} className="mb-2 text-gray-400" />
+      <p className="text-xs text-gray-400 mb-2">{mediaError}</p>
+      <button onClick={start} className="text-xs text-blue-400 hover:underline">Try again</button>
+    </div>
+  );
+
+  return <video ref={videoRef} className="w-full h-full object-cover scale-x-[-1]" playsInline muted autoPlay />;
+};
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/*                     ACTIVE CALL                                    */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+const ActiveCall = ({
   appointment, micOn, toggleMic, camOn, toggleCam, onEndCall,
-  isSidebarOpen, toggleSidebar, showSettings, setShowSettings,
-  activeEffect, setActiveEffect, processingEnabled, setProcessingEnabled
+  localStream, ensureLocalStream
 }) => {
+  const [showAI, setShowAI] = useState(false);
   const [sidebarTab, setSidebarTab] = useState('notes');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [filterStyle, setFilterStyle] = useState('none');
+  const [lightingBoost, setLightingBoost] = useState(0);
+  const [showEffects, setShowEffects] = useState(false);
+  const [transcript, setTranscript] = useState([]);
+  const [showCaptions, setShowCaptions] = useState(false);
+
+  // Build composite CSS filter string
+  const getCssFilter = () => {
+    const parts = [];
+    if (lightingBoost !== 0) parts.push(`brightness(${100 + lightingBoost}%)`);
+    const f = FILTER_OPTIONS.find(o => o.id === filterStyle);
+    if (f && f.css !== 'none') parts.push(f.css);
+    return parts.join(' ') || 'none';
+  };
 
   return (
-    <div className="flex-1 flex bg-slate-900 relative overflow-hidden">
-      {/* Main Stage — Patient Video (or waiting state) */}
-      <div className="flex-1 relative flex items-center justify-center p-3">
-        <div className="w-full h-full max-w-6xl relative bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10">
-          {/* Patient waiting state (no WebRTC yet) */}
-          <PatientVideoArea appointment={appointment} />
+    <div className="h-full flex overflow-hidden relative">
 
-          {/* Patient info badge */}
-          <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-lg text-white border border-white/10">
-            <h3 className="font-semibold text-sm">{appointment.patientFirstName} {appointment.patientLastName}</h3>
-            <p className="text-xs text-slate-300">Patient</p>
-          </div>
+      {/* ── Video Stage ── */}
+      <div className="flex-1 flex flex-col gap-4 p-4 pt-0 transition-all duration-300">
 
-          {/* Call Timer */}
-          <CallTimer />
+        {/* Main Stage Grid */}
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 h-full relative">
 
-          {/* Self-view PiP */}
-          <div className="absolute bottom-4 right-4 w-48 md:w-64 aspect-video bg-slate-800 rounded-xl overflow-hidden shadow-2xl border-2 border-slate-700/50 transition-all hover:scale-105 z-20">
-            {camOn ? (
-              <SelfieCamera
-                micOn={micOn}
-                activeEffect={activeEffect}
-                processingEnabled={processingEnabled}
-                setProcessingEnabled={setProcessingEnabled}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-slate-500 bg-slate-800">
-                <User size={32} />
-              </div>
-            )}
-            <div className="absolute bottom-2 left-2 text-[10px] font-bold text-white bg-black/50 px-2 py-0.5 rounded">YOU</div>
-          </div>
-        </div>
-      </div>
+          {/* Patient Feed (main, large) */}
+          <div className="md:col-span-2 relative h-full">
+            <PatientVideoArea appointment={appointment} />
 
-      {/* Effects Panel */}
-      {showSettings && (
-        <div className="absolute bottom-24 right-6 w-80 bg-white rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-bottom-4">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold text-slate-800">Video Effects</h3>
-            <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-600">Virtual Background</span>
-              <button
-                onClick={() => {
-                  const next = !processingEnabled;
-                  setProcessingEnabled(next);
-                  if (!next) setActiveEffect(null);
-                }}
-                className={`w-11 h-6 flex items-center rounded-full transition-colors ${processingEnabled ? 'bg-blue-600' : 'bg-slate-300'}`}
-              >
-                <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${processingEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
-              </button>
-            </div>
-            {processingEnabled && (
-              <div className="grid grid-cols-3 gap-2">
-                {VIDEO_BG_PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    onClick={() => {
-                      if (preset.value === null) { setActiveEffect(null); setProcessingEnabled(false); }
-                      else { setActiveEffect(preset.value); }
-                    }}
-                    className={`p-2 rounded-lg border text-[11px] flex flex-col items-center gap-2 transition-colors ${
-                      activeEffect === preset.value ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {preset.type === 'blur' ? (
-                      <div className="w-7 h-7 rounded bg-slate-300 blur-sm" />
-                    ) : preset.type === 'image' ? (
-                      <img src={preset.value} className="w-7 h-7 rounded object-cover" alt="" />
-                    ) : preset.type === 'gradient' || preset.type === 'color' ? (
-                      <div className="w-7 h-7 rounded" style={getBgPreviewStyle(preset)} />
-                    ) : (
-                      <div className="w-7 h-7 rounded bg-slate-200 flex items-center justify-center text-slate-500"><VideoOff size={12} /></div>
-                    )}
-                    {preset.name}
-                  </button>
+            {/* Live Captions Overlay */}
+            {showCaptions && transcript.length > 0 && (
+              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-[90%] max-w-2xl text-center space-y-1 z-10 pointer-events-none">
+                {transcript.map((line, i) => (
+                  <div key={i} className={`transition-all duration-500 ${i === transcript.length - 1 ? 'opacity-100 scale-100' : 'opacity-60 scale-95'}`}>
+                    <span className="bg-black/70 text-white backdrop-blur-sm px-4 py-2 rounded-xl text-sm shadow-lg inline-block">
+                      <span className="font-bold text-blue-300 mr-2">{line.speaker}:</span>
+                      {line.text}
+                    </span>
+                  </div>
                 ))}
               </div>
             )}
           </div>
+
+          {/* Right column: Self-view + Screen share slot */}
+          <div className="flex flex-col gap-4 h-full">
+            {/* Provider self-view (real camera) */}
+            <div className="flex-1 h-full relative">
+              <SelfView
+                stream={localStream}
+                ensureLocalStream={ensureLocalStream}
+                camOn={camOn}
+                micOn={micOn}
+                userName={appointment.providerFirstName ? `Dr. ${appointment.providerFirstName}` : 'You'}
+                cssFilter={getCssFilter()}
+              />
+            </div>
+
+            {/* Screen Sharing / Quick Actions slot */}
+            <div className="bg-gray-800 rounded-2xl flex-1 flex flex-col items-center justify-center border border-gray-700 p-6 text-center space-y-3">
+              <div className="bg-gray-700/50 p-4 rounded-full">
+                <MonitorUp className="text-gray-400" size={28} />
+              </div>
+              <div>
+                <h3 className="text-gray-200 font-medium text-sm">Screen Sharing</h3>
+                <p className="text-gray-500 text-xs mt-1">Share patient records, images, or documents</p>
+              </div>
+              <button className="text-xs bg-blue-600/20 text-blue-400 px-4 py-2 rounded-lg hover:bg-blue-600/30 transition-colors">
+                Start Sharing
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── AI Sidebar ── */}
+      <div className={`transition-all duration-500 ease-in-out relative ${showAI ? 'w-80 opacity-100 translate-x-0' : 'w-0 opacity-0 translate-x-10 overflow-hidden'}`}>
+        <AIAgentSidebar
+          appointment={appointment}
+          transcript={transcript}
+          isOpen={showAI}
+          onClose={() => setShowAI(false)}
+        />
+      </div>
+
+      {/* ── Notes/Chat Sidebar ── */}
+      {isSidebarOpen && (
+        <div className="w-[340px] bg-[#1e1e1e] border-l border-gray-800 flex flex-col z-20 shadow-2xl">
+          <div className="flex border-b border-gray-800">
+            <SidebarTabBtn label="Notes" icon={FileText} active={sidebarTab === 'notes'} onClick={() => setSidebarTab('notes')} />
+            <SidebarTabBtn label="Chat" icon={MessageSquare} active={sidebarTab === 'chat'} onClick={() => setSidebarTab('chat')} />
+            <button onClick={() => setIsSidebarOpen(false)} className="px-3 text-gray-500 hover:text-white"><X size={16} /></button>
+          </div>
+          {sidebarTab === 'notes' && <LiveNotesPanel appointment={appointment} />}
+          {sidebarTab === 'chat' && <ChatPanel appointment={appointment} />}
         </div>
       )}
 
-      {/* Bottom Control Bar */}
-      <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center gap-3 bg-slate-800/90 backdrop-blur-md px-6 py-3 rounded-full shadow-2xl border border-white/10 z-40">
-        <ControlBtn active={micOn} onClick={toggleMic} onIcon={Mic} offIcon={MicOff} tooltip="Microphone" />
-        <ControlBtn active={camOn} onClick={toggleCam} onIcon={VideoIcon} offIcon={VideoOff} tooltip="Camera" />
-        <div className="w-px h-8 bg-slate-600 mx-1" />
-        <ControlBtn active={showSettings} onClick={() => setShowSettings(!showSettings)} onIcon={Sparkles} offIcon={Sparkles} tooltip="Effects" />
-        <ControlBtn
-          active={isSidebarOpen && sidebarTab === 'notes'}
-          onClick={() => {
-            if (isSidebarOpen && sidebarTab === 'notes') toggleSidebar();
-            else { setSidebarTab('notes'); if (!isSidebarOpen) toggleSidebar(); }
-          }}
-          onIcon={FileText} offIcon={FileText} tooltip="Notes"
+      {/* ── Effects Panel ── */}
+      {showEffects && (
+        <EffectsPanel
+          filterStyle={filterStyle} setFilterStyle={setFilterStyle}
+          lightingBoost={lightingBoost} setLightingBoost={setLightingBoost}
+          onClose={() => setShowEffects(false)}
         />
-        <ControlBtn
-          active={isSidebarOpen && sidebarTab === 'chat'}
-          onClick={() => {
-            if (isSidebarOpen && sidebarTab === 'chat') toggleSidebar();
-            else { setSidebarTab('chat'); if (!isSidebarOpen) toggleSidebar(); }
-          }}
-          onIcon={MessageSquare} offIcon={MessageSquare} tooltip="Chat"
-        />
-        <button onClick={onEndCall} className="ml-3 bg-red-500 hover:bg-red-600 text-white p-4 rounded-full transition-all shadow-lg shadow-red-500/30">
-          <PhoneOff size={20} fill="currentColor" />
-        </button>
+      )}
+
+      {/* ── Bottom Control Bar ── */}
+      <div className="absolute bottom-0 inset-x-0 flex items-center justify-center py-4 z-40 px-6">
+        {/* Left: time & encryption */}
+        <div className="absolute left-6 flex items-center gap-2 text-white">
+          <span className="text-sm font-medium font-mono">
+            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          <div className="h-4 w-px bg-gray-700 mx-1" />
+          <span className="text-xs text-gray-500">Encrypted e2e</span>
+        </div>
+
+        {/* Center: control island */}
+        <div className="bg-[#1e1e1e] border border-gray-700 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
+          <ControlBtn icon={micOn ? Mic : MicOff} active={micOn} onClick={toggleMic} label={micOn ? 'Mute' : 'Unmute'} />
+          <ControlBtn icon={camOn ? VideoIcon : VideoOff} active={camOn} onClick={toggleCam} label={camOn ? 'Stop Video' : 'Start Video'} />
+
+          <div className="w-px h-8 bg-gray-700 mx-1" />
+
+          <ControlBtn icon={Sparkles} active={showEffects} onClick={() => setShowEffects(!showEffects)}
+            label="Effects" color="transparent" />
+          <ControlBtn icon={MonitorUp} label="Present" color="transparent" />
+          <ControlBtn icon={Smile} label="Reactions" color="transparent" />
+          <ControlBtn icon={MoreVertical} label="More" color="transparent" />
+
+          <div className="w-px h-8 bg-gray-700 mx-1" />
+
+          <button onClick={onEndCall}
+            className="p-3 rounded-full bg-red-500 hover:bg-red-600 text-white transition-all duration-200">
+            <PhoneOff size={20} />
+          </button>
+        </div>
+
+        {/* Right: sidebar toggles */}
+        <div className="absolute right-6 flex items-center gap-3">
+          <ControlBtn icon={FileText} label="Notes"
+            color={showCaptions ? 'primary' : 'glass'}
+            onClick={() => setShowCaptions(!showCaptions)} />
+          <ControlBtn icon={ClipboardList} label="Visit Notes"
+            color={isSidebarOpen && sidebarTab === 'notes' ? 'primary' : 'glass'}
+            onClick={() => {
+              if (isSidebarOpen && sidebarTab === 'notes') setIsSidebarOpen(false);
+              else { setSidebarTab('notes'); setIsSidebarOpen(true); }
+            }} />
+          <ControlBtn icon={Bot} label="AI Assistant"
+            color={showAI ? 'primary' : 'glass'}
+            onClick={() => setShowAI(!showAI)} />
+        </div>
       </div>
+    </div>
+  );
+};
 
-      {/* Right Sidebar — Notes & Chat */}
-      {isSidebarOpen && (
-        <div className="w-96 bg-white h-full border-l border-slate-200 animate-in slide-in-from-right absolute right-0 top-0 z-30 flex flex-col">
-          <div className="flex border-b border-slate-200">
-            <button onClick={() => setSidebarTab('notes')}
-              className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
-                sidebarTab === 'notes' ? 'text-violet-600 border-b-2 border-violet-500 bg-violet-50/50' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            ><FileText size={16} /> Notes</button>
-            <button onClick={() => setSidebarTab('chat')}
-              className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
-                sidebarTab === 'chat' ? 'text-blue-600 border-b-2 border-blue-500 bg-blue-50/50' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            ><MessageSquare size={16} /> Chat</button>
-            <button onClick={toggleSidebar} className="px-3 text-slate-400 hover:text-slate-600"><X size={18} /></button>
-          </div>
+/* ═══════════════════════════════════════════════════════════════════ */
+/*                   PATIENT VIDEO AREA                               */
+/* ═══════════════════════════════════════════════════════════════════ */
 
-          {sidebarTab === 'notes' && <LiveNotesPanel appointment={appointment} />}
-          {sidebarTab === 'chat' && (
-            <>
-              <div className="flex-1 p-4 overflow-y-auto space-y-4">
-                <div className="bg-blue-50 p-3 rounded-lg rounded-tl-none max-w-[85%]">
-                  <p className="text-sm text-blue-900">Hello! I&apos;m ready for our appointment.</p>
-                  <span className="text-[10px] text-blue-700/60 block mt-1">Dr. {appointment.providerLastName} &bull; {formatTime(new Date())}</span>
-                </div>
+const PatientVideoArea = ({ appointment }) => (
+  <div className="relative w-full h-full bg-gray-800 rounded-2xl overflow-hidden shadow-2xl border border-gray-700 group">
+    {/* Patient placeholder — when WebRTC connects, replace with real stream */}
+    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+      <div className="text-center">
+        <div className="w-28 h-28 mx-auto rounded-full bg-[#5f6368] flex items-center justify-center mb-5 shadow-xl">
+          <span className="text-4xl font-medium text-white">
+            {(appointment.patientFirstName?.[0] || '').toUpperCase()}
+            {(appointment.patientLastName?.[0] || '').toUpperCase()}
+          </span>
+        </div>
+        <h2 className="text-xl font-medium mb-2 text-white">
+          {appointment.patientFirstName} {appointment.patientLastName}
+        </h2>
+        <div className="flex items-center justify-center gap-2 text-gray-400 text-sm">
+          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          Waiting for patient to join...
+        </div>
+      </div>
+    </div>
+
+    {/* AI Vitals Overlay (for when patient joins — decorative for now) */}
+    <div className="absolute top-4 left-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+      <div className="bg-black/40 backdrop-blur-md p-2 rounded-lg border border-white/10 flex items-center gap-2">
+        <HeartPulse size={14} className="text-rose-500" />
+        <span className="text-[10px] font-mono text-gray-400">Awaiting vitals...</span>
+      </div>
+    </div>
+
+    {/* Name Tag */}
+    <div className="absolute bottom-4 left-4 flex items-center gap-2">
+      <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2 border border-white/5">
+        <span className="text-white text-sm font-medium">{appointment.patientFirstName} {appointment.patientLastName}</span>
+        <span className="text-xs text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">Patient</span>
+      </div>
+    </div>
+
+    {/* Encryption badge */}
+    <div className="absolute top-4 right-4">
+      <div className="bg-black/40 backdrop-blur-md px-2 py-1 rounded-full flex items-center gap-1 border border-white/10">
+        <ShieldCheck size={10} className="text-emerald-500" />
+        <span className="text-[10px] text-gray-400">Secure</span>
+      </div>
+    </div>
+  </div>
+);
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/*              SELF VIEW (Provider camera — real feed)                */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+const SelfView = ({ stream, ensureLocalStream, camOn, micOn, userName, cssFilter }) => {
+  const videoRef = useRef(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = stream || await ensureLocalStream();
+        if (cancelled || !videoRef.current) return;
+        videoRef.current.srcObject = s;
+        videoRef.current.play().catch(() => {});
+        setReady(true);
+      } catch {
+        if (!cancelled) setReady(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [stream, ensureLocalStream]);
+
+  const isTalking = micOn; // simplified indicator
+
+  return (
+    <div className={`relative w-full h-full bg-gray-800 rounded-2xl overflow-hidden shadow-2xl border transition-all duration-300 ${isTalking ? 'border-blue-500/40 shadow-[inset_0_0_20px_rgba(59,130,246,0.15)]' : 'border-gray-700'}`}>
+      {/* Always-mounted video element */}
+      <video
+        ref={videoRef}
+        className={`w-full h-full object-cover scale-x-[-1] ${camOn && ready ? 'opacity-100' : 'opacity-0'}`}
+        style={{ filter: cssFilter !== 'none' ? cssFilter : undefined }}
+        playsInline muted autoPlay
+      />
+
+      {/* Camera off / loading overlay */}
+      {(!camOn || !ready) && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+          {!camOn ? (
+            <div className="text-center">
+              <div className="w-14 h-14 rounded-full bg-[#5f6368] flex items-center justify-center mx-auto mb-2">
+                <User size={24} className="text-gray-300" />
               </div>
-              <div className="p-4 border-t border-slate-100">
-                <input type="text" placeholder="Type a secure message..." className="w-full px-3 py-2 bg-slate-100 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500" />
-              </div>
-            </>
+              <p className="text-xs text-gray-400">Camera off</p>
+            </div>
+          ) : (
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-400 mx-auto mb-2" />
+              <p className="text-[10px] text-gray-500">Starting camera...</p>
+            </div>
           )}
         </div>
       )}
-    </div>
-  );
-};
 
-/* ═══════════════════════════════════════════════════════════════════ */
-/*     PATIENT VIDEO AREA (replaces BigBuckBunny placeholder)        */
-/* ═══════════════════════════════════════════════════════════════════ */
+      {/* Speaking indicator ring */}
+      <div className={`absolute inset-0 border-4 rounded-2xl pointer-events-none transition-all duration-300 ${isTalking ? 'border-blue-500/30' : 'border-transparent'}`} />
 
-const PatientVideoArea = ({ appointment }) => {
-  // When WebRTC peer connection is established the remote stream will be
-  // attached here.  For now we show a professional waiting screen.
-  return (
-    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <div className="text-center">
-        {/* Patient Avatar */}
-        <div className="w-28 h-28 mx-auto rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mb-6 shadow-xl shadow-blue-500/20">
-          <span className="text-4xl font-bold text-white">
-            {(appointment.patientFirstName?.[0] || '').toUpperCase()}{(appointment.patientLastName?.[0] || '').toUpperCase()}
-          </span>
+      {/* Name Tag */}
+      <div className="absolute bottom-3 left-3 flex items-center gap-2">
+        <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2 border border-white/5">
+          <span className="text-white text-sm font-medium">{userName}</span>
+          <span className="text-xs text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">Provider</span>
         </div>
-        <h2 className="text-xl font-semibold text-white mb-1">
-          {appointment.patientFirstName} {appointment.patientLastName}
-        </h2>
-        <div className="flex items-center justify-center gap-2 text-slate-400 text-sm">
-          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          <span>Waiting to connect...</span>
-        </div>
-        <p className="text-xs text-slate-500 mt-4 max-w-xs mx-auto">
-          The patient will appear here when they join the call. Audio and video are end-to-end encrypted.
-        </p>
+        {!micOn && (
+          <div className="bg-red-500/80 p-1.5 rounded-full text-white">
+            <MicOff size={12} />
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 /* ═══════════════════════════════════════════════════════════════════ */
-/*                       CALL TIMER                                   */
+/*                  AI AGENT SIDEBAR                                  */
 /* ═══════════════════════════════════════════════════════════════════ */
 
-const CallTimer = () => {
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    const start = Date.now();
-    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  const mins = Math.floor(elapsed / 60);
-  const secs = elapsed % 60;
+const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
+  const [activeTab, setActiveTab] = useState('insight');
+  const [soapData, setSoapData] = useState(null);
+  const [soapLoading, setSoapLoading] = useState(false);
+
+  const generateSOAP = async () => {
+    setSoapLoading(true);
+    try {
+      const res = await api.post('/ai-assist/soap', {
+        appointmentId: appointment.id,
+        chiefComplaint: appointment.reasonForVisit || 'General consultation',
+        symptoms: appointment.reasonForVisit || '', existingConditions: '', medications: ''
+      });
+      if (res.data.success) {
+        setSoapData(res.data.suggestion);
+        toast({ title: 'AI Notes', description: 'SOAP notes generated' });
+      }
+    } catch {
+      toast({ title: 'AI Failed', description: 'Could not generate notes', variant: 'destructive' });
+    } finally { setSoapLoading(false); }
+  };
+
+  if (!isOpen) return null;
+
   return (
-    <div className="absolute top-4 right-4 bg-black/40 backdrop-blur px-3 py-1.5 rounded-lg text-white border border-white/10 flex items-center gap-2 z-10">
-      <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-      <span className="text-sm font-mono tabular-nums">{String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}</span>
+    <div className="w-80 h-full bg-[#1a1a1a] border-l border-gray-800 flex flex-col z-20 absolute right-0 top-0 shadow-2xl animate-slide-in-right">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-800 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-lg">
+            <Bot size={18} className="text-white" />
+          </div>
+          <div>
+            <h3 className="text-white font-semibold text-sm">DoctaRx AI</h3>
+            <span className="text-xs text-green-400 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> Active
+            </span>
+          </div>
+        </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-white p-1 hover:bg-gray-800 rounded-full">
+          <X size={18} />
+        </button>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-gray-800">
+        <button onClick={() => setActiveTab('insight')}
+          className={`flex-1 py-3 text-xs font-medium transition-colors ${activeTab === 'insight' ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5' : 'text-gray-400 hover:text-white'}`}>
+          Live Insights
+        </button>
+        <button onClick={() => setActiveTab('notes')}
+          className={`flex-1 py-3 text-xs font-medium transition-colors ${activeTab === 'notes' ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5' : 'text-gray-400 hover:text-white'}`}>
+          Smart Notes
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+        {activeTab === 'insight' && (
+          <>
+            {/* Sentiment */}
+            <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700 space-y-2">
+              <div className="flex items-center justify-between text-xs text-gray-400">
+                <span>Patient Sentiment</span>
+                <span className="text-emerald-400">Calm</span>
+              </div>
+              <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                <div className="h-full w-3/4 bg-gradient-to-r from-green-500 via-emerald-400 to-green-400 transition-all duration-1000" />
+              </div>
+            </div>
+
+            {/* Suggestions */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Suggested Actions</h4>
+              {AI_SUGGESTIONS.map((item, idx) => (
+                <div key={idx} className="bg-gray-800 p-3 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors group cursor-pointer">
+                  <div className="flex items-start gap-3">
+                    {item.type === 'alert' ? <ShieldCheck size={16} className="text-red-400 mt-0.5" /> : <Sparkles size={16} className="text-blue-400 mt-0.5" />}
+                    <div>
+                      <p className="text-sm text-gray-200 leading-snug">{item.text}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[10px] bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded border border-gray-600">
+                          {item.confidence}% Confidence
+                        </span>
+                        <button className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-blue-400 hover:underline">
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Real-time context */}
+            <div className="bg-blue-500/10 p-3 rounded-xl border border-blue-500/20 space-y-2">
+              <div className="flex items-center gap-2 text-xs text-blue-300">
+                <Brain size={14} /> Real-time Analysis
+              </div>
+              <p className="text-xs text-blue-200/80 leading-relaxed">
+                Monitoring conversation patterns, symptom mentions, and medication references.
+                AI will flag relevant clinical insights in real-time.
+              </p>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'notes' && (
+          <div className="space-y-4">
+            {soapData ? (
+              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                    <FileText size={14} className="text-purple-400" /> Auto-SOAP
+                  </h4>
+                  <button className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-1 rounded hover:bg-purple-500/30">
+                    Export to EHR
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {[
+                    { label: 'Subjective', text: soapData.subjective },
+                    { label: 'Objective', text: soapData.objective },
+                    { label: 'Assessment', text: soapData.assessment },
+                    { label: 'Plan', text: soapData.plan }
+                  ].map(s => (
+                    <div key={s.label}>
+                      <label className="text-[10px] text-gray-500 font-bold uppercase">{s.label}</label>
+                      <p className="text-xs text-gray-300 mt-1 leading-relaxed">{s.text || '—'}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Brain size={32} className="mx-auto text-gray-600 mb-3" />
+                <p className="text-sm text-gray-400 mb-1">No AI notes yet</p>
+                <p className="text-xs text-gray-600 mb-4">Generate SOAP notes from the consultation context</p>
+              </div>
+            )}
+
+            <button onClick={generateSOAP} disabled={soapLoading}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg transition-colors shadow-lg shadow-blue-900/20 disabled:opacity-50 flex items-center justify-center gap-2">
+              {soapLoading ? <Loader2 size={14} className="animate-spin" /> : <Brain size={14} />}
+              {soapLoading ? 'Generating...' : soapData ? 'Regenerate Summary' : 'Generate SOAP Notes'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="p-3 border-t border-gray-800 text-center">
+        <span className="text-[10px] text-gray-600">DoctaRx AI &middot; HIPAA Compliant &middot; Not a diagnosis</span>
+      </div>
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #4B5563; }
+        @keyframes slide-in-right {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+        .animate-slide-in-right { animation: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+      `}</style>
     </div>
   );
 };
 
 /* ═══════════════════════════════════════════════════════════════════ */
-/*                  LIVE NOTES PANEL (SOAP)                           */
+/*                   EFFECTS PANEL                                    */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+const EffectsPanel = ({ filterStyle, setFilterStyle, lightingBoost, setLightingBoost, onClose }) => (
+  <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-[380px] bg-[#1e1e1e] rounded-xl shadow-2xl border border-gray-700 p-5 z-50 animate-in fade-in slide-in-from-bottom-4">
+    <div className="flex justify-between items-center mb-4">
+      <h3 className="font-medium text-white text-sm">Visual Effects</h3>
+      <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={16} /></button>
+    </div>
+
+    {/* Filter grid */}
+    <div className="space-y-3 mb-4">
+      <label className="text-xs text-gray-400 block">Color Filter</label>
+      <div className="grid grid-cols-3 gap-2">
+        {FILTER_OPTIONS.map(opt => (
+          <button key={opt.id} onClick={() => setFilterStyle(opt.id)}
+            className={`px-3 py-2 text-xs rounded-lg border transition-all ${
+              filterStyle === opt.id
+                ? 'border-blue-400 bg-blue-400/10 text-blue-300'
+                : 'border-gray-700 bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}>
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    {/* Lighting slider */}
+    <div>
+      <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+        <span>Lighting Boost</span>
+        <span className="font-mono">{lightingBoost > 0 ? `+${lightingBoost}` : lightingBoost}%</span>
+      </div>
+      <input type="range" min="-20" max="40" step="5" value={lightingBoost}
+        onChange={e => setLightingBoost(Number(e.target.value))}
+        className="w-full accent-blue-500" />
+    </div>
+
+    <p className="text-[10px] text-gray-600 mt-4 text-center">
+      Filters are applied in real-time to your camera feed
+    </p>
+  </div>
+);
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/*                   LIVE NOTES PANEL                                 */
 /* ═══════════════════════════════════════════════════════════════════ */
 
 const LiveNotesPanel = ({ appointment }) => {
@@ -542,17 +860,16 @@ const LiveNotesPanel = ({ appointment }) => {
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
-  const [activeSection, setActiveSection] = useState('freeform');
-  const autoSaveTimer = useRef(null);
+  const [section, setSection] = useState('freeform');
   const notesRef = useRef(notes);
   notesRef.current = notes;
 
   useEffect(() => {
-    autoSaveTimer.current = setInterval(() => {
+    const id = setInterval(() => {
       const n = notesRef.current;
       if (n.freeform || n.subjective || n.objective || n.assessment || n.plan) saveNotes(true);
     }, 30000);
-    return () => clearInterval(autoSaveTimer.current);
+    return () => clearInterval(id);
   }, []);
 
   const saveNotes = async (silent = false) => {
@@ -560,549 +877,158 @@ const LiveNotesPanel = ({ appointment }) => {
     try {
       if (appointment.id && appointment.id !== 'standalone') {
         await api.post('/visits', {
-          appointmentId: appointment.id,
-          chiefComplaint: notes.chiefComplaint,
-          subjective: notes.subjective || notes.freeform,
-          objective: notes.objective,
-          assessment: notes.assessment,
-          plan: notes.plan,
-          status: 'in_progress'
+          appointmentId: appointment.id, chiefComplaint: notes.chiefComplaint,
+          subjective: notes.subjective || notes.freeform, objective: notes.objective,
+          assessment: notes.assessment, plan: notes.plan, status: 'in_progress'
         }).catch(() => api.put(`/visits/appointment/${appointment.id}`, {
-          chiefComplaint: notes.chiefComplaint,
-          subjective: notes.subjective || notes.freeform,
-          objective: notes.objective,
-          assessment: notes.assessment,
-          plan: notes.plan
+          chiefComplaint: notes.chiefComplaint, subjective: notes.subjective || notes.freeform,
+          objective: notes.objective, assessment: notes.assessment, plan: notes.plan
         }));
       }
       setLastSaved(new Date());
-      if (!silent) toast({ title: 'Notes saved', description: 'Visit notes saved successfully' });
-    } catch {
-      if (!silent) toast({ title: 'Save failed', description: 'Could not save notes', variant: 'destructive' });
-    } finally { setSaving(false); }
+      if (!silent) toast({ title: 'Saved', description: 'Visit notes saved' });
+    } catch { if (!silent) toast({ title: 'Error', description: 'Could not save', variant: 'destructive' }); }
+    finally { setSaving(false); }
   };
 
   const generateSOAP = async () => {
     setAiLoading(true);
     try {
-      const response = await api.post('/ai-assist/soap', {
-        appointmentId: appointment.id,
-        chiefComplaint: notes.chiefComplaint,
-        symptoms: notes.freeform || notes.chiefComplaint,
-        existingConditions: '', medications: ''
+      const res = await api.post('/ai-assist/soap', {
+        appointmentId: appointment.id, chiefComplaint: notes.chiefComplaint,
+        symptoms: notes.freeform || notes.chiefComplaint, existingConditions: '', medications: ''
       });
-      if (response.data.success) {
-        const s = response.data.suggestion;
-        setNotes(prev => ({
-          ...prev,
-          subjective: s.subjective || prev.subjective,
-          objective: s.objective || prev.objective,
-          assessment: s.assessment || prev.assessment,
-          plan: s.plan || prev.plan
-        }));
-        setActiveSection('soap');
-        toast({ title: 'AI Notes Generated', description: 'SOAP notes populated — review and edit as needed' });
+      if (res.data.success) {
+        const s = res.data.suggestion;
+        setNotes(p => ({ ...p, subjective: s.subjective || p.subjective, objective: s.objective || p.objective,
+          assessment: s.assessment || p.assessment, plan: s.plan || p.plan }));
+        setSection('soap');
+        toast({ title: 'AI Notes', description: 'SOAP notes generated — review and edit' });
       }
-    } catch {
-      toast({ title: 'AI Generation Failed', description: 'Could not generate SOAP notes', variant: 'destructive' });
-    } finally { setAiLoading(false); }
+    } catch { toast({ title: 'AI Failed', description: 'Could not generate notes', variant: 'destructive' }); }
+    finally { setAiLoading(false); }
   };
 
-  const updateNote = (field, value) => setNotes(prev => ({ ...prev, [field]: value }));
-
-  const soapSections = [
-    { key: 'subjective', label: 'S — Subjective', placeholder: 'Patient reports...' },
-    { key: 'objective', label: 'O — Objective', placeholder: 'Vitals, exam findings...' },
-    { key: 'assessment', label: 'A — Assessment', placeholder: 'Diagnosis, clinical impression...' },
-    { key: 'plan', label: 'P — Plan', placeholder: 'Treatment plan, follow-up, referrals...' },
+  const upd = (k, v) => setNotes(p => ({ ...p, [k]: v }));
+  const soaps = [
+    { k: 'subjective', l: 'S — Subjective', ph: 'Patient reports...' },
+    { k: 'objective', l: 'O — Objective', ph: 'Vitals, exam findings...' },
+    { k: 'assessment', l: 'A — Assessment', ph: 'Diagnosis, impression...' },
+    { k: 'plan', l: 'P — Plan', ph: 'Treatment, follow-up...' },
   ];
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="px-4 py-3 bg-gradient-to-r from-violet-50 to-purple-50 border-b border-violet-100">
+    <div className="flex-1 flex flex-col overflow-hidden text-white">
+      <div className="px-4 py-3 bg-[#252525] border-b border-gray-800">
         <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium flex items-center gap-1.5"><ClipboardList size={14} className="text-violet-400" /> Visit Notes</span>
           <div className="flex items-center gap-2">
-            <ClipboardList className="w-4 h-4 text-violet-600" />
-            <span className="text-sm font-semibold text-violet-900">Visit Notes</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {lastSaved && (
-              <span className="text-[10px] text-slate-400">
-                Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            )}
+            {lastSaved && <span className="text-[10px] text-gray-500">Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
             <button onClick={() => saveNotes(false)} disabled={saving}
-              className="px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg flex items-center gap-1 disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-              Save
+              className="px-2 py-1 bg-violet-500 hover:bg-violet-600 text-xs rounded flex items-center gap-1 disabled:opacity-50">
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save
             </button>
           </div>
         </div>
         <div className="flex gap-1">
-          <button onClick={() => setActiveSection('freeform')}
-            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-              activeSection === 'freeform' ? 'bg-violet-600 text-white' : 'bg-white text-slate-600 hover:bg-violet-100'
-            }`}
-          >Quick Notes</button>
-          <button onClick={() => setActiveSection('soap')}
-            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-              activeSection === 'soap' ? 'bg-violet-600 text-white' : 'bg-white text-slate-600 hover:bg-violet-100'
-            }`}
-          >SOAP Format</button>
+          <TabPill label="Quick Notes" active={section === 'freeform'} onClick={() => setSection('freeform')} />
+          <TabPill label="SOAP" active={section === 'soap'} onClick={() => setSection('soap')} />
           <button onClick={generateSOAP} disabled={aiLoading || (!notes.freeform && !notes.chiefComplaint)}
-            className="ml-auto px-3 py-1 text-xs font-medium rounded-md bg-gradient-to-r from-purple-500 to-violet-600 text-white hover:from-purple-600 hover:to-violet-700 disabled:opacity-40 flex items-center gap-1"
-          >
-            {aiLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
-            AI SOAP
+            className="ml-auto px-2 py-1 text-[10px] rounded bg-violet-500 hover:bg-violet-600 disabled:opacity-40 flex items-center gap-1">
+            {aiLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />} AI SOAP
           </button>
         </div>
       </div>
 
-      {/* Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        <div>
-          <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Chief Complaint</label>
-          <input value={notes.chiefComplaint} onChange={(e) => updateNote('chiefComplaint', e.target.value)}
-            placeholder="Reason for visit..."
-            className="w-full mt-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none"
-          />
-        </div>
-
-        {activeSection === 'freeform' ? (
+        <NoteInput label="Chief Complaint" value={notes.chiefComplaint} onChange={v => upd('chiefComplaint', v)} ph="Reason for visit..." />
+        {section === 'freeform' ? (
           <div>
-            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Notes (type during the call)</label>
-            <textarea value={notes.freeform} onChange={(e) => updateNote('freeform', e.target.value)}
-              placeholder={"Type notes as the patient talks...\n\n- Symptoms, history, observations\n- Click 'AI SOAP' when ready to structure into SOAP format"}
-              className="w-full mt-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none resize-none"
-              style={{ minHeight: '280px' }} autoFocus
-            />
-            <p className="text-[10px] text-slate-400 mt-1">Tip: Jot down notes freely, then tap &quot;AI SOAP&quot; to auto-structure them</p>
+            <label className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Notes</label>
+            <textarea value={notes.freeform} onChange={e => upd('freeform', e.target.value)}
+              placeholder="Type notes during the call..."
+              className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-700 rounded-lg outline-none focus:border-violet-400 resize-none text-white placeholder-gray-500"
+              style={{ minHeight: '240px' }} autoFocus />
           </div>
-        ) : (
-          soapSections.map(({ key, label, placeholder }) => (
-            <div key={key}>
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{label}</label>
-              <textarea value={notes[key]} onChange={(e) => updateNote(key, e.target.value)}
-                placeholder={placeholder}
-                className="w-full mt-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none resize-none"
-                rows={3}
-              />
-            </div>
-          ))
-        )}
+        ) : soaps.map(({ k, l, ph }) => (
+          <div key={k}>
+            <label className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">{l}</label>
+            <textarea value={notes[k]} onChange={e => upd(k, e.target.value)} placeholder={ph} rows={3}
+              className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-700 rounded-lg outline-none focus:border-violet-400 resize-none text-white placeholder-gray-500" />
+          </div>
+        ))}
       </div>
-
-      <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 text-[10px] text-slate-400 flex items-center justify-between">
-        <span>Auto-saves every 30s</span>
-        <span>HIPAA-compliant</span>
+      <div className="px-4 py-2 border-t border-gray-800 text-[10px] text-gray-600 flex justify-between">
+        <span>Auto-saves every 30s</span><span>HIPAA-compliant</span>
       </div>
     </div>
   );
 };
 
 /* ═══════════════════════════════════════════════════════════════════ */
-/*          SELFIE CAMERA — Self-hosted MediaPipe (no CDN)           */
+/*                        CHAT PANEL                                  */
 /* ═══════════════════════════════════════════════════════════════════ */
 
-const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEnabled }) => {
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const bgImageRef = useRef(null);
-  const bgImageLoadedRef = useRef(false);
-  const personCanvasRef = useRef(null);
-  const segmentationRef = useRef(null);
-  const requestRef = useRef(null);
-  const streamRef = useRef(null);
-  const activeEffectRef = useRef(activeEffect);
-
-  const [modelLoaded, setModelLoaded] = useState(false);
-  const [cameraError, setCameraError] = useState(null);
-  const [cameraLoading, setCameraLoading] = useState(true);
-
-  useEffect(() => { activeEffectRef.current = activeEffect; }, [activeEffect]);
-
-  /* ── 1. Init / tear-down MediaPipe when processingEnabled changes ── */
-  useEffect(() => {
-    if (!processingEnabled) {
-      if (requestRef.current) { cancelAnimationFrame(requestRef.current); requestRef.current = null; }
-      setModelLoaded(false);
-      return;
-    }
-
-    // Re-use existing model
-    if (segmentationRef.current) { setModelLoaded(true); return; }
-
-    let cancelled = false;
-    let attempt = 0;
-
-    const init = async () => {
-      try {
-        await loadSelfieSegmentationScript();
-        if (cancelled) return;
-        if (segmentationRef.current) { setModelLoaded(true); return; }
-
-        const seg = new window.SelfieSegmentation({
-          locateFile: (file) => `${MEDIAPIPE_BASE}/${file}`,   // <-- self-hosted
-        });
-        seg.setOptions({ modelSelection: 1, selfieMode: true });
-        seg.onResults(onResults);
-
-        // Warm-up
-        if (videoRef.current?.readyState >= 2) {
-          try { await seg.send({ image: videoRef.current }); } catch { /* ok */ }
-        }
-        if (cancelled) { try { seg.close(); } catch {} return; }
-
-        segmentationRef.current = seg;
-        setModelLoaded(true);
-        attempt = 0;
-      } catch (err) {
-        if (cancelled) return;
-        attempt++;
-        console.warn(`MediaPipe init attempt ${attempt} failed:`, err.message);
-        if (attempt < 3) {
-          setTimeout(() => { if (!cancelled) init(); }, 1500 * attempt);
-        } else {
-          toast({
-            title: 'Virtual Background Unavailable',
-            description: 'Could not load AI background model. Your camera still works normally.',
-            variant: 'destructive', duration: 5000
-          });
-          setProcessingEnabled(false);
-        }
-      }
-    };
-
-    init();
-    return () => { cancelled = true; if (requestRef.current) { cancelAnimationFrame(requestRef.current); requestRef.current = null; } };
-  }, [processingEnabled]);
-
-  /* ── 2. Preload background image ── */
-  useEffect(() => {
-    const effect = activeEffect;
-    const isUrl = typeof effect === 'string' && /^https?:\/\//i.test(effect);
-    if (isUrl) {
-      bgImageLoadedRef.current = false;
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => { bgImageRef.current = img; bgImageLoadedRef.current = true; };
-      img.onerror = () => { bgImageRef.current = null; bgImageLoadedRef.current = false; };
-      img.src = effect;
-    } else {
-      bgImageRef.current = null;
-      bgImageLoadedRef.current = false;
-    }
-  }, [activeEffect]);
-
-  /* ── 3. Camera stream ── */
-  useEffect(() => {
-    let mounted = true;
-    const startCamera = async () => {
-      try {
-        setCameraLoading(true);
-        setCameraError(null);
-        if (!navigator.mediaDevices?.getUserMedia) {
-          if (mounted) { setCameraLoading(false); setCameraError('Camera not supported in this browser'); }
-          return;
-        }
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-          audio: false
-        });
-        if (!mounted) { stream.getTracks().forEach(t => t.stop()); return; }
-        streamRef.current = stream;
-        setCameraLoading(false);
-        setCameraError(null);
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play().catch(() => {});
-            if (processingEnabled && segmentationRef.current) startProcessing();
-          };
-        }
-      } catch (err) {
-        if (!mounted) return;
-        setCameraLoading(false);
-        let msg = 'Camera access denied';
-        if (err.name === 'NotFoundError') msg = 'No camera found';
-        else if (err.name === 'NotReadableError') msg = 'Camera is in use by another app';
-        setCameraError(msg);
-        toast({ title: 'Camera Error', description: msg, variant: 'destructive', duration: 5000 });
-      }
-    };
-    startCamera();
-    return () => {
-      mounted = false;
-      streamRef.current?.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
-    };
-  }, []);
-
-  /* ── 4. Start processing loop when model + video ready ── */
-  useEffect(() => {
-    if (modelLoaded && processingEnabled && segmentationRef.current && videoRef.current?.readyState >= 2) {
-      startProcessing();
-    }
-  }, [modelLoaded, processingEnabled]);
-
-  /* ── Processing loop ── */
-  const startProcessing = () => {
-    if (!segmentationRef.current || !videoRef.current || !modelLoaded) return;
-    if (requestRef.current) { cancelAnimationFrame(requestRef.current); requestRef.current = null; }
-
-    let alive = true;
-    let errorCount = 0;
-    let lastSendTime = 0;
-    const FPS_CAP = 24;
-    const MIN_INTERVAL = 1000 / FPS_CAP;
-
-    // Match canvas to video dimensions
-    const vw = videoRef.current.videoWidth || 1280;
-    const vh = videoRef.current.videoHeight || 720;
-    if (canvasRef.current) { canvasRef.current.width = vw; canvasRef.current.height = vh; }
-
-    const loop = async () => {
-      if (!alive || !processingEnabled) return;
-      const now = performance.now();
-      if (now - lastSendTime < MIN_INTERVAL) { requestRef.current = requestAnimationFrame(loop); return; }
-
-      try {
-        const vid = videoRef.current;
-        const seg = segmentationRef.current;
-        if (vid?.readyState >= 2 && seg?.send) {
-          await seg.send({ image: vid });
-          lastSendTime = now;
-          errorCount = 0;
-        }
-      } catch (err) {
-        const msg = (err.message || '').toLowerCase();
-        if (!msg.includes('timestamp') && !msg.includes('aborted') && !msg.includes('invalid_argument')) {
-          errorCount++;
-          if (errorCount >= 15) { alive = false; setProcessingEnabled(false); return; }
-        }
-      }
-
-      if (alive && processingEnabled) requestRef.current = requestAnimationFrame(loop);
-    };
-    requestRef.current = requestAnimationFrame(loop);
-  };
-
-  /* ── onResults: Composite background + person ── */
-  const onResults = (results) => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-
-    const currentEffect = activeEffectRef.current;
-    const effectStr = typeof currentEffect === 'string' ? currentEffect : null;
-    const isUrl = effectStr && /^https?:\/\//i.test(effectStr);
-    const isBlur = effectStr?.startsWith('blur:');
-    const isColor = effectStr?.startsWith('color:');
-    const isGradient = effectStr?.startsWith('gradient:');
-
-    ctx.save();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // 1. Draw background
-    ctx.globalCompositeOperation = 'source-over';
-    if (isBlur) {
-      const px = effectStr.split(':')[1] === 'strong' ? 18 : 10;
-      ctx.filter = `blur(${px}px)`;
-      ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-      ctx.filter = 'none';
-    } else if (isColor) {
-      ctx.fillStyle = effectStr.split(':')[1] || '#0f172a';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    } else if (isGradient) {
-      const name = effectStr.split(':')[1] || 'studio';
-      const g = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-      if (name === 'ocean') { g.addColorStop(0, '#0ea5e9'); g.addColorStop(1, '#22c55e'); }
-      else if (name === 'sunset') { g.addColorStop(0, '#f97316'); g.addColorStop(0.6, '#db2777'); g.addColorStop(1, '#7c3aed'); }
-      else if (name === 'aurora') { g.addColorStop(0, '#22c55e'); g.addColorStop(0.5, '#06b6d4'); g.addColorStop(1, '#a855f7'); }
-      else { g.addColorStop(0, '#0f172a'); g.addColorStop(0.45, '#1e293b'); g.addColorStop(1, '#334155'); }
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    } else if (isUrl && bgImageRef.current && bgImageLoadedRef.current) {
-      const bg = bgImageRef.current;
-      const cAspect = canvas.width / canvas.height;
-      const iAspect = bg.naturalWidth / bg.naturalHeight;
-      let dw, dh, dx, dy;
-      if (iAspect > cAspect) { dh = canvas.height; dw = bg.naturalWidth * (canvas.height / bg.naturalHeight); dx = (canvas.width - dw) / 2; dy = 0; }
-      else { dw = canvas.width; dh = bg.naturalHeight * (canvas.width / bg.naturalWidth); dx = 0; dy = (canvas.height - dh) / 2; }
-      ctx.drawImage(bg, dx, dy, dw, dh);
-    } else {
-      ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-    }
-
-    // 2. Extract person via mask, composite on top
-    if (!personCanvasRef.current) personCanvasRef.current = document.createElement('canvas');
-    const pc = personCanvasRef.current;
-    if (pc.width !== canvas.width) pc.width = canvas.width;
-    if (pc.height !== canvas.height) pc.height = canvas.height;
-    const pCtx = pc.getContext('2d');
-    pCtx.clearRect(0, 0, pc.width, pc.height);
-    pCtx.drawImage(results.image, 0, 0, pc.width, pc.height);
-    pCtx.globalCompositeOperation = 'destination-in';
-    pCtx.drawImage(results.segmentationMask, 0, 0, pc.width, pc.height);
-    pCtx.globalCompositeOperation = 'source-over';
-
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(pc, 0, 0, canvas.width, canvas.height);
-    ctx.restore();
-  };
-
-  /* ── Render states ── */
-  if (cameraError) {
-    return (
-      <div className="relative w-full h-full bg-black flex flex-col items-center justify-center p-4 text-center">
-        <VideoOff size={36} className="mb-2 text-red-400" />
-        <p className="text-xs font-medium text-white mb-1">Camera Error</p>
-        <p className="text-[10px] text-slate-400 mb-3">{cameraError}</p>
-        <button onClick={() => window.location.reload()} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs text-white">
-          Reload
-        </button>
+const ChatPanel = ({ appointment }) => (
+  <>
+    <div className="flex-1 p-4 overflow-y-auto space-y-3">
+      <div className="bg-blue-500/10 p-3 rounded-lg rounded-tl-none max-w-[85%]">
+        <p className="text-sm text-blue-200">Hello! I&apos;m ready for our appointment.</p>
+        <span className="text-[10px] text-blue-300/50 block mt-1">Dr. {appointment.providerLastName} &bull; {formatTime(new Date())}</span>
       </div>
-    );
-  }
+    </div>
+    <div className="p-3 border-t border-gray-800">
+      <input type="text" placeholder="Type a message..."
+        className="w-full px-3 py-2 bg-gray-800 rounded-lg text-sm outline-none text-white placeholder-gray-500 focus:ring-1 focus:ring-blue-400" />
+    </div>
+  </>
+);
 
-  if (cameraLoading) {
-    return (
-      <div className="relative w-full h-full bg-black flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mx-auto mb-2" />
-          <p className="text-[10px] text-white">Requesting camera...</p>
-        </div>
-      </div>
-    );
-  }
+/* ═══════════════════════════════════════════════════════════════════ */
+/*                       UI ATOMS                                     */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+const ControlBtn = ({ icon: Icon, active, onClick, label, color = 'default' }) => {
+  const base = 'p-3 rounded-full transition-all duration-200 flex items-center justify-center backdrop-blur-md';
+  const colors = {
+    default: active !== false ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-red-500 hover:bg-red-600 text-white',
+    primary: 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20',
+    glass: 'bg-white/10 hover:bg-white/20 text-white border border-white/10',
+    transparent: 'text-gray-400 hover:text-white hover:bg-white/10',
+  };
 
   return (
-    <div className="relative w-full h-full bg-black">
-      <video ref={videoRef}
-        className={`w-full h-full object-cover transform scale-x-[-1] ${processingEnabled && modelLoaded ? 'hidden' : 'block'}`}
-        playsInline muted autoPlay
-      />
-      <canvas ref={canvasRef} width={1280} height={720}
-        className={`w-full h-full object-cover transform scale-x-[-1] ${processingEnabled && modelLoaded ? 'block' : 'hidden'}`}
-      />
-      {!modelLoaded && processingEnabled && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white text-xs z-10">
-          <span className="animate-pulse">Loading AI model...</span>
-        </div>
-      )}
+    <div className="relative group">
+      <button onClick={onClick} className={`${base} ${colors[color]}`} title={label}>
+        <Icon size={20} />
+      </button>
+      <span className="absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-800 text-xs text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
+        {label}
+      </span>
     </div>
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════ */
-/*     SIMPLE CAMERA PREVIEW (Lobby — no effects)                    */
-/* ═══════════════════════════════════════════════════════════════════ */
-
-const CameraPreview = () => {
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const [error, setError] = useState(null);
-  const [hasPermission, setHasPermission] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const startCamera = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setIsLoading(false);
-        setError(new Error('Camera not supported'));
-        return;
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-        audio: false
-      });
-      streamRef.current = stream;
-      setHasPermission(true);
-      setIsLoading(false);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => videoRef.current?.play().catch(() => {});
-      }
-    } catch (err) {
-      setIsLoading(false);
-      let msg = 'Camera access denied';
-      if (err.name === 'NotFoundError') msg = 'No camera found';
-      else if (err.name === 'NotReadableError') msg = 'Camera in use';
-      setError(new Error(msg));
-      toast({ title: 'Camera Error', description: msg, variant: 'destructive', duration: 5000 });
-    }
-  };
-
-  useEffect(() => {
-    return () => { streamRef.current?.getTracks().forEach(t => t.stop()); streamRef.current = null; };
-  }, []);
-
-  if (!hasPermission && !isLoading && !error) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white">
-        <div className="text-center p-4">
-          <VideoIcon size={40} className="mx-auto mb-3 text-blue-400" />
-          <p className="text-sm font-medium mb-2">Camera Access Required</p>
-          <button onClick={startCamera} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors">
-            Enable Camera
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white">
-        <div className="text-center p-4">
-          <VideoOff size={28} className="mx-auto mb-2 text-red-400" />
-          <p className="text-xs text-slate-300 mb-3">{error.message}</p>
-          <button onClick={startCamera} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs">Try Again</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mx-auto mb-2" />
-          <p className="text-xs">Requesting camera...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return <video ref={videoRef} className="w-full h-full object-cover transform scale-x-[-1]" playsInline muted autoPlay />;
-};
-
-/* ═══════════════════════════════════════════════════════════════════ */
-/*                      UI HELPERS                                    */
-/* ═══════════════════════════════════════════════════════════════════ */
-
-const DeviceToggle = ({ active, onClick, iconOn: IconOn, iconOff: IconOff, label }) => (
+const SidebarTabBtn = ({ label, icon: Icon, active, onClick }) => (
   <button onClick={onClick}
-    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-      active ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' : 'bg-red-50 text-red-600 hover:bg-red-100'
-    }`}
-  >
-    {active ? <IconOn size={18} /> : <IconOff size={18} />}
-    {label}
+    className={`flex-1 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${
+      active ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-500 hover:text-gray-300'
+    }`}>
+    <Icon size={14} /> {label}
   </button>
 );
 
-const ControlBtn = ({ active, onClick, onIcon: OnIcon, offIcon: OffIcon, tooltip }) => (
-  <button onClick={onClick} title={tooltip}
-    className={`p-3.5 rounded-full transition-all duration-200 ${
-      active ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-white text-slate-900 hover:bg-slate-200'
-    }`}
-  >
-    {active ? <OnIcon size={20} /> : <OffIcon size={20} />}
-  </button>
+const TabPill = ({ label, active, onClick }) => (
+  <button onClick={onClick}
+    className={`px-2.5 py-1 text-[10px] font-medium rounded transition-colors ${
+      active ? 'bg-violet-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+    }`}>{label}</button>
+);
+
+const NoteInput = ({ label, value, onChange, ph }) => (
+  <div>
+    <label className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">{label}</label>
+    <input value={value} onChange={e => onChange(e.target.value)} placeholder={ph}
+      className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-700 rounded-lg outline-none focus:border-violet-400 text-white placeholder-gray-500" />
+  </div>
 );

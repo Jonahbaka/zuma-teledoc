@@ -288,6 +288,47 @@ async function initializeApp() {
     const agentOrchestrator = require('./services/agent-orchestrator');
     agentOrchestrator.initialize().then(() => {
       console.log('🤖 AI Agent Orchestrator: Online');
+
+      // Stream real-time Agent Ops events to admin consoles.
+      try {
+        if (socketService?.emitAgentOpsEvent) {
+          const claudeConfigured = Boolean(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY);
+          const geminiConfigured = Boolean(process.env.GEMINI_API_KEY);
+
+          // Initial heartbeat when orchestrator comes online.
+          socketService.emitAgentOpsEvent({
+            type: 'agent-ops.system.online',
+            severity: 'info',
+            source: 'orchestrator',
+            payload: {
+              status: 'online',
+              mode: agentOrchestrator.operatingMode || 'observation',
+              llm: {
+                primary: 'claude',
+                fallback: 'gemini',
+                claudeConfigured,
+                geminiConfigured
+              }
+            },
+            createdAt: new Date().toISOString()
+          });
+
+          // Bridge event bus -> websocket stream.
+          if (agentOrchestrator.eventBus?.subscribe) {
+            agentOrchestrator.eventBus.subscribe('*', async (event) => {
+              socketService.emitAgentOpsEvent({
+                type: event.type,
+                severity: event.severity || 'info',
+                source: event.source || 'event-bus',
+                payload: event.payload || {},
+                createdAt: event.timestamp ? new Date(event.timestamp).toISOString() : new Date().toISOString()
+              });
+            });
+          }
+        }
+      } catch (streamErr) {
+        console.error('⚠️ Agent Ops stream bridge warning:', streamErr.message);
+      }
     }).catch(err => {
       console.error('🤖 Agent Orchestrator: Init warning -', err.message);
     });

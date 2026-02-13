@@ -94,6 +94,11 @@ const initializeSocket = (httpServer) => {
     // Join personal room for direct messages
     socket.join(`user:${userId}`);
 
+    // Admin room for Agent Ops real-time telemetry
+    if (userRole === 'admin' || userRole === 'super_admin') {
+      socket.join('agent-ops:admins');
+    }
+
     /**
      * Handle joining a conversation room
      */
@@ -182,6 +187,18 @@ const initializeSocket = (httpServer) => {
     });
 
     /**
+     * Agent Ops live stream subscription (admin only)
+     */
+    socket.on('agent-ops:subscribe', () => {
+      if (socket.userRole !== 'admin' && socket.userRole !== 'super_admin') {
+        socket.emit('agent-ops:error', { message: 'Unauthorized' });
+        return;
+      }
+      socket.join('agent-ops:admins');
+      socket.emit('agent-ops:subscribed', { ok: true, at: new Date().toISOString() });
+    });
+
+    /**
      * Handle disconnect
      */
     socket.on('disconnect', (reason) => {
@@ -253,6 +270,14 @@ const emitNewMessage = (conversationId, recipientId, message) => {
 };
 
 /**
+ * Emit Agent Ops event to admin subscribers
+ */
+const emitAgentOpsEvent = (payload) => {
+  if (!io) return;
+  io.to('agent-ops:admins').emit('agent-ops:event', payload);
+};
+
+/**
  * Check if a user is online
  */
 const isUserOnline = (userId) => {
@@ -281,6 +306,7 @@ module.exports = {
   initializeSocket,
   getIO,
   emitNewMessage,
+  emitAgentOpsEvent,
   isUserOnline,
   getOnlineUsers,
   getUserLastSeen

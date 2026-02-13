@@ -28,7 +28,8 @@ function ProviderRegisterContent() {
     npiNumber: '',
     medicalLicense: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    acceptCompliance: false
   });
 
   // Validate invite token if provided (optional)
@@ -97,7 +98,7 @@ function ProviderRegisterContent() {
       if (response.data.success) {
         toast({
           title: 'Registration Successful!',
-          description: 'Your account is pending verification. We will review your credentials shortly.',
+          description: 'Application submitted. Next: sign in to complete credentialing and provider checkout.',
         });
         router.push('/provider/login?registered=true');
       }
@@ -149,7 +150,7 @@ function ProviderRegisterContent() {
                 <Stethoscope className="w-8 h-8 text-white" />
               </div>
               <h1 className="text-2xl font-bold text-white">Provider Registration</h1>
-              <p className="text-slate-400 mt-2">Join our network of board-certified healthcare providers</p>
+              <p className="text-slate-400 mt-2">Simple onboarding with compliant credential review and activation</p>
             </div>
 
             {/* Invite Info Banner (if from invite) */}
@@ -177,6 +178,12 @@ function ProviderRegisterContent() {
                   </p>
                 </div>
               </div>
+            </div>
+
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-6">
+              <p className="text-xs text-blue-200">
+                After account creation, your next step is credentialing verification and provider plan checkout.
+              </p>
             </div>
 
             {/* Registration Form */}
@@ -338,9 +345,23 @@ function ProviderRegisterContent() {
                 </div>
               </div>
 
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="acceptCompliance"
+                  checked={formData.acceptCompliance}
+                  onChange={(e) => setFormData(prev => ({ ...prev, acceptCompliance: e.target.checked }))}
+                  className="mt-1"
+                  required
+                />
+                <Label htmlFor="acceptCompliance" className="text-sm text-slate-400 cursor-pointer leading-relaxed">
+                  I confirm that the information and credentials provided are accurate and understand they will be verified for compliance and licensure requirements.
+                </Label>
+              </div>
+
               <Button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || !formData.acceptCompliance}
                 className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 h-12 text-base"
               >
                 {isLoading ? (

@@ -175,10 +175,11 @@ function SubscriptionContent() {
       )}
 
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold mb-2">Choose Your Plan</h1>
+        <h1 className="text-3xl font-bold mb-2">Complete Your Activation</h1>
         <p className="text-muted-foreground">
-          Select a subscription or continue with read-only access
+          Final step: choose a care plan to unlock booking and secure consultations.
         </p>
+        <p className="text-xs text-muted-foreground mt-2">Checkout is powered by Stripe. You can cancel anytime from billing settings.</p>
       </div>
 
       {hasActiveSubscription && (

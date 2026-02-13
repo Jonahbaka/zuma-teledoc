@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, EyeOff, Mail, Lock, User, Phone, Heart, Shield, Loader2, Calendar, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, Phone, Heart, Shield, Loader2, Calendar, CheckCircle, Sparkles, CreditCard } from 'lucide-react';
 import { authAPI } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,12 @@ export default function PatientRegisterPage() {
     confirmPassword: '',
     acceptTerms: false
   });
+
+  const passwordChecks = {
+    minLength: formData.password.length >= 8,
+    hasLetter: /[A-Za-z]/.test(formData.password),
+    hasNumber: /\d/.test(formData.password),
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -103,7 +109,14 @@ export default function PatientRegisterPage() {
                 <Heart className="w-8 h-8 text-white" />
               </div>
               <h1 className="text-2xl font-bold text-foreground">Create Patient Account</h1>
-              <p className="text-muted-foreground mt-2">Start your healthcare journey with Docta</p>
+              <p className="text-muted-foreground mt-2">Warm, secure onboarding in two quick steps</p>
+            </div>
+
+            <div className="mb-6 rounded-xl border border-purple-500/20 bg-purple-500/5 p-3">
+              <p className="text-xs text-muted-foreground flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-500" />
+                After account creation, you will proceed to checkout to activate consultations.
+              </p>
             </div>
 
             {/* Progress Indicator */}
@@ -225,7 +238,11 @@ export default function PatientRegisterPage() {
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
-                    <p className="text-xs text-muted-foreground">At least 8 characters</p>
+                    <div className="space-y-1 text-xs">
+                      <p className={passwordChecks.minLength ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• At least 8 characters</p>
+                      <p className={passwordChecks.hasLetter ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• Includes at least one letter</p>
+                      <p className={passwordChecks.hasNumber ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• Includes at least one number</p>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -261,6 +278,11 @@ export default function PatientRegisterPage() {
                     </Label>
                   </div>
 
+                  <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs text-muted-foreground flex items-start gap-2">
+                    <Shield className="w-4 h-4 mt-0.5" />
+                    <span>HIPAA-compliant onboarding. Your account data is encrypted in transit and at rest.</span>
+                  </div>
+
                   <div className="flex gap-3">
                     <Button
                       type="button"
@@ -282,8 +304,8 @@ export default function PatientRegisterPage() {
                         </>
                       ) : (
                         <>
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          Create Account
+                          <CreditCard className="w-4 h-4 mr-2" />
+                          Continue to Checkout
                         </>
                       )}
                     </Button>
