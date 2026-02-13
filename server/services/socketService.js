@@ -13,6 +13,14 @@ const userSockets = new Map(); // socketId -> userId
 
 let io = null;
 
+const normalizeRole = (role) => String(role || '').trim().toLowerCase();
+const roleAliasMap = {
+  administrator: 'admin',
+  superadmin: 'super_admin',
+  'super-admin': 'super_admin'
+};
+const canonicalRole = (role) => roleAliasMap[normalizeRole(role)] || normalizeRole(role);
+
 /**
  * Initialize Socket.io with the HTTP server
  */
@@ -50,7 +58,7 @@ const initializeSocket = (httpServer) => {
       const accessSecret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || global.__JWT_ACCESS_SECRET;
       const decoded = jwt.verify(token, accessSecret);
       socket.userId = decoded.userId || decoded.id;
-      socket.userRole = decoded.role;
+      socket.userRole = canonicalRole(decoded.role);
       socket.userName = decoded.name || `${decoded.firstName || ''} ${decoded.lastName || ''}`.trim();
       
       next();

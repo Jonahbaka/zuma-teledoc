@@ -19,6 +19,14 @@ if (!ACCESS_TOKEN_SECRET) {
   console.warn('WARNING: JWT_ACCESS_SECRET not set in auth middleware, using fallback.');
 }
 
+const normalizeRole = (role) => String(role || '').trim().toLowerCase();
+const roleAliasMap = {
+  administrator: 'admin',
+  superadmin: 'super_admin',
+  'super-admin': 'super_admin'
+};
+const canonicalRole = (role) => roleAliasMap[normalizeRole(role)] || normalizeRole(role);
+
 /**
  * Verify JWT access token
  */
@@ -80,7 +88,7 @@ const authenticate = async (req, res, next) => {
     req.user = {
       id: user.id,
       email: user.email,
-      role: user.role,
+      role: canonicalRole(user.role),
       firstName: user.first_name,
       lastName: user.last_name,
       mfaEnabled: user.mfa_enabled,
@@ -120,7 +128,7 @@ const authenticate = async (req, res, next) => {
  */
 const requireRole = (...roles) => {
   // Flatten in case an array is passed: requireRole(['a', 'b']) or requireRole('a', 'b')
-  const allowedRoles = roles.flat();
+  const allowedRoles = roles.flat().map(canonicalRole);
   
   return (req, res, next) => {
     if (!req.user) {
@@ -131,11 +139,11 @@ const requireRole = (...roles) => {
     }
     
     // Super admin has access to everything
-    if (req.user.role === 'super_admin') {
+    if (canonicalRole(req.user.role) === 'super_admin') {
       return next();
     }
     
-    if (!allowedRoles.includes(req.user.role)) {
+    if (!allowedRoles.includes(canonicalRole(req.user.role))) {
       logger.audit('ACCESS_DENIED', {
         userId: req.user.id,
         requiredRoles: allowedRoles,

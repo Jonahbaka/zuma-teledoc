@@ -78,16 +78,18 @@ export default function AdminLayout({ children }) {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
   const [inboxUnread, setInboxUnread] = useState(0);
+  const normalizedRole = String(user?.role || '').trim().toLowerCase();
+  const isAdminRole = ['admin', 'super_admin', 'administrator', 'superadmin', 'super-admin'].includes(normalizedRole);
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       router.push('/secure/admin');
     }
     
-    if (!loading && isAuthenticated && user?.role !== 'admin' && user?.role !== 'super_admin') {
+    if (!loading && isAuthenticated && !isAdminRole) {
       router.push('/secure/admin');
     }
-  }, [loading, isAuthenticated, user, router]);
+  }, [loading, isAuthenticated, isAdminRole, router]);
 
   // Fetch inbox unread count
   useEffect(() => {
@@ -129,7 +131,7 @@ export default function AdminLayout({ children }) {
     );
   }
 
-  if (!isAuthenticated || (user?.role !== 'admin' && user?.role !== 'super_admin')) {
+  if (!isAuthenticated || !isAdminRole) {
     return null;
   }
 
