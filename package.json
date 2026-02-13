@@ -7,6 +7,7 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:next\"",
     "dev:next": "next dev",
     "dev:server": "nodemon server/index.js",
+    "prebuild": "node scripts/copy-mediapipe.js",
     "build": "next build",
     "start": "node server/index.js",
     "start:next": "next start",
@@ -15,7 +16,7 @@
     "migrate:rollback": "node server/db/rollback.js",
     "seed:links": "node server/scripts/seed-testing-links.js",
     "lint": "eslint .",
-    "postinstall": "node scripts/copy-mediapipe.js"
+    "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
