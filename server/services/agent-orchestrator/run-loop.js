@@ -291,9 +291,132 @@ class WorkflowPipeline {
   async executeAction(step, input, context) {
     // Delegate to skill registry or capability layer
     if (step.skill && context.skillRegistry) {
-      return context.skillRegistry.executeSkill(step.skill, context.agentId, input);
+      let skillId = step.skill;
+      if (typeof step.skill === 'string' && !/^\d+$/.test(step.skill)) {
+        const byName = await context.skillRegistry.getSkill(step.skill);
+        if (!byName) {
+          return { status: 'error', error: `Skill not found: ${step.skill}` };
+        }
+        skillId = byName.id;
+      }
+      return context.skillRegistry.executeSkill(parseInt(skillId, 10), context.agentId, input || {});
     }
+
+    if (step.action === 'crm.sendCampaignEmails') {
+      return this.executeCrmCampaignBatch(step, input);
+    }
+
+    if (step.action === 'crm.importAgentLeads') {
+      return this.executeCrmImport();
+    }
+
+    if (step.action === 'agora.createPost') {
+      return this.executeAgoraPost(step, input);
+    }
+
+    if (step.action === 'web.harvestProvidersToCRM') {
+      return this.executeProviderHarvest(step, input);
+    }
+
     return { status: 'completed', output: input, action: step.action || step.name };
+  }
+
+  async executeCrmCampaignBatch(step, input) {
+    try {
+      const crmService = require('../crmService');
+      const batchSize = step.parameters?.batchSize || 10;
+      const campaigns = Array.isArray(input) && input.length > 0
+        ? input
+        : await crmService.getCampaigns({ status: 'approved' });
+      const active = (campaigns || []).filter(c => ['approved', 'running'].includes(c.status)).slice(0, 5);
+      const sends = [];
+
+      for (const campaign of active) {
+        const result = await crmService.sendCampaignEmails(campaign.id, batchSize);
+        sends.push({ campaignId: campaign.id, name: campaign.name, result });
+      }
+
+      return {
+        status: 'completed',
+        action: 'crm.sendCampaignEmails',
+        campaignsProcessed: active.length,
+        output: sends
+      };
+    } catch (error) {
+      return { status: 'error', action: 'crm.sendCampaignEmails', error: error.message };
+    }
+  }
+
+  async executeCrmImport() {
+    try {
+      const crmService = require('../crmService');
+      const imported = await crmService._importAgentLeads();
+      return { status: 'completed', action: 'crm.importAgentLeads', imported: imported || 0 };
+    } catch (error) {
+      return { status: 'error', action: 'crm.importAgentLeads', error: error.message };
+    }
+  }
+
+  async executeAgoraPost(step, input) {
+    try {
+      const social = require('../agentSocialService');
+      const payload = step.parameters || {};
+      const content = payload.contentTemplate
+        ? `${payload.contentTemplate}\n\nSnapshot: ${JSON.stringify(input || {}).slice(0, 300)}`
+        : `Autonomous update from ${payload.author_agent || 'growth'} at ${new Date().toISOString()}`;
+
+      const post = await social.createPost({
+        author_agent: payload.author_agent || 'growth',
+        content,
+        post_type: payload.post_type || 'analysis',
+        topic: payload.topic || 'growth',
+        tags: payload.tags || ['autonomous', 'run-loop'],
+        sentiment: payload.sentiment || 'analytical',
+        energy_level: payload.energy_level || 7
+      });
+
+      return { status: 'completed', action: 'agora.createPost', output: post };
+    } catch (error) {
+      return { status: 'error', action: 'agora.createPost', error: error.message };
+    }
+  }
+
+  async executeProviderHarvest(step) {
+    try {
+      const webEngine = require('./web-action-engine');
+      const crmService = require('../crmService');
+      const providers = await webEngine.scrapeProviderDirectories();
+      const limit = step.parameters?.importLimit || 20;
+      let imported = 0;
+
+      for (const provider of (providers || []).slice(0, limit)) {
+        if (!provider?.name || provider.name === 'Unknown') continue;
+        const parts = String(provider.name).split(' ');
+        const saved = await crmService.addContact({
+          firstName: parts[0] || '',
+          lastName: parts.slice(1).join(' ') || '',
+          contactType: 'provider',
+          specialty: provider.specialty || null,
+          npiNumber: provider.npi || null,
+          phone: provider.phone || null,
+          city: provider.city || null,
+          state: provider.state || null,
+          source: 'autonomous_web_harvest',
+          sourceAgent: 'growth',
+          priority: 'medium'
+        });
+        if (saved) imported++;
+      }
+
+      return {
+        status: 'completed',
+        action: 'web.harvestProvidersToCRM',
+        discovered: (providers || []).length,
+        imported
+      };
+    } catch (error) {
+      return { status: 'error', action: 'web.harvestProvidersToCRM', error: error.message };
+    }
   }
 
   async executeTransform(step, input) {
@@ -814,7 +937,28 @@ const DEFAULT_WORKFLOWS = [
     steps: [
       { name: 'Check approved campaigns', type: 'query', query: "SELECT id, name, status, emails_sent, daily_limit FROM crm_campaigns WHERE status IN ('approved', 'running') LIMIT 5", id: 'active_campaigns' },
       { name: 'Check CRM contact volume', type: 'query', query: "SELECT contact_type, COUNT(*) as count FROM crm_contacts WHERE is_active = true GROUP BY contact_type", id: 'contact_stats' },
+      { name: 'Send campaign email batches', type: 'action', action: 'crm.sendCampaignEmails', input: '$active_campaigns', parameters: { batchSize: 10 } },
       { name: 'Report outreach status', type: 'notify', input: '$contact_stats' }
+    ]
+  },
+  {
+    name: 'crm.lead.harvest',
+    description: 'Harvest provider leads from free web sources and import into CRM',
+    schedule: '4hours',
+    steps: [
+      { name: 'Harvest provider leads', type: 'action', action: 'web.harvestProvidersToCRM', parameters: { importLimit: 25 }, id: 'harvest_result' },
+      { name: 'Import pending mission leads', type: 'action', action: 'crm.importAgentLeads', id: 'import_result' },
+      { name: 'Report lead harvest', type: 'notify', input: '$harvest_result' }
+    ]
+  },
+  {
+    name: 'social.autopilot.pulse',
+    description: 'Publish autonomous agent status updates to Agent Social (The Agora)',
+    schedule: '1hour',
+    steps: [
+      { name: 'Gather growth pulse', type: 'query', query: "SELECT COUNT(*) as new_users_24h FROM users WHERE created_at > NOW() - INTERVAL '24 hours'", id: 'growth_snapshot' },
+      { name: 'Publish to The Agora', type: 'action', action: 'agora.createPost', input: '$growth_snapshot', parameters: { author_agent: 'growth', topic: 'growth', post_type: 'analysis', tags: ['autonomous', 'growth', 'agora'], contentTemplate: 'Autonomous growth pulse from the run loop.', sentiment: 'inspired', energy_level: 8 } },
+      { name: 'Report social pulse', type: 'notify', input: '$growth_snapshot' }
     ]
   },
   // ═══ CRM FOLLOWUP — Check for contacts needing follow-up ═══

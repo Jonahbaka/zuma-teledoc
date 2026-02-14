@@ -93,7 +93,7 @@ class AgentOrchestrator {
     this.agents = new Map();
     this.initialized = false;
     this.startTime = null;
-    this.operatingMode = 'observation'; // 'observation', 'supervised', 'autonomous'
+    this.operatingMode = process.env.AGENT_OPERATING_MODE || 'supervised'; // 'observation', 'supervised', 'autonomous'
     this.heartbeat = null;
     this.devopsAgent = null;
 
@@ -138,6 +138,7 @@ class AgentOrchestrator {
       await this.complianceEngine.initialize();
       await this.governanceEngine.initialize();
       await this.skillRegistry.initialize();
+      this.skillRegistry.bindIntentSystem(this.intentSystem);
       await this.capabilityLayer.initialize(this.intentSystem);
 
       // Initialize Credential Vault
@@ -403,7 +404,20 @@ class AgentOrchestrator {
    * Approve a proposal
    */
   async approveProposal(proposalId, userId, notes) {
-    return this.governanceEngine.approveProposal(proposalId, userId, notes);
+    const proposal = await this.governanceEngine.approveProposal(proposalId, userId, notes);
+
+    // Emit a real event so run-loop workflows and agents can react immediately.
+    if (this.eventBus && proposal) {
+      await this.eventBus.emit('proposal.approved', {
+        proposalId: proposal.id,
+        category: proposal.category,
+        title: proposal.title
+      }, 'governance');
+    }
+
+    // If proposal includes executable intent steps, declare them now.
+    const declared = await this.executeProposalIntents(proposal);
+    return { ...proposal, execution: declared };
   }
 
   /**
@@ -708,6 +722,54 @@ class AgentOrchestrator {
     agent.autonomyLevel = level;
     await this.governanceEngine.setAutonomyLevel(agent.agentId, level);
     return { agentType, autonomyLevel: level };
+  }
+
+  async executeProposalIntents(proposal) {
+    if (!proposal || !this.intentSystem) return { declared: 0, intents: [] };
+    const rawPlan = proposal.detailed_plan || proposal.detailedPlan || null;
+    const plan = typeof rawPlan === 'string' ? (() => {
+      try { return JSON.parse(rawPlan); } catch { return null; }
+    })() : rawPlan;
+
+    const steps = Array.isArray(plan?.steps) ? plan.steps : (Array.isArray(plan) ? plan : []);
+    const executable = steps.filter(s => s && (s.intentType || s.intent_type));
+    if (executable.length === 0) return { declared: 0, intents: [] };
+
+    const intents = [];
+    for (const step of executable) {
+      const intentType = step.intentType || step.intent_type;
+      const intent = await this.intentSystem.declare({
+        agentId: proposal.agent_id,
+        intentType,
+        intentCategory: this.mapIntentCategory(intentType),
+        parameters: step.parameters || {},
+        reasoning: `Approved proposal ${proposal.id}: ${proposal.title}`,
+        expectedOutcome: `Execute ${intentType}`,
+        confidence: 0.8,
+        isReversible: true,
+        riskScore: 0.35
+      });
+      intents.push({ id: intent.id, intentType, status: intent.status });
+    }
+
+    return { declared: intents.length, intents };
+  }
+
+  mapIntentCategory(intentType) {
+    const categories = {
+      query_database: 'read',
+      fetch_metrics: 'read',
+      analyze_data: 'read',
+      get_patient_count: 'read',
+      get_revenue_data: 'read',
+      get_appointment_data: 'read',
+      send_email: 'communicate',
+      send_notification: 'communicate',
+      process_payment: 'financial',
+      update_pricing: 'financial',
+      api_call_external: 'external'
+    };
+    return categories[intentType] || 'write';
   }
 }
 

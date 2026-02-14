@@ -14,6 +14,11 @@ const crypto = require('crypto');
 class SkillRegistry {
   constructor() {
     this.initialized = false;
+    this.intentSystem = null;
+  }
+
+  bindIntentSystem(intentSystem) {
+    this.intentSystem = intentSystem;
   }
 
   async initialize() {
@@ -207,19 +212,53 @@ class SkillRegistry {
    * Run skill steps (intents are declared per step)
    */
   async runSkillSteps(skill, inputData, agentId) {
-    const steps = skill.steps || [];
+    const steps = Array.isArray(skill.steps)
+      ? skill.steps
+      : (typeof skill.steps === 'string' ? JSON.parse(skill.steps || '[]') : []);
     const results = [];
 
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
-      results.push({
+      const stepResult = {
         step: i + 1,
         name: step.name || `Step ${i + 1}`,
         status: 'documented',
         description: step.description,
         intentType: step.intentType,
         message: `Step documented for execution. Intent: ${step.intentType || 'manual'}`
-      });
+      };
+
+      if (step.intentType && this.intentSystem && agentId) {
+        try {
+          const intent = await this.intentSystem.declare({
+            agentId,
+            intentType: step.intentType,
+            intentCategory: this.categorizeIntent(step.intentType),
+            parameters: {
+              ...(inputData || {}),
+              ...(step.parameters || {}),
+              stepName: step.name || `Step ${i + 1}`,
+              skillName: skill.skill_name
+            },
+            reasoning: step.description || `Execute ${step.intentType} for skill ${skill.skill_name}`,
+            expectedOutcome: `Step ${step.name || i + 1} completed`,
+            confidence: 0.82,
+            isReversible: skill.is_reversible !== false,
+            riskScore: this.estimateRisk(step.intentType, skill.risk_level)
+          });
+
+          stepResult.intentId = intent.id;
+          stepResult.intentStatus = intent.status;
+          stepResult.status = intent.status === 'pending' ? 'pending_approval' : 'executed';
+          stepResult.message = `Intent declared: ${step.intentType} (${intent.status})`;
+        } catch (error) {
+          stepResult.status = 'failed';
+          stepResult.message = `Intent declaration failed: ${error.message}`;
+          stepResult.error = error.message;
+        }
+      }
+
+      results.push(stepResult);
     }
 
     return {
@@ -228,6 +267,50 @@ class SkillRegistry {
       steps: results,
       summary: `Skill ${skill.display_name} executed with ${results.length} steps`
     };
+  }
+
+  categorizeIntent(intentType) {
+    const categories = {
+      query_database: 'read',
+      fetch_metrics: 'read',
+      analyze_data: 'read',
+      get_patient_count: 'read',
+      get_revenue_data: 'read',
+      get_appointment_data: 'read',
+      send_email: 'communicate',
+      send_notification: 'communicate',
+      process_payment: 'financial',
+      update_pricing: 'financial',
+      api_call_external: 'external',
+      register_ein: 'external',
+      file_report: 'external',
+      open_bank_account: 'external',
+      submit_to_bureau: 'external'
+    };
+    return categories[intentType] || 'write';
+  }
+
+  estimateRisk(intentType, skillRiskLevel = 'medium') {
+    const riskByIntent = {
+      query_database: 0.05,
+      fetch_metrics: 0.05,
+      analyze_data: 0.08,
+      get_patient_count: 0.05,
+      get_revenue_data: 0.1,
+      get_appointment_data: 0.1,
+      send_notification: 0.2,
+      send_email: 0.35,
+      process_payment: 0.8,
+      update_pricing: 0.7,
+      api_call_external: 0.85,
+      register_ein: 0.9,
+      open_bank_account: 0.95,
+      file_report: 0.85,
+      submit_to_bureau: 0.9
+    };
+    if (riskByIntent[intentType] !== undefined) return riskByIntent[intentType];
+    const bySkillRisk = { minimal: 0.05, low: 0.1, medium: 0.35, high: 0.65, critical: 0.85 };
+    return bySkillRisk[skillRiskLevel] ?? 0.5;
   }
 
   /**

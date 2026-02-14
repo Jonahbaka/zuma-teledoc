@@ -8,6 +8,8 @@ const express = require('express');
 const router = express.Router();
 const { authenticate, requireRole } = require('../middleware/auth');
 const crmService = require('../services/crmService');
+let orchestrator = null;
+try { orchestrator = require('../services/agent-orchestrator'); } catch (e) { /* optional */ }
 
 const adminOnly = [authenticate, requireRole('admin', 'super_admin')];
 
@@ -128,6 +130,12 @@ router.post('/campaigns', ...adminOnly, async (req, res) => {
 router.post('/campaigns/:id/approve', ...adminOnly, async (req, res) => {
   try {
     const campaign = await crmService.approveCampaign(req.params.id, req.user.id);
+    if (orchestrator && campaign?.id) {
+      await orchestrator.emitEvent('crm.campaign.approved', {
+        campaignId: campaign.id,
+        status: campaign.status
+      });
+    }
     res.json({ success: true, data: campaign });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
