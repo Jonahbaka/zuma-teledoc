@@ -646,7 +646,8 @@ class RunLoop {
       'hourly': 60 * 60 * 1000,
       '4hours': 4 * 60 * 60 * 1000,
       'daily': 24 * 60 * 60 * 1000,
-      '6hours': 6 * 60 * 60 * 1000
+      '6hours': 6 * 60 * 60 * 1000,
+      'weekly': 7 * 24 * 60 * 60 * 1000
     };
 
     const intervalMs = intervals[def.schedule] || parseInt(def.schedule) || 3600000;
@@ -688,6 +689,41 @@ class RunLoop {
 // =========================================================================
 
 const DEFAULT_WORKFLOWS = [
+  {
+    name: 'clinical.reactive.soap',
+    description: 'React immediately when consultations start or SOAP notes are generated',
+    triggerEvents: ['clinical.consultation.started', 'clinical.soap.generated', 'clinical.transcript.updated'],
+    steps: [
+      { name: 'Fetch recent SOAP suggestions', type: 'query', query: "SELECT id, appointment_id, provider_id, created_at FROM ai_soap_suggestions ORDER BY created_at DESC LIMIT 20", id: 'soap_recent' },
+      { name: 'Fetch recent diagnostics', type: 'query', query: "SELECT id, appointment_id, provider_id, urgency_level, created_at FROM ai_diagnostic_suggestions ORDER BY created_at DESC LIMIT 20", id: 'diag_recent' },
+      { name: 'Notify operator with clinical AI activity', type: 'notify', input: '$diag_recent' }
+    ]
+  },
+  {
+    name: 'growth.reactive.optimizer',
+    description: 'React to KPI changes and produce growth actions',
+    triggerEvents: ['growth.metrics.changed', 'patient.registered', 'provider.registered', 'payment.received'],
+    steps: [
+      { name: 'New users in 24h', type: 'query', query: "SELECT COUNT(*) as c FROM users WHERE created_at > NOW() - INTERVAL '24 hours'", id: 'new_users_24h' },
+      { name: 'No-show ratio 7d', type: 'query', query: "SELECT COUNT(*) FILTER (WHERE status = 'no_show')::float / NULLIF(COUNT(*),0) as no_show_ratio FROM appointments WHERE created_at > NOW() - INTERVAL '7 days'", id: 'noshow_ratio' },
+      { name: 'Revenue per completed appointment 30d', type: 'query', query: "SELECT COALESCE(SUM(amount),0) / NULLIF((SELECT COUNT(*) FROM appointments WHERE status='completed' AND created_at > NOW() - INTERVAL '30 days'),0) as rev_per_visit FROM payments WHERE status='completed' AND created_at > NOW() - INTERVAL '30 days'", id: 'rev_per_visit' },
+      { name: 'Notify growth actions', type: 'notify', input: '$rev_per_visit' }
+    ]
+  },
+  {
+    name: 'executive.weekly.summary',
+    description: 'Weekly executive KPI dashboard output',
+    schedule: 'weekly',
+    steps: [
+      { name: 'Active patients', type: 'query', query: "SELECT COUNT(*) as active_patients FROM users WHERE role='patient' AND is_active = true", id: 'active_patients' },
+      { name: 'Revenue trend 8 weeks', type: 'query', query: "SELECT DATE_TRUNC('week', created_at) as week, COALESCE(SUM(amount),0) as revenue FROM payments WHERE status='completed' AND created_at > NOW() - INTERVAL '8 weeks' GROUP BY DATE_TRUNC('week', created_at) ORDER BY week", id: 'rev_trend' },
+      { name: 'Provider efficiency', type: 'query', query: "SELECT provider_id, COUNT(*) FILTER (WHERE status='completed') as completed_visits, AVG(EXTRACT(EPOCH FROM (updated_at - created_at))/60) as avg_cycle_min FROM appointments WHERE created_at > NOW() - INTERVAL '7 days' GROUP BY provider_id ORDER BY completed_visits DESC LIMIT 20", id: 'provider_eff' },
+      { name: 'AI assist impact', type: 'query', query: "SELECT COUNT(*) as soap_count, COUNT(*) FILTER (WHERE provider_feedback='accepted') as accepted_count FROM ai_soap_suggestions WHERE created_at > NOW() - INTERVAL '7 days'", id: 'ai_impact' },
+      { name: 'Compliance risk alerts', type: 'query', query: "SELECT COUNT(*) as risk_alerts FROM ai_audit_log WHERE (action_type ILIKE '%violation%' OR action_type ILIKE '%error%') AND created_at > NOW() - INTERVAL '7 days'", id: 'risk_alerts' },
+      { name: 'Growth experiment outcomes', type: 'query', query: "SELECT COUNT(*) as campaign_count, COALESCE(SUM(emails_sent),0) as emails_sent, COALESCE(SUM(emails_replied),0) as emails_replied FROM crm_campaigns WHERE created_at > NOW() - INTERVAL '7 days'", id: 'growth_outcomes' },
+      { name: 'Publish weekly summary', type: 'notify', input: '$growth_outcomes' }
+    ]
+  },
   {
     name: 'patient.monitoring',
     description: 'Check on patients with upcoming appointments or pending follow-ups',

@@ -52,6 +52,16 @@ const EVENT_TYPES = {
 
   // Provider events
   'provider.registered': { description: 'New provider registered', severity: 'info' },
+  // Consultation/clinical events
+  'clinical.consultation.started': { description: 'Consultation session started', severity: 'info' },
+  'clinical.transcript.updated': { description: 'Consultation transcript updated', severity: 'info' },
+  'clinical.soap.generated': { description: 'AI SOAP note generated', severity: 'info' },
+  'clinical.followup.missed': { description: 'Patient follow-up missed', severity: 'warning' },
+  'provider.idle.threshold': { description: 'Provider idle threshold reached', severity: 'warning' },
+
+  // Growth KPI events
+  'growth.metrics.changed': { description: 'Growth KPI baseline changed', severity: 'info' },
+
   'provider.schedule.updated': { description: 'Provider updated schedule', severity: 'info' },
   'provider.prescription.written': { description: 'New prescription written', severity: 'info' },
 
@@ -225,6 +235,11 @@ class EventBus {
           // Inject the event into the agent's context for the next observe cycle
           if (!agent._pendingEvents) agent._pendingEvents = [];
           agent._pendingEvents.push(event);
+
+          // Event-driven activation: request immediate reactive run (debounced by agent).
+          if (typeof agent.requestReactiveRun === 'function') {
+            agent.requestReactiveRun(event);
+          }
         } catch (e) {
           console.error(`Agent ${agent.codeName} event handler error:`, e.message);
         }

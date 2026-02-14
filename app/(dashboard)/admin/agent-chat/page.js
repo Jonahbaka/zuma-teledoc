@@ -134,19 +134,34 @@ export default function AgentChatPage() {
 
   const apiCall = useCallback(async (endpoint, method = 'GET', body = null) => {
     const token = getToken();
+    const controller = new AbortController();
+    const timeoutMs = 20000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const options = {
       method,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      signal: controller.signal
     };
     if (body) options.body = JSON.stringify(body);
     try {
       const res = await fetch(`${API_URL}/agent-chat${endpoint}`, options);
-      const data = await res.json();
+      let data = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = { success: false, error: `Invalid server response (${res.status})` };
+      }
       if (!data.success) throw new Error(data.error);
       return data.data;
     } catch (err) {
-      console.error('API error:', err);
+      if (err.name === 'AbortError') {
+        console.error(`API timeout after ${timeoutMs}ms:`, endpoint);
+      } else {
+        console.error('API error:', err);
+      }
       return null;
+    } finally {
+      clearTimeout(timeout);
     }
   }, []);
 

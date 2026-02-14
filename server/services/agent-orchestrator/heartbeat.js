@@ -269,6 +269,28 @@ class HeartbeatSystem {
         recentPayments = parseInt(payments.rows[0].count);
       } catch (e) { /* ok */ }
 
+      // Provider idle threshold signal (event-driven wake-up for growth/ops agents).
+      try {
+        const idleProviders = await db.query(`
+          SELECT COUNT(*) as c
+          FROM users u
+          WHERE u.role = 'provider'
+            AND u.provider_status = 'approved'
+            AND NOT EXISTS (
+              SELECT 1 FROM appointments a
+              WHERE a.provider_id = u.id
+                AND a.created_at > NOW() - INTERVAL '7 days'
+            )
+        `);
+        const idleCount = parseInt(idleProviders.rows[0].c || '0', 10);
+        if (idleCount > 0 && this.orchestrator?.eventBus) {
+          await this.orchestrator.eventBus.emit('provider.idle.threshold', {
+            idleProviders: idleCount,
+            thresholdDays: 7
+          }, 'heartbeat');
+        }
+      } catch (e) { /* optional signal */ }
+
       // ─── Post findings as different agents ──────────────────
       // The Weaver (Operations) — patient flow report
       if (this.cycleCount % 2 === 0) { // Every hour

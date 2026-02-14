@@ -77,6 +77,11 @@ function detectAndEmit(req, res, body) {
         scheduledAt: body.appointment?.scheduledAt,
         type: body.appointment?.type
       });
+      emit('growth.metrics.changed', {
+        reason: 'appointment_booked',
+        appointmentId: body.appointment?.id || body.data?.id,
+        patientId: body.appointment?.patientId || userId
+      });
     }
     if (method === 'PUT' || method === 'PATCH') {
       if (body.appointment?.status === 'cancelled' || path.includes('/cancel')) {
@@ -86,6 +91,13 @@ function detectAndEmit(req, res, body) {
           reason: body.appointment?.cancellationReason
         });
       }
+      if (body.appointment?.status === 'no_show') {
+        emit('clinical.followup.missed', {
+          appointmentId: body.appointment?.id,
+          patientId: body.appointment?.patientId,
+          providerId: body.appointment?.providerId
+        });
+      }
       if (body.appointment?.status === 'completed') {
         emit('patient.appointment.completed', {
           appointmentId: body.appointment?.id,
@@ -93,6 +105,15 @@ function detectAndEmit(req, res, body) {
           providerId: body.appointment?.providerId
         });
       }
+    }
+    // Consultation start trigger
+    if (method === 'POST' && path.includes('/join') && res.statusCode < 300) {
+      emit('clinical.consultation.started', {
+        appointmentId: body.appointmentId,
+        roomId: body.roomId,
+        joinUrl: body.joinUrl,
+        userId
+      });
     }
   }
 
@@ -104,6 +125,11 @@ function detectAndEmit(req, res, body) {
         amount: body.payment?.amount || body.data?.amount,
         patientId: userId,
         type: body.payment?.type || 'payment'
+      });
+      emit('growth.metrics.changed', {
+        reason: 'payment_received',
+        paymentId: body.payment?.id || body.data?.id,
+        amount: body.payment?.amount || body.data?.amount || null
       });
     }
   }
@@ -135,6 +161,32 @@ function detectAndEmit(req, res, body) {
       emit('patient.registered', { userId: body.user?.id || body.data?.id });
     } else if (role === 'provider') {
       emit('provider.registered', { userId: body.user?.id || body.data?.id });
+    }
+    emit('growth.metrics.changed', {
+      reason: 'registration',
+      role,
+      userId: body.user?.id || body.data?.id
+    });
+  }
+
+  // ─── AI ASSIST (Transcript/SOAP/Clinical Intelligence) ────────
+  if (path.includes('/api/ai-assist')) {
+    if (method === 'POST' && path.includes('/soap') && res.statusCode < 300) {
+      emit('clinical.transcript.updated', {
+        appointmentId: body.suggestion?.appointmentId || req.body?.appointmentId || null,
+        providerId: userId
+      });
+      emit('clinical.soap.generated', {
+        suggestionId: body.suggestion?.id || null,
+        appointmentId: req.body?.appointmentId || null,
+        providerId: userId
+      });
+    }
+    if (method === 'POST' && path.includes('/diagnose') && res.statusCode < 300) {
+      emit('clinical.transcript.updated', {
+        appointmentId: req.body?.appointmentId || null,
+        providerId: userId
+      });
     }
   }
 

@@ -242,6 +242,11 @@ class BaseAgent {
     this.observations = [];
     this.proposals = [];
     this.intents = [];
+
+    // Reactive runtime controls (event-driven debounce).
+    this.reactiveCooldownMs = config.reactiveCooldownMs || 15000;
+    this._reactiveTimer = null;
+    this._lastReactiveRunAt = 0;
   }
 
   // =========================================================================
@@ -350,6 +355,34 @@ class BaseAgent {
     return events;
   }
 
+  requestReactiveRun(triggerEvent = null) {
+    if (this.emergencyShutdown || !this.isEnabled) return;
+
+    const now = Date.now();
+    const elapsed = now - this._lastReactiveRunAt;
+    const delay = elapsed >= this.reactiveCooldownMs ? 0 : this.reactiveCooldownMs - elapsed;
+
+    if (this._reactiveTimer) {
+      return;
+    }
+
+    this._reactiveTimer = setTimeout(async () => {
+      this._reactiveTimer = null;
+      if (this.status === 'running' || this.emergencyShutdown || !this.isEnabled) return;
+      this._lastReactiveRunAt = Date.now();
+
+      try {
+        await this.run({
+          trigger: 'event',
+          triggerEvent: triggerEvent?.type || null,
+          triggerSource: triggerEvent?.source || 'event-bus'
+        });
+      } catch (e) {
+        console.error(`  ⚠️ ${this.codeName} reactive run failed:`, e.message);
+      }
+    }, delay);
+  }
+
   // =========================================================================
   // DYNAMIC SKILL MATCHING (The Reflexes — agent discovers which tool to use)
   // =========================================================================
@@ -376,22 +409,28 @@ class BaseAgent {
     this.observations = [];
     this.proposals = [];
     this.intents = [];
+    const reactiveEvents = this.consumePendingEvents();
+    const runContext = {
+      ...context,
+      reactiveEvents,
+      trigger: context.trigger || (reactiveEvents.length > 0 ? 'event' : 'manual')
+    };
 
     try {
       await this.updateStatus('running');
 
       // Step 1: Observe - gather data and context
       console.log(`  🔍 ${this.codeName}: Scanning frequencies...`);
-      const observations = await this.observe(context);
+      const observations = await this.observe(runContext);
       this.observations = observations || [];
 
       // Step 2: Analyze - derive insights using Vortex Logic
       console.log(`  🧠 ${this.codeName}: Processing through Vortex Logic...`);
-      const analysis = await this.analyze(this.observations, context);
+      const analysis = await this.analyze(this.observations, runContext);
 
       // Step 3: Propose - generate actionable proposals
       console.log(`  📋 ${this.codeName}: Generating harmonic proposals...`);
-      const proposals = await this.propose(analysis, context);
+      const proposals = await this.propose(analysis, runContext);
       this.proposals = proposals || [];
 
       // Step 4: Score with 3-6-9 and submit proposals to governance
