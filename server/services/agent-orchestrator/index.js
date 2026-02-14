@@ -79,6 +79,7 @@ const { SkillSelector, DynamicSkillLoader, DEFAULT_MEDICAL_SKILLS, MedicalSkill 
 
 // ═══ THE GOAL ENGINE — Daily/Weekly/Monthly/Yearly/Infinite Forecasting ═══
 const { GoalEngine, FREQUENCIES } = require('./goal-engine');
+const db = require('../../db');
 
 class AgentOrchestrator {
   constructor() {
@@ -321,6 +322,8 @@ class AgentOrchestrator {
       'vortex_math',      // The Tesseract
       'governance',       // The Sage reviews all
       'devops',           // The Debugger checks system health
+      'accounting',       // The Treasurer
+      'engineering',      // Engineering Agent
       'ceo'               // The Conductor synthesizes & reports to Operator
     ];
 
@@ -351,17 +354,48 @@ class AgentOrchestrator {
    * Get complete system status for the AI Ops Portal
    */
   async getSystemStatus() {
+    // Pull persisted agent activity to derive "active recently" signal for UI.
+    let dbAgents = [];
+    try {
+      const result = await db.query(`
+        SELECT agent_type, status, last_run_at, run_count, error_message
+        FROM ai_agents
+      `);
+      dbAgents = result.rows || [];
+    } catch {
+      dbAgents = [];
+    }
+    const byType = new Map(dbAgents.map(a => [a.agent_type, a]));
+    const activeWindowMs = 15 * 60 * 1000;
+
     const agentStatuses = [];
     for (const [type, agent] of this.agents) {
+      const dbState = byType.get(type) || {};
+      const lastRunAt = dbState.last_run_at ? new Date(dbState.last_run_at) : null;
+      const ranRecently = lastRunAt ? (Date.now() - lastRunAt.getTime()) <= activeWindowMs : false;
+      const runtimeStatus = agent.status === 'running'
+        ? 'running'
+        : agent.emergencyShutdown
+          ? 'shutdown'
+          : !agent.isEnabled
+            ? 'disabled'
+            : ranRecently
+              ? 'active'
+              : 'idle';
+
       agentStatuses.push({
         type: agent.agentType,
         name: agent.displayName,
         description: agent.description,
-        status: agent.status,
+        status: runtimeStatus,
+        rawStatus: agent.status,
         isEnabled: agent.isEnabled,
         emergencyShutdown: agent.emergencyShutdown,
         autonomyLevel: agent.autonomyLevel,
-        capabilities: agent.capabilities
+        capabilities: agent.capabilities,
+        runCount: Number(dbState.run_count || 0),
+        lastRunAt: lastRunAt ? lastRunAt.toISOString() : null,
+        errorMessage: dbState.error_message || null
       });
     }
 
