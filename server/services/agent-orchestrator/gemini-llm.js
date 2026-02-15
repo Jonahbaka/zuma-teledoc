@@ -200,6 +200,20 @@ async function verifyGemini(models) {
   }
 }
 
+// If Claude is active but we need low-latency responses, initialize Gemini models too
+// without permanently switching the global "activeProvider".
+function ensureGeminiModelsNoSwitch() {
+  if (geminiFlashModel || !GEMINI_API_KEY) return false;
+  const prevProvider = activeProvider;
+  const prevModel = activeModelName;
+  const ok = initializeGemini();
+  if (ok && prevProvider === 'claude') {
+    activeProvider = prevProvider;
+    activeModelName = prevModel;
+  }
+  return ok;
+}
+
 function isAvailable() {
   return activeProvider !== null;
 }
@@ -280,6 +294,29 @@ async function callLLM(systemPrompt, userMessage, options = {}) {
   }
 
   return null;
+}
+
+// Fast-path call for chat-style latency.
+// Prefers Gemini Flash when available (even if Claude is primary).
+async function callLLMFast(systemPrompt, userMessage, options = {}) {
+  ensureGeminiModelsNoSwitch();
+
+  const maxTokens = options.maxTokens || 768;
+  const temperature = options.temperature ?? 0.4;
+
+  if (geminiFlashModel) {
+    try {
+      return await withRetry(async () => {
+        const prompt = `${systemPrompt}\n\n${userMessage}`.slice(0, 24000);
+        const result = await geminiFlashModel.generateContent(prompt);
+        return result.response.text();
+      }, 2);
+    } catch (err) {
+      console.error(`  ❌ callLLMFast (Gemini) failed: ${err.message.substring(0, 100)}`);
+    }
+  }
+
+  return callLLM(systemPrompt, userMessage, { maxTokens, temperature });
 }
 
 async function callLLMChat(systemPrompt, userMessage, conversationHistory = [], options = {}) {
@@ -532,5 +569,6 @@ module.exports = {
   GENESIS_CORE_PROMPT,
   withRetry,
   callLLM,
+  callLLMFast,
   callLLMChat
 };

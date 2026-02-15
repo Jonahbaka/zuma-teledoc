@@ -126,6 +126,7 @@ async function initializeApp() {
   require('dotenv').config();
   const helmet = require('helmet');
   const cors = require('cors');
+  const compression = require('compression');
   const cookieParser = require('cookie-parser');
   const rateLimit = require('express-rate-limit');
   const { v4: uuidv4 } = require('uuid');
@@ -187,6 +188,10 @@ async function initializeApp() {
     optionsSuccessStatus: 204
   };
   app.use(cors(corsOptions));
+
+  // Response compression (major speed win for HTML/JSON).
+  // Keep it after CORS but before heavy routes.
+  app.use(compression({ level: 6 }));
   
   // Security - FIXED CSP for Next.js compatibility
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://doctarx.com/api';

@@ -28,8 +28,15 @@ const dbConfig = {
   connectionString,
   ssl: sslConfig,
   max: parseInt(process.env.DB_POOL_MAX) || 10,  // Conservative — Aiven free tier has ~20 conn limit
-  idleTimeoutMillis: 15000,   // Release idle connections faster
-  connectionTimeoutMillis: 15000,
+  // Keep connections stable on serverless-ish environments (Cloud Run)
+  keepAlive: true,
+  keepAliveInitialDelayMillis: parseInt(process.env.DB_KEEPALIVE_DELAY_MS, 10) || 10000,
+
+  // Timeouts tuned for responsiveness (avoid long hangs).
+  idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MS, 10) || 30000,
+  connectionTimeoutMillis: parseInt(process.env.DB_POOL_CONN_TIMEOUT_MS, 10) || 8000,
+  query_timeout: parseInt(process.env.DB_QUERY_TIMEOUT_MS, 10) || 8000,
+
   allowExitOnIdle: false
 };
 

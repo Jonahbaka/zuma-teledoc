@@ -461,6 +461,56 @@ async function generateAgentResponse(agentType, userMessage, user) {
   const persona = AGENT_PERSONAS[agentType] || `You are the ${agentType} agent for DoctaRx.`;
 
   let content = '';
+  const lowerMsg = String(userMessage || '').toLowerCase();
+
+  // Fast path: for normal chat, don't do a pile of DB queries + web actions.
+  // This is the #1 reason responses feel "dormant" / slow.
+  const looksLikeActionRequest =
+    lowerMsg.includes('search') ||
+    lowerMsg.includes('look up') ||
+    lowerMsg.includes('find online') ||
+    lowerMsg.includes('scrape') ||
+    lowerMsg.includes('post ') ||
+    lowerMsg.includes('tweet') ||
+    lowerMsg.includes('publish') ||
+    lowerMsg.includes('seo') ||
+    lowerMsg.includes('social') ||
+    lowerMsg.includes('campaign') ||
+    lowerMsg.includes('import') ||
+    lowerMsg.includes('crm') ||
+    lowerMsg.includes('provider leads') ||
+    lowerMsg.includes('npi') ||
+    lowerMsg.includes('bring traffic') ||
+    lowerMsg.includes('free traffic') ||
+    lowerMsg.includes('zoho') ||
+    lowerMsg.includes('job opening') ||
+    lowerMsg.includes('post job');
+
+  const fastMode = !looksLikeActionRequest && String(userMessage || '').trim().length <= 400;
+
+  if (fastMode && llmService) {
+    if (!llmService.isAvailable()) {
+      try { llmService.initialize(); } catch (e) { /* ignore */ }
+    }
+    if (llmService.isAvailable() && typeof llmService.callLLMFast === 'function') {
+      const systemPrompt = [
+        persona,
+        '',
+        'You are in a live admin chat. Respond fast and concise.',
+        'If the Operator wants you to take actions, ask ONE clarifying question and propose the exact next step.',
+        'No long preambles.'
+      ].join('\n');
+      const text = await llmService.callLLMFast(systemPrompt, userMessage, { maxTokens: 700, temperature: 0.4 });
+      if (text) {
+        return {
+          agentName,
+          content: text,
+          messageType: 'text',
+          metadata: { agentType, engine: 'fast', fastMode: true }
+        };
+      }
+    }
+  }
 
   // =========================================================================
   // STEP 0: ALWAYS inject LIVE app data — agents must see the real system
@@ -471,24 +521,31 @@ async function generateAgentResponse(agentType, userMessage, user) {
 
   try {
     const liveData = {};
-    // Real user count
-    try { const r = await db.query('SELECT COUNT(*) as c FROM users'); liveData.totalUsers = parseInt(r.rows[0].c); } catch(e) {}
-    // Real provider count
-    try { const r = await db.query("SELECT COUNT(*) as c FROM users WHERE role IN ('provider','admin')"); liveData.totalProviders = parseInt(r.rows[0].c); } catch(e) {}
-    // Real appointment count
-    try { const r = await db.query('SELECT COUNT(*) as c FROM video_sessions'); liveData.totalAppointments = parseInt(r.rows[0].c); } catch(e) {}
-    // Recent appointments
-    try { const r = await db.query('SELECT COUNT(*) as c FROM video_sessions WHERE created_at > NOW() - INTERVAL \'24 hours\''); liveData.appointmentsLast24h = parseInt(r.rows[0].c); } catch(e) {}
-    // Credentials count
-    try { const r = await db.query('SELECT COUNT(*) as c FROM ai_credential_vault WHERE is_active = true'); liveData.activeCredentials = parseInt(r.rows[0].c); } catch(e) {}
-    // Agent results count
-    try { const r = await db.query('SELECT COUNT(*) as c FROM ai_agent_results'); liveData.agentResults = parseInt(r.rows[0].c); } catch(e) {}
-    // CRM contacts
-    try { const r = await db.query('SELECT COUNT(*) as c FROM crm_contacts'); liveData.crmContacts = parseInt(r.rows[0].c); } catch(e) {}
-    // Pending proposals
-    try { const r = await db.query("SELECT COUNT(*) as c FROM ai_proposals WHERE status = 'pending'"); liveData.pendingProposals = parseInt(r.rows[0].c); } catch(e) {}
-    // Recent errors (last hour)
-    try { const r = await db.query("SELECT COUNT(*) as c FROM ai_agent_results WHERE result_type = 'error' AND created_at > NOW() - INTERVAL '1 hour'"); liveData.recentErrors = parseInt(r.rows[0].c); } catch(e) {}
+    // Single round-trip (much faster than 8-10 sequential queries).
+    try {
+      const r = await db.query(`
+        SELECT
+          (SELECT COUNT(*)::int FROM users) AS total_users,
+          (SELECT COUNT(*)::int FROM users WHERE role IN ('provider','admin')) AS total_providers,
+          (SELECT COUNT(*)::int FROM video_sessions) AS total_appointments,
+          (SELECT COUNT(*)::int FROM video_sessions WHERE created_at > NOW() - INTERVAL '24 hours') AS appointments_last_24h,
+          (SELECT COUNT(*)::int FROM ai_credential_vault WHERE is_active = true) AS active_credentials,
+          (SELECT COUNT(*)::int FROM ai_agent_results) AS agent_results,
+          (SELECT COUNT(*)::int FROM crm_contacts) AS crm_contacts,
+          (SELECT COUNT(*)::int FROM ai_proposals WHERE status = 'pending') AS pending_proposals,
+          (SELECT COUNT(*)::int FROM ai_agent_results WHERE result_type = 'error' AND created_at > NOW() - INTERVAL '1 hour') AS recent_errors
+      `);
+      const row = r.rows?.[0] || {};
+      liveData.totalUsers = row.total_users;
+      liveData.totalProviders = row.total_providers;
+      liveData.totalAppointments = row.total_appointments;
+      liveData.appointmentsLast24h = row.appointments_last_24h;
+      liveData.activeCredentials = row.active_credentials;
+      liveData.agentResults = row.agent_results;
+      liveData.crmContacts = row.crm_contacts;
+      liveData.pendingProposals = row.pending_proposals;
+      liveData.recentErrors = row.recent_errors;
+    } catch (e) { /* non-critical */ }
 
     const dataEntries = Object.entries(liveData).filter(([,v]) => v !== undefined && v !== null);
     if (dataEntries.length > 0) {
@@ -502,7 +559,6 @@ async function generateAgentResponse(agentType, userMessage, user) {
   }
 
   if (webEngine) {
-    const lowerMsg = userMessage.toLowerCase();
 
     try {
       // ─── WEB SEARCH ──────────────────────────────────────────
