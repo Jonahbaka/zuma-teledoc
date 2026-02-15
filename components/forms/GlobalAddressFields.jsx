@@ -5,6 +5,7 @@ import { MapPin, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { getCountryOptions } from '@/lib/countries';
 
 // Field label overrides for high-traffic countries.
 // For all other countries, we use neutral defaults.
@@ -12,6 +13,9 @@ const COUNTRY_FIELD_OVERRIDES = {
   US: { regionLabel: 'State', postalLabel: 'ZIP code' },
   GB: { regionLabel: 'County', postalLabel: 'Postcode' },
   NG: { regionLabel: 'State', postalLabel: 'Postal code' },
+  GH: { regionLabel: 'Region', postalLabel: 'Postal code' },
+  ZA: { regionLabel: 'Province', postalLabel: 'Postal code' },
+  JM: { regionLabel: 'Parish', postalLabel: 'Postal code' },
   BR: { regionLabel: 'State', postalLabel: 'CEP' },
   IN: { regionLabel: 'State', postalLabel: 'PIN code' },
   CA: { regionLabel: 'Province', postalLabel: 'Postal code' },
@@ -28,49 +32,12 @@ function countryConfig(countryCode) {
 }
 
 function getAllCountryOptions() {
-  // Prefer the platform's supported regions list (covers essentially all countries).
-  // Fallback to a small list if the browser doesn't support it.
-  let regionCodes = null;
-  try {
-    if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
-      regionCodes = Intl.supportedValuesOf('region');
-    }
-  } catch {
-    regionCodes = null;
-  }
+  // Always use a complete ISO list (stable across browsers).
+  const options = getCountryOptions({ locale: (typeof navigator !== 'undefined' ? navigator.language : 'en') });
 
-  const fallback = ['US', 'GB', 'NG', 'BR', 'IN', 'CA', 'FR', 'ES'];
-  const codes = Array.isArray(regionCodes) && regionCodes.length > 0 ? regionCodes : fallback;
-
-  const locale = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en';
-  let displayNames = null;
-  try {
-    displayNames = new Intl.DisplayNames([locale], { type: 'region' });
-  } catch {
-    displayNames = null;
-  }
-
-  const seen = new Set();
-  const options = [];
-
-  for (const raw of codes) {
-    const code = String(raw || '').toUpperCase().trim();
-    // Filter out UN M49 numeric regions like "001" and anything unexpected.
-    if (!/^[A-Z]{2}$/.test(code)) continue;
-    if (seen.has(code)) continue;
-    seen.add(code);
-
-    const name = displayNames?.of(code) || code;
-    options.push({ code, name });
-  }
-
-  options.sort((a, b) => a.name.localeCompare(b.name, locale, { sensitivity: 'base' }));
-
-  // Ensure our default appears even if platform list is missing it (shouldn't happen, but safe).
-  if (!seen.has(DEFAULT_COUNTRY)) {
-    options.unshift({ code: DEFAULT_COUNTRY, name: displayNames?.of(DEFAULT_COUNTRY) || 'United States' });
-  }
-
+  // Ensure default is present.
+  const hasDefault = options.some((c) => c.code === DEFAULT_COUNTRY);
+  if (!hasDefault) options.unshift({ code: DEFAULT_COUNTRY, name: 'United States' });
   return options;
 }
 
