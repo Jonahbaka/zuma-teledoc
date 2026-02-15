@@ -193,6 +193,62 @@ class CapabilityAdapterLayer {
       }
     });
 
+    // ===== RECRUITING / ATS ADAPTERS (Zoho Recruit) =====
+    this.register('zoho_recruit_create_job_opening', {
+      name: 'zoho_recruit_jobopenings_create',
+      type: 'external',
+      execute: async (params) => {
+        const jobOpening = params.jobOpening || params.job_opening || params;
+        const publishToBoards = params.publishToBoards !== false;
+        const publishChannels = params.publishChannels || params.publish_channels || ['LinkedIn', 'Indeed'];
+        try {
+          const zohoRecruitService = require('../zohoRecruitService');
+          const result = await zohoRecruitService.createJobOpening(jobOpening, {
+            publishToBoards,
+            publishChannels
+          });
+          return {
+            success: true,
+            action: 'zoho_recruit_create_job_opening',
+            result
+          };
+        } catch (error) {
+          return {
+            success: false,
+            action: 'zoho_recruit_create_job_opening',
+            error: error.message
+          };
+        }
+      }
+    });
+
+    this.register('zoho_recruit_publish_job_opening', {
+      name: 'zoho_recruit_jobopenings_publish',
+      type: 'external',
+      execute: async (params) => {
+        const jobOpeningId = params.jobOpeningId || params.job_opening_id || params.id;
+        const publishChannels = params.publishChannels || params.publish_channels || ['LinkedIn', 'Indeed'];
+        if (!jobOpeningId) {
+          return { success: false, error: 'jobOpeningId is required' };
+        }
+        try {
+          const zohoRecruitService = require('../zohoRecruitService');
+          const result = await zohoRecruitService.publishToBoards(jobOpeningId, publishChannels);
+          return {
+            success: true,
+            action: 'zoho_recruit_publish_job_opening',
+            result
+          };
+        } catch (error) {
+          return {
+            success: false,
+            action: 'zoho_recruit_publish_job_opening',
+            error: error.message
+          };
+        }
+      }
+    });
+
     this.register('get_ga4_realtime_metrics', {
       name: 'ga4_realtime_fetcher',
       type: 'analytics',

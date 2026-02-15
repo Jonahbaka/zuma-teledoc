@@ -594,7 +594,8 @@ class BaseAgent {
       send_email: 'communicate', send_notification: 'communicate', send_sms: 'communicate',
       process_payment: 'financial', update_pricing: 'financial', generate_invoice: 'financial',
       api_call_external: 'external', register_ein: 'external', file_report: 'external',
-      open_bank_account: 'external', submit_to_bureau: 'external'
+      open_bank_account: 'external', submit_to_bureau: 'external',
+      zoho_recruit_create_job_opening: 'external', zoho_recruit_publish_job_opening: 'external'
     };
     return categories[intentType] || 'write';
   }
@@ -607,7 +608,8 @@ class BaseAgent {
       update_config: 0.4, create_record: 0.3,
       process_payment: 0.7, update_pricing: 0.6,
       api_call_external: 0.8, register_ein: 0.9, open_bank_account: 0.95,
-      file_report: 0.85, submit_to_bureau: 0.9
+      file_report: 0.85, submit_to_bureau: 0.9,
+      zoho_recruit_create_job_opening: 0.75, zoho_recruit_publish_job_opening: 0.65
     };
     return riskMap[intentType] || 0.5;
   }

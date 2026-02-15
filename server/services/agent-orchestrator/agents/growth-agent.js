@@ -21,7 +21,7 @@ class GrowthAgent extends BaseAgent {
       codeName: 'The Scout',
       description: 'Signals the frequency AND hunts for market arbitrages. Detects under-priced attention, identifies system lags in competitor landscapes, and exploits asymmetries for rapid market share capture.',
       mission: 'Signal the tribe AND decode the Matrix. Find the glitches — where competitors are slow, overpriced, or blind — and build tunnels through them before the market reprices.',
-      capabilities: ['query_database', 'fetch_metrics', 'get_patient_count', 'analyze_data', 'get_ga4_realtime_metrics', 'send_email'],
+      capabilities: ['query_database', 'fetch_metrics', 'get_patient_count', 'analyze_data', 'get_ga4_realtime_metrics', 'send_email', 'zoho_recruit_create_job_opening', 'zoho_recruit_publish_job_opening'],
       autonomyLevel: 1,
       systemPrompt: `You are The Scout — Growth Agent + Matrix Protocol Hunter for DoctaRx.
 DUAL MISSION: 

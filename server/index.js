@@ -270,6 +270,7 @@ async function initializeApp() {
   loadRoute('/api/agent-ide', './routes/agentIde');
   loadRoute('/api/agent-social', './routes/agentSocial');
   loadRoute('/api/realtime-analytics', './routes/realtimeAnalytics');
+  loadRoute('/api/auth/zoho/recruit', './routes/zohoRecruitAuth');
   console.log('✅ API routes loading complete');
   
   // Initialize Predictive Intelligence Engine (non-blocking)

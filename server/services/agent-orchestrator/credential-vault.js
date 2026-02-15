@@ -72,6 +72,7 @@ const SUPPORTED_PLATFORMS = [
   { id: 'google_analytics', name: 'Google Analytics', icon: '📈', fields: ['api_key', 'api_secret'] },
   { id: 'google_business', name: 'Google Business', icon: '🏢', fields: ['username', 'password'] },
   { id: 'yelp', name: 'Yelp Business', icon: '⭐', fields: ['username', 'password'] },
+  { id: 'zoho_recruit', name: 'Zoho Recruit', icon: '🧑‍💼', fields: ['api_key', 'api_secret'] },
   { id: 'reddit', name: 'Reddit', icon: '🤖', fields: ['username', 'password', 'api_key', 'api_secret'] },
   { id: 'pinterest', name: 'Pinterest', icon: '📌', fields: ['username', 'password'] },
   { id: 'slack', name: 'Slack', icon: '💬', fields: ['api_key'] },
@@ -131,6 +132,89 @@ class CredentialVault {
       console.error('Credential store error:', err.message);
       throw err;
     }
+  }
+
+  async upsertCredentialByPlatform({
+    platform,
+    accountLabel,
+    username,
+    password,
+    apiKey,
+    apiSecret,
+    extraData,
+    assignedAgents,
+    addedBy,
+    notes
+  }) {
+    const usernameEnc = vaultEncrypt(username);
+    const passwordEnc = vaultEncrypt(password);
+    const apiKeyEnc = vaultEncrypt(apiKey);
+    const apiSecretEnc = vaultEncrypt(apiSecret);
+    const extraEnc = vaultEncrypt(extraData ? JSON.stringify(extraData) : null);
+    const platformInfo = SUPPORTED_PLATFORMS.find(p => p.id === platform) || { name: platform, id: platform };
+    const label = accountLabel || `${platformInfo.name} Account`;
+
+    const existing = await db.query(`
+      SELECT id
+      FROM ai_credential_vault
+      WHERE platform = $1 AND account_label = $2
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `, [platform, label]);
+
+    if (!existing.rows[0]) {
+      return this.storeCredential({
+        platform,
+        accountLabel: label,
+        username,
+        password,
+        apiKey,
+        apiSecret,
+        extraData,
+        assignedAgents,
+        addedBy,
+        notes
+      });
+    }
+
+    const id = existing.rows[0].id;
+    const updated = await db.query(`
+      UPDATE ai_credential_vault
+      SET
+        platform_display_name = $2,
+        username_encrypted = $3,
+        username_iv = $4,
+        username_tag = $5,
+        password_encrypted = $6,
+        password_iv = $7,
+        password_tag = $8,
+        api_key_encrypted = $9,
+        api_key_iv = $10,
+        api_key_tag = $11,
+        api_secret_encrypted = $12,
+        api_secret_iv = $13,
+        api_secret_tag = $14,
+        extra_data_encrypted = $15,
+        extra_data_iv = $16,
+        extra_data_tag = $17,
+        assigned_agents = COALESCE($18, assigned_agents),
+        notes = COALESCE($19, notes),
+        status = 'active',
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, platform, platform_display_name, account_label, status, assigned_agents, created_at, updated_at
+    `, [
+      id,
+      platformInfo.name,
+      usernameEnc.encrypted, usernameEnc.iv, usernameEnc.tag,
+      passwordEnc.encrypted, passwordEnc.iv, passwordEnc.tag,
+      apiKeyEnc.encrypted, apiKeyEnc.iv, apiKeyEnc.tag,
+      apiSecretEnc.encrypted, apiSecretEnc.iv, apiSecretEnc.tag,
+      extraEnc.encrypted, extraEnc.iv, extraEnc.tag,
+      assignedAgents || null,
+      notes || null
+    ]);
+    return updated.rows[0];
   }
 
   /**
@@ -211,6 +295,24 @@ class CredentialVault {
       console.error('Credential retrieval error:', err.message);
       throw err;
     }
+  }
+
+  async getCredentialByPlatform(platform, requestingAgent = 'operator', accountLabel = null) {
+    const params = [platform];
+    let query = `
+      SELECT id
+      FROM ai_credential_vault
+      WHERE platform = $1
+        AND status = 'active'
+    `;
+    if (accountLabel) {
+      params.push(accountLabel);
+      query += ` AND account_label = $${params.length}`;
+    }
+    query += ' ORDER BY updated_at DESC LIMIT 1';
+    const result = await db.query(query, params);
+    if (!result.rows[0]) return null;
+    return this.getCredential(result.rows[0].id, requestingAgent);
   }
 
   /**

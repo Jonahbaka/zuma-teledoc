@@ -802,7 +802,9 @@ class AgentOrchestrator {
       send_notification: 'communicate',
       process_payment: 'financial',
       update_pricing: 'financial',
-      api_call_external: 'external'
+      api_call_external: 'external',
+      zoho_recruit_create_job_opening: 'external',
+      zoho_recruit_publish_job_opening: 'external'
     };
     return categories[intentType] || 'write';
   }

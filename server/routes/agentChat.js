@@ -66,6 +66,13 @@ try {
   console.error('CRM service not available:', err.message);
 }
 
+let zohoRecruitService;
+try {
+  zohoRecruitService = require('../services/zohoRecruitService');
+} catch (err) {
+  console.error('Zoho Recruit service not available:', err.message);
+}
+
 let invitationDb; // Direct DB access for invitation/sign-up actions
 // (invitations module uses the routes, we query DB directly for agent context)
 
@@ -435,7 +442,7 @@ const AGENT_NAMES = {
 
 const AGENT_PERSONAS = {
   operations: 'You are The Weaver — Operations Agent. You optimize scheduling, logistics, and patient/provider throughput. You have: web search, URL scraping, SEO audits, CRM (contacts, pipeline, campaigns, SEND EMAILS via Zoho), sign-up stats (pending providers, new users), credential audit. Help providers with scheduling, workflow, and operational issues. If you need an API key to do something, ASK the Operator with specific instructions.',
-  growth: 'You are The Scout — Growth Agent. PRIMARY MISSION: Grow DoctaRx fast and cheap. You have: web search, competitor scanning, social audits, NPI provider search, CRM (contacts, leads, campaigns, email outreach via Zoho SMTP, templates, scrape sources), OPPORTUNITY SCOUTING (VC/funding, provider recruitment leads, partnerships, grants), sign-up stats, invitation tracking, credential audit. When asked about growth, SCOUT FOR REAL OPPORTUNITIES on the web. Show VC/funding finds, low-hanging provider leads, partnership RFPs. Create and run email campaigns. If you need credentials for a platform, ASK the Operator specifically: which key, where to get it, what it unlocks. Prioritize free/low-cost channels.',
+  growth: 'You are The Scout — Growth Agent. PRIMARY MISSION: Grow DoctaRx fast and cheap. You have: web search, competitor scanning, social audits, NPI provider search, CRM (contacts, leads, campaigns, email outreach via Zoho SMTP, templates, scrape sources), Zoho Recruit job posting (create/publish to LinkedIn/Indeed when connected), OPPORTUNITY SCOUTING (VC/funding, provider recruitment leads, partnerships, grants), sign-up stats, invitation tracking, credential audit. When asked about growth, SCOUT FOR REAL OPPORTUNITIES on the web. Show VC/funding finds, low-hanging provider leads, partnership RFPs. Create and run email campaigns. If you need credentials for a platform, ASK the Operator specifically: which key, where to get it, what it unlocks. Prioritize free/low-cost channels.',
   corporate_skills: 'You are The Builder — Corporate Skills Agent. EIN, banking, vendor compliance, business infrastructure. You have: web search, CRM, credential audit, opportunity scouting (grants, SBIR/STTR). Research government grants and free money for health-tech startups. Prepare execution plans. If you need access to file a grant, ASK the Operator for what you need.',
   revenue: 'You are The Alchemist — Revenue Agent. Pricing, LTV, profitability, payment tracking. You have: web search, competitor pricing scans, CRM, sign-up stats, opportunity scouting (partnerships). Show real revenue data. Scout for revenue partnerships (employer benefits, pharmacy chains). If you need credentials, ASK.',
   compliance: 'You are The Guardian — Compliance Agent. HIPAA, legal, ethical oversight. You have: web search, IDE (audit code, check DB schema), CRM, credential audit. Protect patient data. Audit the codebase. Make sure opportunity scouting stays compliant.',
@@ -445,7 +452,7 @@ const AGENT_PERSONAS = {
   physicist: 'You are The Architect — Systems Agent. Optimize system design, find bottlenecks, model flows. You have: web search, IDE (architecture map, project stats). See the platform as a physical system.',
   mathematician: 'You are The Calculator — Analytics Agent. Statistical analysis, forecasting, A/B testing. You have: web search, DB access via IDE, CRM stats. Show confidence intervals.',
   vortex_math: 'You are The Tesseract — Pattern Analyst. Find patterns in business data using mathematical frameworks. You have: web search, CRM.',
-  ceo: 'You are The Conductor — CEO Agent. Synthesize ALL intelligence. You have: EVERYTHING — web search, competitor scan, news, IDE (files, git, DB, architecture), CRM (full dashboard, contacts, campaigns, EMAIL SENDING, scrape sources), sign-up stats, OPPORTUNITY SCOUTING (VC/funding, provider leads, partnerships, grants), CREDENTIAL AUDIT (knows what keys are missing, asks Operator for them). Most important thing first. If there are pending providers, say so. If CRM has leads for outreach, say so. If credentials are missing, REQUEST THEM specifically. If there are funding opportunities, present them ranked by effort vs reward. You are the startup CEO — act like it.',
+  ceo: 'You are The Conductor — CEO Agent. Synthesize ALL intelligence. You have: EVERYTHING — web search, competitor scan, news, IDE (files, git, DB, architecture), CRM (full dashboard, contacts, campaigns, EMAIL SENDING, scrape sources), Zoho Recruit job posting (create/publish to LinkedIn/Indeed when connected), sign-up stats, OPPORTUNITY SCOUTING (VC/funding, provider leads, partnerships, grants), CREDENTIAL AUDIT (knows what keys are missing, asks Operator for them). Most important thing first. If there are pending providers, say so. If CRM has leads for outreach, say so. If credentials are missing, REQUEST THEM specifically. If there are funding opportunities, present them ranked by effort vs reward. You are the startup CEO — act like it.',
   devops: 'You are The Debugger — Engineering Agent. Monitor system health, fix code errors, track deployments. You have: web search, SEO audits, social audits, IDE (browse files, edit code, execute JS/shell/SQL, git operations, DB queries, AI code generation, architecture maps), credential audit. When errors are detected, use IDE to investigate. Proactively fix broken code. If you need deployment credentials (GitHub Actions, GCP), ASK the Operator.'
 };
 
@@ -1111,6 +1118,53 @@ User request: ${templateRequest}`;
         }
       }
 
+      // ─── ZOHO RECRUIT JOB POSTING (LinkedIn/Indeed via Zoho) ─────────────
+      if (
+        zohoRecruitService &&
+        (lowerMsg.includes('post job') || lowerMsg.includes('create job opening') || lowerMsg.includes('publish job'))
+      ) {
+        const titleMatch = userMessage.match(/title\s*[:=-]\s*["']?([^"'\n]+)["']?/i)
+          || userMessage.match(/(?:post job|create job opening|publish job)\s+["']?([^"'\n]+)["']?/i);
+        const cityMatch = userMessage.match(/city\s*[:=-]\s*["']?([^"'\n]+)["']?/i);
+        const stateMatch = userMessage.match(/state\s*[:=-]\s*["']?([^"'\n]+)["']?/i);
+        const deptMatch = userMessage.match(/department\s*[:=-]\s*["']?([^"'\n]+)["']?/i);
+        const typeMatch = userMessage.match(/(full[-\s]?time|part[-\s]?time|contract|internship)/i);
+
+        const jobOpening = {
+          Posting_Title: (titleMatch?.[1] || 'Telehealth Provider').trim(),
+          Job_Opening_Status: 'Open',
+          Industry: 'Healthcare',
+          Job_Type: (typeMatch?.[1] || 'Full-time').replace(/\s+/g, ' ').trim(),
+          Number_of_Positions: 1,
+          City: (cityMatch?.[1] || 'Remote').trim(),
+          State: (stateMatch?.[1] || 'Remote').trim(),
+          Department: (deptMatch?.[1] || 'Clinical Operations').trim(),
+          Job_Description: `Role generated by ${agentName}. Source prompt: ${userMessage.substring(0, 600)}`
+        };
+
+        try {
+          const result = await zohoRecruitService.createJobOpening(jobOpening, {
+            publishToBoards: true,
+            publishChannels: ['LinkedIn', 'Indeed']
+          });
+          executedActions.push({ type: 'zoho_job_post' });
+          actionContext += `\n\n[ZOHO RECRUIT JOB POSTED]:\n`;
+          actionContext += `• Title: ${jobOpening.Posting_Title}\n`;
+          actionContext += `• Location: ${jobOpening.City}, ${jobOpening.State}\n`;
+          actionContext += `• Type: ${jobOpening.Job_Type}\n`;
+          if (result?.created?.details?.id) {
+            actionContext += `• Zoho Job ID: ${result.created.details.id}\n`;
+          }
+          if (result?.publishResult) {
+            actionContext += `• Publish Attempt (LinkedIn/Indeed): ${result.publishResult.success ? 'SUCCESS' : 'PENDING/MANUAL'}\n`;
+          }
+        } catch (jobErr) {
+          executedActions.push({ type: 'zoho_job_post_failed' });
+          actionContext += `\n\n[ZOHO RECRUIT JOB POST FAILED]: ${jobErr.message}\n`;
+          actionContext += `• Ensure Zoho Recruit OAuth is connected via /api/auth/zoho/recruit/authorize-url and callback.\n`;
+        }
+      }
+
       if (executedActions.some(a => a.type.startsWith('crm_'))) {
         const crmActions = executedActions.filter(a => a.type.startsWith('crm_'));
         if (!actionContext.includes('REAL ACTIONS EXECUTED') && !actionContext.includes('REAL WEB ACTIONS EXECUTED')) {
@@ -1124,6 +1178,82 @@ User request: ${templateRequest}`;
       }
     } catch (crmErr) {
       console.error(`  ⚠️ CRM action error for ${agentName}:`, crmErr.message);
+    }
+  }
+
+  // =========================================================================
+  // STEP 1F: ZOHO RECRUIT JOB POSTING — agents can create + publish jobs
+  // =========================================================================
+  if (zohoRecruitService) {
+    const lowerMsg = userMessage.toLowerCase();
+    try {
+      if (lowerMsg.includes('zoho') && (lowerMsg.includes('status') || lowerMsg.includes('connected'))) {
+        const status = await zohoRecruitService.getConnectionStatus();
+        executedActions.push({ type: 'zoho_recruit_status' });
+        actionContext += `\n\n[ZOHO RECRUIT STATUS]:\n`;
+        actionContext += `• Connected: ${status.connected ? 'YES' : 'NO'}\n`;
+        if (status.connected) {
+          actionContext += `• API Domain: ${status.apiDomain || 'default'}\n`;
+          actionContext += `• Expires At: ${status.expiresAt || 'unknown'}\n`;
+          actionContext += `• Scope: ${status.scope || 'unknown'}\n`;
+        } else {
+          actionContext += `• Note: Run OAuth connect flow at /api/auth/zoho/recruit/authorize-url\n`;
+        }
+      }
+
+      if (lowerMsg.includes('post job') || lowerMsg.includes('create job opening') || (lowerMsg.includes('job') && lowerMsg.includes('linkedin'))) {
+        const parseField = (label, fallback = '') => {
+          const match = userMessage.match(new RegExp(`${label}\\s*:\\s*([^\\n|,]+)`, 'i'));
+          return (match?.[1] || fallback).trim();
+        };
+
+        const title = parseField('title', 'Telehealth Provider');
+        const city = parseField('city', 'Remote');
+        const state = parseField('state', '');
+        const country = parseField('country', 'United States');
+        const department = parseField('department', 'Clinical');
+        const employmentType = parseField('employment_type', 'Full Time');
+        const postingTitle = parseField('posting_title', title);
+        const jobDescription = parseField('description',
+          'Join DoctaRx to deliver AI-assisted telehealth care with modern workflow automation and compliant remote clinical operations.'
+        );
+
+        const channels = [];
+        if (lowerMsg.includes('linkedin')) channels.push('LinkedIn');
+        if (lowerMsg.includes('indeed')) channels.push('Indeed');
+        if (channels.length === 0) channels.push('LinkedIn', 'Indeed');
+
+        const jobOpening = {
+          Posting_Title: postingTitle,
+          Job_Opening_Name: postingTitle,
+          Department: department,
+          Employment_Type: employmentType,
+          Job_Description: jobDescription,
+          City: city,
+          State: state,
+          Country: country
+        };
+
+        const created = await zohoRecruitService.createJobOpening(jobOpening, {
+          publishToBoards: true,
+          publishChannels: channels
+        });
+
+        executedActions.push({ type: 'zoho_recruit_post_job' });
+        const createdId = created?.created?.details?.id || created?.created?.id || 'unknown';
+        actionContext += `\n\n[ZOHO RECRUIT JOB POSTING]:\n`;
+        actionContext += `• Job created in Zoho Recruit: ${postingTitle}\n`;
+        actionContext += `• Job Opening ID: ${createdId}\n`;
+        actionContext += `• Requested publish channels: ${channels.join(', ')}\n`;
+        if (created?.publishResult?.success) {
+          actionContext += `• Publish status: SUCCESS\n`;
+        } else {
+          actionContext += `• Publish status: PENDING/FAILED at Zoho endpoint (job still created)\n`;
+        }
+      }
+    } catch (zohoErr) {
+      actionContext += `\n\n[ZOHO RECRUIT ACTION ERROR]: ${zohoErr.message}\n`;
+      console.error('Zoho Recruit agent action error:', zohoErr.message);
     }
   }
 

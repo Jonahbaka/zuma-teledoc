@@ -286,7 +286,9 @@ class SkillRegistry {
       register_ein: 'external',
       file_report: 'external',
       open_bank_account: 'external',
-      submit_to_bureau: 'external'
+      submit_to_bureau: 'external',
+      zoho_recruit_create_job_opening: 'external',
+      zoho_recruit_publish_job_opening: 'external'
     };
     return categories[intentType] || 'write';
   }
@@ -308,7 +310,9 @@ class SkillRegistry {
       register_ein: 0.9,
       open_bank_account: 0.95,
       file_report: 0.85,
-      submit_to_bureau: 0.9
+      submit_to_bureau: 0.9,
+      zoho_recruit_create_job_opening: 0.75,
+      zoho_recruit_publish_job_opening: 0.65
     };
     if (riskByIntent[intentType] !== undefined) return riskByIntent[intentType];
     const bySkillRisk = { minimal: 0.05, low: 0.1, medium: 0.35, high: 0.65, critical: 0.85 };
@@ -357,6 +361,18 @@ class SkillRegistry {
 
   async registerDefaultSkills() {
     const defaults = [
+      {
+        skillName: 'recruitment.zoho.job_posting',
+        displayName: 'Zoho Recruit Job Posting',
+        description: 'Create job openings in Zoho Recruit and publish to LinkedIn/Indeed job boards',
+        category: 'growth',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Create Zoho Job Opening', intentType: 'zoho_recruit_create_job_opening', description: 'Create a new Job Opening record in Zoho Recruit' },
+          { name: 'Publish Job to Boards', intentType: 'zoho_recruit_publish_job_opening', description: 'Publish created job to LinkedIn and Indeed channels through Zoho' }
+        ],
+        riskLevel: 'medium', isReversible: false, involvesPhi: false, involvesFinancial: false, involvesExternal: true
+      },
       {
         skillName: 'analytics.ga4.realtime.read',
         displayName: 'GA4 Realtime Intelligence',
