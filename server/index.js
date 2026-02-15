@@ -269,6 +269,7 @@ async function initializeApp() {
   loadRoute('/api/financial', './routes/financial');
   loadRoute('/api/agent-ide', './routes/agentIde');
   loadRoute('/api/agent-social', './routes/agentSocial');
+  loadRoute('/api/realtime-analytics', './routes/realtimeAnalytics');
   console.log('✅ API routes loading complete');
   
   // Initialize Predictive Intelligence Engine (non-blocking)

@@ -11,6 +11,59 @@ const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-S9C6QB
 // Initialize React GA4
 let initialized = false;
 
+function getRealtimeSessionId() {
+  if (typeof window === 'undefined') return null;
+  const key = 'drx_rt_sid';
+  let sid = localStorage.getItem(key);
+  if (!sid) {
+    sid = `sid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    localStorage.setItem(key, sid);
+  }
+  return sid;
+}
+
+function inferSource(searchParams) {
+  const utmSource = searchParams?.get?.('utm_source');
+  if (utmSource) return `${utmSource} / campaign`;
+  if (typeof document === 'undefined' || !document.referrer) return '(direct)';
+  try {
+    const host = new URL(document.referrer).hostname;
+    return host ? `${host} / referral` : '(direct)';
+  } catch {
+    return '(direct)';
+  }
+}
+
+function trackRealtimePageView(pathname, searchParams) {
+  if (typeof window === 'undefined' || !pathname) return;
+  const payload = {
+    sessionId: getRealtimeSessionId(),
+    eventType: 'page_view',
+    path: pathname + (searchParams?.toString() ? `?${searchParams.toString()}` : ''),
+    title: document.title || '',
+    referrer: document.referrer || '',
+    source: inferSource(searchParams),
+    deviceType: /mobile/i.test(navigator.userAgent) ? 'mobile' : 'desktop'
+  };
+
+  const url = '/api/realtime-analytics/track';
+  try {
+    const json = JSON.stringify(payload);
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([json], { type: 'application/json' }));
+      return;
+    }
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: json,
+      keepalive: true
+    }).catch(() => {});
+  } catch {
+    // No-op: tracking must never break UX.
+  }
+}
+
 // Inner component that uses useSearchParams (must be wrapped in Suspense)
 function GoogleAnalyticsInner() {
   const pathname = usePathname();
@@ -38,6 +91,9 @@ function GoogleAnalyticsInner() {
           page_path: url,
         });
       }
+
+      // Send internal realtime analytics event for the Admin realtime dashboard.
+      trackRealtimePageView(pathname, searchParams);
     }
   }, [pathname, searchParams]);
 
