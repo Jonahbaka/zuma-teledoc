@@ -371,8 +371,7 @@ export default function InboxPage() {
 
             return (
               <div key={item.id}
-                onClick={() => selectMode ? toggleSelect(item.id) : toggleExpand(item.id)}
-                className={`rounded-xl border transition-all cursor-pointer group ${
+                className={`rounded-xl border transition-all group ${
                   selectedIds.has(item.id) ? 'bg-red-950/40 border-red-500/40 ring-1 ring-red-500/20' :
                   isUnread
                     ? `bg-gray-900/90 ${agent.border} border-l-4 shadow-lg`
@@ -380,7 +379,10 @@ export default function InboxPage() {
                 } ${isExpanded ? 'ring-1 ring-purple-500/30' : ''}`}>
 
                 {/* Collapsed Row */}
-                <div className="flex items-center gap-3 px-5 py-4">
+                <div
+                  onClick={() => (selectMode ? toggleSelect(item.id) : toggleExpand(item.id))}
+                  className="flex items-center gap-3 px-5 py-4 cursor-pointer"
+                >
                   {/* Checkbox (select mode) or Agent Avatar */}
                   {selectMode ? (
                     <div onClick={(e) => toggleSelect(item.id, e)}
