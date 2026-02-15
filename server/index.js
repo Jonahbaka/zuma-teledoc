@@ -42,6 +42,177 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady });
 });
 
+function renderWarmupLoaderHtml() {
+  // Keep this self-contained (no external CSS/JS) so it is fast and reliable even during cold start.
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DoctaRx | Connecting...</title>
+  <meta http-equiv="refresh" content="2">
+  <meta name="robots" content="noindex">
+  <style>
+    :root {
+      --docta-blue: #0f172a;
+      --docta-primary: #3b82f6;
+      --docta-accent: #22d3ee;
+    }
+    body {
+      background-color: #f8fafc;
+      margin: 0;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    .loader-wrapper {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at center, #ffffff 0%, #f1f5f9 100%);
+      z-index: 9999;
+    }
+    .logo-container {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .logo-d {
+      width: 100%;
+      height: 100%;
+      fill: none;
+      stroke: var(--docta-primary);
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.3));
+      animation: drawD 3s ease-in-out infinite alternate;
+    }
+    @keyframes drawD {
+      0% { stroke-dasharray: 0, 400; opacity: 0.5; transform: scale(0.95); }
+      50% { stroke-dasharray: 200, 400; opacity: 1; transform: scale(1); }
+      100% { stroke-dasharray: 400, 400; opacity: 0.8; transform: scale(0.98); }
+    }
+    .pulse-ring {
+      position: absolute;
+      border: 2px solid var(--docta-accent);
+      border-radius: 50%;
+      opacity: 0;
+      animation: ripple 3s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+    }
+    .pulse-ring:nth-child(2) { animation-delay: 1s; }
+    .pulse-ring:nth-child(3) { animation-delay: 2s; }
+    @keyframes ripple {
+      0% { width: 60px; height: 60px; opacity: 0.6; }
+      100% { width: 250px; height: 250px; opacity: 0; }
+    }
+    .ekg-container {
+      margin-top: 40px;
+      width: 200px;
+      height: 40px;
+      overflow: hidden;
+      position: relative;
+    }
+    .ekg-svg {
+      width: 400px;
+      height: 100%;
+      fill: none;
+      stroke: var(--docta-accent);
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      animation: moveEkg 2s linear infinite;
+    }
+    @keyframes moveEkg {
+      from { transform: translateX(0); }
+      to { transform: translateX(-200px); }
+    }
+    .loading-text {
+      margin-top: 24px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--docta-blue);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      display: flex;
+      gap: 4px;
+      align-items: baseline;
+    }
+    .dot { animation: dotFlashing 1.5s infinite linear; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes dotFlashing {
+      0%, 100% { opacity: 0.2; }
+      50% { opacity: 1; }
+    }
+    .fineprint {
+      margin-top: 14px;
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 300;
+    }
+    .blob {
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+      border-radius: 50%;
+      filter: blur(60px);
+      z-index: -1;
+      animation: float 10s ease-in-out infinite;
+    }
+    .blob-1 { top: -100px; left: -100px; }
+    .blob-2 { bottom: -100px; right: -100px; animation-delay: -5s; }
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(40px, 30px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .logo-d, .pulse-ring, .ekg-svg, .blob { animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  <div class="loader-wrapper">
+    <div class="pulse-ring"></div>
+    <div class="pulse-ring"></div>
+    <div class="pulse-ring"></div>
+
+    <div class="logo-container">
+      <svg class="logo-d" viewBox="0 0 100 100" aria-label="DoctaRx Loading Logo" role="img">
+        <path d="M30 20 H50 C75 20 75 80 50 80 H30 V20 Z" />
+        <path d="M45 40 L55 50 L45 60" stroke-width="3" />
+      </svg>
+    </div>
+
+    <div class="ekg-container" aria-hidden="true">
+      <svg class="ekg-svg" viewBox="0 0 400 40">
+        <path d="M0 20 L40 20 L45 10 L50 30 L55 20 L100 20 L140 20 L145 10 L150 30 L155 20 L200 20 L240 20 L245 10 L250 30 L255 20 L300 20 L340 20 L345 10 L350 30 L355 20 L400 20" />
+      </svg>
+    </div>
+
+    <div class="loading-text">
+      <span>Connecting to Docta</span>
+      <span class="dot">.</span>
+      <span class="dot">.</span>
+      <span class="dot">.</span>
+    </div>
+    <div class="fineprint">Secure &amp; HIPAA Compliant Session</div>
+  </div>
+</body>
+</html>
+  `.trim();
+}
+
 // Readiness: only "ready" when API middleware + Next handler are attached.
 // Useful for monitoring and for debugging split traffic between revisions.
 app.get('/readyz', (req, res) => {
@@ -101,19 +272,7 @@ app.use((req, res, next) => {
 
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.setHeader('Retry-After', '3');
-  return res.status(200).send(`
-    <!DOCTYPE html>
-    <html><head><meta charset="utf-8"><title>DoctaRx</title>
-    <meta http-equiv="refresh" content="2">
-    <meta name="robots" content="noindex">
-    <style>
-      body{font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5;}
-      .loader{text-align:center;}
-      .spinner{width:40px;height:40px;border:4px solid #e0e0e0;border-top:4px solid #9333ea;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px;}
-      @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
-    </style></head>
-    <body><div class="loader"><div class="spinner"></div><p>Starting DoctaRx...</p></div></body></html>
-  `);
+  return res.status(200).send(renderWarmupLoaderHtml());
 });
 
 /**
@@ -518,15 +677,9 @@ async function initializeApp() {
   // Catch-all for Next.js (must be last)
   app.all('*', (req, res) => {
     if (!nextReady || !handle) {
-      return res.status(200).send(`
-        <!DOCTYPE html>
-        <html><head><meta charset="utf-8"><title>Docta.</title>
-        <meta http-equiv="refresh" content="3">
-        <style>body{font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5;}
-        .loader{text-align:center;}.spinner{width:40px;height:40px;border:4px solid #e0e0e0;border-top:4px solid #9333ea;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px;}
-        @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</style></head>
-        <body><div class="loader"><div class="spinner"></div><p>Starting Docta...</p></div></body></html>
-      `);
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.setHeader('Retry-After', '3');
+      return res.status(200).send(renderWarmupLoaderHtml());
     }
     return handle(req, res);
   });
