@@ -488,3 +488,5 @@ router.post('/growth/act', ...adminOnly, async (_req, res) => {
 });
 
 module.exports = router;
+module.exports.getGaOverview = getGaOverview;
+module.exports.hasGaConfig = hasGaConfig;

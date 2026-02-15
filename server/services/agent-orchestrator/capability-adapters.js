@@ -193,6 +193,61 @@ class CapabilityAdapterLayer {
       }
     });
 
+    this.register('get_ga4_realtime_metrics', {
+      name: 'ga4_realtime_fetcher',
+      type: 'analytics',
+      execute: async () => {
+        try {
+          const realtimeAnalyticsRoute = require('../../routes/realtimeAnalytics');
+          if (typeof realtimeAnalyticsRoute?.hasGaConfig === 'function'
+            && typeof realtimeAnalyticsRoute?.getGaOverview === 'function'
+            && realtimeAnalyticsRoute.hasGaConfig()) {
+            const ga = await realtimeAnalyticsRoute.getGaOverview();
+            return {
+              source: 'ga4',
+              activeUsers30m: ga.activeUsers30m || 0,
+              activeUsers5m: ga.activeUsers5m || 0,
+              activeUsersPerMinute: ga.activeUsersPerMinute || 0,
+              topSources: ga.sources || [],
+              topCountries: ga.topCountries || [],
+              pages: ga.pages || [],
+              fetchedAt: new Date().toISOString()
+            };
+          }
+        } catch (error) {
+          return {
+            source: 'ga4',
+            error: `GA4 fetch failed: ${error.message}`,
+            fetchedAt: new Date().toISOString()
+          };
+        }
+
+        // Fallback to internal realtime table if GA4 is not configured.
+        try {
+          const [active30Res, active5Res] = await Promise.all([
+            db.query(`SELECT COUNT(DISTINCT session_id) AS c FROM realtime_analytics_events WHERE created_at > NOW() - INTERVAL '30 minutes'`),
+            db.query(`SELECT COUNT(DISTINCT session_id) AS c FROM realtime_analytics_events WHERE created_at > NOW() - INTERVAL '5 minutes'`)
+          ]);
+
+          const activeUsers30m = parseInt(active30Res.rows[0]?.c || '0', 10);
+          const activeUsers5m = parseInt(active5Res.rows[0]?.c || '0', 10);
+          return {
+            source: 'internal',
+            activeUsers30m,
+            activeUsers5m,
+            activeUsersPerMinute: Math.round((activeUsers30m / 30) * 10) / 10,
+            fetchedAt: new Date().toISOString()
+          };
+        } catch (error) {
+          return {
+            source: 'internal',
+            error: `Internal realtime fetch failed: ${error.message}`,
+            fetchedAt: new Date().toISOString()
+          };
+        }
+      }
+    });
+
     // ===== COMMUNICATION ADAPTERS =====
     this.register('send_email', {
       name: 'email_sender',

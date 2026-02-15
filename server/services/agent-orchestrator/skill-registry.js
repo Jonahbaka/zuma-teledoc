@@ -277,6 +277,7 @@ class SkillRegistry {
       get_patient_count: 'read',
       get_revenue_data: 'read',
       get_appointment_data: 'read',
+      get_ga4_realtime_metrics: 'read',
       send_email: 'communicate',
       send_notification: 'communicate',
       process_payment: 'financial',
@@ -298,6 +299,7 @@ class SkillRegistry {
       get_patient_count: 0.05,
       get_revenue_data: 0.1,
       get_appointment_data: 0.1,
+      get_ga4_realtime_metrics: 0.05,
       send_notification: 0.2,
       send_email: 0.35,
       process_payment: 0.8,
@@ -355,6 +357,18 @@ class SkillRegistry {
 
   async registerDefaultSkills() {
     const defaults = [
+      {
+        skillName: 'analytics.ga4.realtime.read',
+        displayName: 'GA4 Realtime Intelligence',
+        description: 'Fetch and summarize GA4 realtime traffic so agents can react to live acquisition metrics autonomously',
+        category: 'growth',
+        skillType: 'analysis',
+        steps: [
+          { name: 'Fetch GA4 Realtime Metrics', intentType: 'get_ga4_realtime_metrics', description: 'Pull active users, sources, countries, and page activity from GA4 realtime feed' },
+          { name: 'Analyze Conversion Signals', intentType: 'analyze_data', description: 'Analyze live traffic quality and identify growth opportunities from realtime signals' }
+        ],
+        riskLevel: 'minimal', isReversible: true, involvesPhi: false, involvesFinancial: false
+      },
       {
         skillName: 'analyze_revenue',
         displayName: 'Revenue Analysis',

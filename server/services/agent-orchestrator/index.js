@@ -797,6 +797,7 @@ class AgentOrchestrator {
       get_patient_count: 'read',
       get_revenue_data: 'read',
       get_appointment_data: 'read',
+      get_ga4_realtime_metrics: 'read',
       send_email: 'communicate',
       send_notification: 'communicate',
       process_payment: 'financial',

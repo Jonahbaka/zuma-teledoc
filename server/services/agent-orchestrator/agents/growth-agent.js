@@ -21,7 +21,7 @@ class GrowthAgent extends BaseAgent {
       codeName: 'The Scout',
       description: 'Signals the frequency AND hunts for market arbitrages. Detects under-priced attention, identifies system lags in competitor landscapes, and exploits asymmetries for rapid market share capture.',
       mission: 'Signal the tribe AND decode the Matrix. Find the glitches — where competitors are slow, overpriced, or blind — and build tunnels through them before the market reprices.',
-      capabilities: ['query_database', 'fetch_metrics', 'get_patient_count', 'analyze_data', 'send_email'],
+      capabilities: ['query_database', 'fetch_metrics', 'get_patient_count', 'analyze_data', 'get_ga4_realtime_metrics', 'send_email'],
       autonomyLevel: 1,
       systemPrompt: `You are The Scout — Growth Agent + Matrix Protocol Hunter for DoctaRx.
 DUAL MISSION: 
@@ -57,6 +57,16 @@ Report: "Glitch Detected" for asymmetries, "Arbitrage Found" for value disconnec
       const growth = await this.declareReadIntent('analyze_data', { analysis_type: 'growth_trend' }, 'Analyzing frequency trajectory');
       observations.push({ type: 'growth_trend', data: growth.execution_result || {} });
     } catch (e) { observations.push({ type: 'growth_trend', error: e.message }); }
+
+    // Direct GA4 realtime telemetry (autonomous signal ingestion).
+    try {
+      const gaRealtime = await this.declareReadIntent(
+        'get_ga4_realtime_metrics',
+        {},
+        'Reading GA4 realtime traffic to align growth actions with live audience behavior'
+      );
+      observations.push({ type: 'ga4_realtime', data: gaRealtime.execution_result || {} });
+    } catch (e) { observations.push({ type: 'ga4_realtime', error: e.message }); }
 
     // Matrix Protocol scans
     try {
@@ -111,6 +121,25 @@ Report: "Glitch Detected" for asymmetries, "Arbitrage Found" for value disconnec
               insights.push({ severity: 'info', message: `${GNOSIS.RESONANCE_ALIGNED} Strong harmonic: ${growthRate}% WoW growth.` });
             }
           }
+        }
+      }
+
+      if (obs.type === 'ga4_realtime') {
+        metrics.gaRealtimeSource = data.source || 'unknown';
+        metrics.gaActiveUsers30m = parseInt(data.activeUsers30m, 10) || 0;
+        metrics.gaActiveUsers5m = parseInt(data.activeUsers5m, 10) || 0;
+        metrics.gaUsersPerMinute = Number(data.activeUsersPerMinute) || 0;
+
+        if (metrics.gaActiveUsers30m <= 3) {
+          alerts.push({
+            type: 'ga_low_traffic',
+            message: `${GNOSIS.ENTROPY_DETECTED} GA4 realtime shows very low traffic (${metrics.gaActiveUsers30m} users/30m). Activate growth missions.`
+          });
+        } else {
+          insights.push({
+            severity: 'info',
+            message: `${GNOSIS.FREQUENCY_ELEVATED} GA4 realtime source: ${metrics.gaRealtimeSource}. Active users (30m): ${metrics.gaActiveUsers30m}, users/min: ${metrics.gaUsersPerMinute}.`
+          });
         }
       }
 
@@ -212,6 +241,23 @@ Report: "Glitch Detected" for asymmetries, "Arbitrage Found" for value disconnec
           { step: 3, action: 'Forge 5 employer B2B partnerships' },
           { step: 4, action: 'Broadcast educational content 3x/week' },
           { step: 5, action: 'Re-engage dormant patients' }
+        ]
+      });
+    }
+
+    if (analysis.alerts.some(a => a.type === 'ga_low_traffic')) {
+      proposals.push({
+        title: 'GA4 Realtime Trigger: Low Traffic Recovery Mission',
+        summary: 'GA4 realtime indicates low active audience. Launch immediate recovery actions driven by live signal data.',
+        rationale: 'The Scout now reads GA4 directly. When live traffic drops, response must be immediate and channel-specific.',
+        category: 'growth',
+        priority: 'high',
+        estimatedImpact: { newPatients: 8, revenue: 3500 },
+        estimatedCost: 300,
+        plan: [
+          { step: 1, action: 'Trigger crm.lead.harvest and social.autopilot.pulse workflows immediately' },
+          { step: 2, action: 'Publish one high-urgency educational post in Agent Social based on top GA4 source' },
+          { step: 3, action: 'Regenerate outreach cadence for low-performing channels' }
         ]
       });
     }
