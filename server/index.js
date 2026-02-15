@@ -42,6 +42,15 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady });
 });
 
+// Readiness: only "ready" when API middleware + Next handler are attached.
+// Useful for monitoring and for debugging split traffic between revisions.
+app.get('/readyz', (req, res) => {
+  if (initialized && nextReady) {
+    return res.status(200).json({ ready: true });
+  }
+  return res.status(503).json({ ready: false, initialized, nextReady });
+});
+
 app.get('/api/health', (req, res) => {
   const health = {
     status: 'healthy',
@@ -50,7 +59,11 @@ app.get('/api/health', (req, res) => {
     memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
     initialized,
     nextReady,
-    version: 'genesis-v3'
+    version: 'genesis-v3',
+    // Cloud Run metadata (helps diagnose load balancer / revision split)
+    service: process.env.K_SERVICE,
+    revision: process.env.K_REVISION,
+    configuration: process.env.K_CONFIGURATION
   };
   try {
     const orchestrator = require('./services/agent-orchestrator');
@@ -59,6 +72,48 @@ app.get('/api/health', (req, res) => {
     health.operatingMode = orchestrator.operatingMode;
   } catch (e) { /* not ready yet */ }
   res.json(health);
+});
+
+// Early warmup guard:
+// Cloud Run starts routing traffic as soon as the port is listening.
+// We intentionally bind PORT before heavy init to avoid startup timeouts,
+// but that means requests can arrive before routes / Next handler are registered.
+// Without this guard, Express returns its default 404 during that window.
+app.use((req, res, next) => {
+  // Always allow health/readiness immediately.
+  if (req.path === '/health' || req.path === '/api/health' || req.path === '/readyz') return next();
+
+  // Once initialized, let real routes handle it.
+  // For API routes: they can be ready before Next.
+  if (initialized && (req.path.startsWith('/api') || (nextReady && handle))) return next();
+
+  // During warmup: never return 404 for "/" (or any app path).
+  // For API calls, 503 is clearer than a misleading 404.
+  if (req.path.startsWith('/api')) {
+    res.setHeader('Retry-After', '3');
+    return res.status(503).json({
+      success: false,
+      error: 'Service warming up',
+      initialized,
+      nextReady
+    });
+  }
+
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.setHeader('Retry-After', '3');
+  return res.status(200).send(`
+    <!DOCTYPE html>
+    <html><head><meta charset="utf-8"><title>DoctaRx</title>
+    <meta http-equiv="refresh" content="2">
+    <meta name="robots" content="noindex">
+    <style>
+      body{font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5;}
+      .loader{text-align:center;}
+      .spinner{width:40px;height:40px;border:4px solid #e0e0e0;border-top:4px solid #9333ea;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px;}
+      @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
+    </style></head>
+    <body><div class="loader"><div class="spinner"></div><p>Starting DoctaRx...</p></div></body></html>
+  `);
 });
 
 /**
