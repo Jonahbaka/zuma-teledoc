@@ -9,6 +9,7 @@ const db = require('../db');
 const logger = require('../middleware/logger');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { createAuditLog } = require('../middleware/audit');
+const llm = require('../services/agent-orchestrator/gemini-llm');
 
 const router = express.Router();
 
@@ -298,6 +299,93 @@ router.get('/icd-search', authenticate, async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to search ICD codes' });
   }
 });
+
+/**
+ * POST /api/ai-assist/translate
+ * Optional: Translate short text snippets (e.g., live captions) using the configured LLM.
+ *
+ * PHI/Compliance: This endpoint requires explicit client opt-in via `phiConsent: true`.
+ * If no LLM is configured, it gracefully returns the original text unchanged.
+ */
+router.post(
+  '/translate',
+  authenticate,
+  requireRole('provider', 'patient', 'admin'),
+  async (req, res) => {
+    try {
+      const { text, targetLang, sourceLang, phiConsent } = req.body || {};
+
+      if (phiConsent !== true) {
+        return res.status(400).json({
+          success: false,
+          error: 'Translation requires explicit consent (phiConsent: true).'
+        });
+      }
+
+      const cleanText = String(text || '').trim();
+      if (!cleanText) {
+        return res.status(400).json({ success: false, error: 'Missing text' });
+      }
+      if (cleanText.length > 1200) {
+        return res.status(400).json({ success: false, error: 'Text too long' });
+      }
+
+      const to = String(targetLang || '').trim();
+      if (!to || to.length > 20) {
+        return res.status(400).json({ success: false, error: 'Invalid targetLang' });
+      }
+
+      // No keys configured: don't hard-fail the call UI.
+      try { llm.initialize(); } catch {}
+      if (!llm.isAvailable()) {
+        return res.json({
+          success: true,
+          translatedText: cleanText,
+          provider: 'none'
+        });
+      }
+
+      const sys = [
+        'You are a translation engine for a telehealth video call.',
+        'Translate accurately and conservatively.',
+        'Keep medical terms precise and do not invent details.',
+        'Return ONLY the translated text. No quotes, no markdown, no explanations.'
+      ].join('\n');
+
+      const userMsg = [
+        `SOURCE_LANG: ${String(sourceLang || 'auto')}`,
+        `TARGET_LANG: ${to}`,
+        '',
+        cleanText
+      ].join('\n');
+
+      const withTimeout = (p, ms) =>
+        Promise.race([
+          p,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Translation timeout')), ms))
+        ]);
+
+      const translated = await withTimeout(
+        llm.callLLM(sys, userMsg, { maxTokens: 512, temperature: 0.2 }),
+        8000
+      );
+
+      const translatedText = String(translated || '').trim() || cleanText;
+      return res.json({
+        success: true,
+        translatedText,
+        provider: 'llm'
+      });
+    } catch (error) {
+      logger.warn('Caption translation failed; returning original', { error: error.message });
+      return res.json({
+        success: true,
+        translatedText: String(req.body?.text || ''),
+        provider: 'error_fallback'
+      });
+    }
+  }
+);
 
 // Helper Functions
 

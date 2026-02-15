@@ -19,6 +19,42 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2024-11-20.acacia'
 });
 
+// Prefer Stripe "automatic payment methods" for global support (local cards/bank methods),
+// but fall back to card-only if a given account/region doesn't support it.
+const STRIPE_AUTOMATIC_PAYMENT_METHODS_ENABLED = String(
+  process.env.STRIPE_AUTOMATIC_PAYMENT_METHODS_ENABLED ?? 'true'
+).toLowerCase() === 'true';
+
+async function createCheckoutSessionWithFallback(baseParams, { context = {} } = {}) {
+  const base = {
+    ...baseParams,
+    // Cross-border reliability: collect billing address and allow Stripe to update customer.
+    billing_address_collection: baseParams.billing_address_collection || 'required',
+    customer_update: baseParams.customer_update || { address: 'auto', name: 'auto' }
+  };
+
+  if (STRIPE_AUTOMATIC_PAYMENT_METHODS_ENABLED) {
+    try {
+      const apmParams = { ...base };
+      // Stripe rejects sessions that set both; keep it exclusive.
+      delete apmParams.payment_method_types;
+      apmParams.automatic_payment_methods = { enabled: true };
+      return await stripe.checkout.sessions.create(apmParams);
+    } catch (err) {
+      logger.warn('Stripe automatic payment methods failed; falling back to card', {
+        message: err?.message,
+        type: err?.type,
+        code: err?.code,
+        context
+      });
+    }
+  }
+
+  const cardParams = { ...base, payment_method_types: ['card'] };
+  delete cardParams.automatic_payment_methods;
+  return await stripe.checkout.sessions.create(cardParams);
+}
+
 // ============================================================================
 // PRICING CONFIGURATION (Industry Standard for Telehealth)
 // ============================================================================
@@ -266,9 +302,8 @@ async function createConsultationCheckout(userId, consultationType, appointmentI
       };
     }
     
-    const session = await stripe.checkout.sessions.create({
+    const session = await createCheckoutSessionWithFallback({
       customer: customer.id,
-      payment_method_types: ['card'],
       mode: 'payment',
       line_items: [{
         price_data: {
@@ -290,7 +325,7 @@ async function createConsultationCheckout(userId, consultationType, appointmentI
       },
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/patient/appointments/${appointmentId}?payment=success`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/patient/appointments/${appointmentId}?payment=cancelled`
-    });
+    }, { context: { userId, appointmentId, type: 'consultation' } });
     
     logger.info('Consultation checkout created', { 
       userId, 
@@ -326,9 +361,8 @@ async function createSubscriptionCheckout(userId, planKey, metadata = {}) {
     // Create or get the price in Stripe
     const price = await getOrCreatePrice(plan, 'patient_subscription');
     
-    const session = await stripe.checkout.sessions.create({
+    const session = await createCheckoutSessionWithFallback({
       customer: customer.id,
-      payment_method_types: ['card'],
       mode: 'subscription',
       line_items: [{
         price: price.id,
@@ -350,7 +384,7 @@ async function createSubscriptionCheckout(userId, planKey, metadata = {}) {
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/patient/subscription?success=true`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/patient/subscription?cancelled=true`,
       allow_promotion_codes: true
-    });
+    }, { context: { userId, type: 'subscription', planKey } });
     
     logger.info('Subscription checkout created', { 
       userId, 
@@ -383,9 +417,8 @@ async function createCredentialingCheckout(userId, packageType = 'fullCredential
       throw new Error(`Invalid credentialing package: ${packageType}`);
     }
     
-    const session = await stripe.checkout.sessions.create({
+    const session = await createCheckoutSessionWithFallback({
       customer: customer.id,
-      payment_method_types: ['card'],
       mode: 'payment',
       line_items: [{
         price_data: {
@@ -405,7 +438,7 @@ async function createCredentialingCheckout(userId, packageType = 'fullCredential
       },
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/provider/credentialing?payment=success`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/provider/credentialing?payment=cancelled`
-    });
+    }, { context: { userId, type: 'credentialing', packageType } });
     
     logger.info('Credentialing checkout created', { 
       userId, 
@@ -441,9 +474,8 @@ async function createProviderSubscriptionCheckout(userId, planKey) {
     
     const price = await getOrCreatePrice(plan, 'provider_subscription');
     
-    const session = await stripe.checkout.sessions.create({
+    const session = await createCheckoutSessionWithFallback({
       customer: customer.id,
-      payment_method_types: ['card'],
       mode: 'subscription',
       line_items: [{
         price: price.id,
@@ -456,7 +488,7 @@ async function createProviderSubscriptionCheckout(userId, planKey) {
       },
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/provider/settings?subscription=success`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/provider/settings?subscription=cancelled`
-    });
+    }, { context: { userId, type: 'provider_subscription', planKey } });
     
     logger.info('Provider subscription checkout created', { 
       userId, 

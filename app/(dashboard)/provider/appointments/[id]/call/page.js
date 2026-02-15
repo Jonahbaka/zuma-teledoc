@@ -14,6 +14,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { formatDateTime, formatTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
+import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
 
 /* ─────────────────── constants ─────────────────── */
 
@@ -349,7 +350,6 @@ const ActiveCall = ({
   const [filterStyle, setFilterStyle] = useState('none');
   const [lightingBoost, setLightingBoost] = useState(0);
   const [showEffects, setShowEffects] = useState(false);
-  const [transcript, setTranscript] = useState([]);
   const [showCaptions, setShowCaptions] = useState(false);
 
   // Build composite CSS filter string
@@ -374,19 +374,11 @@ const ActiveCall = ({
           <div className="md:col-span-2 relative h-full">
             <PatientVideoArea appointment={appointment} />
 
-            {/* Live Captions Overlay */}
-            {showCaptions && transcript.length > 0 && (
-              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-[90%] max-w-2xl text-center space-y-1 z-10 pointer-events-none">
-                {transcript.map((line, i) => (
-                  <div key={i} className={`transition-all duration-500 ${i === transcript.length - 1 ? 'opacity-100 scale-100' : 'opacity-60 scale-95'}`}>
-                    <span className="bg-black/70 text-white backdrop-blur-sm px-4 py-2 rounded-xl text-sm shadow-lg inline-block">
-                      <span className="font-bold text-blue-300 mr-2">{line.speaker}:</span>
-                      {line.text}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <LiveCaptionsOverlay
+              enabled={showCaptions}
+              speakerLabel={appointment.providerFirstName ? `Dr. ${appointment.providerFirstName}` : 'Provider'}
+              defaultTargetLang={(typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en-US'}
+            />
           </div>
 
           {/* Right column: Self-view + Screen share slot */}
@@ -486,7 +478,7 @@ const ActiveCall = ({
 
         {/* Right: sidebar toggles */}
         <div className="absolute right-6 flex items-center gap-3">
-          <ControlBtn icon={FileText} label="Notes"
+          <ControlBtn icon={FileText} label="Captions"
             color={showCaptions ? 'primary' : 'glass'}
             onClick={() => setShowCaptions(!showCaptions)} />
           <ControlBtn icon={ClipboardList} label="Visit Notes"

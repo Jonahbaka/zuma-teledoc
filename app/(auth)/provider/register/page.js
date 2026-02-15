@@ -9,6 +9,8 @@ import { toast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PhoneInputE164, isValidE164 } from '@/components/forms/PhoneInputE164';
+import { GlobalAddressFields } from '@/components/forms/GlobalAddressFields';
 
 function ProviderRegisterContent() {
   const router = useRouter();
@@ -29,7 +31,15 @@ function ProviderRegisterContent() {
     medicalLicense: '',
     password: '',
     confirmPassword: '',
-    acceptCompliance: false
+    acceptCompliance: false,
+    address: {
+      country: 'US',
+      addressLine1: '',
+      addressLine2: '',
+      city: '',
+      region: '',
+      postalCode: ''
+    }
   });
 
   // Validate invite token if provided (optional)
@@ -89,11 +99,38 @@ function ProviderRegisterContent() {
     setIsLoading(true);
 
     try {
-      const response = await authAPI.registerProvider({
+      const payload = {
         ...formData,
-        inviteToken: inviteToken || undefined,
+        ...formData.address,
         role: 'provider'
-      });
+      };
+
+      const response = inviteToken
+        ? await authAPI.registerProvider({
+          token: inviteToken,
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          password: payload.password,
+          phone: payload.phone,
+          specialty: payload.specialty,
+          npiNumber: payload.npiNumber,
+          medicalLicense: payload.medicalLicense
+        })
+        : await authAPI.register({
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          email: payload.email,
+          phone: payload.phone,
+          password: payload.password,
+          confirmPassword: payload.confirmPassword,
+          hipaaConsent: payload.acceptCompliance === true,
+          termsAccepted: payload.acceptCompliance === true,
+          role: 'provider',
+          specialty: payload.specialty,
+          npiNumber: payload.npiNumber,
+          licenseNumber: payload.medicalLicense,
+          ...payload.address
+        });
 
       if (response.data.success) {
         toast({
@@ -235,17 +272,22 @@ function ProviderRegisterContent() {
 
               <div className="space-y-2">
                 <Label htmlFor="phone" className="text-slate-300">Phone Number</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="(555) 123-4567"
-                    value={formData.phone}
-                    onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                    className="pl-9 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
-                  />
-                </div>
+                <PhoneInputE164
+                  value={formData.phone}
+                  onChange={(v) => setFormData(prev => ({ ...prev, phone: v }))}
+                  defaultCountryIso2={formData.address.country}
+                  className="text-slate-900"
+                />
+                {formData.phone && !isValidE164(formData.phone) && (
+                  <p className="text-xs text-red-300">Use international E.164 format (example: +2348012345678).</p>
+                )}
+              </div>
+
+              <div className="bg-slate-900/30 border border-slate-700 rounded-xl p-4">
+                <GlobalAddressFields
+                  value={formData.address}
+                  onChange={(addr) => setFormData(prev => ({ ...prev, address: addr }))}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">

@@ -151,8 +151,9 @@ router.post('/register', async (req, res) => {
         email, password_hash, role, first_name, last_name,
         date_of_birth, phone, license_number, license_state,
         specialty, npi_number, credentials, provider_status,
+        address_line1, address_line2, city, state, zip_code, country,
         hipaa_consent_at, terms_accepted_at, is_verified
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
       RETURNING id, email, role, first_name, last_name`,
       [
         data.email,
@@ -168,6 +169,12 @@ router.post('/register', async (req, res) => {
         data.npiNumber || null,
         data.credentials || null,
         providerStatus,
+        data.addressLine1 || null,
+        data.addressLine2 || null,
+        data.city || null,
+        data.region || null,
+        data.postalCode || null,
+        data.country || null,
         data.hipaaConsent ? new Date() : null,
         data.termsAccepted ? new Date() : null,
         false // Don't auto-verify - require email verification

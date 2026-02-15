@@ -9,6 +9,8 @@ import { toast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PhoneInputE164, isValidE164 } from '@/components/forms/PhoneInputE164';
+import { GlobalAddressFields } from '@/components/forms/GlobalAddressFields';
 
 export default function PatientRegisterPage() {
   const router = useRouter();
@@ -23,7 +25,15 @@ export default function PatientRegisterPage() {
     dateOfBirth: '',
     password: '',
     confirmPassword: '',
-    acceptTerms: false
+    acceptTerms: false,
+    address: {
+      country: 'US',
+      addressLine1: '',
+      addressLine2: '',
+      city: '',
+      region: '',
+      postalCode: ''
+    }
   });
 
   const passwordChecks = {
@@ -52,8 +62,12 @@ export default function PatientRegisterPage() {
         lastName: formData.lastName,
         email: formData.email,
         phone: formData.phone,
+        ...formData.address,
         dateOfBirth: formData.dateOfBirth,
         password: formData.password,
+        confirmPassword: formData.confirmPassword,
+        hipaaConsent: formData.acceptTerms === true,
+        termsAccepted: formData.acceptTerms === true,
         role: 'patient'
       });
 
@@ -175,18 +189,20 @@ export default function PatientRegisterPage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="phone">Phone Number</Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input
-                        id="phone"
-                        type="tel"
-                        placeholder="+1 (555) 000-0000"
-                        value={formData.phone}
-                        onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                        className="pl-9"
-                      />
-                    </div>
+                    <PhoneInputE164
+                      value={formData.phone}
+                      onChange={(v) => setFormData(prev => ({ ...prev, phone: v }))}
+                      defaultCountryIso2={formData.address.country}
+                    />
+                    {formData.phone && !isValidE164(formData.phone) && (
+                      <p className="text-xs text-red-500">Use international E.164 format (example: +2348012345678).</p>
+                    )}
                   </div>
+
+                  <GlobalAddressFields
+                    value={formData.address}
+                    onChange={(addr) => setFormData(prev => ({ ...prev, address: addr }))}
+                  />
 
                   <div className="space-y-2">
                     <Label htmlFor="dob">Date of Birth</Label>

@@ -6,7 +6,7 @@ import {
   Mic, MicOff, Video as VideoIcon, VideoOff,
   PhoneOff, Settings, ShieldCheck, User,
   MessageSquare, Sparkles, Image as ImageIcon,
-  X, Calendar, Clock, ArrowLeft
+  X, Calendar, Clock, ArrowLeft, FileText
 } from 'lucide-react';
 import api, { paymentsAPI } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { formatDateTime, formatTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import { VIDEO_BG_PRESETS } from '@/lib/videoBackgrounds';
+import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
 
 // --- Assets & Constants ---
 const DOCTOR_VIDEO_URL = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
@@ -58,6 +59,7 @@ export default function PatientVideoCallPage() {
   const [camOn, setCamOn] = useState(true);
   const [processingEnabled, setProcessingEnabled] = useState(false);
   const [activeEffect, setActiveEffect] = useState(null);
+  const [showCaptions, setShowCaptions] = useState(false);
 
   // App State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -197,6 +199,8 @@ export default function PatientVideoCallPage() {
             setShowSettings={setShowSettings}
             processingEnabled={processingEnabled}
             setProcessingEnabled={setProcessingEnabled}
+            showCaptions={showCaptions}
+            setShowCaptions={setShowCaptions}
           />
         )}
       </main>
@@ -329,7 +333,8 @@ const ActiveCallRoom = ({
   isSidebarOpen, toggleSidebar,
   showSettings, setShowSettings,
   activeEffect, setActiveEffect,
-  processingEnabled, setProcessingEnabled
+  processingEnabled, setProcessingEnabled,
+  showCaptions, setShowCaptions
 }) => {
   return (
     <div className="flex-1 flex bg-slate-900 relative overflow-hidden">
@@ -366,6 +371,12 @@ const ActiveCallRoom = ({
               YOU
             </div>
           </div>
+
+          <LiveCaptionsOverlay
+            enabled={showCaptions}
+            speakerLabel="You"
+            defaultTargetLang={(typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en-US'}
+          />
         </div>
       </div>
 
@@ -435,6 +446,13 @@ const ActiveCallRoom = ({
         />
         <div className="w-px h-8 bg-slate-600 mx-2" />
 
+        <ControlBtn
+          active={showCaptions}
+          onClick={() => setShowCaptions((v) => !v)}
+          onIcon={FileText}
+          offIcon={FileText}
+          tooltip="Captions"
+        />
         <ControlBtn
           active={showSettings}
           onClick={() => setShowSettings(!showSettings)}

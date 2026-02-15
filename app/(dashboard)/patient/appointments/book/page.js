@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -137,16 +137,16 @@ export default function BookAppointmentPage() {
     if (currentStep === 3 && symptoms.trim() && !triageResult && !isAnalyzing) {
       runAITriage();
     }
-  }, [currentStep, symptoms]);
+  }, [currentStep, symptoms, triageResult, isAnalyzing, runAITriage]);
 
   // Auto-match provider when category is selected
   useEffect(() => {
     if (selectedCategory && selectedDate) {
       matchProvider();
     }
-  }, [selectedCategory, selectedDate]);
+  }, [selectedCategory, selectedDate, matchProvider]);
   
-  const runAITriage = async () => {
+  const runAITriage = useCallback(async () => {
     if (!symptoms.trim()) return;
     
     setIsAnalyzing(true);
@@ -170,9 +170,9 @@ export default function BookAppointmentPage() {
     } finally {
       setIsAnalyzing(false);
     }
-  };
+  }, [symptoms]);
 
-  const matchProvider = async () => {
+  const matchProvider = useCallback(async () => {
     try {
       const response = await api.get('/providers/match', {
         params: {
@@ -193,7 +193,7 @@ export default function BookAppointmentPage() {
       // Fallback to default time slots
       setAvailableSlots(TIME_SLOTS);
     }
-  };
+  }, [selectedCategory, selectedDate]);
 
   // Fetch existing insurance
   useEffect(() => {
@@ -215,7 +215,7 @@ export default function BookAppointmentPage() {
       }
     };
     fetchInsurance();
-  }, []);
+  }, [insuranceForm]);
 
   const handleFileUpload = (e, type) => {
     const file = e.target.files[0];
@@ -875,6 +875,10 @@ export default function BookAppointmentPage() {
                 try {
                   const formattedDate = formatDate(selectedDate);
                   const formattedTime = formatTime(selectedTime);
+                  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+                  const dt = new Date(`${selectedDate}T${selectedTime}:00`);
+                  const localHour = isNaN(dt.getTime()) ? null : dt.getHours();
+                  const isOddHour = localHour !== null && (localHour <= 5 || localHour >= 23);
                   return (
                     <div className="mt-6 p-4 bg-purple-500/10 rounded-xl border border-purple-500/30">
                       <div className="flex items-center gap-3">
@@ -882,6 +886,13 @@ export default function BookAppointmentPage() {
                         <div>
                           <p className="font-medium text-purple-700 dark:text-purple-400">{formattedDate} at {formattedTime}</p>
                           <p className="text-sm text-purple-600 dark:text-purple-300">30 minute {visitType} consultation</p>
+                          <p className="text-xs text-purple-700/70 dark:text-purple-300/70 mt-1">Timezone: {timeZone}</p>
+                          {isOddHour && (
+                            <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              This appointment is in an unusual local hour. Double-check you are booking the correct time.
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>

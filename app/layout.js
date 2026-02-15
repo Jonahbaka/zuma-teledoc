@@ -1,6 +1,7 @@
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/components/providers/AuthProvider';
+import { I18nProvider } from '@/components/providers/I18nProvider';
 import ConditionalSiteFooter from '@/components/layouts/ConditionalSiteFooter';
 import GoogleAnalytics from '@/components/analytics/GoogleAnalytics';
 import { THEME_STORAGE_KEY } from '@/lib/theme';
@@ -106,11 +107,13 @@ export default function RootLayout({ children }) {
       </head>
       <body className="min-h-screen bg-background font-sans antialiased" suppressHydrationWarning>
         <GoogleAnalytics />
-        <AuthProvider>
-          {children}
-          <ConditionalSiteFooter />
-          <Toaster />
-        </AuthProvider>
+        <I18nProvider>
+          <AuthProvider>
+            {children}
+            <ConditionalSiteFooter />
+            <Toaster />
+          </AuthProvider>
+        </I18nProvider>
       </body>
     </html>
   );

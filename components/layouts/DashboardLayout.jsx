@@ -11,6 +11,7 @@ import {
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { LanguageToggle } from '@/components/ui/language-toggle';
 import { notificationsAPI } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -397,6 +398,7 @@ export default function DashboardLayout({
               </div>
             )}
 
+            <LanguageToggle className="hidden md:flex" />
             <ThemeToggle />
             
             {/* Notifications */}
