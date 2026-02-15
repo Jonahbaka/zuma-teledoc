@@ -131,6 +131,79 @@ function toNumber(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+const COUNTRY_BY_CODE = {
+  US: 'United States',
+  CA: 'Canada',
+  GB: 'United Kingdom',
+  UK: 'United Kingdom',
+  AU: 'Australia',
+  IN: 'India',
+  DE: 'Germany',
+  FR: 'France',
+  ES: 'Spain',
+  IT: 'Italy',
+  BR: 'Brazil',
+  MX: 'Mexico',
+  ZA: 'South Africa',
+  NG: 'Nigeria',
+  JP: 'Japan'
+};
+
+const TZ_TO_COUNTRY = {
+  'America/New_York': 'United States',
+  'America/Chicago': 'United States',
+  'America/Denver': 'United States',
+  'America/Los_Angeles': 'United States',
+  'America/Toronto': 'Canada',
+  'Europe/London': 'United Kingdom',
+  'Europe/Berlin': 'Germany',
+  'Europe/Paris': 'France',
+  'Asia/Kolkata': 'India',
+  'Asia/Tokyo': 'Japan',
+  'Australia/Sydney': 'Australia'
+};
+
+function normalizeCountry(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return 'Unknown';
+  const lower = value.toLowerCase();
+  if (lower === '(not set)' || lower === 'not set' || lower === 'unknown' || lower === 'undefined' || lower === 'null') {
+    return 'Unknown';
+  }
+  if (value.length === 2) {
+    return COUNTRY_BY_CODE[value.toUpperCase()] || value.toUpperCase();
+  }
+  return value;
+}
+
+function inferCountryFromLocale(locale) {
+  const token = String(locale || '').trim();
+  if (!token.includes('-')) return 'Unknown';
+  const code = token.split('-').pop();
+  return normalizeCountry(code);
+}
+
+function inferCountry({
+  headerCountry,
+  bodyCountry,
+  locale,
+  timeZone
+}) {
+  const first = normalizeCountry(headerCountry);
+  if (first !== 'Unknown') return first;
+
+  const provided = normalizeCountry(bodyCountry);
+  if (provided !== 'Unknown') return provided;
+
+  const byLocale = inferCountryFromLocale(locale);
+  if (byLocale !== 'Unknown') return byLocale;
+
+  const tz = String(timeZone || '').trim();
+  if (tz && TZ_TO_COUNTRY[tz]) return TZ_TO_COUNTRY[tz];
+
+  return 'Unknown';
+}
+
 async function getGaOverview() {
   const [summary, byMinute, bySource, byCountry, byPage] = await Promise.all([
     runGaRealtimeReport({ metrics: [{ name: 'activeUsers' }] }),
@@ -202,7 +275,7 @@ async function getGaOverview() {
   }));
 
   const topCountries = (byCountry?.rows || []).map((row) => ({
-    country: row.dimensionValues?.[0]?.value || 'Unknown',
+    country: normalizeCountry(row.dimensionValues?.[0]?.value),
     activeUsers: toNumber(row.metricValues?.[0]?.value)
   }));
 
@@ -274,7 +347,12 @@ router.post('/track', async (req, res) => {
     source: deriveSource(body.source, body.referrer || req.get('referer')),
     referrer: body.referrer || req.get('referer') || '',
     device_type: body.deviceType || deriveDeviceType(userAgent),
-    country: req.get('x-vercel-ip-country') || req.get('cf-ipcountry') || 'Unknown',
+    country: inferCountry({
+      headerCountry: req.get('x-vercel-ip-country') || req.get('cf-ipcountry') || req.get('x-country-code'),
+      bodyCountry: body.country,
+      locale: body.locale,
+      timeZone: body.timeZone
+    }),
     city: req.get('x-vercel-ip-city') || 'Unknown',
     user_agent: userAgent,
     created_at: nowIso
@@ -416,7 +494,7 @@ router.get('/overview', ...adminOnly, async (_req, res) => {
           share: Math.round((p.views / totalViews) * 1000) / 10
         })),
         topCountries: countriesRes.rows.map((r) => ({
-          country: r.country,
+          country: normalizeCountry(r.country),
           activeUsers: r.active_users
         })),
         provider: 'internal',

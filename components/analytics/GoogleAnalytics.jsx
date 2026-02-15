@@ -43,7 +43,9 @@ function trackRealtimePageView(pathname, searchParams) {
     title: document.title || '',
     referrer: document.referrer || '',
     source: inferSource(searchParams),
-    deviceType: /mobile/i.test(navigator.userAgent) ? 'mobile' : 'desktop'
+    deviceType: /mobile/i.test(navigator.userAgent) ? 'mobile' : 'desktop',
+    locale: navigator.language || '',
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
   };
 
   const url = '/api/realtime-analytics/track';
