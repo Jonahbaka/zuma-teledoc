@@ -6,20 +6,72 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
-// Minimal country list (expand as needed).
-export const COUNTRIES = [
-  { code: 'US', name: 'United States', regionLabel: 'State', postalLabel: 'ZIP code' },
-  { code: 'GB', name: 'United Kingdom', regionLabel: 'County', postalLabel: 'Postcode' },
-  { code: 'NG', name: 'Nigeria', regionLabel: 'State', postalLabel: 'Postal code' },
-  { code: 'BR', name: 'Brazil', regionLabel: 'State', postalLabel: 'CEP' },
-  { code: 'IN', name: 'India', regionLabel: 'State', postalLabel: 'PIN code' },
-  { code: 'CA', name: 'Canada', regionLabel: 'Province', postalLabel: 'Postal code' },
-  { code: 'FR', name: 'France', regionLabel: 'Region', postalLabel: 'Postal code' },
-  { code: 'ES', name: 'Spain', regionLabel: 'Province', postalLabel: 'Postal code' }
-];
+// Field label overrides for high-traffic countries.
+// For all other countries, we use neutral defaults.
+const COUNTRY_FIELD_OVERRIDES = {
+  US: { regionLabel: 'State', postalLabel: 'ZIP code' },
+  GB: { regionLabel: 'County', postalLabel: 'Postcode' },
+  NG: { regionLabel: 'State', postalLabel: 'Postal code' },
+  BR: { regionLabel: 'State', postalLabel: 'CEP' },
+  IN: { regionLabel: 'State', postalLabel: 'PIN code' },
+  CA: { regionLabel: 'Province', postalLabel: 'Postal code' },
+  FR: { regionLabel: 'Region', postalLabel: 'Postal code' },
+  ES: { regionLabel: 'Province', postalLabel: 'Postal code' }
+};
+
+const DEFAULT_COUNTRY = 'US';
+const DEFAULT_COUNTRY_CONFIG = { regionLabel: 'Region/State', postalLabel: 'Postal code' };
 
 function countryConfig(countryCode) {
-  return COUNTRIES.find(c => c.code === countryCode) || COUNTRIES[0];
+  const cc = String(countryCode || '').toUpperCase() || DEFAULT_COUNTRY;
+  return COUNTRY_FIELD_OVERRIDES[cc] || DEFAULT_COUNTRY_CONFIG;
+}
+
+function getAllCountryOptions() {
+  // Prefer the platform's supported regions list (covers essentially all countries).
+  // Fallback to a small list if the browser doesn't support it.
+  let regionCodes = null;
+  try {
+    if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
+      regionCodes = Intl.supportedValuesOf('region');
+    }
+  } catch {
+    regionCodes = null;
+  }
+
+  const fallback = ['US', 'GB', 'NG', 'BR', 'IN', 'CA', 'FR', 'ES'];
+  const codes = Array.isArray(regionCodes) && regionCodes.length > 0 ? regionCodes : fallback;
+
+  const locale = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en';
+  let displayNames = null;
+  try {
+    displayNames = new Intl.DisplayNames([locale], { type: 'region' });
+  } catch {
+    displayNames = null;
+  }
+
+  const seen = new Set();
+  const options = [];
+
+  for (const raw of codes) {
+    const code = String(raw || '').toUpperCase().trim();
+    // Filter out UN M49 numeric regions like "001" and anything unexpected.
+    if (!/^[A-Z]{2}$/.test(code)) continue;
+    if (seen.has(code)) continue;
+    seen.add(code);
+
+    const name = displayNames?.of(code) || code;
+    options.push({ code, name });
+  }
+
+  options.sort((a, b) => a.name.localeCompare(b.name, locale, { sensitivity: 'base' }));
+
+  // Ensure our default appears even if platform list is missing it (shouldn't happen, but safe).
+  if (!seen.has(DEFAULT_COUNTRY)) {
+    options.unshift({ code: DEFAULT_COUNTRY, name: displayNames?.of(DEFAULT_COUNTRY) || 'United States' });
+  }
+
+  return options;
 }
 
 // Very lightweight autocomplete using OpenStreetMap Nominatim.
@@ -45,12 +97,13 @@ export function GlobalAddressFields({
   required = false
 }) {
   const v = value || {};
-  const [country, setCountry] = useState(v.country || 'US');
+  const [country, setCountry] = useState(v.country || DEFAULT_COUNTRY);
   const [search, setSearch] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [searching, setSearching] = useState(false);
 
   const cfg = useMemo(() => countryConfig(country), [country]);
+  const countryOptions = useMemo(() => getAllCountryOptions(), []);
 
   useEffect(() => {
     onChange?.({ ...v, country });
@@ -113,7 +166,7 @@ export function GlobalAddressFields({
           className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none"
           required={required}
         >
-          {COUNTRIES.map((c) => (
+          {countryOptions.map((c) => (
             <option key={c.code} value={c.code}>{c.name}</option>
           ))}
         </select>
