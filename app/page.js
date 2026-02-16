@@ -158,10 +158,6 @@ export default function HomePage() {
                         <div className="text-xs text-muted-foreground">Board certified only</div>
                       </div>
                     </Link>
-                    <div className="h-px bg-border my-2" />
-                    <Link href="/secure/admin" className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg">
-                      <Lock size={12} /> Authorized Personnel
-                    </Link>
                   </div>
                 </div>
               </div>
@@ -193,9 +189,6 @@ export default function HomePage() {
             ))}
             <Link href="/provider/login" onClick={handleJoinAsProvider} className="px-4 py-3 text-muted-foreground font-medium hover:bg-accent rounded-lg flex items-center gap-2 hover:text-foreground">
               Provider Access <ShieldCheck size={16} className="text-blue-500" />
-            </Link>
-            <Link href="/secure/admin" className="px-4 py-3 text-muted-foreground font-medium hover:bg-accent rounded-lg flex items-center gap-2 hover:text-foreground">
-              <Lock size={16} /> Admin Access
             </Link>
           </div>
         )}
