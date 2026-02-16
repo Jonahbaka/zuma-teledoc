@@ -187,10 +187,15 @@ function renderWarmupLoaderHtml() {
     <div class="pulse-ring"></div>
     <div class="pulse-ring"></div>
 
-    <div class="logo-container">
-      <svg class="logo-d" viewBox="0 0 100 100" aria-label="DoctaRx Loading Logo" role="img">
-        <path d="M30 20 H50 C75 20 75 80 50 80 H30 V20 Z" />
-        <path d="M45 40 L55 50 L45 60" stroke-width="3" />
+    <div class="logo-container" style="width: 320px; height: 80px;">
+      <svg viewBox="0 0 400 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="DoctaRx" role="img" style="width: 100%; height: 100%;">
+        <g transform="translate(10, 10)">
+          <path d="M20 5 H45 C70 5 70 75 45 75 H20 V5 Z" stroke="#3B82F6" stroke-width="8" stroke-linecap="round"/>
+          <path d="M20 40 L35 40 L40 25 L48 55 L55 40 L70 40" stroke="#22D3EE" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <text x="100" y="65" font-family="sans-serif" font-weight="800" font-size="52" fill="#0F172A" letter-spacing="-1">
+          Docta<tspan fill="#22D3EE">Rx</tspan>
+        </text>
       </svg>
     </div>
 

@@ -14,6 +14,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { LanguageToggle } from '@/components/ui/language-toggle';
 import { notificationsAPI } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 export default function DashboardLayout({ 
   children, 
@@ -212,12 +213,8 @@ export default function DashboardLayout({
         {/* Logo */}
         <div className="h-16 flex items-center justify-between px-4 border-b border-border">
           <Link href="/" className="flex items-center gap-2">
-            <div className="bg-purple-900 h-10 w-10 rounded-full flex items-center justify-center mr-3 shadow-md relative">
-              <span className="text-white font-bold italic">D</span>
-              <div className="absolute bottom-1 right-1 w-2 h-2 bg-amber-400 rounded-full border border-purple-900"></div>
-            </div>
             <div>
-              <span className="font-bold text-foreground">Docta<span className="text-amber-500">.</span></span>
+              <DoctaRxLogo className="h-7 w-auto" />
               <span className={cn(
                 'block text-xs font-medium',
                 'text-purple-600'

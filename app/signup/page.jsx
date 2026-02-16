@@ -13,6 +13,7 @@ import { PhoneInputE164, isValidE164 } from '@/components/forms/PhoneInputE164';
 import { GlobalAddressFields } from '@/components/forms/GlobalAddressFields';
 import { useI18n } from '@/components/providers/I18nProvider';
 import { jurisdictionForCountry } from '@/lib/compliance';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 export default function GlobalSignupPage() {
   const router = useRouter();
@@ -88,12 +89,7 @@ export default function GlobalSignupPage() {
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950 p-6">
       <header className="max-w-3xl mx-auto mb-6">
         <Link href="/" className="inline-flex items-center gap-2">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-purple-800 rounded-xl flex items-center justify-center">
-            <span className="text-white font-bold text-xl">D</span>
-          </div>
-          <span className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">
-            Docta<span className="text-purple-400">.</span>
-          </span>
+          <DoctaRxLogo className="h-9 w-auto" />
         </Link>
       </header>
 
