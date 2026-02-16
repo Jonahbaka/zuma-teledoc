@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { formatDateTime, formatTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 /* ─────────────────── constants ─────────────────── */
 
@@ -160,10 +161,9 @@ export default function ProviderVideoCallPage() {
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <div className="bg-blue-600 p-1.5 rounded-lg shadow-lg shadow-blue-500/20">
-              <Activity size={20} className="text-white" />
-            </div>
-            <span className="font-bold text-lg tracking-tight">Docta<span className="text-blue-500">Rx</span></span>
+            <span className="rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-white/10">
+              <DoctaRxLogo className="h-7 w-auto" />
+            </span>
           </div>
           <div className="h-5 w-px bg-gray-700 mx-1" />
           <div>

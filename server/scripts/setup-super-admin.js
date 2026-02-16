@@ -19,7 +19,7 @@ function question(query) {
 
 async function setupSuperAdmin() {
   try {
-    console.log('\n=== Docta. Super Admin Setup ===\n');
+    console.log('\n=== DoctaRx Super Admin Setup ===\n');
     
     // Check if super_admin role exists
     const { rows: enumCheck } = await db.query(`

@@ -1238,7 +1238,7 @@ router.get('/communications', async (req, res) => {
     
     const { rows: countResult } = await db.query(`
       SELECT COUNT(*) FROM notifications 
-      WHERE type = 'system' AND title != 'Welcome to Docta.! 🎉'
+      WHERE type = 'system' AND title != 'Welcome to DoctaRx! 🎉'
     `);
     const total = parseInt(countResult[0].count);
     

@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PhoneInputE164, isValidE164 } from '@/components/forms/PhoneInputE164';
 import { GlobalAddressFields } from '@/components/forms/GlobalAddressFields';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 function ProviderRegisterContent() {
   const router = useRouter();
@@ -168,12 +169,7 @@ function ProviderRegisterContent() {
       {/* Header */}
       <header className="p-6">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
-            <span className="text-white font-bold text-xl">D</span>
-          </div>
-          <span className="text-2xl font-bold text-white">
-            Docta<span className="text-purple-400">.</span>
-          </span>
+          <DoctaRxLogo className="h-9 w-auto" />
         </Link>
       </header>
 

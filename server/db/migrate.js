@@ -1,6 +1,6 @@
 /**
  * Database Migration Script
- * Runs all migrations to set up the Docta. production database
+ * Runs all migrations to set up the DoctaRx production database
  */
 
 require('dotenv').config();

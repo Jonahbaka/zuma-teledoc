@@ -764,12 +764,12 @@ class CRMService {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; max-width: 600px; margin: 0 auto; padding: 20px; line-height: 1.6;">
   <div style="border-bottom: 3px solid #7c3aed; padding-bottom: 16px; margin-bottom: 24px;">
-    <h2 style="color: #7c3aed; margin: 0; font-size: 20px;">Docta<span style="color: #10b981;">.</span></h2>
+    <h2 style="color: #7c3aed; margin: 0; font-size: 20px;">DoctaRx</h2>
     <p style="color: #64748b; font-size: 12px; margin: 4px 0 0;">AI-Powered Telehealth Platform</p>
   </div>
   <div style="white-space: pre-wrap; font-size: 14px;">${body.replace(/\n/g, '<br>')}</div>
   <div style="border-top: 1px solid #e2e8f0; margin-top: 32px; padding-top: 16px; font-size: 11px; color: #94a3b8;">
-    <p>Docta. Telehealth Services | info@doctarx.com | doctarx.com</p>
+    <p>DoctaRx Telehealth Services | info@doctarx.com | doctarx.com</p>
     <p>If you no longer wish to receive emails, reply with "unsubscribe".</p>
   </div>
 </body>

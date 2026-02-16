@@ -966,7 +966,7 @@ function CredentialingContent() {
                   <div className="flex items-center gap-3">
                     <input type="checkbox" id="consent" className="w-4 h-4" />
                     <label htmlFor="consent" className="text-sm">
-                      I consent to the background check and authorize Docta. to verify my credentials.
+                      I consent to the background check and authorize DoctaRx to verify my credentials.
                     </label>
                   </div>
                 )}

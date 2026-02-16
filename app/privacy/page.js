@@ -29,7 +29,7 @@ export default function PrivacyPolicyPage() {
             <section>
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">1. Introduction</h2>
               <p>
-                Docta. ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our telehealth platform.
+                DoctaRx ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our telehealth platform.
               </p>
             </section>
 

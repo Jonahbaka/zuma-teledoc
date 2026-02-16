@@ -23,8 +23,8 @@ const BRAND = {
 
 // Company info for CAN-SPAM compliance
 const COMPANY = {
-  name: 'Docta.',
-  fullName: 'Docta. Telehealth Services',
+  name: 'DoctaRx',
+  fullName: 'DoctaRx Telehealth Services',
   address: '123 Healthcare Blvd, Suite 100',
   city: 'San Francisco',
   state: 'CA',
@@ -588,7 +588,7 @@ const sendPasswordResetEmail = async (user, resetToken) => {
     `;
 
     const html = generateEmailTemplate({
-      preheader: 'Reset your password for your Docta. account',
+      preheader: 'Reset your password for your DoctaRx account',
       headerIcon: '🔐',
       headerTitle: 'Reset Your Password',
       headerSubtitle: 'Secure password reset request',
@@ -868,7 +868,7 @@ const sendProviderInvitationEmail = async (email, inviteToken, inviterName) => {
 const sendOpsAlertEmail = async ({ subject, html, text, metadata }) => {
   try {
     const to = process.env.ALERT_ADMIN_EMAIL || 'evolvedu@outlook.com';
-    const safeSubject = subject?.slice(0, 200) || 'Docta. Ops Alert';
+    const safeSubject = subject?.slice(0, 200) || 'DoctaRx Ops Alert';
 
     const bodyHtml = html || `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px;">

@@ -1,11 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useId } from 'react';
 import { cn } from '@/lib/utils';
 
-// DoctaRx primary wordmark (inline SVG).
-// Keeping this inline avoids asset fetches and ensures consistent rendering.
-export default function DoctaRxLogo({ className, title = 'DoctaRx' }) {
+// DoctaRx primary wordmark (inline SVG) — "White Glow" variant.
+// Designed for dark headers; for light pages, wrap it in a dark pill background.
+export default function DoctaRxLogo({ className, title = 'DoctaRx', glow = true }) {
+  const uid = useId();
+  const glowId = `doctarx_glow_${uid.replace(/:/g, '_')}`;
   return (
     <svg
       role="img"
@@ -15,6 +17,18 @@ export default function DoctaRxLogo({ className, title = 'DoctaRx' }) {
       xmlns="http://www.w3.org/2000/svg"
       className={cn('h-8 w-auto', className)}
     >
+      <defs>
+        {glow ? (
+          <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2.5" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        ) : null}
+      </defs>
+
       <g transform="translate(10, 10)">
         <path
           d="M20 5 H45 C70 5 70 75 45 75 H20 V5 Z"
@@ -28,16 +42,19 @@ export default function DoctaRxLogo({ className, title = 'DoctaRx' }) {
           strokeWidth="6"
           strokeLinecap="round"
           strokeLinejoin="round"
+          filter={glow ? `url(#${glowId})` : undefined}
         />
       </g>
+
       <text
         x="100"
         y="65"
-        fontFamily="sans-serif"
+        fontFamily="Arial, Helvetica, sans-serif"
         fontWeight="800"
         fontSize="52"
-        fill="#0F172A"
+        fill="#FFFFFF"
         letterSpacing="-1"
+        filter={glow ? `url(#${glowId})` : undefined}
       >
         Docta<tspan fill="#22D3EE">Rx</tspan>
       </text>

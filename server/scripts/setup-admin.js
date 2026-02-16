@@ -30,7 +30,7 @@ const question = (prompt) => {
 };
 
 async function main() {
-  console.log('\n=== Docta. Admin Setup ===\n');
+  console.log('\n=== DoctaRx Admin Setup ===\n');
   
   try {
     // Check database connection

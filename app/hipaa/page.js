@@ -29,7 +29,7 @@ export default function HIPAANoticePage() {
             <section>
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">This Notice Describes How Medical Information About You May Be Used and Disclosed</h2>
               <p>
-                This notice describes how Docta. and our healthcare providers may use and disclose your protected health information (PHI) to carry out treatment, payment, or healthcare operations, and for other purposes that are permitted or required by law.
+                This notice describes how DoctaRx and our healthcare providers may use and disclose your protected health information (PHI) to carry out treatment, payment, or healthcare operations, and for other purposes that are permitted or required by law.
               </p>
             </section>
 

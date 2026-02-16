@@ -1,7 +1,7 @@
 {
   "name": "zuma-teledoc",
   "version": "1.0.0",
-  "description": "Docta. - Production HIPAA-compliant Telehealth Platform",
+  "description": "DoctaRx - Production HIPAA-compliant Telehealth Platform",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:next\"",

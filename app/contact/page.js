@@ -114,7 +114,7 @@ export default function ContactPage() {
                 If you're experiencing a medical emergency, please call 911 or go to your nearest emergency room immediately.
               </p>
               <p className="text-muted-foreground text-sm">
-                Docta. is not intended for emergency medical situations.
+                DoctaRx is not intended for emergency medical situations.
               </p>
             </div>
           </div>

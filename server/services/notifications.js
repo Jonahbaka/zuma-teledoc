@@ -89,13 +89,13 @@ const sendWelcomeNotification = async (user) => {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
   const roleMessages = {
     patient: {
-      title: 'Welcome to Docta.! 🎉',
+      title: 'Welcome to DoctaRx! 🎉',
       message: `Hi ${user.firstName}! Your account has been created. Start by booking your first appointment with one of our healthcare providers.`,
       actionUrl: `${appUrl}/patient/appointments/book`,
       actionText: 'Book Appointment'
     },
     provider: {
-      title: 'Welcome to Docta.! 🎉',
+      title: 'Welcome to DoctaRx! 🎉',
       message: `Hi Dr. ${user.lastName}! Your provider account has been created. Your profile is pending verification. You'll be notified once approved.`,
       actionUrl: `${appUrl}/provider/profile`,
       actionText: 'Complete Profile'

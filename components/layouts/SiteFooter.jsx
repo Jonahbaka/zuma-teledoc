@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { ShieldCheck, Lock, KeyRound, ArrowRight, Mail } from 'lucide-react';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 const FooterLink = ({ href, children }) => (
   <Link
@@ -36,12 +37,7 @@ export default function SiteFooter() {
           {/* Brand */}
           <div className="lg:col-span-4 space-y-6">
             <Link href="/" className="flex items-center space-x-3 group">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-purple-500/20 group-hover:shadow-purple-500/30 transition-all">
-                D
-              </div>
-              <span className="text-2xl font-bold tracking-tight text-white">
-                Docta<span className="text-amber-400">.</span>
-              </span>
+              <DoctaRxLogo className="h-9 w-auto" />
             </Link>
 
             <p className="text-sm leading-relaxed text-slate-400 max-w-sm">
@@ -126,7 +122,7 @@ export default function SiteFooter() {
         {/* Bottom bar */}
         <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-xs text-slate-400 order-2 md:order-1">
-            © {year} Docta. All rights reserved.
+            © {year} DoctaRx. All rights reserved.
           </p>
 
           <div className="order-1 md:order-2 flex items-center gap-3 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">

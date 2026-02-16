@@ -214,7 +214,9 @@ export default function DashboardLayout({
         <div className="h-16 flex items-center justify-between px-4 border-b border-border">
           <Link href="/" className="flex items-center gap-2">
             <div>
-              <DoctaRxLogo className="h-7 w-auto" />
+              <span className="inline-flex rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-800">
+                <DoctaRxLogo className="h-7 w-auto" />
+              </span>
               <span className={cn(
                 'block text-xs font-medium',
                 'text-purple-600'

@@ -29,14 +29,14 @@ export default function TermsOfServicePage() {
             <section>
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">1. Acceptance of Terms</h2>
               <p>
-                By accessing and using Docta., you accept and agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our platform.
+                By accessing and using DoctaRx, you accept and agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our platform.
               </p>
             </section>
 
             <section>
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">2. Description of Service</h2>
               <p>
-                Docta. is a telehealth platform that connects patients with licensed healthcare providers for virtual consultations. We facilitate communication but do not provide medical services directly.
+                DoctaRx is a telehealth platform that connects patients with licensed healthcare providers for virtual consultations. We facilitate communication but do not provide medical services directly.
               </p>
             </section>
 
@@ -54,14 +54,14 @@ export default function TermsOfServicePage() {
             <section>
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">4. Medical Disclaimer</h2>
               <p>
-                Docta. is a technology platform that facilitates telehealth services. We do not provide medical advice, diagnosis, or treatment. All medical services are provided by licensed healthcare providers who are independent practitioners.
+                DoctaRx is a technology platform that facilitates telehealth services. We do not provide medical advice, diagnosis, or treatment. All medical services are provided by licensed healthcare providers who are independent practitioners.
               </p>
             </section>
 
             <section>
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">5. Provider Services</h2>
               <p>
-                Healthcare providers using our platform are independent practitioners. They are responsible for their own medical decisions, diagnoses, and treatments. Docta. does not endorse or guarantee the quality of services provided by any provider.
+                Healthcare providers using our platform are independent practitioners. They are responsible for their own medical decisions, diagnoses, and treatments. DoctaRx does not endorse or guarantee the quality of services provided by any provider.
               </p>
             </section>
 
@@ -87,7 +87,7 @@ export default function TermsOfServicePage() {
             <section>
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">8. Limitation of Liability</h2>
               <p>
-                To the maximum extent permitted by law, Docta. shall not be liable for any indirect, incidental, special, or consequential damages arising from your use of the platform.
+                To the maximum extent permitted by law, DoctaRx shall not be liable for any indirect, incidental, special, or consequential damages arising from your use of the platform.
               </p>
             </section>
 

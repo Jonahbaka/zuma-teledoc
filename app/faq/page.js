@@ -65,7 +65,7 @@ export default function FAQPage() {
             <h1 className="text-4xl md:text-5xl font-bold text-purple-900 font-serif">Frequently Asked Questions</h1>
           </div>
           <p className="text-xl text-gray-600">
-            Find answers to the most common questions about Docta.
+            Find answers to the most common questions about DoctaRx.
           </p>
         </div>
 

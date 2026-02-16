@@ -126,7 +126,7 @@ export default function AISoapAssist({
           </div>
           <div>
             <h3 className="font-semibold text-slate-900">AI Clinical Assist</h3>
-            <p className="text-xs text-slate-500">Powered by Docta.</p>
+            <p className="text-xs text-slate-500">Powered by DoctaRx.</p>
           </div>
         </div>
       </div>

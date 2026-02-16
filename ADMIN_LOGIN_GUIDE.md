@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Docta. admin portal provides secure access to platform management, user administration, financial tools, and system analytics. This guide covers authentication, credential management, and security best practices.
+The DoctaRx admin portal provides secure access to platform management, user administration, financial tools, and system analytics. This guide covers authentication, credential management, and security best practices.
 
 ## Initial Super Admin Setup
 

@@ -118,7 +118,7 @@ router.post('/',
         </p>
         
         <p style="margin: 0 0 24px 0;">
-          <strong>${inviterName}</strong> has invited you to join <strong style="color: #7c3aed;">Docta.</strong> as a <strong>${roleName}</strong>!
+          <strong>${inviterName}</strong> has invited you to join <strong style="color: #7c3aed;">DoctaRx</strong> as a <strong>${roleName}</strong>!
         </p>
         
         ${personalMessage ? `
@@ -132,7 +132,7 @@ router.post('/',
         
         <div style="background: linear-gradient(135deg, #10b98110 0%, #7c3aed10 100%); border-radius: 12px; padding: 24px; margin: 24px 0; border: 1px solid #e2e8f0;">
           <p style="margin: 0 0 16px 0; font-weight: 600; color: #1e1b4b; font-size: 17px;">
-            🏥 As a Docta. ${roleName}, you'll have access to:
+            🏥 As a DoctaRx ${roleName}, you'll have access to:
           </p>
           <ul style="margin: 0; padding-left: 20px; color: #334155;">
             ${featuresHtml}
@@ -145,10 +145,10 @@ router.post('/',
       `;
 
       const inviteHtml = generateEmailTemplate({
-        preheader: `${inviterName} has invited you to join Docta. as a ${roleName}`,
+        preheader: `${inviterName} has invited you to join DoctaRx as a ${roleName}`,
         headerIcon: type === 'provider' ? '🩺' : '🛡️',
         headerTitle: "You're Invited!",
-        headerSubtitle: `Join Docta. as a ${roleName}`,
+        headerSubtitle: `Join DoctaRx as a ${roleName}`,
         headerColor: '#10b981',
         headerColorEnd: '#7c3aed',
         bodyContent: inviteBodyContent,
@@ -164,7 +164,7 @@ router.post('/',
 
       await sendEmail({
         to: email,
-        subject: `🎉 You're Invited to Join Docta. as a ${roleName}!`,
+        subject: `🎉 You're Invited to Join DoctaRx as a ${roleName}!`,
         html: inviteHtml
       });
 
@@ -383,7 +383,7 @@ router.post('/:id/resend',
         </p>
         
         <p style="margin: 0 0 24px 0;">
-          This is a friendly reminder that you've been invited to join <strong style="color: #7c3aed;">Docta.</strong> as a <strong>${roleName}</strong>.
+          This is a friendly reminder that you've been invited to join <strong style="color: #7c3aed;">DoctaRx</strong> as a <strong>${roleName}</strong>.
         </p>
         
         <div style="background: #fef3c7; border-radius: 12px; padding: 20px; margin: 24px 0; border-left: 4px solid #f59e0b;">
@@ -398,7 +398,7 @@ router.post('/:id/resend',
       `;
 
       const reminderHtml = generateEmailTemplate({
-        preheader: `Reminder: Your invitation to join Docta. is waiting!`,
+        preheader: `Reminder: Your invitation to join DoctaRx is waiting!`,
         headerIcon: '⏰',
         headerTitle: 'Invitation Reminder',
         headerSubtitle: `Your ${roleName} spot is waiting`,
@@ -416,7 +416,7 @@ router.post('/:id/resend',
 
       await sendEmail({
         to: invite.email,
-        subject: `⏰ Reminder: Your Docta. Invitation is Waiting!`,
+        subject: `⏰ Reminder: Your DoctaRx Invitation is Waiting!`,
         html: reminderHtml
       });
 

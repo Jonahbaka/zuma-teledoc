@@ -29,7 +29,7 @@ export default function AccessibilityPage() {
             <section>
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">Our Commitment</h2>
               <p>
-                Docta. is committed to ensuring digital accessibility for people with disabilities. We are continually improving the user experience for everyone and applying the relevant accessibility standards to achieve these goals.
+                DoctaRx is committed to ensuring digital accessibility for people with disabilities. We are continually improving the user experience for everyone and applying the relevant accessibility standards to achieve these goals.
               </p>
             </section>
 

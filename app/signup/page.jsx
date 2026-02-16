@@ -89,7 +89,9 @@ export default function GlobalSignupPage() {
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950 p-6">
       <header className="max-w-3xl mx-auto mb-6">
         <Link href="/" className="inline-flex items-center gap-2">
-          <DoctaRxLogo className="h-9 w-auto" />
+          <span className="rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-800">
+            <DoctaRxLogo className="h-9 w-auto" />
+          </span>
         </Link>
       </header>
 

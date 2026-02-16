@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email'),
@@ -92,11 +93,8 @@ function PatientLoginContent() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-3">
-            <div className="h-16 w-16 bg-gradient-to-br from-purple-600 to-indigo-700 rounded-2xl flex items-center justify-center shadow-xl shadow-purple-500/25">
-              <span className="text-white font-bold text-3xl">D</span>
-            </div>
-            <span className="text-5xl font-extrabold text-foreground">
-              Docta<span className="text-amber-500">.</span>
+            <span className="rounded-2xl bg-slate-950/95 px-4 py-3 shadow-[0_0_24px_rgba(34,211,238,0.18)] border border-slate-800">
+              <DoctaRxLogo className="h-10 w-auto" />
             </span>
           </Link>
         </div>

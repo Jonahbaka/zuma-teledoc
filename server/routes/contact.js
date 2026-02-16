@@ -116,7 +116,7 @@ router.post('/', async (req, res) => {
             </div>
           </div>
           <p style="text-align: center; color: #6b7280; font-size: 12px; margin-top: 20px;">
-            This email was sent from the Docta. contact form at ${new Date().toLocaleString()}
+            This email was sent from the DoctaRx contact form at ${new Date().toLocaleString()}
           </p>
         </body>
       </html>
@@ -127,7 +127,7 @@ router.post('/', async (req, res) => {
       from: process.env.SMTP_FROM || 'noreply@doctarx.com',
       to: ADMIN_EMAIL,
       replyTo: data.email,
-      subject: `[Docta. ${typeLabel}] ${data.subject}`,
+      subject: `[DoctaRx ${typeLabel}] ${data.subject}`,
       html
     });
     
@@ -137,7 +137,7 @@ router.post('/', async (req, res) => {
       <html>
         <head>
           <meta charset="utf-8">
-          <title>Thank you for contacting Docta.</title>
+          <title>Thank you for contacting DoctaRx</title>
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
@@ -145,14 +145,14 @@ router.post('/', async (req, res) => {
           </div>
           <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb; border-top: none;">
             <p>Dear ${data.name},</p>
-            <p>Thank you for reaching out to Docta. We have received your message and will get back to you within 24 hours.</p>
+            <p>Thank you for reaching out to DoctaRx. We have received your message and will get back to you within 24 hours.</p>
             <p><strong>Your inquiry:</strong></p>
             <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0; border: 1px solid #e5e7eb;">
               <p><strong>Subject:</strong> ${data.subject}</p>
               <p style="white-space: pre-wrap;">${data.message}</p>
             </div>
             <p>If you have any urgent concerns, please don't hesitate to reach out directly at <a href="mailto:evolvedu@outlook.com">evolvedu@outlook.com</a>.</p>
-            <p>Best regards,<br>The Docta. Team</p>
+            <p>Best regards,<br>The DoctaRx Team</p>
           </div>
         </body>
       </html>
@@ -161,7 +161,7 @@ router.post('/', async (req, res) => {
     await transporter.sendMail({
       from: process.env.SMTP_FROM || 'noreply@doctarx.com',
       to: data.email,
-      subject: 'Thank you for contacting Docta.',
+      subject: 'Thank you for contacting DoctaRx',
       html: autoReplyHtml
     });
     

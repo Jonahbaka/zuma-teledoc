@@ -15,6 +15,7 @@ import { formatDateTime, formatTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import { VIDEO_BG_PRESETS } from '@/lib/videoBackgrounds';
 import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 // --- Assets & Constants ---
 const DOCTOR_VIDEO_URL = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
@@ -155,10 +156,9 @@ export default function PatientVideoCallPage() {
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
-              Z
-            </div>
-            <span className="font-semibold text-lg tracking-tight text-purple-700">Docta<span className="text-yellow-500">.</span></span>
+            <span className="rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-200">
+              <DoctaRxLogo className="h-7 w-auto" />
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-4 text-sm font-medium text-slate-500">

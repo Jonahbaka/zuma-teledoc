@@ -746,8 +746,8 @@ router.post('/mfa/setup', authenticate, async (req, res) => {
     
     // Generate MFA secret
     const secret = speakeasy.generateSecret({
-      name: `${process.env.MFA_ISSUER || 'Docta.'}:${req.user.email}`,
-      issuer: process.env.MFA_ISSUER || 'Docta.'
+      name: `${process.env.MFA_ISSUER || 'DoctaRx'}:${req.user.email}`,
+      issuer: process.env.MFA_ISSUER || 'DoctaRx'
     });
     
     // Generate QR code

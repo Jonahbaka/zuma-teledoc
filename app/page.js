@@ -117,7 +117,9 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2 group">
-              <DoctaRxLogo className="h-7 w-auto" />
+              <span className="rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-800">
+                <DoctaRxLogo className="h-7 w-auto" />
+              </span>
             </Link>
 
             <div className="hidden md:flex items-center gap-8">
@@ -405,10 +407,9 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="bg-blue-600 h-8 w-8 rounded-lg flex items-center justify-center">
-                <Activity className="text-white w-4 h-4" />
-              </div>
-              <span className="font-bold text-foreground">Docta<span className="text-blue-500">Rx</span></span>
+              <span className="rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-800">
+                <DoctaRxLogo className="h-7 w-auto" />
+              </span>
             </div>
 
             <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground justify-center">
@@ -419,7 +420,7 @@ export default function HomePage() {
               <Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link>
             </div>
 
-            <p className="text-sm text-muted-foreground">© 2026 Docta. All rights reserved.</p>
+            <p className="text-sm text-muted-foreground">© 2026 DoctaRx. All rights reserved.</p>
           </div>
         </div>
       </footer>

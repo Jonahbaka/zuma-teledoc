@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { io } from 'socket.io-client';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -252,8 +253,7 @@ export default function AgentOpsPortal() {
       <aside className={`fixed inset-y-0 left-0 w-72 bg-[#0F0F0F] border-r border-gray-800 flex flex-col z-40 transform transition-transform duration-300 lg:static lg:w-64 lg:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-16 flex items-center px-6 border-b border-gray-800">
           <div className="flex items-center gap-2">
-            <div className="bg-purple-600 p-1.5 rounded-lg"><Brain size={20} className="text-white" /></div>
-            <span className="font-bold text-lg tracking-tight text-white">Docta<span className="text-purple-500">Rx</span></span>
+            <DoctaRxLogo className="h-7 w-auto" />
           </div>
         </div>
 

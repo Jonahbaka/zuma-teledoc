@@ -1,5 +1,5 @@
 /**
- * Docta. Express Server
+ * DoctaRx Express Server
  * Cloud Run compatible - binds to PORT immediately
  */
 
@@ -60,7 +60,7 @@ function renderWarmupLoaderHtml() {
       --docta-accent: #22d3ee;
     }
     body {
-      background-color: #f8fafc;
+      background-color: #020617;
       margin: 0;
       overflow: hidden;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
@@ -72,7 +72,7 @@ function renderWarmupLoaderHtml() {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: radial-gradient(circle at center, #ffffff 0%, #f1f5f9 100%);
+      background: radial-gradient(circle at center, #0b1220 0%, #020617 70%);
       z-index: 9999;
     }
     .logo-container {
@@ -137,7 +137,7 @@ function renderWarmupLoaderHtml() {
       margin-top: 24px;
       font-size: 0.875rem;
       font-weight: 600;
-      color: var(--docta-blue);
+      color: #e2e8f0;
       letter-spacing: 0.1em;
       text-transform: uppercase;
       display: flex;
@@ -161,7 +161,7 @@ function renderWarmupLoaderHtml() {
       position: absolute;
       width: 400px;
       height: 400px;
-      background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+      background: radial-gradient(circle, rgba(34, 211, 238, 0.10) 0%, transparent 70%);
       border-radius: 50%;
       filter: blur(60px);
       z-index: -1;
@@ -187,16 +187,27 @@ function renderWarmupLoaderHtml() {
     <div class="pulse-ring"></div>
     <div class="pulse-ring"></div>
 
-    <div class="logo-container" style="width: 320px; height: 80px;">
-      <svg viewBox="0 0 400 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="DoctaRx" role="img" style="width: 100%; height: 100%;">
-        <g transform="translate(10, 10)">
-          <path d="M20 5 H45 C70 5 70 75 45 75 H20 V5 Z" stroke="#3B82F6" stroke-width="8" stroke-linecap="round"/>
-          <path d="M20 40 L35 40 L40 25 L48 55 L55 40 L70 40" stroke="#22D3EE" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-        </g>
-        <text x="100" y="65" font-family="sans-serif" font-weight="800" font-size="52" fill="#0F172A" letter-spacing="-1">
-          Docta<tspan fill="#22D3EE">Rx</tspan>
-        </text>
-      </svg>
+    <div class="logo-container" style="width: 340px; height: 86px;">
+      <div style="background:#020617; border:1px solid #1f2937; border-radius:16px; padding:14px 16px; box-shadow: 0 0 20px rgba(34,211,238,0.18);">
+        <svg viewBox="0 0 400 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="DoctaRx" role="img" style="width: 100%; height: 100%;">
+          <defs>
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          <g transform="translate(10, 10)">
+            <path d="M20 5 H45 C70 5 70 75 45 75 H20 V5 Z" stroke="#3B82F6" stroke-width="8" stroke-linecap="round"/>
+            <path d="M20 40 L35 40 L40 25 L48 55 L55 40 L70 40" stroke="#22D3EE" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+          </g>
+          <text x="100" y="65" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="52" fill="#FFFFFF" letter-spacing="-1" filter="url(#glow)">
+            Docta<tspan fill="#22D3EE">Rx</tspan>
+          </text>
+        </svg>
+      </div>
     </div>
 
     <div class="ekg-container" aria-hidden="true">
@@ -206,7 +217,7 @@ function renderWarmupLoaderHtml() {
     </div>
 
     <div class="loading-text">
-      <span>Connecting to Docta</span>
+      <span>Connecting to DoctaRx</span>
       <span class="dot">.</span>
       <span class="dot">.</span>
       <span class="dot">.</span>

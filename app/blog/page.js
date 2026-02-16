@@ -17,7 +17,7 @@ const blogPosts = [
     id: 2,
     title: 'How to Prepare for Your First Virtual Appointment',
     excerpt: 'A comprehensive guide to help you get the most out of your telehealth visit.',
-    author: 'Docta. Team',
+    author: 'DoctaRx Team',
     date: 'January 10, 2025',
     category: 'Patient Resources'
   },
@@ -49,7 +49,7 @@ const blogPosts = [
     id: 6,
     title: 'Telehealth vs. In-Person Visits: When to Choose What',
     excerpt: 'A guide to help you decide when telehealth is the right choice for your healthcare needs.',
-    author: 'Docta. Team',
+    author: 'DoctaRx Team',
     date: 'December 15, 2024',
     category: 'Patient Resources'
   }

@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 const registerSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(100),
@@ -102,7 +103,7 @@ export default function PatientRegisterPage() {
         }
       } else if (result.success) {
         toast({
-          title: 'Welcome to Docta.!',
+          title: 'Welcome to DoctaRx!',
           description: result.message || 'Your account has been created successfully.',
           variant: 'success'
         });
@@ -135,11 +136,8 @@ export default function PatientRegisterPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-3">
-            <div className="h-16 w-16 bg-gradient-to-br from-purple-600 to-indigo-700 rounded-2xl flex items-center justify-center shadow-xl shadow-purple-500/25">
-              <span className="text-white font-bold text-3xl">D</span>
-            </div>
-            <span className="text-5xl font-extrabold text-foreground">
-              Docta<span className="text-amber-500">.</span>
+            <span className="rounded-2xl bg-slate-950/95 px-4 py-3 shadow-[0_0_30px_rgba(34,211,238,0.22)] border border-slate-800">
+              <DoctaRxLogo className="h-10 w-auto" />
             </span>
           </Link>
         </div>

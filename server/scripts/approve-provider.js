@@ -17,7 +17,7 @@ const pool = new Pool({
 });
 
 async function main() {
-  console.log('\n=== Docta. Provider Approval ===\n');
+  console.log('\n=== DoctaRx Provider Approval ===\n');
   
   try {
     // Check database connection
