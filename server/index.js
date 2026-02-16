@@ -42,6 +42,18 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady });
 });
 
+function setNoCacheHeaders(res) {
+  // Prevent CDNs/edges/browsers from caching the warmup loader HTML.
+  // If this ever gets cached, users can see "Connecting..." even when the app is ready.
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  // Common reverse-proxy / CDN hints
+  res.setHeader('Surrogate-Control', 'no-store');
+  res.setHeader('CDN-Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+}
+
 function renderWarmupLoaderHtml() {
   // Keep this self-contained (no external CSS/JS) so it is fast and reliable even during cold start.
   return `
@@ -278,6 +290,7 @@ app.use((req, res, next) => {
   // For API calls, 503 is clearer than a misleading 404.
   if (req.path.startsWith('/api')) {
     res.setHeader('Retry-After', '3');
+    setNoCacheHeaders(res);
     return res.status(503).json({
       success: false,
       error: 'Service warming up',
@@ -286,7 +299,7 @@ app.use((req, res, next) => {
     });
   }
 
-  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  setNoCacheHeaders(res);
   res.setHeader('Retry-After', '3');
   return res.status(200).send(renderWarmupLoaderHtml());
 });
@@ -693,7 +706,7 @@ async function initializeApp() {
   // Catch-all for Next.js (must be last)
   app.all('*', (req, res) => {
     if (!nextReady || !handle) {
-      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      setNoCacheHeaders(res);
       res.setHeader('Retry-After', '3');
       return res.status(200).send(renderWarmupLoaderHtml());
     }
