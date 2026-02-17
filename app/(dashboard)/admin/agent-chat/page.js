@@ -6,9 +6,13 @@ import {
   Brain, Eye, FileText, Lock, Key, Plus, Trash2, Check, X,
   Users, Radio, ChevronDown, Search, Radar, Gem, Calculator,
   Atom, Hexagon, Crown, AlertTriangle, BarChart3, Globe, Bug,
-  Heart, Database, Cpu, Network, Hand, Play, Pause,
+  Heart, Database, Cpu, Network, Hand, Play, Pause, Code2,
   Target, DollarSign, Gauge, Sparkles, ArrowUpRight
 } from 'lucide-react';
+import HolographicAvatar from '@/components/agents/HolographicAvatar';
+import { AGENT_PERSONAS, getAgentPersona, normalizeAgentId } from '@/lib/agentPersonas';
+import { getAgentTheme } from '@/lib/agentTheme';
+import { useAgentVoice } from '@/lib/agentVoice';
 
 // ═══════════════════════════════════════════════════════════════
 //  TYPING ANIMATION — Makes agents feel ALIVE
@@ -77,20 +81,20 @@ function TypingMessage({ text, speed = 12, onComplete, scrollRef }) {
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 const AGENTS = [
-  { id: 'all', name: 'All Agents', codeName: 'Broadcast', icon: Radio, color: 'text-white', bg: 'bg-gradient-to-br from-purple-600 to-indigo-600' },
-  { id: 'ceo', name: 'CEO', codeName: 'The Conductor', icon: Crown, color: 'text-yellow-400', bg: 'bg-yellow-900/50' },
-  { id: 'operations', name: 'Operations', codeName: 'The Weaver', icon: Activity, color: 'text-blue-400', bg: 'bg-blue-900/50' },
-  { id: 'growth', name: 'Growth', codeName: 'The Scout', icon: Radar, color: 'text-emerald-400', bg: 'bg-emerald-900/50' },
-  { id: 'revenue', name: 'Revenue', codeName: 'The Alchemist', icon: Zap, color: 'text-amber-400', bg: 'bg-amber-900/50' },
-  { id: 'compliance', name: 'Compliance', codeName: 'The Guardian', icon: Shield, color: 'text-red-400', bg: 'bg-red-900/50' },
-  { id: 'governance', name: 'Governance', codeName: 'The Sage', icon: Eye, color: 'text-purple-400', bg: 'bg-purple-900/50' },
-  { id: 'corporate_skills', name: 'Corporate', codeName: 'The Builder', icon: FileText, color: 'text-orange-400', bg: 'bg-orange-900/50' },
-  { id: 'researcher', name: 'Research', codeName: 'The Oracle', icon: Search, color: 'text-cyan-400', bg: 'bg-cyan-900/50' },
-  { id: 'economics', name: 'Economics', codeName: 'The Economist', icon: BarChart3, color: 'text-green-400', bg: 'bg-green-900/50' },
-  { id: 'physicist', name: 'Physics', codeName: 'The Architect', icon: Atom, color: 'text-indigo-400', bg: 'bg-indigo-900/50' },
-  { id: 'mathematician', name: 'Math', codeName: 'The Calculator', icon: Calculator, color: 'text-pink-400', bg: 'bg-pink-900/50' },
-  { id: 'vortex_math', name: 'Vortex Math', codeName: 'The Tesseract', icon: Hexagon, color: 'text-violet-400', bg: 'bg-violet-900/50' },
-  { id: 'devops', name: 'DevOps', codeName: 'The Debugger', icon: Bug, color: 'text-lime-400', bg: 'bg-lime-900/50' },
+  { id: 'all', label: 'Broadcast', icon: Radio },
+  { id: 'ceo', label: AGENT_PERSONAS.ceo.name, icon: Crown },
+  { id: 'operations', label: AGENT_PERSONAS.operations.name, icon: Activity },
+  { id: 'asclepius', label: AGENT_PERSONAS.asclepius.name, icon: Heart },
+  { id: 'triage_nurse', label: AGENT_PERSONAS.triage_nurse.name, icon: AlertTriangle },
+  { id: 'pharmacist', label: AGENT_PERSONAS.pharmacist.name, icon: Hand },
+  { id: 'growth', label: AGENT_PERSONAS.growth.name, icon: Radar },
+  { id: 'revenue', label: AGENT_PERSONAS.revenue.name, icon: Zap },
+  { id: 'compliance', label: AGENT_PERSONAS.compliance.name, icon: Shield },
+  { id: 'governance', label: AGENT_PERSONAS.governance.name, icon: Eye },
+  { id: 'corporate_skills', label: AGENT_PERSONAS.corporate_skills.name, icon: FileText },
+  { id: 'researcher', label: AGENT_PERSONAS.researcher.name, icon: Search },
+  { id: 'engineering', label: AGENT_PERSONAS.engineering.name, icon: Code2 },
+  { id: 'devops', label: AGENT_PERSONAS.devops.name, icon: Bug }
 ];
 
 const PLATFORMS = [
@@ -129,6 +133,7 @@ export default function AgentChatPage() {
   const [typingIds, setTypingIds] = useState(new Set()); // message IDs currently typing
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const voice = useAgentVoice();
 
   const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 
@@ -285,6 +290,11 @@ export default function AgentChatPage() {
   };
 
   const currentAgent = AGENTS.find(a => a.id === selectedAgent) || AGENTS[0];
+  const currentPersona = useMemo(() => {
+    if (selectedAgent === 'all') return getAgentPersona('runtime');
+    return getAgentPersona(selectedAgent);
+  }, [selectedAgent]);
+  const currentTheme = getAgentTheme(currentPersona.color);
 
   if (loading) {
     return (
@@ -337,7 +347,18 @@ export default function AgentChatPage() {
               </div>
             </div>
           </div>
-          <div className="flex gap-1 items-center">
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={() => voice.setEnabled(!voice.enabled)}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ${
+                voice.enabled
+                  ? `bg-white/5 ${currentTheme.border} ${currentTheme.text}`
+                  : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+              }`}
+              title="Toggle agent voice playback (browser speech synthesis)"
+            >
+              {voice.enabled ? 'Voice: ON' : 'Voice: OFF'}
+            </button>
             <button onClick={summonAll} disabled={sending}
               className="px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50 mr-3 shadow-lg shadow-amber-900/20">
               <Users className="w-4 h-4" /> {sending ? 'Summoning...' : 'Summon Council'}
@@ -367,16 +388,25 @@ export default function AgentChatPage() {
               <p className="text-xs text-gray-500 uppercase font-medium mb-2 px-2">Select Agent</p>
               {AGENTS.map(agent => {
                 const AgentIcon = agent.icon;
+                const persona = agent.id === 'all' ? getAgentPersona('runtime') : getAgentPersona(agent.id);
                 return (
                   <button key={agent.id} onClick={() => setSelectedAgent(agent.id)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 text-left transition-colors ${
                       selectedAgent === agent.id ? 'bg-purple-600/20 border border-purple-500/30' : 'hover:bg-gray-800/50'}`}>
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${agent.bg}`}>
-                      <AgentIcon className={`w-4 h-4 ${agent.color}`} />
+                    <div className="shrink-0">
+                      {agent.id === 'all' ? (
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
+                          <AgentIcon className="w-4 h-4 text-white" />
+                        </div>
+                      ) : (
+                        <HolographicAvatar persona={persona} size="sm" online />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium truncate ${selectedAgent === agent.id ? 'text-purple-300' : 'text-gray-300'}`}>{agent.codeName}</p>
-                      <p className="text-xs text-gray-500 truncate">{agent.name}</p>
+                      <p className={`text-sm font-medium truncate ${selectedAgent === agent.id ? 'text-white' : 'text-gray-300'}`}>
+                        {agent.id === 'all' ? 'Broadcast' : persona.name}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">{agent.id === 'all' ? 'All agents' : persona.role}</p>
                     </div>
                     {agent.id !== 'all' && <span className="w-2 h-2 rounded-full bg-emerald-400" title="Online" />}
                   </button>
@@ -389,12 +419,18 @@ export default function AgentChatPage() {
           <div className="flex-1 flex flex-col">
             {/* Chat Header */}
             <div className="bg-gray-900/50 border-b border-gray-800 px-6 py-3 flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${currentAgent.bg}`}>
-                <currentAgent.icon className={`w-5 h-5 ${currentAgent.color}`} />
-              </div>
+              {selectedAgent === 'all' ? (
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
+                  <currentAgent.icon className="w-5 h-5 text-white" />
+                </div>
+              ) : (
+                <HolographicAvatar persona={currentPersona} size="md" online />
+              )}
               <div>
-                <h2 className="font-medium">{currentAgent.codeName}</h2>
-                <p className="text-xs text-gray-500">{currentAgent.id === 'all' ? 'Broadcasting to all agents' : `${currentAgent.name} Agent — Direct Channel`}</p>
+                <h2 className="font-medium">{selectedAgent === 'all' ? 'Broadcast' : currentPersona.name}</h2>
+                <p className="text-xs text-gray-500">
+                  {selectedAgent === 'all' ? 'Broadcasting to all agents' : `${currentPersona.role} — Direct Channel`}
+                </p>
               </div>
               <span className="ml-auto text-xs text-emerald-400 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Online
@@ -420,8 +456,10 @@ export default function AgentChatPage() {
                 const isOperator = msg.sender_type === 'operator';
                 const isSystem = msg.sender_type === 'system';
                 const isAgent = !isOperator && !isSystem;
-                const msgAgent = isAgent ? AGENTS.find(a => a.id === msg.sender_id) : null;
-                const MsgIcon = msgAgent?.icon || Bot;
+                const msgAgentId = isAgent ? normalizeAgentId(msg.sender_id) : null;
+                const msgPersona = msgAgentId ? getAgentPersona(msgAgentId) : null;
+                const msgTheme = msgPersona ? getAgentTheme(msgPersona.color) : null;
+                const MsgIcon = Bot;
                 const shouldType = isAgent && msg.id && typingIds.has(msg.id);
 
                 // Parse engine metadata
@@ -440,22 +478,43 @@ export default function AgentChatPage() {
                 return (
                   <div key={msg.id || idx} className={`flex gap-3 ${isOperator ? 'flex-row-reverse' : ''}`}>
                     {/* Avatar */}
-                    <div className={`w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center ${
-                      isOperator ? 'bg-gradient-to-br from-amber-600 to-orange-600' :
-                      isSystem ? 'bg-gray-700' :
-                      msgAgent?.bg || 'bg-gray-700'}`}>
-                      {isOperator ? <Crown className="w-4 h-4 text-white" /> :
-                       isSystem ? <Lock className="w-4 h-4 text-gray-400" /> :
-                       <MsgIcon className={`w-4 h-4 ${msgAgent?.color || 'text-gray-400'}`} />}
+                    <div className="w-9 h-9 flex-shrink-0">
+                      {isOperator ? (
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-600 to-orange-600 flex items-center justify-center">
+                          <Crown className="w-4 h-4 text-white" />
+                        </div>
+                      ) : isSystem ? (
+                        <div className="w-9 h-9 rounded-xl bg-gray-700 flex items-center justify-center">
+                          <Lock className="w-4 h-4 text-gray-300" />
+                        </div>
+                      ) : msgPersona ? (
+                        <HolographicAvatar persona={msgPersona} size="sm" online />
+                      ) : (
+                        <div className="w-9 h-9 rounded-xl bg-gray-700 flex items-center justify-center">
+                          <MsgIcon className="w-4 h-4 text-gray-300" />
+                        </div>
+                      )}
                     </div>
                     {/* Message */}
                     <div className={`max-w-[70%] ${isOperator ? 'text-right' : ''}`}>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-xs font-medium ${isOperator ? 'text-amber-400 ml-auto' : isSystem ? 'text-gray-500' : msgAgent?.color || 'text-gray-400'}`}>
-                          {msg.sender_name || (isOperator ? 'You' : msg.sender_id)}
+                        <span className={`text-xs font-medium ${
+                          isOperator ? 'text-amber-400 ml-auto' : isSystem ? 'text-gray-500' : (msgTheme?.text || 'text-gray-400')
+                        }`}>
+                          {msg.sender_name || (isOperator ? 'You' : (msgPersona?.name || msg.sender_id))}
                         </span>
                         <span className="text-xs text-gray-600">{new Date(msg.created_at).toLocaleTimeString()}</span>
                         {engineLabel}
+                        {isAgent && msgPersona && (
+                          <button
+                            className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-gray-300 hover:text-white"
+                            onClick={() => voice.speak(msg.content, msgPersona)}
+                            title="Play voice"
+                            type="button"
+                          >
+                            <Play className="w-3 h-3 inline-block" />
+                          </button>
+                        )}
                       </div>
                       <div className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
                         isOperator ? 'bg-purple-600/20 border border-purple-500/20 text-gray-200' :

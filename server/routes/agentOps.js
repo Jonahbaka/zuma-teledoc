@@ -223,6 +223,116 @@ router.get('/adapters', ...adminOnly, ensureOrchestrator, async (req, res) => {
 });
 
 // =========================================================================
+// OPENCLAW-STYLE TELEMETRY (Three Organs + Memory)
+// =========================================================================
+
+/** GET /api/agent-ops/telemetry/overview */
+router.get('/telemetry/overview', ...adminOnly, ensureOrchestrator, async (_req, res) => {
+  try {
+    const [system, runLoop, heartbeat, eventBus, memoryStats] = await Promise.all([
+      orchestrator.getSystemStatus(),
+      orchestrator.getRunLoopStatus(),
+      orchestrator.getHeartbeatStatus(),
+      orchestrator.getEventBusStats(),
+      orchestrator.getMemoryStats()
+    ]);
+    const dynamicSkills = orchestrator.getDynamicSkills();
+
+    res.json({
+      success: true,
+      data: {
+        system,
+        runLoop,
+        heartbeat,
+        eventBus,
+        memoryStats,
+        dynamicSkillsSummary: {
+          count: Array.isArray(dynamicSkills) ? dynamicSkills.length : 0
+        },
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /api/agent-ops/telemetry/run-loop */
+router.get('/telemetry/run-loop', ...adminOnly, ensureOrchestrator, async (_req, res) => {
+  try {
+    res.json({ success: true, data: orchestrator.getRunLoopStatus() });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /api/agent-ops/telemetry/heartbeat */
+router.get('/telemetry/heartbeat', ...adminOnly, ensureOrchestrator, async (_req, res) => {
+  try {
+    res.json({ success: true, data: orchestrator.getHeartbeatStatus() });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /api/agent-ops/telemetry/event-bus */
+router.get('/telemetry/event-bus', ...adminOnly, ensureOrchestrator, async (_req, res) => {
+  try {
+    const stats = await orchestrator.getEventBusStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /api/agent-ops/telemetry/events */
+router.get('/telemetry/events', ...adminOnly, ensureOrchestrator, async (req, res) => {
+  try {
+    const { limit, eventType, severity, since } = req.query;
+    const data = await orchestrator.getRecentEvents({
+      limit: Number(limit || 50),
+      eventType: eventType || undefined,
+      severity: severity || undefined,
+      since: since || undefined
+    });
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** POST /api/agent-ops/telemetry/emit */
+router.post('/telemetry/emit', ...adminOnly, ensureOrchestrator, async (req, res) => {
+  try {
+    const { eventType, payload } = req.body || {};
+    if (!eventType) return res.status(400).json({ success: false, error: 'eventType required' });
+    await orchestrator.emitEvent(String(eventType), payload || {});
+    res.json({ success: true, data: { emitted: true } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /api/agent-ops/telemetry/memory-stats */
+router.get('/telemetry/memory-stats', ...adminOnly, ensureOrchestrator, async (_req, res) => {
+  try {
+    const data = await orchestrator.getMemoryStats();
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /api/agent-ops/telemetry/dynamic-skills */
+router.get('/telemetry/dynamic-skills', ...adminOnly, ensureOrchestrator, async (_req, res) => {
+  try {
+    res.json({ success: true, data: orchestrator.getDynamicSkills() });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =========================================================================
 // AGENT CONTROLS
 // =========================================================================
 
@@ -346,6 +456,50 @@ router.get('/dynamic-skills', ...adminOnly, ensureOrchestrator, async (req, res)
   try {
     const skills = orchestrator.getDynamicSkills();
     res.json({ success: true, data: skills });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =========================================================================
+// MEMORY — Persistent Memory Telemetry + Browsing
+// =========================================================================
+
+/** GET /api/agent-ops/memory/stats — Second Brain stats */
+router.get('/memory/stats', ...adminOnly, ensureOrchestrator, async (req, res) => {
+  try {
+    const stats = await orchestrator.getMemoryStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /api/agent-ops/memory/:agentType — Browse memory for an agent */
+router.get('/memory/:agentType', ...adminOnly, ensureOrchestrator, async (req, res) => {
+  try {
+    const { agentType } = req.params;
+    const limit = parseInt(req.query.limit) || 30;
+    const memory = await orchestrator.listMemory(agentType, { limit, type: req.query.type });
+    res.json({ success: true, data: memory });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** POST /api/agent-ops/memory/:agentType — Store a memory (operator-authored) */
+router.post('/memory/:agentType', ...adminOnly, ensureOrchestrator, async (req, res) => {
+  try {
+    const { agentType } = req.params;
+    const { key, value, type, importance, source } = req.body || {};
+    if (!key) return res.status(400).json({ success: false, error: 'key required' });
+    if (value === undefined) return res.status(400).json({ success: false, error: 'value required' });
+    await orchestrator.storeMemory(agentType, String(key), value, {
+      type: type || 'context',
+      importance: typeof importance === 'number' ? importance : 0.6,
+      source: source || 'operator'
+    });
+    res.json({ success: true, data: { stored: true } });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

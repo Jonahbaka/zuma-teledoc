@@ -793,6 +793,23 @@ class RunLoop {
       consecutiveIdleTicks: this.consecutiveIdleTicks,
       registeredWorkflows: this.workflows.size,
       activeWorkflows: this.activeWorkflows.size,
+      workflows: [...this.workflows.values()].map((def) => ({
+        name: def.name,
+        description: def.description || '',
+        schedule: def.schedule || null,
+        triggerEvents: def.triggerEvents || (def.triggerEvent ? [def.triggerEvent] : []),
+        lastRunAt: def._lastRunAt ? new Date(def._lastRunAt).toISOString() : null
+      })),
+      active: [...this.activeWorkflows.values()].map((wf) => ({
+        id: wf.id,
+        name: wf.name,
+        status: wf.status,
+        currentStepIndex: wf.currentStepIndex,
+        stepCount: Array.isArray(wf.steps) ? wf.steps.length : 0,
+        startedAt: wf.startedAt ? wf.startedAt.toISOString() : null,
+        completedAt: wf.completedAt ? wf.completedAt.toISOString() : null,
+        error: wf.error || null
+      })),
       stats: this.stats,
       haltedWorkflows: [...this.activeWorkflows.values()]
         .filter(w => w.status === 'halted')

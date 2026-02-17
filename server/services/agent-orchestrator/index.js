@@ -53,6 +53,10 @@ const VortexMathematicianAgent = require('./agents/vortex-mathematician-agent');
 const CEOAgent = require('./agents/ceo-agent');
 const AccountingAgent = require('./agents/accounting-agent');
 const EngineeringAgent = require('./agents/engineering-agent');
+// Healthcare Specialist Agents (OpenClaw Medical Module)
+const AsclepiusAgent = require('./agents/asclepius-agent');
+const TriageNurseAgent = require('./agents/triage-nurse-agent');
+const PharmacistAgent = require('./agents/pharmacist-agent');
 
 // Credential Vault
 const credentialVault = require('./credential-vault');
@@ -165,6 +169,10 @@ class AgentOrchestrator {
         new GrowthAgent(),
         new CorporateSkillsAgent(),
         new RevenueAgent(),
+        // Healthcare Specialists (Decision Support)
+        new AsclepiusAgent(),
+        new TriageNurseAgent(),
+        new PharmacistAgent(),
         new ComplianceAgentImpl(),
         new GovernanceAgentImpl(),
         // Expanded Council
@@ -239,8 +247,10 @@ class AgentOrchestrator {
       for (const wf of DEFAULT_WORKFLOWS) {
         this.runLoop.registerWorkflow(wf);
       }
-      // Start the run loop (2 min base tick, adaptive sleep — conserve resources)
-      this.runLoop.start(120000);
+      // Start the run loop (base tick, adaptive sleep). Default to 60s for a more "alive"
+      // feel in production while still conserving resources via adaptive backoff.
+      const baseTickMs = Math.max(5000, Number(process.env.AGENT_RUN_LOOP_INTERVAL_MS || 60000));
+      this.runLoop.start(baseTickMs);
 
       // Emit system.started event
       await this.eventBus.emit('system.started', {
@@ -312,6 +322,9 @@ class AgentOrchestrator {
     const runOrder = [
       'compliance',       // Guardian scans first (safety)
       'operations',       // The Weaver
+      'asclepius',        // Clinical decision support
+      'triage_nurse',     // Patient triage
+      'pharmacist',       // Medication safety
       'growth',           // The Scout
       'revenue',          // The Alchemist
       'corporate_skills', // The Builder
@@ -669,6 +682,10 @@ class AgentOrchestrator {
 
   async getMemory(agentType) {
     return persistentMemory.getAgentMemory(agentType);
+  }
+
+  async listMemory(agentType, options = {}) {
+    return persistentMemory.list(agentType, options);
   }
 
   async storeMemory(agentType, key, value, options) {

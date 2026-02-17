@@ -145,6 +145,12 @@
   }
 }
 
+/* Holographic avatar scan sweep */
+@keyframes scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(200%); }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

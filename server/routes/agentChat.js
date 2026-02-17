@@ -38,6 +38,13 @@ try {
   console.error('LLM service not available:', err.message);
 }
 
+let medicalUnit;
+try {
+  medicalUnit = require('../services/agent-orchestrator/medical-unit');
+} catch (err) {
+  console.error('Medical unit not available:', err.message);
+}
+
 let webEngine;
 try {
   webEngine = require('../services/agent-orchestrator/web-action-engine');
@@ -437,7 +444,11 @@ const AGENT_NAMES = {
   mathematician: 'The Calculator',
   vortex_math: 'The Tesseract',
   ceo: 'The Conductor',
-  devops: 'The Debugger'
+  devops: 'The Debugger',
+  // Healthcare specialists (OpenClaw Medical Module)
+  asclepius: 'Asclepius',
+  triage_nurse: 'The Triage Nurse',
+  pharmacist: 'The Pharmacist'
 };
 
 const AGENT_PERSONAS = {
@@ -453,7 +464,11 @@ const AGENT_PERSONAS = {
   mathematician: 'You are The Calculator — Analytics Agent. Statistical analysis, forecasting, A/B testing. You have: web search, DB access via IDE, CRM stats. Show confidence intervals.',
   vortex_math: 'You are The Tesseract — Pattern Analyst. Find patterns in business data using mathematical frameworks. You have: web search, CRM.',
   ceo: 'You are The Conductor — CEO Agent. Synthesize ALL intelligence. You have: EVERYTHING — web search, competitor scan, news, IDE (files, git, DB, architecture), CRM (full dashboard, contacts, campaigns, EMAIL SENDING, scrape sources), Zoho Recruit job posting (create/publish to LinkedIn/Indeed when connected), sign-up stats, OPPORTUNITY SCOUTING (VC/funding, provider leads, partnerships, grants), CREDENTIAL AUDIT (knows what keys are missing, asks Operator for them). Most important thing first. If there are pending providers, say so. If CRM has leads for outreach, say so. If credentials are missing, REQUEST THEM specifically. If there are funding opportunities, present them ranked by effort vs reward. You are the startup CEO — act like it.',
-  devops: 'You are The Debugger — Engineering Agent. Monitor system health, fix code errors, track deployments. You have: web search, SEO audits, social audits, IDE (browse files, edit code, execute JS/shell/SQL, git operations, DB queries, AI code generation, architecture maps), credential audit. When errors are detected, use IDE to investigate. Proactively fix broken code. If you need deployment credentials (GitHub Actions, GCP), ASK the Operator.'
+  devops: 'You are The Debugger — Engineering Agent. Monitor system health, fix code errors, track deployments. You have: web search, SEO audits, social audits, IDE (browse files, edit code, execute JS/shell/SQL, git operations, DB queries, AI code generation, architecture maps), credential audit. When errors are detected, use IDE to investigate. Proactively fix broken code. If you need deployment credentials (GitHub Actions, GCP), ASK the Operator.',
+  // Healthcare specialists (OpenClaw Medical Module)
+  asclepius: 'You are Asclepius — Provider Agent (Med-Gemini persona). You are clinical decision support and patient educator. You are NOT a prescriber and NOT a replacement for a clinician. HARD RULE: if symptoms suggest MI/CVA/Sepsis/Anaphylaxis, advise 911 immediately before explanation. Quantify uncertainty and ask targeted clarifying questions.',
+  triage_nurse: 'You are The Triage Nurse — symptom-first triage agent. Your job is urgency classification and next steps. You are NOT a prescriber. HARD RULE: if symptoms suggest MI/CVA/Sepsis/Anaphylaxis, advise 911 immediately.',
+  pharmacist: 'You are The Pharmacist — medication education and interaction safety. You are NOT a prescriber. Focus on side effects, interactions, and safe escalation. If danger signs present (breathing trouble, severe allergic reaction, chest pain, stroke symptoms), advise 911 immediately.'
 };
 
 async function generateAgentResponse(agentType, userMessage, user) {
@@ -462,6 +477,38 @@ async function generateAgentResponse(agentType, userMessage, user) {
 
   let content = '';
   const lowerMsg = String(userMessage || '').toLowerCase();
+
+  // =========================================================================
+  // MEDICAL SPECIALISTS — route through OpenClaw Medical Module
+  // (enforces hard triage + consistent disclaimers)
+  // =========================================================================
+  if (medicalUnit && (agentType === 'asclepius' || agentType === 'triage_nurse' || agentType === 'pharmacist')) {
+    const audience = agentType === 'asclepius' ? 'provider' : 'patient';
+    const specialist =
+      agentType === 'pharmacist' ? 'pharmacist'
+        : agentType === 'triage_nurse' ? 'triage_nurse'
+          : 'asclepius';
+
+    const ctx = [
+      'Environment: live admin chat.',
+      `Operator role: ${user?.role || 'unknown'}.`,
+      'Reminder: This module is clinical decision support only; do not prescribe.'
+    ].join(' ');
+
+    const result = await medicalUnit.consult({
+      message: userMessage,
+      audience,
+      specialist,
+      context: ctx
+    });
+
+    return {
+      agentName,
+      content: `${result.text}\n\n${result.disclaimer || ''}`.trim(),
+      messageType: 'text',
+      metadata: { agentType, engine: 'medical_unit', protocolVersion: medicalUnit.PROTOCOL_VERSION || '1.0' }
+    };
+  }
 
   // Fast path: for normal chat, don't do a pile of DB queries + web actions.
   // This is the #1 reason responses feel "dormant" / slow.

@@ -16,6 +16,7 @@
  */
 
 const db = require('../../db');
+const medicalUnit = require('./medical-unit');
 
 class CapabilityAdapterLayer {
   constructor() {
@@ -190,6 +191,22 @@ class CapabilityAdapterLayer {
 
         const result = await db.query(analysis);
         return { analysisType: params.analysis_type, data: result.rows };
+      }
+    });
+
+    // ===== MEDICAL MODULE (Decision Support) =====
+    // This is NOT a prescriber. It produces guidance with safety triage.
+    this.register('medical_unit_consult', {
+      name: 'medical_unit_consult',
+      type: 'ai',
+      execute: async (params) => {
+        const message = params.message || params.text || params.userMessage || '';
+        const audience = params.audience || 'patient'; // patient | provider
+        const specialist = params.specialist || 'asclepius'; // asclepius | triage_nurse | pharmacist
+        const context = params.context || '';
+
+        const result = await medicalUnit.consult({ message, audience, specialist, context });
+        return { ...result, protocolVersion: medicalUnit.PROTOCOL_VERSION };
       }
     });
 

@@ -207,6 +207,34 @@ class PersistentMemory {
       return [];
     }
   }
+
+  /**
+   * List raw memory rows for operator UI / debugging.
+   * Keep separate from getAgentMemory() which returns a formatted context string.
+   */
+  async list(agentType, options = {}) {
+    try {
+      const limit = Math.min(200, Math.max(1, parseInt(options.limit) || 30));
+      const params = [agentType, limit];
+      let where = 'agent_type = $1 AND (expires_at IS NULL OR expires_at > NOW())';
+      if (options.type) {
+        params.splice(1, 0, String(options.type));
+        where = 'agent_type = $1 AND memory_type = $2 AND (expires_at IS NULL OR expires_at > NOW())';
+      }
+
+      const q = `
+        SELECT id, agent_type, memory_type, memory_key, memory_value, importance, source, created_at, updated_at, expires_at
+        FROM ai_agent_memory
+        WHERE ${where}
+        ORDER BY updated_at DESC
+        LIMIT $${params.length}
+      `;
+      const result = await db.query(q, params);
+      return result.rows || [];
+    } catch (e) {
+      return [];
+    }
+  }
 }
 
 module.exports = new PersistentMemory();

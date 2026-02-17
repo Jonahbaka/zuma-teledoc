@@ -11,6 +11,8 @@ import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
+import HolographicAvatar from '@/components/agents/HolographicAvatar';
+import { getArchitecturePersona } from '@/lib/agentPersonas';
 
 export default function AISoapAssist({ 
   appointmentId, 
@@ -121,9 +123,7 @@ export default function AISoapAssist({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-            <Sparkles className="w-4 h-4 text-white" />
-          </div>
+          <HolographicAvatar persona={getArchitecturePersona('runtime')} size="xs" />
           <div>
             <h3 className="font-semibold text-slate-900">AI Clinical Assist</h3>
             <p className="text-xs text-slate-500">Powered by DoctaRx.</p>

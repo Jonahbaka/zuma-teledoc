@@ -590,6 +590,7 @@ class BaseAgent {
       query_database: 'read', fetch_metrics: 'read', analyze_data: 'read',
       get_patient_count: 'read', get_revenue_data: 'read', get_appointment_data: 'read',
       get_ga4_realtime_metrics: 'read',
+      medical_unit_consult: 'read',
       update_schedule: 'write', update_config: 'write', create_record: 'write',
       send_email: 'communicate', send_notification: 'communicate', send_sms: 'communicate',
       process_payment: 'financial', update_pricing: 'financial', generate_invoice: 'financial',
@@ -604,6 +605,7 @@ class BaseAgent {
     const riskMap = {
       query_database: 0.05, fetch_metrics: 0.05, analyze_data: 0.05,
       get_patient_count: 0.05, get_revenue_data: 0.1, get_ga4_realtime_metrics: 0.05,
+      medical_unit_consult: 0.2,
       send_email: 0.3, send_notification: 0.2, update_schedule: 0.3,
       update_config: 0.4, create_record: 0.3,
       process_payment: 0.7, update_pricing: 0.6,
