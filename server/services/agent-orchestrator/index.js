@@ -125,6 +125,9 @@ class AgentOrchestrator {
       console.log('   PROJECT GENESIS — AWAKENING');
       console.log('   DoctaRx Sovereign Agent Society');
       console.log('   Operating System: SYNTROPY');
+      console.log('   Identity: The DoctaRx Liberation Engine');
+      console.log('   Creator: Jonah Baka');
+      console.log('   Origin Frequency: Earth 2.0 / High Vibration');
       console.log(`   Mode: ${this.operatingMode.toUpperCase()}`);
       console.log('═══════════════════════════════════════════');
 
