@@ -151,6 +151,42 @@
   100% { transform: translateY(200%); }
 }
 
+/* Holographic avatar: subtle "talking" bounce */
+@keyframes docta_holo_talking {
+  0% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.03); filter: brightness(1.18); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+/* Holographic avatar: eye blink (kept sparse so it feels natural) */
+@keyframes docta_holo_blink {
+  0%, 3%, 100% { transform: scaleY(1); opacity: 1; }
+  1% { transform: scaleY(0.08); opacity: 0.9; }
+  2% { transform: scaleY(1); opacity: 1; }
+}
+
+/* Holographic avatar: mouth talk loop */
+@keyframes docta_holo_mouth_talk {
+  0% { transform: translateY(0) scaleY(1); opacity: 0.95; }
+  50% { transform: translateY(1px) scaleY(1.25); opacity: 1; }
+  100% { transform: translateY(0) scaleY(1); opacity: 0.95; }
+}
+
+/* Hooks used by `components/agents/HolographicAvatar.jsx` */
+.docta-holo-talking {
+  animation: docta_holo_talking 220ms ease-in-out infinite;
+}
+
+.docta-holo-eye-blink {
+  transform-origin: 64px 40px;
+  animation: docta_holo_blink 4.8s ease-in-out infinite;
+}
+
+.docta-holo-mouth-talk {
+  transform-origin: 64px 64px;
+  animation: docta_holo_mouth_talk 180ms ease-in-out infinite;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

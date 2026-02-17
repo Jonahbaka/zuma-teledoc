@@ -135,6 +135,21 @@ export default function AgentChatPage() {
   const inputRef = useRef(null);
   const voice = useAgentVoice();
 
+  // Drive avatar "talking" animation off the same signal used for typing.
+  const typingAgentIds = useMemo(() => {
+    const set = new Set();
+    for (const msg of (messages || [])) {
+      const isOperator = msg.sender_type === 'operator';
+      const isSystem = msg.sender_type === 'system';
+      const isAgent = !isOperator && !isSystem;
+      if (!isAgent) continue;
+      if (!msg.id) continue;
+      if (!typingIds.has(msg.id)) continue;
+      set.add(normalizeAgentId(msg.sender_id));
+    }
+    return set;
+  }, [messages, typingIds]);
+
   const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 
   const apiCall = useCallback(async (endpoint, method = 'GET', body = null) => {
@@ -389,6 +404,7 @@ export default function AgentChatPage() {
               {AGENTS.map(agent => {
                 const AgentIcon = agent.icon;
                 const persona = agent.id === 'all' ? getAgentPersona('runtime') : getAgentPersona(agent.id);
+                const isSpeaking = agent.id !== 'all' && typingAgentIds.has(normalizeAgentId(agent.id));
                 return (
                   <button key={agent.id} onClick={() => setSelectedAgent(agent.id)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 text-left transition-colors ${
@@ -399,7 +415,7 @@ export default function AgentChatPage() {
                           <AgentIcon className="w-4 h-4 text-white" />
                         </div>
                       ) : (
-                        <HolographicAvatar persona={persona} size="sm" online />
+                        <HolographicAvatar persona={persona} size="sm" isSpeaking={isSpeaking} online />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -424,7 +440,12 @@ export default function AgentChatPage() {
                   <currentAgent.icon className="w-5 h-5 text-white" />
                 </div>
               ) : (
-                <HolographicAvatar persona={currentPersona} size="md" online />
+                <HolographicAvatar
+                  persona={currentPersona}
+                  size="md"
+                  isSpeaking={typingAgentIds.has(normalizeAgentId(selectedAgent))}
+                  online
+                />
               )}
               <div>
                 <h2 className="font-medium">{selectedAgent === 'all' ? 'Broadcast' : currentPersona.name}</h2>
@@ -488,7 +509,7 @@ export default function AgentChatPage() {
                           <Lock className="w-4 h-4 text-gray-300" />
                         </div>
                       ) : msgPersona ? (
-                        <HolographicAvatar persona={msgPersona} size="sm" online />
+                        <HolographicAvatar persona={msgPersona} size="sm" isSpeaking={shouldType} online />
                       ) : (
                         <div className="w-9 h-9 rounded-xl bg-gray-700 flex items-center justify-center">
                           <MsgIcon className="w-4 h-4 text-gray-300" />
