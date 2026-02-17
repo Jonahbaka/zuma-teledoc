@@ -2785,6 +2785,41 @@ const migrations = [
       ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_expires_at TIMESTAMPTZ;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_tier VARCHAR(50);
     `
+  },
+
+  // Migration 031: Agent Chat Uploads (files for analysis)
+  {
+    name: '031_agent_chat_uploads',
+    up: `
+      CREATE TABLE IF NOT EXISTS ai_uploaded_files (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        uploader_id UUID,
+        original_name TEXT NOT NULL,
+        stored_name TEXT NOT NULL,
+        mime_type VARCHAR(200) NOT NULL,
+        size_bytes BIGINT NOT NULL DEFAULT 0,
+        sha256 VARCHAR(64) NOT NULL,
+        storage_path TEXT NOT NULL,
+        extracted_text TEXT,
+        extraction_status VARCHAR(30) DEFAULT 'pending' CHECK (extraction_status IN ('pending', 'extracted', 'skipped', 'failed')),
+        extraction_error TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_uploaded_files_created ON ai_uploaded_files(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_uploaded_files_sha ON ai_uploaded_files(sha256);
+
+      CREATE TABLE IF NOT EXISTS ai_chat_message_attachments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        message_id UUID NOT NULL REFERENCES ai_chat_messages(id) ON DELETE CASCADE,
+        file_id UUID NOT NULL REFERENCES ai_uploaded_files(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (message_id, file_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_chat_attachments_message ON ai_chat_message_attachments(message_id);
+      CREATE INDEX IF NOT EXISTS idx_chat_attachments_file ON ai_chat_message_attachments(file_id);
+    `
   }
 ];
 

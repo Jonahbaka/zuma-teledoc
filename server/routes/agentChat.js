@@ -13,6 +13,10 @@ const express = require('express');
 const router = express.Router();
 const { authenticate, requireRole } = require('../middleware/auth');
 const db = require('../db');
+const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 
 let credentialVault;
 try {
@@ -43,6 +47,13 @@ try {
   medicalUnit = require('../services/agent-orchestrator/medical-unit');
 } catch (err) {
   console.error('Medical unit not available:', err.message);
+}
+
+let githubService;
+try {
+  githubService = require('../services/agent-orchestrator/github-service');
+} catch (err) {
+  console.error('GitHub service not available:', err.message);
 }
 
 let webEngine;
@@ -85,6 +96,72 @@ let invitationDb; // Direct DB access for invitation/sign-up actions
 
 // All routes require admin
 const adminOnly = [authenticate, requireRole('admin', 'super_admin')];
+
+// =========================================================================
+// UPLOADS (PDF/images/docs for analysis)
+// =========================================================================
+const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'agent-chat');
+try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch { /* ignore */ }
+
+// Use disk storage; we store metadata in DB.
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+    filename: (_req, file, cb) => {
+      const safe = String(file.originalname || 'upload')
+        .replace(/[^\w.\-]+/g, '_')
+        .slice(0, 80);
+      cb(null, `${crypto.randomUUID()}_${safe}`);
+    }
+  }),
+  limits: {
+    // "fastest from phone/computer" — keep reasonably small; adjustable later.
+    fileSize: 25 * 1024 * 1024 // 25MB
+  }
+});
+
+async function extractTextBestEffort(filePath, mimeType) {
+  const mt = String(mimeType || '').toLowerCase();
+  // Only extract for formats we can do locally, fast.
+  if (mt === 'application/pdf') {
+    try {
+      // Lazy require so server can boot even if dependency isn't present yet.
+      // eslint-disable-next-line global-require
+      const pdfParse = require('pdf-parse');
+      const buff = fs.readFileSync(filePath);
+      const r = await pdfParse(buff);
+      return { status: 'extracted', text: String(r?.text || '').trim().slice(0, 200000) };
+    } catch (e) {
+      return { status: 'failed', text: null, error: e.message };
+    }
+  }
+
+  if (mt.startsWith('text/') || mt === 'application/json') {
+    try {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      return { status: 'extracted', text: String(raw || '').trim().slice(0, 200000) };
+    } catch (e) {
+      return { status: 'failed', text: null, error: e.message };
+    }
+  }
+
+  // Images and office formats are stored, but text extraction depends on OCR/provider integrations.
+  return { status: 'skipped', text: null };
+}
+
+function sha256File(filePath) {
+  const hash = crypto.createHash('sha256');
+  const data = fs.readFileSync(filePath);
+  hash.update(data);
+  return hash.digest('hex');
+}
+
+function parseSlashCommand(message) {
+  const text = String(message || '').trim();
+  if (!text.startsWith('/')) return null;
+  const [cmd, ...rest] = text.slice(1).split(/\s+/);
+  return { cmd: (cmd || '').toLowerCase(), rest: rest.join(' ').trim() };
+}
 
 // =========================================================================
 // CHAT MESSAGES
@@ -132,7 +209,7 @@ router.get('/messages', ...adminOnly, async (req, res) => {
  */
 router.post('/messages', ...adminOnly, async (req, res) => {
   try {
-    const { recipientId, recipientType = 'agent', content, messageType = 'text' } = req.body;
+    const { recipientId, recipientType = 'agent', content, messageType = 'text', attachmentIds = [] } = req.body;
     if (!content) return res.status(400).json({ success: false, error: 'Content required' });
 
     // Store operator message
@@ -144,10 +221,40 @@ router.post('/messages', ...adminOnly, async (req, res) => {
 
     const operatorMessage = result.rows[0];
 
+    // Attach uploaded files (optional)
+    let attachments = [];
+    if (Array.isArray(attachmentIds) && attachmentIds.length > 0) {
+      const ids = attachmentIds.map(String).filter(Boolean).slice(0, 8);
+      if (ids.length > 0) {
+        const files = await db.query(
+          `SELECT id, original_name, mime_type, size_bytes, extracted_text, extraction_status
+           FROM ai_uploaded_files
+           WHERE id = ANY($1::uuid[])`,
+          [ids]
+        );
+        attachments = files.rows || [];
+        for (const f of attachments) {
+          try {
+            await db.query(
+              `INSERT INTO ai_chat_message_attachments (message_id, file_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+              [operatorMessage.id, f.id]
+            );
+          } catch { /* best effort */ }
+        }
+        // Also stash small summary in message metadata for UI convenience.
+        try {
+          await db.query(
+            `UPDATE ai_chat_messages SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb WHERE id = $2`,
+            [JSON.stringify({ attachments: attachments.map((a) => ({ id: a.id, name: a.original_name, mimeType: a.mime_type, sizeBytes: a.size_bytes })) }), operatorMessage.id]
+          );
+        } catch { /* ignore */ }
+      }
+    }
+
     // Generate agent response if addressed to a specific agent
     let agentResponse = null;
     if (recipientId && recipientId !== 'all' && agentOrchestrator) {
-      const response = await generateAgentResponse(recipientId, content, req.user);
+      const response = await generateAgentResponse(recipientId, content, req.user, { attachments });
       if (response) {
         const responseResult = await db.query(`
           INSERT INTO ai_chat_messages (sender_type, sender_id, sender_name, recipient_type, recipient_id, content, message_type, metadata)
@@ -159,6 +266,97 @@ router.post('/messages', ...adminOnly, async (req, res) => {
     }
 
     res.json({ success: true, data: { operatorMessage, agentResponse } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/agent-chat/uploads
+ * Upload files to attach for agent analysis.
+ */
+router.post('/uploads', ...adminOnly, upload.array('files', 8), async (req, res) => {
+  try {
+    const files = Array.isArray(req.files) ? req.files : [];
+    if (files.length === 0) return res.status(400).json({ success: false, error: 'No files uploaded' });
+
+    const saved = [];
+    for (const f of files) {
+      const filePath = f.path;
+      const sha = sha256File(filePath);
+      const extraction = await extractTextBestEffort(filePath, f.mimetype);
+      const row = await db.query(
+        `INSERT INTO ai_uploaded_files
+          (uploader_id, original_name, stored_name, mime_type, size_bytes, sha256, storage_path, extracted_text, extraction_status, extraction_error)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, original_name, mime_type, size_bytes, sha256, extraction_status, created_at`,
+        [
+          req.user.id,
+          f.originalname,
+          path.basename(f.filename),
+          f.mimetype || 'application/octet-stream',
+          f.size || 0,
+          sha,
+          filePath,
+          extraction.text,
+          extraction.status,
+          extraction.error || null
+        ]
+      );
+      saved.push(row.rows[0]);
+    }
+
+    res.json({ success: true, data: saved });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/agent-chat/uploads
+ * List recent uploaded files.
+ */
+router.get('/uploads', ...adminOnly, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT id, original_name, mime_type, size_bytes, sha256, extraction_status, created_at
+       FROM ai_uploaded_files
+       ORDER BY created_at DESC
+       LIMIT 50`
+    );
+    res.json({ success: true, data: result.rows || [] });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/agent-chat/uploads/:id/download
+ * Download an uploaded file (admin only).
+ */
+router.get('/uploads/:id/download', ...adminOnly, async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    const r = await db.query(`SELECT original_name, storage_path, mime_type FROM ai_uploaded_files WHERE id = $1`, [id]);
+    const row = r.rows?.[0];
+    if (!row) return res.status(404).json({ success: false, error: 'File not found' });
+    if (!row.storage_path || !fs.existsSync(row.storage_path)) return res.status(404).json({ success: false, error: 'File missing on disk' });
+    res.setHeader('Content-Type', row.mime_type || 'application/octet-stream');
+    res.download(row.storage_path, row.original_name || 'download');
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/agent-chat/github/status
+ * Check GitHub connectivity (requires GitHub credential in vault).
+ */
+router.get('/github/status', ...adminOnly, async (_req, res) => {
+  try {
+    if (!githubService) throw new Error('GitHub service unavailable');
+    const who = await githubService.whoAmI('operator');
+    res.json({ success: true, data: who });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -471,12 +669,99 @@ const AGENT_PERSONAS = {
   pharmacist: 'You are The Pharmacist — medication education and interaction safety. You are NOT a prescriber. Focus on side effects, interactions, and safe escalation. If danger signs present (breathing trouble, severe allergic reaction, chest pain, stroke symptoms), advise 911 immediately.'
 };
 
-async function generateAgentResponse(agentType, userMessage, user) {
+async function generateAgentResponse(agentType, userMessage, user, options = {}) {
   const agentName = AGENT_NAMES[agentType] || agentType;
   const persona = AGENT_PERSONAS[agentType] || `You are the ${agentType} agent for DoctaRx.`;
 
   let content = '';
   const lowerMsg = String(userMessage || '').toLowerCase();
+  const attachments = Array.isArray(options.attachments) ? options.attachments : [];
+
+  // =========================================================================
+  // SLASH COMMANDS (instant ops, no LLM required)
+  // =========================================================================
+  const slash = parseSlashCommand(userMessage);
+  if (slash?.cmd === 'github' && githubService) {
+    const arg = slash.rest;
+    const parts = arg.split(/\s+/).filter(Boolean);
+    const sub = (parts.shift() || 'status').toLowerCase();
+
+    // Allow easy, low-risk operations by default.
+    if (sub === 'status') {
+      const who = await githubService.whoAmI('operator');
+      return {
+        agentName,
+        content: `GitHub: connected as ${who.login || 'unknown'}${who.url ? `\n${who.url}` : ''}`.trim(),
+        messageType: 'text',
+        metadata: { agentType, engine: 'github', action: 'status' }
+      };
+    }
+
+    if (sub === 'repos') {
+      const owner = parts[0];
+      const repos = await githubService.listRepos(owner, 'operator');
+      return {
+        agentName,
+        content:
+          `GitHub repos for "${owner}":\n` +
+          repos.slice(0, 20).map((r) => `- ${r.fullName}${r.private ? ' (private)' : ''} — ${r.url}`).join('\n'),
+        messageType: 'text',
+        metadata: { agentType, engine: 'github', action: 'repos', owner }
+      };
+    }
+
+    if (sub === 'issues') {
+      const slug = parts[0] || '';
+      const [owner, repo] = slug.split('/');
+      const issues = await githubService.listIssues(owner, repo, 'operator');
+      return {
+        agentName,
+        content:
+          `Open issues for ${owner}/${repo}:\n` +
+          (issues.length ? issues.map((i) => `- #${i.number} ${i.title} — ${i.url}`).join('\n') : '(none)'),
+        messageType: 'text',
+        metadata: { agentType, engine: 'github', action: 'issues', owner, repo }
+      };
+    }
+
+    if (sub === 'file') {
+      const slug = parts[0] || '';
+      const filePath = parts.slice(1).join(' ');
+      const [owner, repo] = slug.split('/');
+      const f = await githubService.getFile(owner, repo, filePath, 'operator');
+      if (f.type === 'directory') {
+        return {
+          agentName,
+          content:
+            `Directory listing ${owner}/${repo}/${filePath}:\n` +
+            (f.entries || []).slice(0, 40).map((e) => `- ${e.type}: ${e.path}`).join('\n'),
+          messageType: 'text',
+          metadata: { agentType, engine: 'github', action: 'file_list', owner, repo }
+        };
+      }
+      return {
+        agentName,
+        content:
+          `File ${owner}/${repo}/${f.path} (${f.size} bytes)\n\n` +
+          `\`\`\`\n${f.text}\n\`\`\`\n` +
+          (f.downloadUrl ? `\nDownload: ${f.downloadUrl}` : ''),
+        messageType: 'text',
+        metadata: { agentType, engine: 'github', action: 'file', owner, repo }
+      };
+    }
+
+    return {
+      agentName,
+      content:
+        "GitHub command not recognized. Try:\n" +
+        "- `/github status`\n" +
+        "- `/github repos <owner>`\n" +
+        "- `/github issues <owner>/<repo>`\n" +
+        "- `/github file <owner>/<repo> <path>`",
+      messageType: 'text',
+      metadata: { agentType, engine: 'github', action: 'help' }
+    };
+  }
 
   // =========================================================================
   // MEDICAL SPECIALISTS — route through OpenClaw Medical Module
@@ -566,6 +851,20 @@ async function generateAgentResponse(agentType, userMessage, user) {
   let actionContext = '';
   let executedActions = [];
 
+  // Attachments context (Operator-provided documents)
+  if (attachments.length > 0) {
+    actionContext += `\n\n[OPERATOR ATTACHMENTS — uploaded files]:\n`;
+    for (const a of attachments.slice(0, 6)) {
+      actionContext += `• ${a.original_name || a.originalName || 'file'} (${a.mime_type || a.mimeType || 'unknown'}) — extraction: ${a.extraction_status || a.extractionStatus || 'unknown'}\n`;
+      const txt = String(a.extracted_text || a.extractedText || '').trim();
+      if (txt) {
+        actionContext += `  Extracted text (truncated):\n${txt.slice(0, 4000)}\n\n`;
+      } else {
+        actionContext += `  (No text extracted; if this is an image, OCR requires an OCR provider key.)\n\n`;
+      }
+    }
+  }
+
   try {
     const liveData = {};
     // Single round-trip (much faster than 8-10 sequential queries).
@@ -608,6 +907,30 @@ async function generateAgentResponse(agentType, userMessage, user) {
   if (webEngine) {
 
     try {
+      // ─── LIVE JSON API FETCH (Growth/Ops) ──────────────────────
+      // Slash command: /api get https://example.com/data.json
+      const slashApi = parseSlashCommand(userMessage);
+      if (slashApi?.cmd === 'api') {
+        const rest = slashApi.rest || '';
+        const m = rest.match(/^(get)\s+(https?:\/\/\S+)$/i);
+        if (m) {
+          const method = m[1].toUpperCase();
+          const url = m[2];
+          if (!url.startsWith('https://')) {
+            actionContext += `\n\n[API FETCH BLOCKED]: Only https:// URLs are allowed.\n`;
+          } else {
+            const apiRes = await webEngine.fetchJSON(url, { method });
+            executedActions.push({ type: 'api_fetch_json', url });
+            actionContext += `\n\n[LIVE API JSON FETCH]: ${url}\n`;
+            actionContext += apiRes.success
+              ? `${JSON.stringify(apiRes.data, null, 2).slice(0, 4000)}\n`
+              : `ERROR: ${apiRes.error}\n`;
+          }
+        } else {
+          actionContext += `\n\n[API FETCH]: Usage: \`/api get https://example.com/data.json\`\n`;
+        }
+      }
+
       // ─── WEB SEARCH ──────────────────────────────────────────
       if (lowerMsg.includes('search') || lowerMsg.includes('google') || lowerMsg.includes('look up') || lowerMsg.includes('find online')) {
         const searchQuery = userMessage

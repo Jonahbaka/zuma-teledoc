@@ -7,7 +7,7 @@ import {
   Users, Radio, ChevronDown, Search, Radar, Gem, Calculator,
   Atom, Hexagon, Crown, AlertTriangle, BarChart3, Globe, Bug,
   Heart, Database, Cpu, Network, Hand, Play, Pause, Code2,
-  Target, DollarSign, Gauge, Sparkles, ArrowUpRight
+  Target, DollarSign, Gauge, Sparkles, ArrowUpRight, GitBranch
 } from 'lucide-react';
 import HolographicAvatar from '@/components/agents/HolographicAvatar';
 import { AGENT_PERSONAS, getAgentPersona, normalizeAgentId } from '@/lib/agentPersonas';
@@ -125,6 +125,10 @@ export default function AgentChatPage() {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [attachmentIds, setAttachmentIds] = useState([]);
+  const [uploads, setUploads] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [githubStatus, setGithubStatus] = useState(null);
   const [credentials, setCredentials] = useState([]);
   const [results, setResults] = useState([]);
   const [showCredForm, setShowCredForm] = useState(false);
@@ -201,14 +205,24 @@ export default function AgentChatPage() {
     if (data) setResults(data);
   }, [apiCall]);
 
+  const loadUploads = useCallback(async () => {
+    const data = await apiCall('/uploads');
+    if (data) setUploads(data);
+  }, [apiCall]);
+
+  const loadGithubStatus = useCallback(async () => {
+    const data = await apiCall('/github/status');
+    setGithubStatus(data || null);
+  }, [apiCall]);
+
   useEffect(() => {
     const init = async () => {
       setLoading(true);
-      await Promise.all([loadMessages(), loadCredentials(), loadResults()]);
+      await Promise.all([loadMessages(), loadCredentials(), loadResults(), loadUploads()]);
       setLoading(false);
     };
     init();
-  }, [loadMessages, loadCredentials, loadResults]);
+  }, [loadMessages, loadCredentials, loadResults, loadUploads]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -242,7 +256,7 @@ export default function AgentChatPage() {
           console.warn('Broadcast failed — message may not have been saved');
         }
       } else {
-        const data = await apiCall('/messages', 'POST', { recipientId: selectedAgent, content: msg });
+        const data = await apiCall('/messages', 'POST', { recipientId: selectedAgent, content: msg, attachmentIds });
         if (data) {
           // Mark agent response for typing animation
           if (data.agentResponse?.id) {
@@ -264,9 +278,56 @@ export default function AgentChatPage() {
       setMessages(prev => prev.map(m => m.id === tempMsg.id ? { ...m, content: msg + '\n\n⚠️ Error sending message.' } : m));
     } finally {
       setSending(false);
+      setAttachmentIds([]);
       inputRef.current?.focus();
     }
   };
+
+  const onUploadFiles = useCallback(async (filesList) => {
+    const files = Array.from(filesList || []).slice(0, 8);
+    if (files.length === 0) return;
+    setUploading(true);
+    try {
+      const token = getToken();
+      const form = new FormData();
+      for (const f of files) form.append('files', f);
+      const res = await fetch(`${API_URL}/agent-chat/uploads`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: form
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Upload failed');
+      await loadUploads();
+    } catch (e) {
+      console.error('Upload failed:', e);
+    } finally {
+      setUploading(false);
+    }
+  }, [loadUploads]);
+
+  const downloadUpload = useCallback(async (file) => {
+    if (!file?.id) return;
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_URL}/agent-chat/uploads/${file.id}/download`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+      });
+      if (!res.ok) throw new Error(`Download failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.original_name || file.originalName || 'download';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Download failed:', e);
+      alert('Download failed. Check console for details.');
+    }
+  }, []);
 
   const summonAll = async () => {
     setSending(true);
@@ -382,6 +443,8 @@ export default function AgentChatPage() {
               { id: 'chat', label: 'Chat', icon: MessageSquare },
               { id: 'goals', label: 'Goals & Forecast', icon: Target },
               { id: 'credentials', label: 'Credentials Vault', icon: Key },
+              { id: 'uploads', label: 'Uploads', icon: FileText },
+              { id: 'github', label: 'GitHub', icon: GitBranch },
               { id: 'results', label: 'Results', icon: BarChart3 },
             ].map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
@@ -393,6 +456,129 @@ export default function AgentChatPage() {
           </div>
         </div>
       </div>
+
+      {/* UPLOADS TAB */}
+      {activeTab === 'uploads' && (
+        <div className="p-6 max-w-[1400px] mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2"><FileText className="w-6 h-6 text-cyan-400" /> Uploads for Analysis</h2>
+              <p className="text-sm text-gray-400 mt-1">Upload PDFs / text docs to attach to a chat message. Images are stored; OCR requires an OCR provider.</p>
+            </div>
+            <label className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium cursor-pointer">
+              {uploading ? 'Uploading…' : 'Upload Files'}
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                accept=".pdf,.txt,.md,.json,image/*"
+                onChange={(e) => onUploadFiles(e.target.files)}
+              />
+            </label>
+          </div>
+
+          <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
+            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+              <div className="text-sm text-gray-300">
+                Selected for next message: <span className="font-mono">{attachmentIds.length}</span>
+              </div>
+              <button
+                type="button"
+                className="text-xs px-3 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 disabled:opacity-50"
+                onClick={() => setAttachmentIds([])}
+                disabled={attachmentIds.length === 0}
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              {(uploads || []).length === 0 ? (
+                <div className="text-gray-500 text-sm p-6">No uploads yet.</div>
+              ) : (uploads || []).map((u) => {
+                const selected = attachmentIds.includes(u.id);
+                return (
+                  <div key={u.id} className={`rounded-xl border p-4 ${selected ? 'border-purple-500/40 bg-purple-600/10' : 'border-gray-800 bg-gray-950/40'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <button
+                        type="button"
+                        className="text-left min-w-0"
+                        onClick={() => setAttachmentIds((prev) => selected ? prev.filter((x) => x !== u.id) : [...prev, u.id])}
+                        title="Click to (de)select for next message"
+                      >
+                        <div className="text-sm text-white font-medium truncate">{u.original_name}</div>
+                        <div className="text-xs text-gray-500 truncate">
+                          {u.mime_type} · {(Number(u.size_bytes || 0) / 1024 / 1024).toFixed(1)} MB
+                        </div>
+                        <div className="mt-2 text-[10px] font-mono inline-flex items-center px-2 py-1 rounded bg-white/5 border border-white/10 text-gray-300">
+                          extraction: {u.extraction_status || 'pending'}
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 text-xs"
+                        onClick={() => downloadUpload(u)}
+                        title="Download"
+                      >
+                        <ArrowUpRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="mt-3 text-xs text-gray-400">
+                      {selected ? 'Selected (will be included in next message)' : 'Click the card to select for next message'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GITHUB TAB */}
+      {activeTab === 'github' && (
+        <div className="p-6 max-w-[1100px] mx-auto">
+          <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold flex items-center gap-2"><GitBranch className="w-6 h-6 text-emerald-400" /> GitHub Connect</h2>
+                <p className="text-sm text-gray-400 mt-1">Store a GitHub PAT in Credential Vault: platform GitHub → API Key.</p>
+              </div>
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 text-sm font-medium"
+                onClick={loadGithubStatus}
+              >
+                Test Connection
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-gray-800 bg-gray-950/40 p-4 text-sm">
+              {githubStatus?.login ? (
+                <div className="text-gray-200">
+                  Connected as <span className="font-mono">{githubStatus.login}</span>
+                  {githubStatus.url ? <div className="text-xs text-gray-500 mt-1">{githubStatus.url}</div> : null}
+                </div>
+              ) : (
+                <div className="text-gray-400">
+                  Not connected yet. Add a GitHub token in the Credential Vault (platform: GitHub) and click “Test Connection”.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 text-sm text-gray-300">
+              Chat commands:
+              <pre className="mt-2 text-xs font-mono bg-black/30 border border-gray-800 rounded-xl p-3 text-gray-300 whitespace-pre-wrap">
+{`/github status
+/github repos <owner>
+/github issues <owner>/<repo>
+/github file <owner>/<repo> <path>
+/api get https://api.github.com/repos/openclaw/openclaw`}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CHAT TAB */}
       {activeTab === 'chat' && (
@@ -460,6 +646,11 @@ export default function AgentChatPage() {
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {attachmentIds.length > 0 && (
+                <div className="bg-purple-600/10 border border-purple-500/20 rounded-xl px-4 py-2 text-sm text-purple-200">
+                  Next message includes <span className="font-mono">{attachmentIds.length}</span> attachment(s). Manage in the Uploads tab.
+                </div>
+              )}
               {messages.length === 0 && (
                 <div className="text-center py-16">
                   <currentAgent.icon className={`w-16 h-16 ${currentAgent.color} mx-auto mb-4 opacity-30`} />

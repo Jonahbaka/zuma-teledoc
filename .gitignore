@@ -70,6 +70,7 @@ public/mediapipe-models/
 
 # PHI and sensitive data (HIPAA compliance)
 uploads/
+server/uploads/
 temp/
 backups/
 
