@@ -298,7 +298,15 @@ export default function AgentChatPage() {
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Upload failed');
+      const newIds = (json.data || []).map((x) => x.id).filter(Boolean);
       await loadUploads();
+      // Auto-select newly uploaded files for the next message.
+      if (newIds.length > 0) {
+        setAttachmentIds((prev) => {
+          const merged = [...prev, ...newIds];
+          return Array.from(new Set(merged)).slice(0, 8);
+        });
+      }
     } catch (e) {
       console.error('Upload failed:', e);
     } finally {
@@ -387,7 +395,7 @@ export default function AgentChatPage() {
     <div className="min-h-screen bg-gray-950 text-gray-100">
       {/* Header */}
       <div className="bg-gray-900 border-b border-gray-800 px-6 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-indigo-700 rounded-xl flex items-center justify-center">
               <MessageSquare className="w-6 h-6 text-white" />
@@ -423,7 +431,7 @@ export default function AgentChatPage() {
               </div>
             </div>
           </div>
-          <div className="flex gap-2 items-center">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-end">
             <button
               onClick={() => voice.setEnabled(!voice.enabled)}
               className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ${
@@ -439,20 +447,22 @@ export default function AgentChatPage() {
               className="px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50 mr-3 shadow-lg shadow-amber-900/20">
               <Users className="w-4 h-4" /> {sending ? 'Summoning...' : 'Summon Council'}
             </button>
-            {[
-              { id: 'chat', label: 'Chat', icon: MessageSquare },
-              { id: 'goals', label: 'Goals & Forecast', icon: Target },
-              { id: 'credentials', label: 'Credentials Vault', icon: Key },
-              { id: 'uploads', label: 'Uploads', icon: FileText },
-              { id: 'github', label: 'GitHub', icon: GitBranch },
-              { id: 'results', label: 'Results', icon: BarChart3 },
-            ].map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 ${
-                  activeTab === tab.id ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
-                <tab.icon className="w-4 h-4" /> {tab.label}
-              </button>
-            ))}
+            <div className="flex flex-wrap gap-2 items-center sm:justify-end max-w-full">
+              {[
+                { id: 'chat', label: 'Chat', icon: MessageSquare },
+                { id: 'goals', label: 'Goals & Forecast', icon: Target },
+                { id: 'credentials', label: 'Credentials Vault', icon: Key },
+                { id: 'uploads', label: 'Uploads', icon: FileText },
+                { id: 'github', label: 'GitHub', icon: GitBranch },
+                { id: 'results', label: 'Results', icon: BarChart3 },
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 ${
+                    activeTab === tab.id ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
+                  <tab.icon className="w-4 h-4" /> {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -757,6 +767,20 @@ export default function AgentChatPage() {
             {/* Input */}
             <div className="border-t border-gray-800 px-6 py-4 bg-gray-900/30">
               <div className="flex items-center gap-3">
+                <label
+                  className="px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 cursor-pointer text-sm font-medium flex items-center gap-2"
+                  title="Upload and attach files for analysis"
+                >
+                  <FileText className="w-4 h-4" />
+                  {attachmentIds.length > 0 ? `Attach (${attachmentIds.length})` : 'Attach'}
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    accept=".pdf,.txt,.md,.json,image/*"
+                    onChange={(e) => onUploadFiles(e.target.files)}
+                  />
+                </label>
                 <div className="flex-1 relative">
                   <input ref={inputRef} type="text" value={inputMessage} onChange={e => setInputMessage(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }}}
