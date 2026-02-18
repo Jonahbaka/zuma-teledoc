@@ -383,22 +383,16 @@ router.post('/login', async (req, res) => {
       });
     }
     
-    // Check provider status
-    if (user.role === 'provider' && user.provider_status === 'pending') {
-      await auditLogin(req, false, user.id, 'Provider pending approval');
-      return res.status(403).json({
-        success: false,
-        error: 'Your provider account is pending approval.'
-      });
-    }
-    
+    // Rejected providers cannot log in
     if (user.role === 'provider' && user.provider_status === 'rejected') {
       await auditLogin(req, false, user.id, 'Provider rejected');
       return res.status(403).json({
         success: false,
-        error: 'Your provider application was not approved.'
+        error: 'Your provider application was not approved. Contact support for details.'
       });
     }
+    // Pending providers CAN log in — they see a limited dashboard
+    // and can complete credentialing while awaiting approval
     
     // Verify password
     const validPassword = await bcrypt.compare(data.password, user.password_hash);

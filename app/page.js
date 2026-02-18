@@ -81,11 +81,7 @@ export default function HomePage() {
   }, []);
 
   const handleJoinAsProvider = () => {
-    toast({
-      title: "Provider Registration",
-      description: "Provider sign-ups require board certification. If you have an invitation, please use the link provided in your email.",
-      variant: "default",
-    });
+    // Open registration — no invitation required
   };
 
   return (
@@ -150,13 +146,13 @@ export default function HomePage() {
                         <div className="text-xs text-muted-foreground">Access your care</div>
                       </div>
                     </Link>
-                    <Link href="/provider/login" onClick={handleJoinAsProvider} className="flex items-center gap-3 px-3 py-3 hover:bg-accent rounded-lg group transition-colors mt-1">
+                    <Link href="/provider/register" className="flex items-center gap-3 px-3 py-3 hover:bg-accent rounded-lg group transition-colors mt-1">
                       <div className="bg-emerald-500/10 text-emerald-500 dark:text-emerald-300 p-2 rounded-lg group-hover:bg-emerald-500/20 transition-colors">
                         <Stethoscope size={16} />
                       </div>
                       <div>
                         <div className="text-sm font-medium text-foreground">Provider Portal</div>
-                        <div className="text-xs text-muted-foreground">Board certified only</div>
+                        <div className="text-xs text-muted-foreground">Register or sign in</div>
                       </div>
                     </Link>
                   </div>
@@ -188,8 +184,8 @@ export default function HomePage() {
             {NAV_LINKS.map(link => (
               <a key={link.href} href={link.href} className="px-4 py-3 text-muted-foreground font-medium hover:bg-accent rounded-lg hover:text-foreground">{link.label}</a>
             ))}
-            <Link href="/provider/login" onClick={handleJoinAsProvider} className="px-4 py-3 text-muted-foreground font-medium hover:bg-accent rounded-lg flex items-center gap-2 hover:text-foreground">
-              Provider Access <ShieldCheck size={16} className="text-blue-500" />
+            <Link href="/provider/register" className="px-4 py-3 text-muted-foreground font-medium hover:bg-accent rounded-lg flex items-center gap-2 hover:text-foreground">
+              Join as Provider <ShieldCheck size={16} className="text-blue-500" />
             </Link>
           </div>
         )}

@@ -8,7 +8,7 @@ const QUICK_ACTIONS = [
   { label: 'How does DoctaRx work?', msg: 'How does DoctaRx work?' },
   { label: 'Book an appointment', msg: 'I want to book a telehealth appointment.' },
   { label: 'Pricing', msg: 'What does DoctaRx cost?' },
-  { label: 'For providers', msg: 'I am a doctor and want to join.' },
+  { label: 'For providers', msg: 'I am a doctor and want to register as a provider.' },
 ];
 
 function getApiBase() {

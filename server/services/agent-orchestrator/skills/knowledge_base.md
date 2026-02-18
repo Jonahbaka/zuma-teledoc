@@ -4,7 +4,7 @@
 DoctaRx is a HIPAA-compliant telehealth and e-prescribing platform that connects patients with board-certified healthcare providers through secure video consultations. Built for the modern healthcare experience, DoctaRx eliminates waiting rooms and geographic barriers.
 
 ## How It Works
-1. Create your account at doctarx.com/patient/register
+1. Create your account at doctarx.com/patient/register (patients) or doctarx.com/provider/register (providers)
 2. Describe your symptoms or select a reason for your visit
 3. Our AI triage system assesses urgency and matches you with the right provider
 4. Join a secure video consultation from any device with a camera

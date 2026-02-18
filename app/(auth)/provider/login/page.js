@@ -23,9 +23,10 @@ function ProviderLoginContent() {
     password: ''
   });
 
-  // Check for invite token and test token
+  // Check for invite token, registration, and test token
   const inviteToken = searchParams.get('invite');
   const fromInvite = searchParams.get('from') === 'invite';
+  const justRegistered = searchParams.get('registered') === 'true';
   const testToken = searchParams.get('test_token');
 
   // Clear any stale tokens when landing on login page
@@ -38,13 +39,18 @@ function ProviderLoginContent() {
   }, []);
 
   useEffect(() => {
-    if (fromInvite) {
+    if (justRegistered) {
+      toast({
+        title: 'Registration Successful',
+        description: 'Sign in to complete your credentialing and set up your practice.',
+      });
+    } else if (fromInvite) {
       toast({
         title: 'Account Created',
         description: 'Your provider account has been created. Please sign in.',
       });
     }
-  }, [fromInvite]);
+  }, [fromInvite, justRegistered]);
 
   // Check if test token is valid
   useEffect(() => {
@@ -170,14 +176,14 @@ function ProviderLoginContent() {
             </div>
 
             {/* Registration success notice */}
-            {fromInvite && (
+            {(fromInvite || justRegistered) && (
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 mb-6">
                 <div className="flex items-start gap-3">
                   <Shield className="w-5 h-5 text-emerald-400 mt-0.5" />
                   <div>
                     <p className="text-sm text-emerald-200 font-medium">Registration Complete</p>
                     <p className="text-xs text-emerald-300/70 mt-1">
-                      Your account is pending verification. Sign in to check your status.
+                      Sign in to complete your credentialing. Credential review typically takes 1-2 business days.
                     </p>
                   </div>
                 </div>
