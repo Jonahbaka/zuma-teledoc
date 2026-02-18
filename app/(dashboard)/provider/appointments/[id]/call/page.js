@@ -53,7 +53,6 @@ export default function ProviderVideoCallPage() {
   const [camOn, setCamOn] = useState(true);
   const [localStream, setLocalStream] = useState(null);
   const [mediaError, setMediaError] = useState(null);
-  const [callTranscript, setCallTranscript] = useState([]);
 
   const ensureLocalStream = useCallback(async () => {
     if (localStream) return localStream;
@@ -417,7 +416,7 @@ const ActiveCall = ({
       <div className={`transition-all duration-500 ease-in-out relative ${showAI ? 'w-80 opacity-100 translate-x-0' : 'w-0 opacity-0 translate-x-10 overflow-hidden'}`}>
         <AIAgentSidebar
           appointment={appointment}
-          transcript={callTranscript}
+          transcript={[]}
           isOpen={showAI}
           onClose={() => setShowAI(false)}
         />
