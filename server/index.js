@@ -466,6 +466,14 @@ async function initializeApp() {
   // Serve uploads
   app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
   
+  // Ensure agent/CRM/credential DB tables exist before loading routes
+  try {
+    const ensureAgentTables = require('./db/ensureAgentTables');
+    await ensureAgentTables();
+  } catch (err) {
+    console.error('⚠️ Agent tables check skipped:', err.message);
+  }
+
   console.log('📚 Loading API routes...');
   
   // Helper to safely load routes

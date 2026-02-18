@@ -95,6 +95,19 @@ const PRICING = {
   
   // Patient Subscription Plans
   subscriptions: {
+    test: {
+      name: 'Docta Test ($1)',
+      priceId: null,
+      amount: 100, // $1.00 for testing
+      currency: 'usd',
+      interval: 'month',
+      features: [
+        'Test plan for development',
+        'All features unlocked',
+        'Charges $1.00/month',
+        'Cancel anytime'
+      ]
+    },
     basic: {
       name: 'Docta Basic',
       priceId: null, // Will be created/retrieved from Stripe
@@ -176,6 +189,18 @@ const PRICING = {
   
   // Provider Subscription (Platform Fees)
   providerSubscription: {
+    test: {
+      name: 'Provider Test ($1)',
+      amount: 100, // $1.00 for testing
+      currency: 'usd',
+      interval: 'month',
+      features: [
+        'Test plan for development',
+        'All provider features unlocked',
+        'Charges $1.00/month',
+        'Cancel anytime'
+      ]
+    },
     starter: {
       name: 'Provider Starter',
       amount: 9900, // $99/month
@@ -757,7 +782,7 @@ async function handleCheckoutComplete(session) {
 
       // If Stripe subscription ID is available, link it immediately
       if (session.subscription) {
-        const mapped = { basic: 'basic', gold: 'gold', goldYearly: 'gold', platinum: 'platinum' };
+        const mapped = { test: 'gold', basic: 'basic', gold: 'gold', goldYearly: 'gold', platinum: 'platinum' };
         const tier = mapped[planKey] || 'gold';
         await db.query(
           `UPDATE subscriptions 
@@ -798,6 +823,7 @@ async function handleSubscriptionUpdate(subscription) {
 
     // Map Stripe planKey -> DB tier + access level
     const planMap = {
+      test: { tier: 'gold', accessLevel: 'gold_monthly' },
       basic: { tier: 'basic', accessLevel: 'basic_monthly' },
       gold: { tier: 'gold', accessLevel: 'gold_monthly' },
       goldYearly: { tier: 'gold', accessLevel: 'gold_yearly' },
@@ -914,6 +940,7 @@ async function handleInvoicePaid(invoice) {
     const userId = subscription.metadata?.userId;
     const planKey = subscription.metadata?.planKey || 'gold';
     const planMap = {
+      test: { tier: 'gold', accessLevel: 'gold_monthly' },
       basic: { tier: 'basic', accessLevel: 'basic_monthly' },
       gold: { tier: 'gold', accessLevel: 'gold_monthly' },
       goldYearly: { tier: 'gold', accessLevel: 'gold_yearly' },

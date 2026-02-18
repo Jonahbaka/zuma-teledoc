@@ -116,7 +116,7 @@ router.post('/checkout/consultation', authenticate, async (req, res) => {
 // ============================================================================
 
 const subscriptionCheckoutSchema = z.object({
-  planKey: z.enum(['basic', 'gold', 'goldYearly', 'platinum'])
+  planKey: z.enum(['test', 'basic', 'gold', 'goldYearly', 'platinum'])
 });
 
 /**
@@ -250,7 +250,7 @@ router.post('/checkout/credentialing', authenticate, requireRole(['provider']), 
 // ============================================================================
 
 const providerSubscriptionSchema = z.object({
-  planKey: z.enum(['starter', 'professional', 'enterprise'])
+  planKey: z.enum(['test', 'starter', 'professional', 'enterprise'])
 });
 
 /**
@@ -275,6 +275,78 @@ router.post('/checkout/provider-subscription', authenticate, requireRole(['provi
     }
     logger.error('Provider subscription checkout error', { error: error.message, userId: req.user.id });
     res.status(500).json({ success: false, error: 'Failed to create provider subscription checkout' });
+  }
+});
+
+// ============================================================================
+// TEST CHECKOUT ENDPOINTS ($1 test plans for development)
+// ============================================================================
+
+router.post('/test-checkout/patient', async (req, res) => {
+  try {
+    const stripe = stripeService.stripe;
+    const plan = stripeService.PRICING.subscriptions.test;
+    if (!plan) {
+      return res.status(500).json({ success: false, error: 'Test plan not configured' });
+    }
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: plan.currency,
+          product_data: { name: plan.name, description: 'Patient test subscription — $1/month' },
+          unit_amount: plan.amount,
+          recurring: { interval: plan.interval }
+        },
+        quantity: 1
+      }],
+      metadata: { type: 'subscription', planKey: 'test', role: 'patient' },
+      success_url: `${appUrl}/test-payment?success=true&role=patient`,
+      cancel_url: `${appUrl}/test-payment?cancelled=true`
+    });
+
+    res.json({ success: true, url: session.url, sessionId: session.id });
+  } catch (error) {
+    logger.error('Test patient checkout error', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/test-checkout/provider', async (req, res) => {
+  try {
+    const stripe = stripeService.stripe;
+    const plan = stripeService.PRICING.providerSubscription.test;
+    if (!plan) {
+      return res.status(500).json({ success: false, error: 'Provider test plan not configured' });
+    }
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: plan.currency,
+          product_data: { name: plan.name, description: 'Provider test subscription — $1/month' },
+          unit_amount: plan.amount,
+          recurring: { interval: plan.interval }
+        },
+        quantity: 1
+      }],
+      metadata: { type: 'provider_subscription', planKey: 'test', role: 'provider' },
+      success_url: `${appUrl}/test-payment?success=true&role=provider`,
+      cancel_url: `${appUrl}/test-payment?cancelled=true`
+    });
+
+    res.json({ success: true, url: session.url, sessionId: session.id });
+  } catch (error) {
+    logger.error('Test provider checkout error', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

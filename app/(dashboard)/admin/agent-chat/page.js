@@ -244,6 +244,10 @@ export default function AgentChatPage() {
     loadMessages();
   }, [selectedAgent, loadMessages]);
 
+  useEffect(() => {
+    if (activeTab === 'github') loadGithubStatus();
+  }, [activeTab, loadGithubStatus]);
+
   const sendMessage = async () => {
     if (!inputMessage.trim() || sending) return;
     setSending(true);

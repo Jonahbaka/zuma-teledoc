@@ -513,7 +513,7 @@ export default function PatientMessagesPage() {
                           ? 'bg-purple-600 text-white' 
                           : 'bg-slate-100 text-slate-900'
                       }`}>
-                        <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                        <p className="text-sm whitespace-pre-wrap">{msg.content || 'Message could not be loaded'}</p>
                         <p className={`text-xs mt-1 ${
                           msg.sentByMe ? 'text-purple-50' : 'text-slate-500'
                         }`}>

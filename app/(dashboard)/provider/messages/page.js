@@ -517,7 +517,7 @@ export default function ProviderMessagesPage() {
                             <span className="text-xs font-medium">Urgent</span>
                           </div>
                         )}
-                        <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                        <p className="text-sm whitespace-pre-wrap">{msg.content || 'Message could not be loaded'}</p>
                         <div className={`flex items-center gap-1 text-xs mt-1 ${
                           msg.sentByMe ? 'text-blue-50' : 'text-slate-500 dark:text-slate-400'
                         }`}>

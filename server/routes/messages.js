@@ -320,14 +320,13 @@ router.get('/conversations', authenticate, async (req, res) => {
     
     // Decrypt preview of last message
     const conversations = rows.map(row => {
-      let preview = '🔒 Encrypted message';
+      let preview = 'Tap to view conversation';
       try {
         const decryptedContent = decrypt(row.content_encrypted, row.content_iv, row.content_tag);
         if (decryptedContent) {
           preview = decryptedContent.substring(0, 50) + (decryptedContent.length > 50 ? '...' : '');
         }
       } catch (decryptError) {
-        // Log but don't fail - show placeholder for unreadable messages
         logger.warn('Failed to decrypt message preview', { 
           messageId: row.message_id, 
           error: decryptError.message 
@@ -414,17 +413,17 @@ router.get('/conversation/:recipientId', authenticate, async (req, res) => {
     
     // Decrypt messages
     const messages = rows.map(row => {
-      let content = '🔒 This message cannot be displayed';
+      let content = null;
       try {
-        const decryptedContent = decrypt(row.content_encrypted, row.content_iv, row.content_tag);
-        if (decryptedContent) {
-          content = decryptedContent;
-        }
+        content = decrypt(row.content_encrypted, row.content_iv, row.content_tag);
       } catch (decryptError) {
         logger.warn('Failed to decrypt message', { 
           messageId: row.id, 
           error: decryptError.message 
         });
+      }
+      if (!content) {
+        content = '[Message from a previous session]';
       }
       
       return {
