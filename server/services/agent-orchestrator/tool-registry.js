@@ -283,45 +283,42 @@ const TOOL_DEFINITIONS = {
 const TOOL_EXECUTORS = {
 
   async get_platform_stats({ include_revenue = false } = {}) {
-    try {
-      const r = await db.query(`
-        SELECT
-          (SELECT COUNT(*)::int FROM users) AS total_users,
-          (SELECT COUNT(*)::int FROM users WHERE role = 'patient') AS total_patients,
-          (SELECT COUNT(*)::int FROM users WHERE role IN ('provider','admin')) AS total_providers,
-          (SELECT COUNT(*)::int FROM users WHERE role = 'provider' AND is_approved = false) AS pending_providers,
-          (SELECT COUNT(*)::int FROM video_sessions) AS total_appointments,
-          (SELECT COUNT(*)::int FROM video_sessions WHERE created_at > NOW() - INTERVAL '7 days') AS appointments_this_week,
-          (SELECT COUNT(*)::int FROM video_sessions WHERE created_at > NOW() - INTERVAL '24 hours') AS appointments_today,
-          (SELECT COUNT(*)::int FROM ai_credential_vault WHERE is_active = true) AS active_credentials,
-          (SELECT COUNT(*)::int FROM crm_contacts) AS crm_contacts,
-          (SELECT COUNT(*)::int FROM crm_contacts WHERE created_at > NOW() - INTERVAL '7 days') AS new_crm_contacts_week,
-          (SELECT COUNT(*)::int FROM ai_proposals WHERE status = 'pending') AS pending_proposals,
-          (SELECT COUNT(*)::int FROM ai_agent_results) AS total_agent_actions,
-          (SELECT COUNT(*)::int FROM ai_agent_results WHERE created_at > NOW() - INTERVAL '24 hours') AS agent_actions_today,
-          (SELECT COUNT(*)::int FROM ai_agent_results WHERE result_type = 'error' AND created_at > NOW() - INTERVAL '1 hour') AS recent_errors
-      `);
-      const stats = r.rows[0] || {};
+    // Run each query individually so one missing table never kills the whole stat block
+    const stats = {};
+    const safeCount = async (sql, label) => {
+      try {
+        const r = await db.query(sql);
+        stats[label] = parseInt(r.rows[0]?.c ?? r.rows[0]?.count ?? 0, 10);
+      } catch { /* table may not exist yet */ }
+    };
 
-      if (include_revenue) {
-        try {
-          const rev = await db.query(`
-            SELECT
-              COALESCE(SUM(amount_cents), 0)::int AS total_revenue_cents,
-              COUNT(*)::int AS total_payments,
-              COUNT(CASE WHEN created_at > NOW() - INTERVAL '30 days' THEN 1 END)::int AS payments_last_30d
-            FROM payments WHERE status = 'paid'
-          `);
-          stats.total_revenue_dollars = Math.round((rev.rows[0]?.total_revenue_cents || 0) / 100);
-          stats.total_payments = rev.rows[0]?.total_payments || 0;
-          stats.payments_last_30d = rev.rows[0]?.payments_last_30d || 0;
-        } catch (e) { /* payments table might not exist */ }
-      }
+    await safeCount(`SELECT COUNT(*)::int AS c FROM users`, 'total_users');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM users WHERE role = 'patient'`, 'total_patients');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM users WHERE role IN ('provider','admin')`, 'total_providers');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM users WHERE role = 'provider' AND (is_approved = false OR is_approved IS NULL)`, 'pending_providers');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM video_sessions`, 'total_appointments');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM video_sessions WHERE created_at > NOW() - INTERVAL '7 days'`, 'appointments_this_week');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM video_sessions WHERE created_at > NOW() - INTERVAL '24 hours'`, 'appointments_today');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM ai_credential_vault WHERE is_active = true`, 'active_credentials');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM crm_contacts`, 'crm_contacts');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM ai_proposals WHERE status = 'pending'`, 'pending_proposals');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM ai_agent_results`, 'total_agent_actions');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM ai_agent_results WHERE result_type = 'error' AND created_at > NOW() - INTERVAL '1 hour'`, 'recent_errors');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM prescriptions`, 'total_prescriptions');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM triage_sessions`, 'total_triage_sessions');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM invitations WHERE status = 'pending'`, 'pending_invitations');
 
-      return { success: true, data: stats };
-    } catch (err) {
-      return { success: false, error: err.message };
+    if (include_revenue) {
+      try {
+        const rev = await db.query(`SELECT COALESCE(SUM(amount_cents),0)::int AS t, COUNT(*)::int AS cnt FROM payments WHERE status = 'paid'`);
+        stats.total_revenue_dollars = Math.round((rev.rows[0]?.t || 0) / 100);
+        stats.total_payments = rev.rows[0]?.cnt || 0;
+      } catch { /* payments table may not exist */ }
     }
+
+    const populated = Object.keys(stats).length;
+    if (populated === 0) return { success: false, error: 'No database tables accessible. Check DB connection.' };
+    return { success: true, data: stats, tables_read: populated };
   },
 
   async query_patients({ search, limit = 20, status = 'all' } = {}) {

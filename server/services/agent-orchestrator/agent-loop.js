@@ -209,49 +209,77 @@ async function runAgentLoop(agentType, agentName, agentPersona, userMessage, opt
 
 /**
  * Gemini fallback loop (no native tool use — inject results as text context).
- * Uses get_platform_stats and search_web eagerly before the LLM call.
+ * Eagerly executes all relevant tools BEFORE the LLM call so Gemini has
+ * real data rather than pretending to query.
  */
 async function runGeminiFallbackLoop(agentType, agentName, agentPersona, userMessage, options = {}) {
   const llmService = options.llmService;
   const toolCallTrace = [];
-  let contextBlocks = '';
+  const contextParts = [];
 
-  // Auto-execute key tools for context injection
+  // Always run platform stats first — gives the LLM grounding
   const autoTools = [
     { name: 'get_platform_stats', input: {}, label: 'Platform Stats' }
   ];
 
   const lowerMsg = String(userMessage).toLowerCase();
-  if (lowerMsg.includes('patient')) autoTools.push({ name: 'query_patients', input: { limit: 10 }, label: 'Recent Patients' });
-  if (lowerMsg.includes('appointment')) autoTools.push({ name: 'query_appointments', input: { limit: 10 }, label: 'Recent Appointments' });
+  if (lowerMsg.includes('patient')) autoTools.push({ name: 'query_patients', input: { limit: 10 }, label: 'Patients' });
+  if (lowerMsg.includes('provider') || lowerMsg.includes('doctor')) autoTools.push({ name: 'query_providers', input: { limit: 10 }, label: 'Providers' });
+  if (lowerMsg.includes('appointment') || lowerMsg.includes('visit') || lowerMsg.includes('session')) autoTools.push({ name: 'query_appointments', input: { limit: 5 }, label: 'Appointments' });
   if (lowerMsg.includes('crm') || lowerMsg.includes('lead') || lowerMsg.includes('contact')) autoTools.push({ name: 'query_crm', input: { limit: 10 }, label: 'CRM Contacts' });
-  if (lowerMsg.includes('prescri')) autoTools.push({ name: 'query_prescriptions', input: { limit: 10 }, label: 'Prescriptions' });
-  if (lowerMsg.includes('revenue') || lowerMsg.includes('payment') || lowerMsg.includes('money')) autoTools.push({ name: 'query_revenue', input: {}, label: 'Revenue' });
-  if (lowerMsg.includes('search') || lowerMsg.includes('find online') || lowerMsg.includes('look up')) {
-    const q = userMessage.replace(/^.*?(search|find online|look up)\s*/i, '').replace(/[?.!]$/,'').trim();
+  if (lowerMsg.includes('prescri') || lowerMsg.includes('medication')) autoTools.push({ name: 'query_prescriptions', input: { limit: 10 }, label: 'Prescriptions' });
+  if (lowerMsg.includes('revenue') || lowerMsg.includes('payment') || lowerMsg.includes('money') || lowerMsg.includes('earn')) autoTools.push({ name: 'query_revenue', input: {}, label: 'Revenue' });
+  if (lowerMsg.includes('triage')) autoTools.push({ name: 'query_triage', input: { limit: 10 }, label: 'Triage' });
+  if (lowerMsg.includes('credential') || lowerMsg.includes('api key') || lowerMsg.includes('integration')) autoTools.push({ name: 'list_credentials', input: {}, label: 'Credentials' });
+  if (lowerMsg.includes('search') || lowerMsg.includes('find online') || lowerMsg.includes('look up') || lowerMsg.includes('google')) {
+    const q = userMessage.replace(/^.*?(search|find online|look up|google)\s+/i, '').replace(/[?.!]$/, '').trim();
     if (q.length > 3) autoTools.push({ name: 'search_web', input: { query: q }, label: 'Web Search' });
   }
 
   for (const { name, input, label } of autoTools) {
     const result = await executeTool(name, input);
     toolCallTrace.push({ tool: name, input, result, iteration: 1 });
-    if (result.success) {
-      contextBlocks += `\n\n[LIVE TOOL: ${label}]:\n${JSON.stringify(result.data || result, null, 2).slice(0, 3000)}\n`;
+    if (result.success !== false) {
+      const data = result.data || result;
+      contextParts.push(`[${label}]:\n${JSON.stringify(data, null, 2).slice(0, 2500)}`);
+    } else {
+      contextParts.push(`[${label}]: UNAVAILABLE — ${result.error || 'unknown error'}`);
     }
   }
 
   const systemPrompt = buildSystemPrompt(agentType, agentName, agentPersona, options);
-  const fullMessage = contextBlocks
-    ? `${userMessage}\n\n--- LIVE TOOL RESULTS (queried right now) ---${contextBlocks}`
-    : userMessage;
+
+  // Hard rule for Gemini: ONLY use the data provided. Never pretend.
+  const geminiRule = `\nCRITICAL RULE: You have been given REAL live data above. Use ONLY this data to answer. Do NOT ask the operator which database to query. Do NOT say "I need to check" — the check was already done. If a section shows UNAVAILABLE, say so. Answer with the actual numbers and records provided.\n`;
+
+  const dataBlock = contextParts.length > 0
+    ? `\n\n=== LIVE DATA FETCHED FROM DATABASE RIGHT NOW ===\n${contextParts.join('\n\n')}\n=== END LIVE DATA ===\n`
+    : '\n\n[NOTE: No database data available — DB may be unreachable. Be honest about this.]\n';
+
+  const fullMessage = userMessage + dataBlock + geminiRule;
 
   let text = null;
-  if (llmService && typeof llmService.callLLMFast === 'function') {
-    text = await llmService.callLLMFast(systemPrompt, fullMessage, { maxTokens: 1200 });
+  try {
+    if (llmService && typeof llmService.callLLMFast === 'function') {
+      text = await llmService.callLLMFast(systemPrompt, fullMessage, { maxTokens: 1500 });
+    }
+  } catch (err) {
+    console.error(`[GeminiFallback] LLM call failed:`, err.message);
+  }
+
+  if (!text) {
+    // Last resort: format the raw data ourselves without LLM
+    const lines = ['Here is the live data I retrieved:'];
+    for (const { name, input, result } of toolCallTrace) {
+      if (result.success !== false && result.data) {
+        lines.push(`\n**${name}:** ${JSON.stringify(result.data).slice(0, 400)}`);
+      }
+    }
+    text = lines.join('\n') || '⚠️ LLM unavailable and no data retrieved.';
   }
 
   return {
-    text: text || '(No LLM response.)',
+    text,
     toolCalls: toolCallTrace,
     iterations: 1,
     agentName,
