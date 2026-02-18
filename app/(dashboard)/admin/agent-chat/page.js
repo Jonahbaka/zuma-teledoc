@@ -684,16 +684,51 @@ export default function AgentChatPage() {
                 const MsgIcon = Bot;
                 const shouldType = isAgent && msg.id && typingIds.has(msg.id);
 
-                // Parse engine metadata
+                // Parse engine metadata + tool call trace
                 let engineLabel = null;
+                let toolTraceEl = null;
                 try {
                   const meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata || '{}') : (msg.metadata || {});
-                  if (meta.engine === 'claude+gemini' || meta.engine === 'claude') {
+                  const eng = meta.engine || '';
+                  if (eng.startsWith('agent_loop')) {
+                    const isClaudeLoop = eng.includes('claude');
+                    engineLabel = (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono flex items-center gap-1 ${isClaudeLoop ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'}`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse inline-block" />
+                        {isClaudeLoop ? 'Claude Agent' : 'Gemini Agent'}
+                        {meta.iterations > 0 && <span className="opacity-60 ml-1">{meta.iterations}it</span>}
+                      </span>
+                    );
+                  } else if (eng === 'claude+gemini' || eng === 'claude') {
                     engineLabel = <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-mono">Claude AI</span>;
-                  } else if (meta.engine === 'gemini') {
+                  } else if (eng === 'gemini' || eng === 'fast') {
                     engineLabel = <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">Gemini AI</span>;
-                  } else if (meta.engine === 'template') {
-                    engineLabel = <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-500 font-mono">Template</span>;
+                  } else if (eng === 'medical_unit') {
+                    engineLabel = <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono">Medical Unit</span>;
+                  }
+                  // Tool call trace — render below the message bubble
+                  const calls = Array.isArray(meta.toolCalls) ? meta.toolCalls : [];
+                  if (calls.length > 0) {
+                    const TOOL_ICON = { get_platform_stats: '📊', query_patients: '🧑‍⚕️', query_providers: '👨‍⚕️', query_appointments: '📅', query_prescriptions: '💊', query_crm: '📋', create_crm_contact: '➕', query_revenue: '💰', search_web: '🌐', scrape_url: '🔗', medical_consult: '🏥', github_operation: '🐙', log_agent_result: '📝', query_triage: '🚑', list_credentials: '🔑', query_agent_results: '🤖', read_uploaded_file: '📄', list_uploaded_files: '📁', send_platform_notification: '🔔' };
+                    toolTraceEl = (
+                      <div className="mt-1.5 rounded-lg bg-gray-950/70 border border-gray-800 px-3 py-2 text-[11px] font-mono space-y-0.5">
+                        <div className="text-gray-600 text-[10px] uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                          {calls.length} tool call{calls.length !== 1 ? 's' : ''} executed
+                        </div>
+                        {calls.map((c, i) => {
+                          const name = c.tool || c.toolName || 'unknown';
+                          const ok = c.success !== false;
+                          return (
+                            <div key={i} className="flex items-center gap-2">
+                              <span>{TOOL_ICON[name] || '⚡'}</span>
+                              <span className={ok ? 'text-emerald-300' : 'text-red-400'}>{name}</span>
+                              {!ok && <span className="text-red-500 text-[10px] truncate max-w-[200px]">failed</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
                   }
                 } catch { /* ignore */ }
 
@@ -757,10 +792,25 @@ export default function AgentChatPage() {
                           <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
                         )}
                       </div>
+                      {toolTraceEl}
                     </div>
                   </div>
                 );
               })}
+              {/* Agent thinking indicator — shows while waiting for response */}
+              {sending && (
+                <div className="flex gap-3 px-2 py-1">
+                  <div className="w-9 h-9 flex-shrink-0">
+                    {(() => { const p = getAgentPersona(selectedAgent === 'all' ? 'runtime' : selectedAgent); return <HolographicAvatar persona={p} size="sm" isSpeaking online />; })()}
+                  </div>
+                  <div className="bg-gray-800/80 border border-gray-700/50 rounded-xl px-4 py-3 text-sm text-gray-400 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    <span className="text-xs text-gray-500 ml-1">Running tools&hellip;</span>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 

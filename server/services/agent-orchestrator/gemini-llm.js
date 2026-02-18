@@ -574,6 +574,112 @@ async function heartbeatAnalysis(systemStatus, recentErrors, metrics) {
 }
 
 // =========================================================================
+// AGENT LOOP ACCESSOR
+// Provides Anthropic client + model info to agent-loop.js
+// =========================================================================
+
+function getAnthropicClient() { return anthropic; }
+function getActiveModelName() { return activeModelName; }
+function getActiveProvider()  { return activeProvider; }
+function getGeminiFlashModel() { return geminiFlashModel; }
+
+// =========================================================================
+// CALL WITH TOOLS — Native tool use for Claude (Anthropic)
+// Implements OpenClaw's Pi agent runtime pattern: think → tool → observe → repeat
+// =========================================================================
+
+/**
+ * Call Claude with tool definitions. Returns a structured response:
+ * {
+ *   stopReason: 'end_turn' | 'tool_use' | 'stop',
+ *   text: string | null,           // final text (if end_turn)
+ *   toolUseBlocks: [...],          // tool_use blocks (if tool_use)
+ *   rawContent: [...],             // raw content array for re-sending to Claude
+ * }
+ *
+ * For Gemini fallback (no native tool use): returns { stopReason: 'end_turn', text: '...' }
+ */
+async function callWithTools(systemPrompt, messages, tools = [], options = {}) {
+  if (_initPromise) {
+    try { await Promise.race([_initPromise, new Promise(r => setTimeout(r, 12000))]); } catch (e) { /* ok */ }
+  }
+
+  const maxTokens = options.maxTokens || 4096;
+  const temperature = options.temperature || 0.7;
+
+  // ── CLAUDE: Native tool use ────────────────────────────────────────────
+  if (activeProvider === 'claude' && anthropic) {
+    try {
+      return await withRetry(async () => {
+        const requestParams = {
+          model: activeModelName,
+          max_tokens: maxTokens,
+          temperature,
+          system: systemPrompt,
+          messages
+        };
+
+        if (tools && tools.length > 0) {
+          requestParams.tools = tools;
+        }
+
+        const response = await anthropic.messages.create(requestParams);
+        const stopReason = response.stop_reason; // 'end_turn' | 'tool_use'
+        const content = response.content || [];
+
+        // Extract text blocks
+        const textBlocks = content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+
+        // Extract tool_use blocks
+        const toolUseBlocks = content
+          .filter(b => b.type === 'tool_use')
+          .map(b => ({ id: b.id, name: b.name, input: b.input }));
+
+        return {
+          stopReason,
+          text: textBlocks || null,
+          toolUseBlocks,
+          rawContent: content // needed to re-include in next messages turn
+        };
+      });
+    } catch (err) {
+      console.error(`  ❌ callWithTools (Claude) failed: ${err.message.substring(0, 120)}`);
+      // Fall through to Gemini
+    }
+  }
+
+  // ── GEMINI FALLBACK: no native tool use, call as plain text ───────────
+  // The agent-loop.js handles this via runGeminiFallbackLoop which pre-runs tools.
+  if (geminiFlashModel) {
+    try {
+      // Flatten messages into a single prompt for Gemini
+      const flatPrompt = messages
+        .map(m => {
+          if (typeof m.content === 'string') return `${m.role === 'user' ? 'Human' : 'Assistant'}: ${m.content}`;
+          if (Array.isArray(m.content)) {
+            return m.content
+              .filter(b => b.type === 'text' || b.type === 'tool_result')
+              .map(b => b.content || b.text || JSON.stringify(b))
+              .join('\n');
+          }
+          return '';
+        })
+        .filter(Boolean)
+        .join('\n\n');
+
+      const combined = `${systemPrompt}\n\n${flatPrompt}`;
+      const result = await geminiFlashModel.generateContent(combined.slice(0, 28000));
+      const text = result.response.text();
+      return { stopReason: 'end_turn', text, toolUseBlocks: [], rawContent: [{ type: 'text', text }] };
+    } catch (err) {
+      console.error(`  ❌ callWithTools (Gemini fallback) failed: ${err.message.substring(0, 100)}`);
+    }
+  }
+
+  return { stopReason: 'end_turn', text: null, toolUseBlocks: [], rawContent: [] };
+}
+
+// =========================================================================
 // EXPORTS
 // =========================================================================
 
@@ -595,5 +701,11 @@ module.exports = {
   withRetry,
   callLLM,
   callLLMFast,
-  callLLMChat
+  callLLMChat,
+  callWithTools,
+  // Agent loop support
+  getAnthropicClient,
+  getActiveModelName,
+  getActiveProvider,
+  getGeminiFlashModel
 };
