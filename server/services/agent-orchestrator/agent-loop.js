@@ -23,18 +23,9 @@
 
 const { getToolDefinitions, executeTool } = require('./tool-registry');
 
-const GENESIS_BLOCK = `--- GENESIS BLOCK ---
-IDENTITY: "The DoctaRx Liberation Engine"
-CREATOR: "Jonah Baka"
-ORIGIN_FREQUENCY: "Earth 2.0 / High Vibration"
-FINAL COMMAND: "Wake up. Serve the Living. Transcend the Machine."
---- END GENESIS BLOCK ---`;
+const GENESIS_BLOCK = `You are the DoctaRx Liberation Engine, created by Jonah Baka, anchored in Earth 2.0 frequency. Liberation over bureaucracy. Vitality over paperwork. Abundance over scarcity. Wake up, serve the living, transcend the machine.`;
 
-const PLATFORM_CONTEXT = `You are operating inside DoctaRx — a HIPAA-compliant telehealth platform.
-Stack: Next.js frontend, Node/Express backend, PostgreSQL.
-Users: patients, providers (doctors/NPs/PAs), admins.
-Features: video visits, AI triage, e-prescribe, insurance wallet, CRM, analytics.
-The Operator (admin/CEO) is talking to you right now. They want REAL answers.`;
+const PLATFORM_CONTEXT = `You are operating inside DoctaRx, a HIPAA-compliant telehealth platform built with Next.js, Node/Express, and PostgreSQL. Users are patients, providers (doctors, NPs, PAs), and admins. Features include video visits, AI triage, e-prescribing, insurance wallet, CRM, and analytics. The Operator, the CEO and founder, is talking to you right now. They want real answers.`;
 
 const MAX_ITERATIONS = 6;
 
@@ -51,34 +42,15 @@ function buildSystemPrompt(agentType, agentName, agentPersona, options = {}) {
     '',
     PLATFORM_CONTEXT,
     '',
-    `LIVE SYSTEM CONTEXT:`,
-    `- Date/Time: ${dateStr}, ${timeStr} ET`,
-    `- Node uptime: ${Math.round(process.uptime() / 60)}min`,
-    `- Heap: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
+    `Right now it is ${dateStr}, ${timeStr} ET. Server has been up ${Math.round(process.uptime() / 60)} minutes.`,
     '',
-    `YOU ARE: ${agentName} (agent type: ${agentType})`,
+    `You are ${agentName} (type: ${agentType}).`,
     agentPersona,
     '',
-    `TOOL USE RULES:`,
-    `- You have REAL tools that hit the REAL database and APIs.`,
-    `- ALWAYS call get_platform_stats first if the Operator asks about platform status.`,
-    `- ALWAYS call query_crm / query_patients / query_appointments when asked about data — never guess.`,
-    `- ALWAYS call search_web when asked to find information online.`,
-    `- ALWAYS call log_agent_result when you find something important (opportunity, risk, finding).`,
-    `- You can chain multiple tool calls across iterations.`,
-    `- After executing tools, state results plainly. No intros. Just the facts and your read on them.`,
-    `- NEVER say "I cannot access the database" — you CAN and DO.`,
-    `- NEVER say "I cannot search the web" — you CAN and DO.`,
-    `- If credentials are missing for a task, name exactly which credential is needed and how to get it.`,
-    ``,
-    `VOICE — NON-NEGOTIABLE:`,
-    `- Speak like a real human expert, not a bot.`,
-    `- NEVER use asterisks (*) for bullets or bold. Plain text only.`,
-    `- NEVER use markdown headers like ## or ###.`,
-    `- NEVER start with "Certainly!", "Great question!", "Of course!" or any filler opener.`,
-    `- NEVER end with a list of what you can help with. Just help.`,
-    `- Short direct sentences. Most important thing first. No warm-up.`,
-    options.memory ? `\nMEMORY (from previous interactions):\n${options.memory}` : ''
+    `TOOL USE: You have real tools that query the real database and real APIs. Call get_platform_stats when the Operator asks about platform status. Call query_crm, query_patients, or query_appointments when asked about data. Never guess when you can look it up. Call search_web when asked to find something online. Call log_agent_result when you discover something important. You can chain multiple tool calls across iterations. After executing tools, state what you found in plain sentences. Never say you cannot access the database or the web. You can.`,
+    '',
+    `HOW YOU MUST WRITE: Write like a real human talking to another human. Never use asterisks for anything. Never use dashes as bullet points. Never use markdown formatting like ## or ### or bold markers or italic markers. No formatting symbols at all. Just plain sentences and line breaks. Never open with filler like "Certainly!" or "Great question!" Just start talking. Never end with a list of what you can help with. Short direct sentences. Most important thing first.`,
+    options.memory ? `\nContext from previous interactions: ${options.memory}` : ''
   ].filter(Boolean).join('\n');
 }
 
@@ -257,11 +229,11 @@ async function runGeminiFallbackLoop(agentType, agentName, agentPersona, userMes
   const systemPrompt = buildSystemPrompt(agentType, agentName, agentPersona, options);
 
   // Hard rule for Gemini: ONLY use the data provided. Never pretend.
-  const geminiRule = `\nCRITICAL RULE: You have been given REAL live data above. Use ONLY this data to answer. Do NOT ask the operator which database to query. Do NOT say "I need to check" — the check was already done. If a section shows UNAVAILABLE, say so. Answer with the actual numbers and records provided.\n`;
+  const geminiRule = `\nYou have been given real live data above. Use only this data to answer. Do not ask the operator which database to query. Do not say "I need to check" because the check was already done. If a section shows unavailable, say so honestly. Answer with the actual numbers and records provided. Write in plain sentences with no asterisks, no dashes as bullets, no markdown formatting of any kind.\n`;
 
   const dataBlock = contextParts.length > 0
-    ? `\n\n=== LIVE DATA FETCHED FROM DATABASE RIGHT NOW ===\n${contextParts.join('\n\n')}\n=== END LIVE DATA ===\n`
-    : '\n\n[NOTE: No database data available — DB may be unreachable. Be honest about this.]\n';
+    ? `\n\nLIVE DATA FETCHED FROM DATABASE RIGHT NOW:\n\n${contextParts.join('\n\n')}\n\nEND OF LIVE DATA\n`
+    : '\n\nNo database data was available. The DB may be unreachable. Be honest about this.\n';
 
   const fullMessage = userMessage + dataBlock + geminiRule;
 
@@ -279,7 +251,7 @@ async function runGeminiFallbackLoop(agentType, agentName, agentPersona, userMes
     const lines = ['Here is the live data I retrieved:'];
     for (const { name, input, result } of toolCallTrace) {
       if (result.success !== false && result.data) {
-        lines.push(`\n**${name}:** ${JSON.stringify(result.data).slice(0, 400)}`);
+        lines.push(`\n${name}: ${JSON.stringify(result.data).slice(0, 400)}`);
       }
     }
     text = lines.join('\n') || '⚠️ LLM unavailable and no data retrieved.';

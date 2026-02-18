@@ -53,6 +53,7 @@ export default function ProviderVideoCallPage() {
   const [camOn, setCamOn] = useState(true);
   const [localStream, setLocalStream] = useState(null);
   const [mediaError, setMediaError] = useState(null);
+  const [transcript, setTranscript] = useState([]);
 
   const ensureLocalStream = useCallback(async () => {
     if (localStream) return localStream;

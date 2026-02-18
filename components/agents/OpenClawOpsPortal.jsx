@@ -71,6 +71,7 @@ export default function OpenClawOpsPortal() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const [dashboard, setDashboard] = useState(null);
   const [proposals, setProposals] = useState([]);
@@ -212,6 +213,7 @@ export default function OpenClawOpsPortal() {
   const runAgentCycle = useCallback(async () => {
     setRunningCycle(true);
     setError('');
+    setNotice('');
     try {
       await opsApiCall('/run-all', 'POST');
       await loadAll();
@@ -219,6 +221,35 @@ export default function OpenClawOpsPortal() {
       setError(e?.message || 'Failed to run agent cycle');
     } finally {
       setRunningCycle(false);
+    }
+  }, [loadAll, opsApiCall]);
+
+  const cleanupAutomatedInbox = useCallback(async () => {
+    setActionLoading(true);
+    setError('');
+    setNotice('');
+    try {
+      const r = await opsApiCall('/inbox/cleanup', 'POST');
+      const deleted = Number(r?.deleted || 0);
+      setNotice(deleted > 0 ? `Cleaned up ${deleted} automated messages.` : 'Nothing to clean right now.');
+      await loadAll();
+    } catch (e) {
+      setError(e?.message || 'Failed to clean inbox');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [loadAll, opsApiCall]);
+
+  const cleanupInbox = useCallback(async () => {
+    setActionLoading(true);
+    setError('');
+    try {
+      await opsApiCall('/inbox/cleanup', 'POST');
+      await loadAll();
+    } catch (e) {
+      setError(e?.message || 'Failed to clean inbox');
+    } finally {
+      setActionLoading(false);
     }
   }, [loadAll, opsApiCall]);
 
@@ -278,7 +309,7 @@ export default function OpenClawOpsPortal() {
     for (let i = 0; i < 4; i++) {
       const wf = active[i] || null;
       if (!wf) {
-        items.push({ id: i + 1, status: 'idle', task: 'Waiting for Dispatch', progress: 0 });
+        items.push({ id: i + 1, status: 'idle', task: 'Standing by', progress: 0 });
         continue;
       }
       const stepCount = Number(wf.stepCount || 0);
@@ -527,6 +558,20 @@ export default function OpenClawOpsPortal() {
             <div className="p-4 md:p-6">
               {activeTab === 'overview' && (
                 <div className="space-y-6">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={cleanupInbox}
+                      disabled={actionLoading}
+                      className="px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-slate-200 text-xs font-mono disabled:opacity-50"
+                      title="Remove automated heartbeat reports from the inbox"
+                    >
+                      CLEAN_INBOX
+                    </button>
+                    <div className="text-xs text-slate-500">
+                      Removes automated heartbeat reports so you only see real actions and alerts.
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     {[
                       { label: 'Agents', value: String(systemStatus?.agentCount || sys.agentCount || 0), icon: Activity, tone: 'text-blue-300' },

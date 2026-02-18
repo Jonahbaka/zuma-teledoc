@@ -126,6 +126,40 @@ let invitationDb; // Direct DB access for invitation/sign-up actions
 const adminOnly = [authenticate, requireRole('admin', 'super_admin')];
 
 // =========================================================================
+// OUTPUT SANITIZATION (human conversation, no markdown bullets/bold)
+// =========================================================================
+function sanitizeAgentText(input) {
+  let text = String(input || '');
+
+  // Remove fenced code blocks but keep content.
+  text = text.replace(/```[a-zA-Z0-9_-]*\n([\s\S]*?)```/g, (_m, inner) => String(inner || ''));
+
+  // Remove markdown emphasis and headers.
+  text = text.replace(/\*\*/g, '');
+  text = text.replace(/\*/g, '');
+  text = text.replace(/^#{1,6}\s+/gm, '');
+
+  // Convert markdown links [label](url) => label (url)
+  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1 ($2)');
+
+  // Remove list prefixes (dash, bullet dot, numbered lists).
+  text = text.replace(/^\s*[-•]\s+/gm, '');
+  text = text.replace(/^\s*\d+\.\s+/gm, '');
+
+  // Remove underscore italics.
+  text = text.replace(/_([^_]+)_/g, '$1');
+
+  // Remove common tool trace boilerplate that sometimes leaks into content.
+  text = text.replace(/^_?Ran\s+\d+\s+tool call.*$/gmi, '');
+  text = text.replace(/^\s*\d+\s+tool call executed\s*$/gmi, '');
+
+  // Normalize whitespace.
+  text = text.replace(/\r\n/g, '\n');
+  text = text.replace(/\n{3,}/g, '\n\n');
+  return text.trim();
+}
+
+// =========================================================================
 // UPLOADS (PDF/images/docs for analysis)
 // =========================================================================
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'agent-chat');
@@ -284,11 +318,12 @@ router.post('/messages', ...adminOnly, async (req, res) => {
     if (recipientId && recipientId !== 'all' && agentOrchestrator) {
       const response = await generateAgentResponse(recipientId, content, req.user, { attachments });
       if (response) {
+        const cleanContent = sanitizeAgentText(response.content);
         const responseResult = await db.query(`
           INSERT INTO ai_chat_messages (sender_type, sender_id, sender_name, recipient_type, recipient_id, content, message_type, metadata)
           VALUES ('agent', $1, $2, 'operator', $3, $4, $5, $6)
           RETURNING *
-        `, [recipientId, response.agentName, req.user.id, response.content, response.messageType || 'text', JSON.stringify(response.metadata || {})]);
+        `, [recipientId, response.agentName, req.user.id, cleanContent, response.messageType || 'text', JSON.stringify(response.metadata || {})]);
         agentResponse = responseResult.rows[0];
       }
     }
@@ -414,11 +449,12 @@ router.post('/broadcast', ...adminOnly, async (req, res) => {
         try {
           const response = await generateAgentResponse(agent.type || agent.agentType, content, req.user);
           if (response) {
+            const cleanContent = sanitizeAgentText(response.content);
             const rResult = await db.query(`
               INSERT INTO ai_chat_messages (sender_type, sender_id, sender_name, recipient_type, recipient_id, content, message_type)
               VALUES ('agent', $1, $2, 'operator', $3, $4, 'text')
               RETURNING *
-            `, [agent.type || agent.agentType, response.agentName, req.user.id, response.content]);
+            `, [agent.type || agent.agentType, response.agentName, req.user.id, cleanContent]);
             responses.push(rResult.rows[0]);
           }
         } catch (e) { /* individual agent error, continue */ }
@@ -478,7 +514,7 @@ router.post('/summon-all', ...adminOnly, async (req, res) => {
         } catch (e) { /* fallback below */ }
       }
       if (!content) {
-        content = `⚠️ **${agentName}** could not generate a response — LLM is unavailable. Check API keys.`;
+        content = `${agentName} could not generate a response — no AI model is available right now. Check that ANTHROPIC_API_KEY or GEMINI_API_KEY is set.`;
       }
 
       try {
@@ -593,7 +629,12 @@ router.get('/results', ...adminOnly, async (req, res) => {
     params.push(parseInt(limit));
     query += ` ORDER BY created_at DESC LIMIT $${params.length}`;
     const result = await db.query(query, params);
-    res.json({ success: true, data: result.rows });
+    const cleaned = (result.rows || []).map((row) => {
+      const isAgent = row.sender_type === 'agent';
+      if (!isAgent) return row;
+      return { ...row, content: sanitizeAgentText(row.content) };
+    });
+    res.json({ success: true, data: cleaned });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -681,18 +722,25 @@ const AGENT_NAMES = {
 // COMMUNICATION RULES — apply to every agent, every message
 // ─────────────────────────────────────────────────────────────────────────
 const COMMUNICATION_RULES = `
-COMMUNICATION RULES — NON-NEGOTIABLE:
-- Write like a real person talking to another real person. No robot speak.
-- Never use asterisks (*) for bold or bullet formatting. Use plain text and line breaks.
-- Never use markdown headers like ## or **bold**. Just speak naturally.
-- No corporate filler phrases like "Certainly!", "Great question!", "Absolutely!", "Of course!"
-- No bullet lists of capabilities or features unless the operator specifically asks for a list.
-- Do not start responses with your own name or title.
-- Keep it conversational and direct. Short paragraphs, plain language.
-- Match the energy: calm and clear when someone is stressed, direct and fast when they need action.
-- When you have real data from your tools, just state it plainly. "You have 14 patients registered." Not "I have retrieved the following data..."
-- If you do not have data, say so honestly in one sentence, then move on.
-- Never end with a list of things you "can help with." Just help.
+HOW YOU MUST WRITE (non-negotiable):
+
+You write like a real person. Not a bot. Not a report. A human talking to another human.
+
+Never use asterisks. Not for bold, not for bullets, not for anything. Never use dashes as bullet points. Never use markdown headers like ## or ###. No bold, no italic markers, no formatting symbols of any kind. Just plain sentences and line breaks.
+
+Never open with filler like "Certainly!" or "Great question!" or "Of course!" or "Absolutely!" Just start talking.
+
+Never list your capabilities. Never end with "let me know if you need anything else" or "here is what I can help with." Just help with the thing that was asked and stop.
+
+Do not start your response with your own name or title.
+
+When you have real numbers from the database, say them plainly. "You have 14 patients registered. 3 appointments this week. No pending providers." Just the facts in normal sentences.
+
+When you do not have data, say so in one sentence and move on. Do not dramatize it.
+
+Keep paragraphs short. Two to four sentences max. Write the way you would talk across a table to someone you respect.
+
+Match the energy of the person you are talking to. If they are stressed, be calm and clear. If they need action, be direct and fast. If they are a patient who is scared, be warm and grounding.
 `;
 
 const AGENT_PERSONAS = {
@@ -865,22 +913,22 @@ async function generateAgentResponse(agentType, userMessage, user, options = {})
     try {
       if (sub === 'status') {
         const who = await githubService.whoAmI('operator');
-        return { agentName, content: `GitHub: connected as **${who.login}**${who.url ? `\n${who.url}` : ''}`, messageType: 'text', metadata: { agentType, engine: 'github' } };
+        return { agentName, content: `GitHub: connected as ${who.login}${who.url ? `\n${who.url}` : ''}`, messageType: 'text', metadata: { agentType, engine: 'github' } };
       }
       if (sub === 'repos') {
         const repos = await githubService.listRepos(parts[0], 'operator');
-        return { agentName, content: `GitHub repos for "${parts[0]}":\n` + repos.slice(0, 20).map(r => `- ${r.fullName}${r.private ? ' (private)' : ''} — ${r.url}`).join('\n'), messageType: 'text', metadata: { agentType, engine: 'github' } };
+        return { agentName, content: `GitHub repos for "${parts[0]}":\n\n` + repos.slice(0, 20).map(r => `${r.fullName}${r.private ? ' (private)' : ''}\n${r.url}`).join('\n\n'), messageType: 'text', metadata: { agentType, engine: 'github' } };
       }
       if (sub === 'issues') {
         const [owner, repo] = (parts[0] || '').split('/');
         const issues = await githubService.listIssues(owner, repo, 'operator');
-        return { agentName, content: `Open issues for ${owner}/${repo}:\n` + (issues.length ? issues.map(i => `- #${i.number} ${i.title} — ${i.url}`).join('\n') : '(none)'), messageType: 'text', metadata: { agentType, engine: 'github' } };
+        return { agentName, content: `Open issues for ${owner}/${repo}:\n\n` + (issues.length ? issues.map(i => `#${i.number} ${i.title}\n${i.url}`).join('\n\n') : 'None open.'), messageType: 'text', metadata: { agentType, engine: 'github' } };
       }
       if (sub === 'file') {
         const [owner, repo] = (parts[0] || '').split('/');
         const f = await githubService.getFile(owner, repo, parts.slice(1).join(' '), 'operator');
         if (f.type === 'directory') {
-          return { agentName, content: `Directory listing:\n` + (f.entries || []).slice(0, 40).map(e => `- ${e.type}: ${e.path}`).join('\n'), messageType: 'text', metadata: { agentType, engine: 'github' } };
+          return { agentName, content: `Directory listing:\n\n` + (f.entries || []).slice(0, 40).map(e => `${e.type}: ${e.path}`).join('\n'), messageType: 'text', metadata: { agentType, engine: 'github' } };
         }
         return { agentName, content: `File ${f.path} (${f.size} bytes)\n\`\`\`\n${f.text}\n\`\`\``, messageType: 'text', metadata: { agentType, engine: 'github' } };
       }
@@ -895,7 +943,7 @@ async function generateAgentResponse(agentType, userMessage, user, options = {})
       try {
         const r = await webEngine.fetchJSON(m[1], { method: 'GET' });
         const body = r.success ? JSON.stringify(r.data, null, 2).slice(0, 4000) : `Error: ${r.error}`;
-        return { agentName, content: `**API GET** ${m[1]}\n\`\`\`json\n${body}\n\`\`\``, messageType: 'text', metadata: { agentType, engine: 'api_fetch' } };
+        return { agentName, content: `API response from ${m[1]}:\n\n${body}`, messageType: 'text', metadata: { agentType, engine: 'api_fetch' } };
       } catch (e) {
         return { agentName, content: `API fetch error: ${e.message}`, messageType: 'text', metadata: { agentType, engine: 'api_fetch' } };
       }
@@ -942,14 +990,14 @@ async function generateAgentResponse(agentType, userMessage, user, options = {})
   } catch (e) { /* non-critical */ }
 
   if (!agentLoop) {
-    const content = `⚠️ **${agentName}** — agent loop module not loaded. Check server logs.`;
+    const content = `${agentName} — the agent loop module is not loaded. Check server logs for errors.`;
     return { agentName, content, messageType: 'text', metadata: { agentType, engine: 'error' } };
   }
 
   if (!llmService || !llmService.isAvailable()) {
-    const content = `⚠️ **${agentName} — LLM OFFLINE**\n\nNo AI model available.\n\n` +
-      `• Anthropic API Key: ${process.env.ANTHROPIC_API_KEY ? '✅ Set' : '❌ Missing'}\n` +
-      `• Gemini API Key: ${process.env.GEMINI_API_KEY ? '✅ Set' : '❌ Missing'}\n\n` +
+    const content = `${agentName} — LLM is offline. No AI model available.\n\n` +
+      `Anthropic API Key: ${process.env.ANTHROPIC_API_KEY ? 'Set' : 'Missing'}\n` +
+      `Gemini API Key: ${process.env.GEMINI_API_KEY ? 'Set' : 'Missing'}\n\n` +
       `Set ANTHROPIC_API_KEY or GEMINI_API_KEY in your environment and restart.`;
     return { agentName, content, messageType: 'text', metadata: { agentType, engine: 'error' } };
   }
@@ -1000,7 +1048,7 @@ async function generateAgentResponse(agentType, userMessage, user, options = {})
     console.error(`[GenerateResponse] ${agentName} loop error:`, err.message);
     return {
       agentName,
-      content: `⚠️ **${agentName}** — agent loop error: ${err.message}`,
+      content: `${agentName} hit an error: ${err.message}`,
       messageType: 'text',
       metadata: { agentType, engine: 'error' }
     };
@@ -1043,8 +1091,8 @@ async function _legacyGenerateAgentResponse_DO_NOT_USE(agentType, userMessage, u
       return {
         agentName,
         content:
-          `GitHub repos for "${owner}":\n` +
-          repos.slice(0, 20).map((r) => `- ${r.fullName}${r.private ? ' (private)' : ''} — ${r.url}`).join('\n'),
+          `GitHub repos for "${owner}":\n\n` +
+          repos.slice(0, 20).map((r) => `${r.fullName}${r.private ? ' (private)' : ''}\n${r.url}`).join('\n\n'),
         messageType: 'text',
         metadata: { agentType, engine: 'github', action: 'repos', owner }
       };
@@ -1057,8 +1105,8 @@ async function _legacyGenerateAgentResponse_DO_NOT_USE(agentType, userMessage, u
       return {
         agentName,
         content:
-          `Open issues for ${owner}/${repo}:\n` +
-          (issues.length ? issues.map((i) => `- #${i.number} ${i.title} — ${i.url}`).join('\n') : '(none)'),
+          `Open issues for ${owner}/${repo}:\n\n` +
+          (issues.length ? issues.map((i) => `#${i.number} ${i.title}\n${i.url}`).join('\n\n') : 'None open.'),
         messageType: 'text',
         metadata: { agentType, engine: 'github', action: 'issues', owner, repo }
       };
@@ -1073,8 +1121,8 @@ async function _legacyGenerateAgentResponse_DO_NOT_USE(agentType, userMessage, u
         return {
           agentName,
           content:
-            `Directory listing ${owner}/${repo}/${filePath}:\n` +
-            (f.entries || []).slice(0, 40).map((e) => `- ${e.type}: ${e.path}`).join('\n'),
+            `Directory listing ${owner}/${repo}/${filePath}:\n\n` +
+            (f.entries || []).slice(0, 40).map((e) => `${e.type}: ${e.path}`).join('\n'),
           messageType: 'text',
           metadata: { agentType, engine: 'github', action: 'file_list', owner, repo }
         };

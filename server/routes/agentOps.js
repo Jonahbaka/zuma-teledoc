@@ -13,6 +13,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate, requireRole } = require('../middleware/auth');
+const db = require('../db');
 
 let orchestrator;
 try {
@@ -203,6 +204,28 @@ router.get('/briefings', ...adminOnly, ensureOrchestrator, async (req, res) => {
     const { date, agentType, limit } = req.query;
     const briefings = await orchestrator.getBriefings({ date, agentType, limit: parseInt(limit) || 20 });
     res.json({ success: true, data: briefings });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =========================================================================
+// INBOX MAINTENANCE (reduce automated noise)
+// =========================================================================
+
+/** POST /api/agent-ops/inbox/cleanup
+ * Removes older automated heartbeat messages from ai_chat_messages.
+ */
+router.post('/inbox/cleanup', ...adminOnly, async (_req, res) => {
+  try {
+    const result = await db.query(
+      `DELETE FROM ai_chat_messages
+       WHERE sender_type = 'agent'
+         AND recipient_type = 'operator'
+         AND (metadata->>'source' = 'heartbeat' OR metadata->>'automated' = 'true')
+         AND message_type = 'report'`
+    );
+    res.json({ success: true, data: { deleted: result?.rowCount || 0 } });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
