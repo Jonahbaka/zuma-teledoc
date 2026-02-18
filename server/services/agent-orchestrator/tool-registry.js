@@ -111,19 +111,25 @@ const TOOL_DEFINITIONS = {
   },
 
   create_crm_contact: {
-    description: 'Create a new CRM contact. Use this when you find a prospect (provider lead, investor, partner) that should be tracked.',
+    description: 'Create a new CRM contact. Use when you find a provider lead, investor, partner, or any contact worth tracking. Duplicates by email are prevented automatically.',
     input_schema: {
       type: 'object',
       properties: {
         first_name: { type: 'string', description: 'First name' },
         last_name: { type: 'string', description: 'Last name' },
-        email: { type: 'string', description: 'Email address' },
+        email: { type: 'string', description: 'Email address (optional but recommended for dedup)' },
         organization: { type: 'string', description: 'Company or organization name' },
         phone: { type: 'string', description: 'Phone number' },
-        contact_type: { type: 'string', description: 'Type: provider, investor, partner, lead, nurse' },
-        tags: { type: 'array', items: { type: 'string' }, description: 'Tags like: provider, investor, partner, lead' },
-        notes: { type: 'string', description: 'Any relevant notes about this contact' },
-        source: { type: 'string', description: 'Where this lead came from (e.g. web_search, npi_registry, linkedin)' }
+        contact_type: { type: 'string', description: 'provider, investor, partner, lead, or nurse' },
+        specialty: { type: 'string', description: 'Medical specialty if applicable' },
+        city: { type: 'string', description: 'City' },
+        state: { type: 'string', description: 'State code' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Tags like: telehealth, NPI, accelerator' },
+        notes: { type: 'string', description: 'Any relevant context about this contact' },
+        source: { type: 'string', description: 'Where this came from: web_search, npi_registry, linkedin, manual' },
+        source_url: { type: 'string', description: 'URL where this contact was found' },
+        pipeline_stage: { type: 'string', description: 'new, contacted, outreach_queued, qualified, proposal_sent, negotiation, won, lost' },
+        lead_score: { type: 'number', description: '0-100 quality score' }
       },
       required: ['first_name', 'last_name']
     }
@@ -452,19 +458,24 @@ const TOOL_EXECUTORS = {
     }
   },
 
-  async create_crm_contact({ first_name, last_name, email, organization, phone, contact_type = 'lead', tags = [], notes, source } = {}) {
+  async create_crm_contact({ first_name, last_name, email, organization, phone, contact_type = 'lead', tags = [], notes, source, source_url, specialty, city, state, pipeline_stage = 'new', lead_score = 0 } = {}) {
     try {
+      if (email) {
+        const dup = await db.query(`SELECT id FROM crm_contacts WHERE email = $1 LIMIT 1`, [email]);
+        if (dup.rows.length > 0) {
+          return { success: true, data: dup.rows[0], message: `Contact with email ${email} already exists (id: ${dup.rows[0].id}).`, duplicate: true };
+        }
+      }
       const r = await db.query(
-        `INSERT INTO crm_contacts (first_name, last_name, email, organization, phone, contact_type, tags, notes, source)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (email) DO UPDATE SET
-           first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name,
-           organization = EXCLUDED.organization, tags = EXCLUDED.tags, notes = EXCLUDED.notes
+        `INSERT INTO crm_contacts (first_name, last_name, email, organization, phone, contact_type, tags, notes, source, source_url, source_agent, specialty, city, state, pipeline_stage, lead_score)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          RETURNING id, first_name, last_name, email, organization, contact_type, pipeline_stage, created_at`,
-        [first_name, last_name, email || null, organization || null, phone || null,
-         contact_type || 'lead', JSON.stringify(tags), notes || null, source || 'agent']
+        [first_name || '', last_name || '', email || null, organization || null, phone || null,
+         contact_type || 'lead', Array.isArray(tags) ? `{${tags.join(',')}}` : '{}',
+         notes || null, source || 'agent', source_url || null, 'agent',
+         specialty || null, city || null, state || null, pipeline_stage || 'new', lead_score || 0]
       );
-      return { success: true, data: r.rows[0], message: `Contact ${first_name} ${last_name} created/updated in CRM.` };
+      return { success: true, data: r.rows[0], message: `Contact ${first_name} ${last_name} added to CRM.` };
     } catch (err) {
       return { success: false, error: err.message };
     }
@@ -706,9 +717,9 @@ const AGENT_TOOL_PERMISSIONS = {
   revenue:          ['get_platform_stats','query_revenue','query_crm','search_web','log_agent_result','list_credentials','query_agent_results'],
   compliance:       ['get_platform_stats','query_patients','query_providers','query_prescriptions','query_appointments','list_credentials','query_agent_results','log_agent_result'],
   governance:       ['get_platform_stats','query_agent_results','list_credentials','log_agent_result'],
-  corporate_skills: ['get_platform_stats','search_web','scrape_url','list_credentials','log_agent_result'],
-  researcher:       ['search_web','scrape_url','get_platform_stats','query_crm','log_agent_result','list_uploaded_files','read_uploaded_file'],
-  economics:        ['get_platform_stats','query_revenue','search_web','log_agent_result'],
+  corporate_skills: ['get_platform_stats','search_web','scrape_url','list_credentials','log_agent_result','query_crm','create_crm_contact','query_providers'],
+  researcher:       ['search_web','scrape_url','get_platform_stats','query_crm','create_crm_contact','log_agent_result','list_uploaded_files','read_uploaded_file'],
+  economics:        ['get_platform_stats','query_revenue','search_web','log_agent_result','query_crm'],
   physicist:        ['get_platform_stats','query_appointments','query_agent_results','log_agent_result'],
   mathematician:    ['get_platform_stats','query_revenue','query_appointments','query_patients','query_agent_results','log_agent_result'],
   vortex_math:      ['get_platform_stats','query_agent_results','log_agent_result'],

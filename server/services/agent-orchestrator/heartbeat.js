@@ -17,6 +17,24 @@ const db = require('../../db');
 let webEngine = null;
 try { webEngine = require('./web-action-engine'); } catch (e) { /* optional */ }
 
+async function insertCrmContact({ first_name, last_name, email, phone, title, organization, contact_type, specialty, source, source_url, source_agent, npi_number, city, state, notes, pipeline_stage, lead_score, priority, assigned_agent, tags }) {
+  try {
+    const r = await db.query(`
+      INSERT INTO crm_contacts (first_name, last_name, email, phone, title, organization, contact_type, specialty, source, source_url, source_agent, npi_number, city, state, notes, pipeline_stage, lead_score, priority, assigned_agent, tags)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+      ON CONFLICT DO NOTHING
+      RETURNING id
+    `, [
+      first_name || '', last_name || '', email || null, phone || null,
+      title || null, organization || null, contact_type || 'lead', specialty || null,
+      source || null, source_url || null, source_agent || null, npi_number || null,
+      city || null, state || null, notes || null, pipeline_stage || 'new',
+      lead_score || 0, priority || 'medium', assigned_agent || null, tags || '{}'
+    ]);
+    return r.rows[0]?.id || null;
+  } catch { return null; }
+}
+
 function sanitizeText(input) {
   let text = String(input || '');
   text = text.replace(/```[a-zA-Z0-9_-]*\n([\s\S]*?)```/g, (_m, inner) => String(inner || ''));
@@ -83,14 +101,13 @@ class HeartbeatSystem {
   }
 
   async cleanupInbox() {
-    // Remove automated heartbeat chatter older than 48 hours.
     try {
       await db.query(
         `DELETE FROM ai_chat_messages
          WHERE sender_type = 'agent'
            AND recipient_type = 'operator'
            AND (metadata->>'source' = 'heartbeat' OR metadata->>'automated' = 'true')
-           AND created_at < NOW() - INTERVAL '48 hours'`
+           AND created_at < NOW() - INTERVAL '24 hours'`
       );
     } catch {
       // ignore
@@ -399,42 +416,43 @@ class HeartbeatSystem {
       console.error('Mission healthcare news failed:', e.message);
     }
 
-    // Mission 3: Provider leads (NPI)
+    // Mission 3: Provider leads (NPI) — scraped from real federal registry, inserted directly into CRM
     try {
       const providers = await webEngine.scrapeProviderDirectories();
       if (providers.length > 0) {
         await webEngine.storeResult('corporate_skills', 'The Builder', 'provider_leads', 'NPI Provider Leads', providers);
 
-        // Auto-import to CRM
-        try {
-          const crmService = require('../crmService');
-          if (crmService.initialized) {
-            let imported = 0;
-            for (const p of providers) {
-              if (!p.name || p.name === 'Unknown') continue;
-              const nameParts = p.name.split(' ');
-              const result = await crmService.addContact({
-                firstName: nameParts[0] || '', lastName: nameParts.slice(1).join(' ') || '',
-                title: p.credential || '', specialty: p.specialty || '', contactType: 'provider',
-                source: 'npi_registry', sourceAgent: 'corporate_skills',
-                npiNumber: p.npi || null, city: p.city || '', state: p.state || '',
-                phone: p.phone || '', assignedAgent: 'growth', priority: 'medium',
-                notes: `NPI Registry lead. Type: ${p.type || 'Individual'}`
-              });
-              if (result) imported++;
-            }
-            if (imported > 0) {
-              console.log(`  CRM: ${imported} new providers auto-imported`);
-              await this.postToInbox(
-                'growth',
-                'The Scout',
-                `I pulled provider leads from NPI and imported ${imported} of them into the CRM.\n\nIf you want, I can draft a short, respectful outreach email and create the campaign as a draft for your approval.`,
-                'alert',
-                { category: 'lead_gen', severity: 'info' }
-              );
-            }
-          }
-        } catch {}
+        let imported = 0;
+        for (const p of providers) {
+          if (!p.name || p.name === 'Unknown') continue;
+          const nameParts = p.name.split(' ');
+          const id = await insertCrmContact({
+            first_name: nameParts[0] || '',
+            last_name: nameParts.slice(1).join(' ') || '',
+            title: p.credential || '',
+            specialty: p.specialty || '',
+            contact_type: 'provider',
+            source: 'npi_registry',
+            source_agent: 'corporate_skills',
+            npi_number: p.npi || null,
+            city: p.city || '',
+            state: p.state || '',
+            phone: p.phone || '',
+            assigned_agent: 'growth',
+            priority: 'medium',
+            pipeline_stage: 'new',
+            notes: `NPI Registry lead. Type: ${p.type || 'Individual'}. Scraped ${new Date().toISOString().slice(0, 10)}.`
+          });
+          if (id) imported++;
+        }
+        if (imported > 0) {
+          console.log(`  CRM: ${imported} NPI providers auto-imported`);
+          await this.postToInbox(
+            'growth', 'The Scout',
+            `Pulled ${providers.length} provider leads from the NPI federal registry and imported ${imported} new ones into the CRM. Check them at /admin/crm.\n\nI can draft outreach for your approval whenever you are ready.`,
+            'alert', { category: 'lead_gen', severity: 'info', imported }
+          );
+        }
       }
     } catch (e) {
       console.error('Mission provider leads failed:', e.message);
@@ -473,41 +491,27 @@ class HeartbeatSystem {
       console.error('Mission social presence failed:', e.message);
     }
 
-    // Mission 6: CRM growth (consolidated, plain text)
+    // Mission 6: CRM growth stats — direct DB queries, no external service dependency
     try {
-      let crmService;
-      try { crmService = require('../crmService'); } catch {}
+      let parts = [`CRM update (${ts} ET)\n`];
 
-      if (crmService) {
-        let parts = [`CRM update (${ts} ET)\n`];
+      const totalContacts = await this._safeCount("SELECT COUNT(*) FROM crm_contacts WHERE is_active = true");
+      const newLeads = await this._safeCount("SELECT COUNT(*) FROM crm_contacts WHERE pipeline_stage = 'new'");
+      const outreachQueued = await this._safeCount("SELECT COUNT(*) FROM crm_contacts WHERE pipeline_stage = 'outreach_queued'");
+      const recentImports = await this._safeCount("SELECT COUNT(*) FROM crm_contacts WHERE created_at > NOW() - INTERVAL '24 hours'");
+      const newUsers = await this._safeCount("SELECT COUNT(*) FROM users WHERE created_at > NOW() - INTERVAL '24 hours'");
 
-        try {
-          const imported = await crmService._importAgentLeads();
-          if (imported > 0) parts.push(`${imported} new leads imported from agent web missions.`);
-        } catch {}
+      parts.push(`${totalContacts} CRM contacts total. ${recentImports} added in last 24 hours.`);
+      if (newLeads > 0) parts.push(`${newLeads} leads in "new" stage need review.`);
+      if (outreachQueued > 0) parts.push(`${outreachQueued} contacts queued for outreach — approve a campaign to start sending.`);
+      if (newUsers > 0) parts.push(`${newUsers} new platform sign-ups in the last 24 hours.`);
 
-        try {
-          const stats = await crmService.getDashboardStats();
-          const total = Object.values(stats.contactsByType || {}).reduce((a, b) => a + b, 0);
-          const pipeline = stats.pipelineDistribution || {};
-          const queued = pipeline.outreach_queued || 0;
-          const newLeads = pipeline.new || 0;
-
-          parts.push(`${total} contacts total. ${newLeads} new leads, ${queued} queued for outreach.`);
-          if (queued > 0) parts.push(`${queued} contacts are ready to go — approve a campaign to start sending.`);
-          if (newLeads > 5) parts.push(`${newLeads} new leads need review and pipeline movement.`);
-        } catch {}
-
-        const newUsers = await this._safeCount("SELECT COUNT(*) FROM users WHERE created_at > NOW() - INTERVAL '24 hours'");
-        if (newUsers > 0) parts.push(`${newUsers} new sign-ups in the last 24 hours.`);
-
-        if (parts.length > 1) {
-          const joined = parts.join('\n');
-          // Only post when something needs the Operator (outreach queued).
-          if (joined.toLowerCase().includes('approve a campaign')) {
-            await this.postToInbox('growth', 'The Scout', joined, 'alert', { category: 'crm_growth', severity: 'info' });
-          }
-        }
+      const hasAction = outreachQueued > 0 || newLeads > 5 || recentImports > 0;
+      if (hasAction && parts.length > 1) {
+        await this.postToInbox('growth', 'The Scout', parts.join('\n'), 'alert', {
+          category: 'crm_growth', severity: 'info',
+          metrics: { totalContacts, newLeads, outreachQueued, recentImports, newUsers }
+        });
       }
     } catch (e) {
       console.error('Mission CRM growth failed:', e.message);
@@ -527,37 +531,49 @@ class HeartbeatSystem {
           { category: 'vc_scouting', severity: 'info', opportunityCount: vcResults.count }
         );
 
-        // Auto-import to CRM
-        try {
-          let crmLocal;
-          try { crmLocal = require('../crmService'); } catch {}
-          if (crmLocal) {
-            for (const opp of vcResults.opportunities.slice(0, 8)) {
-              try {
-                await crmLocal.addContact({
-                  first_name: opp.title.substring(0, 50), last_name: '',
-                  organization: opp.url.replace(/https?:\/\//, '').split('/')[0],
-                  contact_type: opp.category === 'grant' ? 'partner' : 'investor',
-                  source: `vc_scout_auto_${new Date().toISOString().slice(0, 10)}`,
-                  source_agent: 'growth',
-                  notes: `${opp.snippet}\n\nSource: ${opp.url}\nCategory: ${opp.category}`,
-                  pipeline_stage: 'new', lead_score: opp.category === 'grant' ? 75 : 65
-                });
-              } catch {}
-            }
-          }
-        } catch {}
+        let vcImported = 0;
+        for (const opp of vcResults.opportunities.slice(0, 8)) {
+          const id = await insertCrmContact({
+            first_name: opp.title.substring(0, 50),
+            last_name: '',
+            organization: opp.url.replace(/https?:\/\//, '').split('/')[0],
+            contact_type: opp.category === 'grant' ? 'partner' : 'investor',
+            source: `vc_scout_auto_${new Date().toISOString().slice(0, 10)}`,
+            source_agent: 'growth',
+            notes: `${opp.snippet}\n\nSource: ${opp.url}\nCategory: ${opp.category}`,
+            pipeline_stage: 'new',
+            lead_score: opp.category === 'grant' ? 75 : 65,
+            source_url: opp.url
+          });
+          if (id) vcImported++;
+        }
+        if (vcImported > 0) console.log(`  CRM: ${vcImported} VC/funding opportunities imported`);
         await webEngine.storeResult('growth', 'The Scout', 'vc_scouting', 'VC & Investment Scout', vcResults.opportunities.slice(0, 10));
       }
 
       const provResults = await webEngine.scoutProviderRecruitment();
       if (provResults.success && provResults.count > 0) {
+        let provImported = 0;
+        for (const lead of provResults.leads.slice(0, 10)) {
+          const id = await insertCrmContact({
+            first_name: (lead.title || '').substring(0, 80),
+            organization: lead.url ? lead.url.replace(/https?:\/\//, '').split('/')[0] : '',
+            contact_type: 'provider',
+            source: 'web_scout_recruitment',
+            source_url: lead.url || null,
+            source_agent: 'growth',
+            notes: `${lead.snippet || ''}\n\nLead type: ${lead.leadType || 'general'}. Query: ${lead.query || ''}`,
+            pipeline_stage: 'new',
+            lead_score: lead.leadType === 'competitor_switch' ? 80 : 60,
+            priority: lead.leadType === 'competitor_switch' ? 'high' : 'medium',
+            assigned_agent: 'growth'
+          });
+          if (id) provImported++;
+        }
         await this.postToInbox(
-          'growth',
-          'The Scout',
-          `I found ${provResults.count} provider recruitment leads.\n\nIf you want, I will import the top 10 into CRM and create a draft outreach campaign for you to approve.`,
-          'alert',
-          { category: 'provider_recruitment', severity: 'info', leadCount: provResults.count }
+          'growth', 'The Scout',
+          `Found ${provResults.count} provider recruitment leads and imported ${provImported} into CRM. Check /admin/crm to review and start outreach.`,
+          'alert', { category: 'provider_recruitment', severity: 'info', leadCount: provResults.count, imported: provImported }
         );
         await webEngine.storeResult('growth', 'The Scout', 'provider_scouting', 'Provider Recruitment Scout', provResults.leads.slice(0, 10));
       }
@@ -584,7 +600,7 @@ class HeartbeatSystem {
       console.error('Mission opportunity scout failed:', e.message);
     }
 
-    // AI synthesis of missions
+    // AI synthesis of missions — post a brief actionable summary
     if (this.llm && this.llm.isAvailable()) {
       try {
         const synthesis = await this.llm.callLLM(
@@ -592,7 +608,9 @@ class HeartbeatSystem {
           `Summarize the top 3 actionable items the Operator should act on today. Be specific. Plain text only.`,
           { maxTokens: 256, temperature: 0.7 }
         );
-        void synthesis;
+        if (synthesis && synthesis.trim().length > 20) {
+          await this.postToInbox('ceo', 'The Conductor', `Web mission debrief (${ts} ET)\n\n${synthesis}`, 'alert', { category: 'web_mission_summary', aiGenerated: true });
+        }
       } catch {}
     }
 

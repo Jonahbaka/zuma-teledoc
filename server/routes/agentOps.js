@@ -214,7 +214,7 @@ router.get('/briefings', ...adminOnly, ensureOrchestrator, async (req, res) => {
 // =========================================================================
 
 /** POST /api/agent-ops/inbox/cleanup
- * Removes older automated heartbeat messages from ai_chat_messages.
+ * Removes ALL automated heartbeat messages from ai_chat_messages.
  */
 router.post('/inbox/cleanup', ...adminOnly, async (_req, res) => {
   try {
@@ -222,8 +222,22 @@ router.post('/inbox/cleanup', ...adminOnly, async (_req, res) => {
       `DELETE FROM ai_chat_messages
        WHERE sender_type = 'agent'
          AND recipient_type = 'operator'
-         AND (metadata->>'source' = 'heartbeat' OR metadata->>'automated' = 'true')
-         AND message_type = 'report'`
+         AND (
+           metadata->>'source' = 'heartbeat'
+           OR metadata->>'automated' = 'true'
+           OR message_type = 'report'
+           OR message_type = 'alert'
+           OR (content LIKE 'Platform check-in%')
+           OR (content LIKE 'System online%')
+           OR (content LIKE 'CRM update%')
+           OR (content LIKE 'Executive update%')
+           OR (content LIKE 'Morning briefing%')
+           OR (content LIKE 'Web mission debrief%')
+           OR (content LIKE 'Credential request%')
+           OR (content LIKE 'SEO check%')
+           OR (content LIKE 'Social media check%')
+           OR (content LIKE 'Agent cycle update%')
+         )`
     );
     res.json({ success: true, data: { deleted: result?.rowCount || 0 } });
   } catch (error) {
