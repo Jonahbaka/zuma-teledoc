@@ -36,18 +36,44 @@ const BCRYPT_ROUNDS = 12;
 // WARNING: In production, always set JWT_ACCESS_SECRET and JWT_REFRESH_SECRET env vars
 const generateFallbackSecret = () => crypto.randomBytes(64).toString('hex');
 
+// IMPORTANT: Random fallback secrets break in multi-instance deployments (or after restart),
+// because tokens minted by one instance won't verify on another. If explicit JWT secrets
+// are not provided, derive a stable secret from an existing server secret.
+const deriveStableJwtSecret = (purpose) => {
+  const seed =
+    process.env.JWT_SECRET ||
+    process.env.JWT_DERIVATION_SEED ||
+    process.env.SESSION_SECRET ||
+    process.env.ENCRYPTION_KEY ||
+    process.env.DATABASE_URL;
+  if (!seed) return null;
+  return crypto.createHmac('sha256', String(seed)).update(String(purpose)).digest('hex');
+};
+
 // Use global storage to ensure same secret is used across all modules
 let ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET;
 let REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET;
 
 if (!ACCESS_TOKEN_SECRET) {
-  // Store in global so auth middleware can use the same secret
-  ACCESS_TOKEN_SECRET = global.__JWT_ACCESS_SECRET || (global.__JWT_ACCESS_SECRET = generateFallbackSecret());
-  console.warn('WARNING: JWT_ACCESS_SECRET not set, using generated fallback. Set this in production!');
+  const derived = deriveStableJwtSecret('doctarx.jwt.access.v1');
+  if (derived) {
+    ACCESS_TOKEN_SECRET = derived;
+    console.warn('WARNING: JWT_ACCESS_SECRET not set — deriving a stable secret from server env. Set JWT_ACCESS_SECRET explicitly in production.');
+  } else {
+    // Store in global so auth middleware can use the same secret (single-process dev only)
+    ACCESS_TOKEN_SECRET = global.__JWT_ACCESS_SECRET || (global.__JWT_ACCESS_SECRET = generateFallbackSecret());
+    console.warn('WARNING: JWT_ACCESS_SECRET not set, using generated random fallback. Tokens may break across restarts/instances. Set this in production!');
+  }
 }
 if (!REFRESH_TOKEN_SECRET) {
-  REFRESH_TOKEN_SECRET = global.__JWT_REFRESH_SECRET || (global.__JWT_REFRESH_SECRET = generateFallbackSecret());
-  console.warn('WARNING: JWT_REFRESH_SECRET not set, using generated fallback. Set this in production!');
+  const derived = deriveStableJwtSecret('doctarx.jwt.refresh.v1');
+  if (derived) {
+    REFRESH_TOKEN_SECRET = derived;
+    console.warn('WARNING: JWT_REFRESH_SECRET not set — deriving a stable secret from server env. Set JWT_REFRESH_SECRET explicitly in production.');
+  } else {
+    REFRESH_TOKEN_SECRET = global.__JWT_REFRESH_SECRET || (global.__JWT_REFRESH_SECRET = generateFallbackSecret());
+    console.warn('WARNING: JWT_REFRESH_SECRET not set, using generated random fallback. Tokens may break across restarts/instances. Set this in production!');
+  }
 }
 
 const ACCESS_TOKEN_EXPIRES = process.env.JWT_ACCESS_EXPIRES || '15m';

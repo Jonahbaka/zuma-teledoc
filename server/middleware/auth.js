@@ -11,12 +11,31 @@ const logger = require('./logger');
 // Generate fallback secret if not provided (matches auth.js logic)
 const generateFallbackSecret = () => crypto.randomBytes(64).toString('hex');
 
+// IMPORTANT: Random fallback secrets break in multi-instance deployments (or after restart).
+// If explicit JWT secrets are not provided, derive a stable secret from an existing server secret.
+const deriveStableJwtSecret = (purpose) => {
+  const seed =
+    process.env.JWT_SECRET ||
+    process.env.JWT_DERIVATION_SEED ||
+    process.env.SESSION_SECRET ||
+    process.env.ENCRYPTION_KEY ||
+    process.env.DATABASE_URL;
+  if (!seed) return null;
+  return crypto.createHmac('sha256', String(seed)).update(String(purpose)).digest('hex');
+};
+
 let ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET;
 if (!ACCESS_TOKEN_SECRET) {
-  // Use a consistent fallback that matches auth.js - we need the SAME secret
-  // This is stored in memory and shared across the app
-  ACCESS_TOKEN_SECRET = global.__JWT_ACCESS_SECRET || (global.__JWT_ACCESS_SECRET = generateFallbackSecret());
-  console.warn('WARNING: JWT_ACCESS_SECRET not set in auth middleware, using fallback.');
+  const derived = deriveStableJwtSecret('doctarx.jwt.access.v1');
+  if (derived) {
+    ACCESS_TOKEN_SECRET = derived;
+    console.warn('WARNING: JWT_ACCESS_SECRET not set in auth middleware — deriving a stable secret from server env. Set JWT_ACCESS_SECRET explicitly in production.');
+  } else {
+    // Use a consistent fallback that matches auth.js - we need the SAME secret
+    // This is stored in memory and shared across the app (single-process dev only).
+    ACCESS_TOKEN_SECRET = global.__JWT_ACCESS_SECRET || (global.__JWT_ACCESS_SECRET = generateFallbackSecret());
+    console.warn('WARNING: JWT_ACCESS_SECRET not set in auth middleware, using generated random fallback. Tokens may break across restarts/instances.');
+  }
 }
 
 const normalizeRole = (role) => String(role || '').trim().toLowerCase();
@@ -45,7 +64,8 @@ const authenticate = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({
         success: false,
-        error: 'Authentication required'
+        error: 'Authentication required',
+        code: 'AUTH_REQUIRED'
       });
     }
     
@@ -109,7 +129,8 @@ const authenticate = async (req, res, next) => {
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({
         success: false,
-        error: 'Invalid token'
+        error: 'Invalid token',
+        code: 'INVALID_TOKEN'
       });
     }
     

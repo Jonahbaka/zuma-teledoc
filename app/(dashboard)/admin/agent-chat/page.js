@@ -175,9 +175,20 @@ export default function AgentChatPage() {
       } catch {
         data = { success: false, error: `Invalid server response (${res.status})` };
       }
-      if (!data.success) throw new Error(data.error);
+      if (!data.success) {
+        const err = new Error(data.error || `Request failed (${res.status})`);
+        err.status = res.status;
+        err.code = data.code;
+        throw err;
+      }
       return data.data;
     } catch (err) {
+      // If auth breaks (expired/invalid token), make it obvious and force re-login.
+      if (err && err.status === 401) {
+        try { localStorage.removeItem('accessToken'); } catch { /* ignore */ }
+        // On admin-only pages, redirecting is better than silently failing.
+        if (typeof window !== 'undefined') window.location.href = '/secure/admin';
+      }
       if (err.name === 'AbortError') {
         console.error(`API timeout after ${timeoutMs}ms:`, endpoint);
       } else {

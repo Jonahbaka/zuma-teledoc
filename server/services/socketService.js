@@ -5,6 +5,7 @@
 
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const logger = require('../middleware/logger');
 
 // Store for online users and their socket IDs
@@ -20,6 +21,17 @@ const roleAliasMap = {
   'super-admin': 'super_admin'
 };
 const canonicalRole = (role) => roleAliasMap[normalizeRole(role)] || normalizeRole(role);
+
+const deriveStableJwtSecret = (purpose) => {
+  const seed =
+    process.env.JWT_SECRET ||
+    process.env.JWT_DERIVATION_SEED ||
+    process.env.SESSION_SECRET ||
+    process.env.ENCRYPTION_KEY ||
+    process.env.DATABASE_URL;
+  if (!seed) return null;
+  return crypto.createHmac('sha256', String(seed)).update(String(purpose)).digest('hex');
+};
 
 /**
  * Initialize Socket.io with the HTTP server
@@ -55,7 +67,11 @@ const initializeSocket = (httpServer) => {
       }
 
       // Use same secret as main auth system
-      const accessSecret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || global.__JWT_ACCESS_SECRET;
+      const accessSecret =
+        process.env.JWT_ACCESS_SECRET ||
+        deriveStableJwtSecret('doctarx.jwt.access.v1') ||
+        process.env.JWT_SECRET ||
+        global.__JWT_ACCESS_SECRET;
       const decoded = jwt.verify(token, accessSecret);
       socket.userId = decoded.userId || decoded.id;
       socket.userRole = canonicalRole(decoded.role);
