@@ -1,6 +1,7 @@
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/components/providers/AuthProvider';
+import { HiveProvider } from '@/components/providers/HiveProvider';
 import { I18nProvider } from '@/components/providers/I18nProvider';
 import ConditionalSiteFooter from '@/components/layouts/ConditionalSiteFooter';
 import GoogleAnalytics from '@/components/analytics/GoogleAnalytics';
@@ -109,9 +110,11 @@ export default function RootLayout({ children }) {
         <GoogleAnalytics />
         <I18nProvider>
           <AuthProvider>
-            {children}
-            <ConditionalSiteFooter />
-            <Toaster />
+            <HiveProvider>
+              {children}
+              <ConditionalSiteFooter />
+              <Toaster />
+            </HiveProvider>
           </AuthProvider>
         </I18nProvider>
       </body>

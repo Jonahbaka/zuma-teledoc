@@ -519,7 +519,8 @@ async function initializeApp() {
   loadRoute('/api/agent-social', './routes/agentSocial');
   loadRoute('/api/realtime-analytics', './routes/realtimeAnalytics');
   loadRoute('/api/auth/zoho/recruit', './routes/zohoRecruitAuth');
-  console.log('✅ API routes loading complete');
+  loadRoute('/api/hive', './routes/hive');
+  console.log('✅ API routes loading complete (+ Hive Gateway)');
   
   // Initialize Predictive Intelligence Engine (non-blocking)
   try {

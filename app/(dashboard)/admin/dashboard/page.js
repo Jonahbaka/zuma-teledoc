@@ -14,6 +14,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import HiveOverwatch from '@/components/hive/HiveOverwatch';
 
 // Mock data for System Health
 const MOCK_SYSTEM_HEALTH = {
@@ -606,6 +607,20 @@ export default function AdminDashboard() {
           </Card>
         </Link>
       </div>
+
+      {/* Hive Overwatch — Live Agent Monitoring & Control */}
+      <Card className="border-amber-500/20 bg-gradient-to-br from-background to-amber-950/5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="w-5 h-5 text-amber-500" />
+            Hive Command Center
+          </CardTitle>
+          <CardDescription>Real-time agent monitoring, intervention queue, and kill switch</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <HiveOverwatch />
+        </CardContent>
+      </Card>
     </div>
   );
 }

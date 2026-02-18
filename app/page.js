@@ -13,6 +13,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { toast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
+import ConciergeWidget from '@/components/hive/ConciergeWidget';
 
 const HERO_IMAGE = "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=2000";
 const PATIENT_MOMENT_IMAGE = "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?auto=format&fit=crop&q=80&w=1200";
@@ -417,6 +418,9 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
+
+      {/* Nurse Nova — AI Health Concierge */}
+      <ConciergeWidget />
     </div>
   );
 }

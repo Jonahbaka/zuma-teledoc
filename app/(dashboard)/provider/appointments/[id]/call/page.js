@@ -16,6 +16,7 @@ import { formatDateTime, formatTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
+import ClinicalCoPilot from '@/components/hive/ClinicalCoPilot';
 
 /* ─────────────────── constants ─────────────────── */
 
@@ -412,13 +413,12 @@ const ActiveCall = ({
         </div>
       </div>
 
-      {/* ── AI Sidebar ── */}
+      {/* ── AI Sidebar (Hive Clinical Co-Pilot) ── */}
       <div className={`transition-all duration-500 ease-in-out relative ${showAI ? 'w-80 opacity-100 translate-x-0' : 'w-0 opacity-0 translate-x-10 overflow-hidden'}`}>
-        <AIAgentSidebar
-          appointment={appointment}
-          transcript={[]}
-          isOpen={showAI}
-          onClose={() => setShowAI(false)}
+        <ClinicalCoPilot
+          appointmentId={appointment?.id}
+          patientId={appointment?.patientId}
+          patientName={`${appointment?.patientFirstName || ''} ${appointment?.patientLastName || ''}`.trim()}
         />
       </div>
 

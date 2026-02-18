@@ -14,6 +14,7 @@ import { appointmentsAPI, notificationsAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime, formatRelativeTime, cn } from '@/lib/utils';
+import TriageFlow from '@/components/hive/TriageFlow';
 
 // Mock data for patient-centric widgets
 const MOCK_MEDICATIONS = [
@@ -196,6 +197,9 @@ export default function PatientDashboard() {
           </Link>
         ))}
       </div>
+
+      {/* AI Triage — Describe symptoms to get the right care */}
+      <TriageFlow />
 
       {/* Insurance Status Banner */}
       <Card className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 dark:from-emerald-500/5 dark:to-teal-500/5 border-emerald-500/30">

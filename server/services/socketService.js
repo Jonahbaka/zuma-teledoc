@@ -258,7 +258,117 @@ const initializeSocket = (httpServer) => {
     });
   });
 
-  console.log('🔌 Socket.io initialized');
+  // ═══ HIVE NAMESPACE — Dedicated real-time channel for agent sessions ═══
+  const hiveNs = io.of('/hive');
+
+  hiveNs.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ', '');
+      if (!token) {
+        socket.hiveRole = 'guest';
+        return next();
+      }
+      const accessSecret =
+        process.env.JWT_ACCESS_SECRET ||
+        deriveStableJwtSecret('doctarx.jwt.access.v1') ||
+        process.env.JWT_SECRET ||
+        global.__JWT_ACCESS_SECRET;
+      const decoded = jwt.verify(token, accessSecret);
+      socket.userId = decoded.userId || decoded.id;
+      socket.userRole = canonicalRole(decoded.role);
+      socket.userName = decoded.name || `${decoded.firstName || ''} ${decoded.lastName || ''}`.trim();
+      socket.hiveRole = socket.userRole;
+      next();
+    } catch {
+      socket.hiveRole = 'guest';
+      next();
+    }
+  });
+
+  hiveNs.on('connection', (hiveSocket) => {
+    const agentId = hiveSocket.handshake.query.agentId || 'nova';
+    const sessionId = `hive_ws_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    hiveSocket.hiveSessionId = sessionId;
+
+    hiveSocket.emit('hive:session', { sessionId, agentId, role: hiveSocket.hiveRole });
+    hiveSocket.join(`hive:session:${sessionId}`);
+
+    if (hiveSocket.userRole === 'admin' || hiveSocket.userRole === 'super_admin') {
+      hiveSocket.join('hive:overwatch');
+    }
+
+    hiveSocket.on('hive:send', async (payload) => {
+      try {
+        const { content } = payload;
+        if (!content) return;
+
+        hiveSocket.emit('hive:thinking', { sessionId });
+
+        let agentLoop, llmService;
+        try { agentLoop = require('../agent-orchestrator/agent-loop'); } catch {}
+        try { llmService = require('../agent-orchestrator/gemini-llm'); } catch {}
+
+        const AGENTS = {
+          nova:        { type: 'concierge', name: 'Nurse Nova', persona: 'Public concierge. Answer FAQs, guide signups. No patient data access.' },
+          triage:      { type: 'triage',    name: 'Triage Bot', persona: 'Symptom assessor. Ask questions, rate urgency 1-5, advise.' },
+          hippocrates: { type: 'clinical',  name: 'Hippocrates', persona: 'Clinical co-pilot. SOAP notes, labs, drug interactions.' },
+          overwatch:   { type: 'ceo',       name: 'The Conductor', persona: 'Hive monitor. Platform stats, flagged items, ops.' },
+        };
+        const agent = AGENTS[agentId] || AGENTS.nova;
+        let response;
+
+        if (agentLoop?.runAgent) {
+          response = await agentLoop.runAgent(agent.type, agent.name, agent.persona, content, { llmService });
+        } else if (llmService?.callLLM) {
+          const text = await llmService.callLLM(agent.persona, content);
+          response = { text, toolCalls: [], iterations: 0 };
+        } else {
+          response = { text: `${agent.name} is starting up. Try again in a moment.`, toolCalls: [], iterations: 0 };
+        }
+
+        if (response.toolCalls?.length) {
+          for (const tc of response.toolCalls) {
+            hiveSocket.emit('hive:tool_call', { id: tc.id, tool: tc.tool, input: tc.input });
+            hiveSocket.emit('hive:tool_result', { id: tc.id, result: tc.result });
+          }
+        }
+
+        hiveSocket.emit('hive:message', { content: response.text, agentId, agentName: agent.name, toolCalls: response.toolCalls || [], ts: Date.now() });
+
+        // Broadcast to overwatch for monitoring
+        hiveNs.to('hive:overwatch').emit('hive:status', {
+          type: 'message_completed',
+          sessionId,
+          agentId,
+          messageLength: response.text?.length || 0,
+          toolCallCount: response.toolCalls?.length || 0,
+          ts: Date.now(),
+        });
+      } catch (err) {
+        hiveSocket.emit('hive:error', { message: err.message || 'Agent error' });
+      }
+    });
+
+    hiveSocket.on('hive:command', (payload) => {
+      const { command } = payload;
+      if (command === 'kill') {
+        hiveSocket.emit('hive:status', { type: 'session_killed', sessionId });
+        hiveSocket.disconnect();
+      }
+    });
+
+    hiveSocket.on('hive:status_req', (_, cb) => {
+      if (typeof cb === 'function') {
+        cb({ sessionId, agentId, role: hiveSocket.hiveRole, connected: true });
+      }
+    });
+
+    hiveSocket.on('disconnect', () => {
+      hiveNs.to('hive:overwatch').emit('hive:status', { type: 'session_ended', sessionId, agentId, ts: Date.now() });
+    });
+  });
+
+  console.log('🔌 Socket.io initialized (+ /hive namespace)');
   return io;
 };
 
