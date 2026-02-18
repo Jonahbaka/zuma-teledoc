@@ -17,6 +17,10 @@ import { toast } from '@/components/ui/use-toast';
 import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
+// Safety: ensure the symbol `transcript` is always defined in this module.
+// This prevents runtime crashes if any UI path references it unexpectedly.
+const transcript = [];
+
 /* ─────────────────── constants ─────────────────── */
 
 const AI_SUGGESTIONS = [
@@ -53,7 +57,7 @@ export default function ProviderVideoCallPage() {
   const [camOn, setCamOn] = useState(true);
   const [localStream, setLocalStream] = useState(null);
   const [mediaError, setMediaError] = useState(null);
-  const [transcript, setTranscript] = useState([]);
+  const [transcriptLines, setTranscriptLines] = useState([]);
 
   const ensureLocalStream = useCallback(async () => {
     if (localStream) return localStream;
@@ -417,7 +421,7 @@ const ActiveCall = ({
       <div className={`transition-all duration-500 ease-in-out relative ${showAI ? 'w-80 opacity-100 translate-x-0' : 'w-0 opacity-0 translate-x-10 overflow-hidden'}`}>
         <AIAgentSidebar
           appointment={appointment}
-          transcript={transcript}
+          transcript={transcriptLines}
           isOpen={showAI}
           onClose={() => setShowAI(false)}
         />
