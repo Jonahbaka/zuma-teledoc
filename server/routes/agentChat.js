@@ -2095,7 +2095,7 @@ User request: ${templateRequest}`;
                   await crmService.addContact({
                     first_name: opp.title.substring(0, 50),
                     last_name: '',
-                    company: opp.url.replace(/https?:\/\//, '').split('/')[0],
+                    organization: opp.url.replace(/https?:\/\//, '').split('/')[0],
                     contact_type: opp.category === 'grant' ? 'partner' : 'investor',
                     source: `vc_scout_${new Date().toISOString().slice(0, 10)}`,
                     source_agent: agentType,

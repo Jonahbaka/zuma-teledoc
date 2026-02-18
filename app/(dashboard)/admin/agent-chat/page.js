@@ -159,7 +159,8 @@ export default function AgentChatPage() {
   const apiCall = useCallback(async (endpoint, method = 'GET', body = null) => {
     const token = getToken();
     const controller = new AbortController();
-    const timeoutMs = 20000;
+    const isAgentCall = method === 'POST' && (endpoint === '/messages' || endpoint === '/broadcast');
+    const timeoutMs = isAgentCall ? 120000 : 20000;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const options = {
       method,

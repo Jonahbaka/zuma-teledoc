@@ -96,12 +96,13 @@ const TOOL_DEFINITIONS = {
   },
 
   query_crm: {
-    description: 'Query CRM contacts and leads. Find contacts by name, email, company, tags, or status. Essential for growth and outreach.',
+    description: 'Query CRM contacts and leads. Find contacts by name, email, organization, tags, or pipeline stage. Essential for growth and outreach.',
     input_schema: {
       type: 'object',
       properties: {
-        search: { type: 'string', description: 'Name, email, or company search' },
-        status: { type: 'string', description: 'Filter: lead, prospect, customer, churned, all' },
+        search: { type: 'string', description: 'Name, email, or organization search' },
+        contact_type: { type: 'string', description: 'Filter: provider, investor, partner, lead, nurse, admin, influencer, media, all' },
+        pipeline_stage: { type: 'string', description: 'Filter: new, researching, outreach_queued, contacted, responded, interested, negotiating, converted, lost, nurturing, all' },
         tags: { type: 'string', description: 'Filter by tag (e.g. provider, patient, investor)' },
         limit: { type: 'number', description: 'Max results (default 20)' }
       },
@@ -117,8 +118,9 @@ const TOOL_DEFINITIONS = {
         first_name: { type: 'string', description: 'First name' },
         last_name: { type: 'string', description: 'Last name' },
         email: { type: 'string', description: 'Email address' },
-        company: { type: 'string', description: 'Company or organization' },
+        organization: { type: 'string', description: 'Company or organization name' },
         phone: { type: 'string', description: 'Phone number' },
+        contact_type: { type: 'string', description: 'Type: provider, investor, partner, lead, nurse' },
         tags: { type: 'array', items: { type: 'string' }, description: 'Tags like: provider, investor, partner, lead' },
         notes: { type: 'string', description: 'Any relevant notes about this contact' },
         source: { type: 'string', description: 'Where this lead came from (e.g. web_search, npi_registry, linkedin)' }
@@ -417,18 +419,22 @@ const TOOL_EXECUTORS = {
     }
   },
 
-  async query_crm({ search, status, tags, limit = 20 } = {}) {
+  async query_crm({ search, contact_type, pipeline_stage, tags, limit = 20 } = {}) {
     try {
       limit = Math.min(Number(limit) || 20, 50);
       const params = [];
       const conditions = [];
       if (search) {
         params.push(`%${search.toLowerCase()}%`);
-        conditions.push(`(LOWER(first_name) LIKE $${params.length} OR LOWER(last_name) LIKE $${params.length} OR LOWER(email) LIKE $${params.length} OR LOWER(company) LIKE $${params.length})`);
+        conditions.push(`(LOWER(first_name) LIKE $${params.length} OR LOWER(last_name) LIKE $${params.length} OR LOWER(email) LIKE $${params.length} OR LOWER(COALESCE(organization,'')) LIKE $${params.length})`);
       }
-      if (status && status !== 'all') {
-        params.push(status);
-        conditions.push(`status = $${params.length}`);
+      if (contact_type && contact_type !== 'all') {
+        params.push(contact_type);
+        conditions.push(`contact_type = $${params.length}`);
+      }
+      if (pipeline_stage && pipeline_stage !== 'all') {
+        params.push(pipeline_stage);
+        conditions.push(`pipeline_stage = $${params.length}`);
       }
       if (tags) {
         params.push(`%${tags}%`);
@@ -437,7 +443,7 @@ const TOOL_EXECUTORS = {
       const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
       params.push(limit);
       const r = await db.query(
-        `SELECT id, first_name, last_name, email, phone, company, status, tags, source, created_at, notes
+        `SELECT id, first_name, last_name, email, phone, organization, contact_type, pipeline_stage, lead_score, tags, source, created_at, notes
          FROM crm_contacts ${where} ORDER BY created_at DESC LIMIT $${params.length}`, params
       );
       return { success: true, data: r.rows, count: r.rows.length };
@@ -446,17 +452,17 @@ const TOOL_EXECUTORS = {
     }
   },
 
-  async create_crm_contact({ first_name, last_name, email, company, phone, tags = [], notes, source } = {}) {
+  async create_crm_contact({ first_name, last_name, email, organization, phone, contact_type = 'lead', tags = [], notes, source } = {}) {
     try {
       const r = await db.query(
-        `INSERT INTO crm_contacts (first_name, last_name, email, company, phone, tags, notes, source, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'lead')
+        `INSERT INTO crm_contacts (first_name, last_name, email, organization, phone, contact_type, tags, notes, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (email) DO UPDATE SET
            first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name,
-           company = EXCLUDED.company, tags = EXCLUDED.tags, notes = EXCLUDED.notes
-         RETURNING id, first_name, last_name, email, company, status, created_at`,
-        [first_name, last_name, email || null, company || null, phone || null,
-         JSON.stringify(tags), notes || null, source || 'agent']
+           organization = EXCLUDED.organization, tags = EXCLUDED.tags, notes = EXCLUDED.notes
+         RETURNING id, first_name, last_name, email, organization, contact_type, pipeline_stage, created_at`,
+        [first_name, last_name, email || null, organization || null, phone || null,
+         contact_type || 'lead', JSON.stringify(tags), notes || null, source || 'agent']
       );
       return { success: true, data: r.rows[0], message: `Contact ${first_name} ${last_name} created/updated in CRM.` };
     } catch (err) {
