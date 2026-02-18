@@ -2362,8 +2362,6 @@ User request: ${templateRequest}`;
   return { agentName, content, messageType: 'text', metadata: { agentType, engine: 'error' } };
 }
 
-} // end _legacyGenerateAgentResponse_DO_NOT_USE
-
 // OpenClaw principle: real reasoning or honest failure. Never fake it.
 
 module.exports = router;
