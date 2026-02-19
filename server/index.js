@@ -426,7 +426,8 @@ async function initializeApp() {
         objectSrc: ["'none'"],
         mediaSrc: ["'self'", 'blob:', 'mediastream:'],
         frameSrc: ["'self'", 'https://js.stripe.com', 'https://hooks.stripe.com'],
-        workerSrc: ["'self'", 'blob:']
+        workerSrc: ["'self'", 'blob:'],
+        upgradeInsecureRequests: null  // MUST be null — removes helmet's default that upgrades HTTP→HTTPS
       }
     },
     crossOriginEmbedderPolicy: false,
