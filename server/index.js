@@ -427,15 +427,18 @@ async function initializeApp() {
         mediaSrc: ["'self'", 'blob:', 'mediastream:'],
         frameSrc: ["'self'", 'https://js.stripe.com', 'https://hooks.stripe.com'],
         workerSrc: ["'self'", 'blob:'],
-        upgradeInsecureRequests: null  // MUST be null — removes helmet's default that upgrades HTTP→HTTPS
+        upgradeInsecureRequests: []   // Upgrade all subresources to HTTPS
       }
     },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
-    // Disable headers that break plain HTTP deployments
-    hsts: false,                    // HSTS forces HTTPS — browser caches it and blocks all HTTP assets
-    crossOriginOpenerPolicy: false, // COOP 'same-origin' causes agent-cluster errors over HTTP
-    originAgentCluster: false       // Origin-Agent-Cluster conflicts with previous HTTP visits
+    // HTTPS is live — all security headers enabled
+    hsts: {
+      maxAge: 31536000,        // 1 year
+      includeSubDomains: true  // covers www.doctarx.com
+    },
+    crossOriginOpenerPolicy: { policy: "same-origin" },
+    originAgentCluster: true
   }));
   
   // Stripe webhook (raw body)
