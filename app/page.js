@@ -72,6 +72,7 @@ export default function HomePage() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [getStartedOpen, setGetStartedOpen] = useState(false);
   const [emergencyBannerVisible, setEmergencyBannerVisible] = useState(true);
 
   useEffect(() => {
@@ -159,12 +160,37 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <Link href="/patient/register">
+              <div className="relative" onMouseEnter={() => setGetStartedOpen(true)} onMouseLeave={() => setGetStartedOpen(false)}>
                 <Button className="bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_20px_rgba(37,99,235,0.3)]">
                   Get Started
-                  <ArrowRight className="ml-2 w-4 h-4" />
+                  <ChevronRight className={cn("ml-2 w-4 h-4 transition-transform", getStartedOpen && "rotate-90")} />
                 </Button>
-              </Link>
+                <div className={`absolute top-full right-0 w-72 pt-2 transition-all duration-200 ${getStartedOpen ? "opacity-100 translate-y-0 visible" : "opacity-0 translate-y-2 invisible"}`}>
+                  <div className="bg-popover rounded-xl shadow-2xl border border-border overflow-hidden p-2 backdrop-blur-xl">
+                    <div className="px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">I am a...</div>
+                    <Link href="/patient/register" className="flex items-center gap-3 px-3 py-3 hover:bg-accent rounded-lg group transition-colors">
+                      <div className="bg-blue-500/10 text-blue-500 dark:text-blue-300 p-2 rounded-lg group-hover:bg-blue-500/20 transition-colors">
+                        <User size={16} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-semibold text-foreground">Patient</div>
+                        <div className="text-xs text-muted-foreground">Create a patient account</div>
+                      </div>
+                      <ArrowRight size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </Link>
+                    <Link href="/provider/register" className="flex items-center gap-3 px-3 py-3 hover:bg-accent rounded-lg group transition-colors mt-1">
+                      <div className="bg-emerald-500/10 text-emerald-500 dark:text-emerald-300 p-2 rounded-lg group-hover:bg-emerald-500/20 transition-colors">
+                        <Stethoscope size={16} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-semibold text-foreground">Provider</div>
+                        <div className="text-xs text-muted-foreground">Join as a healthcare provider</div>
+                      </div>
+                      <ArrowRight size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </Link>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="flex md:hidden items-center gap-2">
@@ -178,15 +204,25 @@ export default function HomePage() {
 
         {mobileMenuOpen && (
           <div className="md:hidden absolute top-full left-0 right-0 bg-background border-b border-border p-4 flex flex-col gap-2 animate-in slide-in-from-top-2">
-            <Link href="/patient/register" className="bg-blue-600 text-white text-center py-3 rounded-xl font-bold">Start Patient Registration</Link>
-            <Link href="/patient/login" className="bg-accent text-foreground text-center py-3 rounded-xl font-medium border border-border">Patient Login</Link>
+            <div className="px-1 pb-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Get Started as...</div>
+            <Link href="/patient/register" onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-3 bg-blue-600 text-white px-4 py-3 rounded-xl font-bold">
+              <User size={18} /> Patient
+            </Link>
+            <Link href="/provider/register" onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-3 bg-emerald-700 text-white px-4 py-3 rounded-xl font-bold">
+              <Stethoscope size={18} /> Provider
+            </Link>
+            <div className="h-px bg-border my-2" />
+            <Link href="/patient/login" onClick={() => setMobileMenuOpen(false)}
+              className="bg-accent text-foreground text-center py-3 rounded-xl font-medium border border-border">Patient Login</Link>
+            <Link href="/provider/login" onClick={() => setMobileMenuOpen(false)}
+              className="bg-accent text-foreground text-center py-3 rounded-xl font-medium border border-border">Provider Login</Link>
             <div className="h-px bg-border my-2" />
             {NAV_LINKS.map(link => (
-              <a key={link.href} href={link.href} className="px-4 py-3 text-muted-foreground font-medium hover:bg-accent rounded-lg hover:text-foreground">{link.label}</a>
+              <a key={link.href} href={link.href} onClick={() => setMobileMenuOpen(false)}
+                className="px-4 py-3 text-muted-foreground font-medium hover:bg-accent rounded-lg hover:text-foreground">{link.label}</a>
             ))}
-            <Link href="/provider/register" className="px-4 py-3 text-muted-foreground font-medium hover:bg-accent rounded-lg flex items-center gap-2 hover:text-foreground">
-              Join as Provider <ShieldCheck size={16} className="text-blue-500" />
-            </Link>
           </div>
         )}
       </nav>
