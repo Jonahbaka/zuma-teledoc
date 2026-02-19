@@ -5,18 +5,30 @@
 
 require('dotenv').config();
 const { Pool } = require('pg');
+const fs = require('fs');
+const path = require('path');
 
 // Database configuration
 let connectionString = process.env.DATABASE_URL || '';
 let sslConfig = false;
 
-// Configure SSL for Aiven Cloud
-if (connectionString && (connectionString.includes('aivencloud.com') || connectionString.includes('sslmode=require'))) {
-  sslConfig = { rejectUnauthorized: false };
-  // Remove sslmode=require from connection string
-  if (connectionString.includes('sslmode=require')) {
-    connectionString = connectionString.replace(/[?&]sslmode=require/, '');
+if (connectionString && connectionString.includes('sslmode=')) {
+  const certPath = process.env.PGSSLROOTCERT
+    ? path.resolve(process.cwd(), process.env.PGSSLROOTCERT)
+    : null;
+
+  if (connectionString.includes('sslmode=verify-full') && certPath && fs.existsSync(certPath)) {
+    sslConfig = {
+      rejectUnauthorized: true,
+      ca: fs.readFileSync(certPath).toString()
+    };
+  } else {
+    sslConfig = { rejectUnauthorized: false };
   }
+
+  connectionString = connectionString.replace(/[?&]sslmode=[^&]+/, (match) =>
+    match.startsWith('?') ? '?' : ''
+  ).replace(/\?$/, '');
 }
 
 const pool = new Pool({

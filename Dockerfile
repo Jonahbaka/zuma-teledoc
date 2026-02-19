@@ -10,6 +10,8 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
 COPY . .
+# Download AWS RDS global SSL certificate bundle (public cert, not secret)
+RUN wget -q -O global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 # Build Next.js (requires tailwindcss, postcss, autoprefixer from devDeps)
 RUN npm run build
 
@@ -52,7 +54,13 @@ COPY --from=builder /app/jsconfig.json ./jsconfig.json
 COPY --from=builder /app/components ./components
 COPY --from=builder /app/app ./app
 
+# Copy AWS RDS SSL certificate bundle
+COPY --from=builder /app/global-bundle.pem ./global-bundle.pem
+
 USER nextjs
+
+# RDS SSL certificate path (used by db/index.js)
+ENV PGSSLROOTCERT=./global-bundle.pem
 
 EXPOSE 8080
 ENV PORT=8080

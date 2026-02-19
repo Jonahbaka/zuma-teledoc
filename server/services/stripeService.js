@@ -708,7 +708,49 @@ async function handleWebhook(event) {
     case 'payment_intent.succeeded':
       await handlePaymentSuccess(event.data.object);
       break;
-      
+
+    case 'payment_intent.created':
+      logger.info('Payment intent created', { paymentIntentId: event.data.object.id });
+      break;
+
+    case 'invoice.payment_action_required':
+      await handlePaymentActionRequired(event.data.object);
+      break;
+
+    case 'invoice.upcoming':
+      await handleInvoiceUpcoming(event.data.object);
+      break;
+
+    case 'invoice.finalization_failed':
+      logger.error('Invoice finalization failed', { invoiceId: event.data.object.id });
+      break;
+
+    case 'invoice.created':
+    case 'invoice.finalized':
+    case 'invoice.updated':
+      logger.info('Invoice lifecycle event', { type: event.type, invoiceId: event.data.object.id });
+      break;
+
+    case 'entitlements.active_entitlement_summary.updated':
+      logger.info('Entitlement summary updated', { customerId: event.data.object.customer });
+      break;
+
+    case 'subscription_schedule.aborted':
+    case 'subscription_schedule.canceled':
+      await handleSubscriptionScheduleEnded(event.data.object, event.type);
+      break;
+
+    case 'subscription_schedule.expiring':
+      await handleSubscriptionScheduleExpiring(event.data.object);
+      break;
+
+    case 'subscription_schedule.completed':
+    case 'subscription_schedule.created':
+    case 'subscription_schedule.released':
+    case 'subscription_schedule.updated':
+      logger.info('Subscription schedule event', { type: event.type, scheduleId: event.data.object.id });
+      break;
+
     default:
       logger.info('Unhandled webhook event', { type: event.type });
   }
@@ -1019,6 +1061,100 @@ async function handlePaymentFailed(invoice) {
  */
 async function handlePaymentSuccess(paymentIntent) {
   logger.info('Payment intent succeeded', { paymentIntentId: paymentIntent.id });
+}
+
+/**
+ * Handle invoice.payment_action_required
+ * Customer must complete 3D Secure / SCA authentication
+ */
+async function handlePaymentActionRequired(invoice) {
+  const subscriptionId = invoice.subscription;
+  if (!subscriptionId) return;
+  try {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const userId = subscription.metadata?.userId;
+    if (userId) {
+      const { rows } = await db.query('SELECT email, first_name FROM users WHERE id = $1', [userId]);
+      if (rows.length > 0) {
+        const emailService = require('./email');
+        const hostedUrl = invoice.hosted_invoice_url;
+        await emailService.sendEmail({
+          to: rows[0].email,
+          subject: 'Action required: complete your DoctaRx payment',
+          html: `<p>Hi ${rows[0].first_name},</p>
+                 <p>Your payment requires additional authentication. Please click the link below to complete it:</p>
+                 <p><a href="${hostedUrl}">Complete Payment</a></p>
+                 <p>If you did not initiate this, please contact support.</p>`,
+          text: `Hi ${rows[0].first_name}, your payment requires authentication. Visit: ${hostedUrl}`
+        });
+      }
+      logger.warn('Payment action required notified', { userId, invoiceId: invoice.id });
+    }
+  } catch (error) {
+    logger.error('Error handling payment_action_required', { error: error.message, invoiceId: invoice.id });
+  }
+}
+
+/**
+ * Handle invoice.upcoming
+ * Subscription renewal is coming up — optionally remind the user
+ */
+async function handleInvoiceUpcoming(invoice) {
+  const subscriptionId = invoice.subscription;
+  if (!subscriptionId) return;
+  try {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const userId = subscription.metadata?.userId;
+    if (userId) {
+      logger.info('Upcoming invoice', {
+        userId,
+        invoiceId: invoice.id,
+        amountDue: invoice.amount_due,
+        dueDate: invoice.next_payment_attempt
+      });
+    }
+  } catch (error) {
+    logger.error('Error handling invoice upcoming', { error: error.message });
+  }
+}
+
+/**
+ * Handle subscription_schedule.aborted / canceled
+ * Mark any associated subscription as cancelled in the DB
+ */
+async function handleSubscriptionScheduleEnded(schedule, eventType) {
+  try {
+    const subscriptionId = schedule.subscription;
+    if (subscriptionId) {
+      await db.query(
+        `UPDATE subscriptions SET status = 'canceled', updated_at = CURRENT_TIMESTAMP
+         WHERE stripe_subscription_id = $1`,
+        [subscriptionId]
+      );
+    }
+    logger.info('Subscription schedule ended', { type: eventType, scheduleId: schedule.id });
+  } catch (error) {
+    logger.error('Error handling subscription schedule end', { error: error.message, scheduleId: schedule.id });
+  }
+}
+
+/**
+ * Handle subscription_schedule.expiring
+ * Notify the user their scheduled plan is about to expire
+ */
+async function handleSubscriptionScheduleExpiring(schedule) {
+  try {
+    const subscriptionId = schedule.subscription;
+    if (subscriptionId) {
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      const userId = subscription.metadata?.userId;
+      if (userId) {
+        logger.info('Subscription schedule expiring', { userId, scheduleId: schedule.id });
+      }
+    }
+  } catch (error) {
+    logger.error('Error handling subscription schedule expiring', { error: error.message });
+  }
 }
 
 // ============================================================================

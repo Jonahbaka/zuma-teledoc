@@ -3,6 +3,9 @@
  * Cloud Run compatible - binds to PORT immediately
  */
 
+// Load environment variables first so PORT and all secrets are available immediately
+require('dotenv').config();
+
 // STEP 1: Minimal imports that cannot crash
 const express = require('express');
 const app = express();
@@ -35,6 +38,14 @@ try {
   console.log('🔌 Real-time chat enabled');
 } catch (err) {
   console.error('⚠️ Socket.io initialization failed:', err.message);
+}
+
+// Initialize OpenClaw WebSocket adapter (bridges OpenClaw protocol → Hive)
+try {
+  const { initOpenClawAdapter } = require('./routes/openclawAdapter');
+  initOpenClawAdapter(server);
+} catch (err) {
+  console.error('⚠️ OpenClaw adapter failed:', err.message);
 }
 
 // Minimal health check - available immediately
@@ -310,8 +321,7 @@ app.use((req, res, next) => {
 async function initializeApp() {
   console.log('📦 Loading dependencies...');
   
-  // Now safe to load heavy modules
-  require('dotenv').config();
+  // Now safe to load heavy modules (dotenv already loaded at startup)
   const helmet = require('helmet');
   const cors = require('cors');
   const compression = require('compression');

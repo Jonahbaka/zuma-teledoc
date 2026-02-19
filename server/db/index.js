@@ -1,6 +1,6 @@
 /**
  * PostgreSQL Database Connection Pool
- * Production-ready with SSL/TLS support for Aiven Cloud
+ * Production-ready with SSL/TLS support for AWS RDS
  */
 
 const { Pool } = require('pg');
@@ -10,25 +10,35 @@ const path = require('path');
 // Database configuration
 let connectionString = process.env.DATABASE_URL;
 
-// Configure SSL for Aiven Cloud
+// Configure SSL
 let sslConfig = false;
-if (process.env.DATABASE_URL && (process.env.DATABASE_URL.includes('aivencloud.com') || process.env.DATABASE_URL.includes('sslmode=require'))) {
-  // For Aiven Cloud, use SSL but allow self-signed certificates
-  // This matches the migration scripts configuration
-  sslConfig = {
-    rejectUnauthorized: false
-  };
-  // Remove sslmode=require from connection string as we handle SSL in config
-  if (connectionString && connectionString.includes('sslmode=require')) {
-    connectionString = connectionString.replace(/[?&]sslmode=require/, '');
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('sslmode=')) {
+  const certPath = process.env.PGSSLROOTCERT
+    ? path.resolve(process.cwd(), process.env.PGSSLROOTCERT)
+    : null;
+
+  if (process.env.DATABASE_URL.includes('sslmode=verify-full') && certPath && fs.existsSync(certPath)) {
+    // AWS RDS: full certificate verification with the global bundle
+    sslConfig = {
+      rejectUnauthorized: true,
+      ca: fs.readFileSync(certPath).toString()
+    };
+  } else {
+    // Fallback: SSL required but no cert provided
+    sslConfig = { rejectUnauthorized: false };
   }
+
+  // Strip sslmode param — pg handles SSL via the config object above
+  connectionString = connectionString.replace(/[?&]sslmode=[^&]+/, (match) =>
+    match.startsWith('?') ? '?' : ''
+  ).replace(/\?$/, '');
 }
 
 const dbConfig = {
   connectionString,
   ssl: sslConfig,
-  max: parseInt(process.env.DB_POOL_MAX) || 10,  // Conservative — Aiven free tier has ~20 conn limit
-  // Keep connections stable on serverless-ish environments (Cloud Run)
+  max: parseInt(process.env.DB_POOL_MAX) || 10,
+  // Keep connections stable on serverless-ish environments
   keepAlive: true,
   keepAliveInitialDelayMillis: parseInt(process.env.DB_KEEPALIVE_DELAY_MS, 10) || 10000,
 
