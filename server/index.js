@@ -430,7 +430,11 @@ async function initializeApp() {
       }
     },
     crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: { policy: "cross-origin" }
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    // Disable headers that break plain HTTP deployments
+    hsts: false,                    // HSTS forces HTTPS — browser caches it and blocks all HTTP assets
+    crossOriginOpenerPolicy: false, // COOP 'same-origin' causes agent-cluster errors over HTTP
+    originAgentCluster: false       // Origin-Agent-Cluster conflicts with previous HTTP visits
   }));
   
   // Stripe webhook (raw body)
