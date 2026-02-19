@@ -859,6 +859,40 @@ const migrations = [
         WHEN duplicate_object THEN null;
       END $$;
       
+      -- Patient Insurance Table (must exist before payments references it)
+      CREATE TABLE IF NOT EXISTS patient_insurance (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        insurance_provider VARCHAR(255),
+        plan_name VARCHAR(255),
+        member_id VARCHAR(255),
+        group_number VARCHAR(255),
+        subscriber_name VARCHAR(255),
+        subscriber_dob DATE,
+        relationship_to_subscriber VARCHAR(50),
+        effective_date DATE,
+        termination_date DATE,
+        is_primary BOOLEAN DEFAULT true,
+        is_active BOOLEAN DEFAULT true,
+        tokenized_member_id VARCHAR(255),
+        ocr_confidence_score DECIMAL(5,2),
+        ocr_extracted_data JSONB,
+        ocr_provider VARCHAR(50) CHECK (ocr_provider IN ('google_vision', 'aws_textract', 'manual')),
+        front_image_encrypted TEXT,
+        back_image_encrypted TEXT,
+        eligibility_last_checked TIMESTAMP WITH TIME ZONE,
+        eligibility_status VARCHAR(50) CHECK (eligibility_status IN ('active', 'inactive', 'pending', 'expired', 'unknown')),
+        eligibility_response JSONB,
+        rx_bin VARCHAR(50),
+        rx_pcn VARCHAR(50),
+        rx_group VARCHAR(50),
+        audit_log JSONB DEFAULT '[]'::jsonb,
+        consent_given BOOLEAN DEFAULT false,
+        consent_timestamp TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
       -- Payments Table
       CREATE TABLE IF NOT EXISTS payments (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
