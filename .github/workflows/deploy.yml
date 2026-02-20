@@ -3,6 +3,7 @@ name: Deploy to EC2
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -14,8 +15,10 @@ jobs:
           host: ec2-3-144-93-242.us-east-2.compute.amazonaws.com
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 120s
           script: |
             cd /home/ubuntu/zuma-teledoc
             git pull origin main
             pm2 restart doctarx
+            echo "✅ Deployed successfully"
             pm2 status
