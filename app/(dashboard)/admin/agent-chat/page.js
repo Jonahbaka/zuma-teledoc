@@ -609,35 +609,6 @@ export default function AgentChatPage() {
       {/* CHAT TAB */}
       {activeTab === 'chat' && (
         <div className="flex h-[calc(100vh-140px)]">
-          {/* Agent Sidebar — icon-only, tooltip on hover */}
-          <div className="w-16 bg-gray-900/70 border-r border-gray-800 overflow-y-auto flex-shrink-0">
-            <div className="p-2 flex flex-col gap-1">
-              {AGENTS.map(agent => {
-                const AgentIcon = agent.icon;
-                const persona = agent.id === 'all' ? getAgentPersona('runtime') : getAgentPersona(agent.id);
-                const isSpeaking = agent.id !== 'all' && typingAgentIds.has(normalizeAgentId(agent.id));
-                const label = agent.id === 'all' ? 'Broadcast — All agents' : `${persona.name} — ${persona.role}`;
-                return (
-                  <button
-                    key={agent.id}
-                    onClick={() => setSelectedAgent(agent.id)}
-                    title={label}
-                    className={`w-full flex items-center justify-center p-1.5 rounded-lg transition-colors ${
-                      selectedAgent === agent.id ? 'bg-purple-600/20 ring-1 ring-purple-500/40' : 'hover:bg-gray-800/60'}`}
-                  >
-                    {agent.id === 'all' ? (
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
-                        <AgentIcon className="w-4 h-4 text-white" />
-                      </div>
-                    ) : (
-                      <HolographicAvatar persona={persona} size="sm" isSpeaking={isSpeaking} online />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Chat Area */}
           <div className="flex-1 flex flex-col">
             {/* Chat Header */}
@@ -856,6 +827,35 @@ export default function AgentChatPage() {
               <p className="text-xs text-gray-600 mt-2">
                 {selectedAgent === 'all' ? '📡 Broadcasting to all agents — each will respond' : `💬 Direct channel to ${currentAgent.codeName} (${currentAgent.name})`}
               </p>
+            </div>
+          </div>
+
+          {/* Agent Sidebar — icon-only, tooltip on hover, now on the RIGHT */}
+          <div className="w-16 bg-gray-900/70 border-l border-gray-800 overflow-y-auto flex-shrink-0">
+            <div className="p-2 flex flex-col gap-1">
+              {AGENTS.map(agent => {
+                const AgentIcon = agent.icon;
+                const persona = agent.id === 'all' ? getAgentPersona('runtime') : getAgentPersona(agent.id);
+                const isSpeaking = agent.id !== 'all' && typingAgentIds.has(normalizeAgentId(agent.id));
+                const label = agent.id === 'all' ? 'Broadcast — All agents' : `${persona.name} — ${persona.role}`;
+                return (
+                  <button
+                    key={agent.id}
+                    onClick={() => setSelectedAgent(agent.id)}
+                    title={label}
+                    className={`w-full flex items-center justify-center p-1.5 rounded-lg transition-colors ${
+                      selectedAgent === agent.id ? 'bg-purple-600/20 ring-1 ring-purple-500/40' : 'hover:bg-gray-800/60'}`}
+                  >
+                    {agent.id === 'all' ? (
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
+                        <AgentIcon className="w-4 h-4 text-white" />
+                      </div>
+                    ) : (
+                      <HolographicAvatar persona={persona} size="sm" isSpeaking={isSpeaking} online />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

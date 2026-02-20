@@ -9,16 +9,16 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ec2-3-144-93-242.us-east-2.compute.amazonaws.com
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          timeout: 120s
-          script: |
-            cd /home/ubuntu/zuma-teledoc
-            git pull origin main
-            pm2 restart doctarx
-            echo "✅ Deployed successfully"
-            pm2 status
+      - name: Trigger deploy webhook
+        run: |
+          response=$(curl -s -o /tmp/deploy_response.json -w "%{http_code}" \
+            -X POST https://doctarx.com/api/deploy \
+            -H "Content-Type: application/json" \
+            -H "x-deploy-token: ${{ secrets.DEPLOY_SECRET }}" \
+            --max-time 30)
+          cat /tmp/deploy_response.json
+          if [ "$response" != "200" ]; then
+            echo "❌ Deploy webhook returned HTTP $response"
+            exit 1
+          fi
+          echo "✅ Deploy triggered successfully"
