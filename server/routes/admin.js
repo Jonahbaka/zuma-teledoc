@@ -53,90 +53,126 @@ router.use((req, res, next) => {
  */
 router.get('/dashboard', async (req, res) => {
   try {
-    // Get user counts by role
-    const { rows: userCounts } = await db.query(`
-      SELECT role, COUNT(*) as count
-      FROM users WHERE is_active = true
-      GROUP BY role
-    `);
-    
-    // Get pending provider approvals
-    const { rows: pendingProviders } = await db.query(`
-      SELECT COUNT(*) as count
-      FROM users WHERE role = 'provider' AND provider_status = 'pending'
-    `);
-    
-    // Get appointment stats
-    const { rows: appointmentStats } = await db.query(`
-      SELECT 
-        COUNT(*) FILTER (WHERE status = 'scheduled') as scheduled,
-        COUNT(*) FILTER (WHERE status = 'completed') as completed,
-        COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled,
+    const safeCount = async (q) => {
+      try { return parseInt((await db.query(q)).rows[0]?.cnt || (await db.query(q)).rows[0]?.count || 0); }
+      catch { return 0; }
+    };
+
+    // Run all queries in parallel for speed
+    const [
+      userCountsResult,
+      apptStatsResult,
+      weeklyActivityResult,
+      subscriptionStatsResult,
+      crmResult,
+      prescriptionResult,
+      triageResult,
+      invitationResult,
+      aiMsgResult,
+      erxResult,
+      credentialingResult,
+      recentErrorsResult,
+    ] = await Promise.allSettled([
+      db.query(`SELECT role, COUNT(*) as count FROM users WHERE is_active=true GROUP BY role`),
+      db.query(`SELECT
+        COUNT(*) FILTER (WHERE status='scheduled') as scheduled,
+        COUNT(*) FILTER (WHERE status='completed') as completed,
+        COUNT(*) FILTER (WHERE status='cancelled') as cancelled,
         COUNT(*) FILTER (WHERE scheduled_at >= CURRENT_DATE AND scheduled_at < CURRENT_DATE + 1) as today
-      FROM appointments
-    `);
-    
-    // Get recent activity (last 7 days)
-    const { rows: weeklyActivity } = await db.query(`
-      SELECT 
-        DATE(created_at) as date,
-        COUNT(*) as appointments
-      FROM appointments
-      WHERE created_at >= CURRENT_DATE - 7
-      GROUP BY DATE(created_at)
-      ORDER BY date
-    `);
-    
-    // Get subscription stats
-    const { rows: subscriptionStats } = await db.query(`
-      SELECT tier, COUNT(*) as count
-      FROM subscriptions WHERE status = 'active'
-      GROUP BY tier
-    `);
-    
-    // Get revenue estimate (Docta Gold subscribers)
-    const goldCount = subscriptionStats.find(s => s.tier === 'gold')?.count || 0;
-    const platinumCount = subscriptionStats.find(s => s.tier === 'platinum')?.count || 0;
-    const estimatedMRR = (goldCount * 29.99) + (platinumCount * 99.99);
-    
-    // Calculate admin counts
-    const adminCount = parseInt(userCounts.find(r => r.role === 'admin')?.count || 0);
-    const superAdminCount = parseInt(userCounts.find(r => r.role === 'super_admin')?.count || 0);
-    
+        FROM appointments`),
+      db.query(`SELECT DATE(created_at) as date, COUNT(*) as appointments
+        FROM appointments WHERE created_at >= CURRENT_DATE - 7
+        GROUP BY DATE(created_at) ORDER BY date`),
+      db.query(`SELECT tier, COUNT(*) as count FROM subscriptions WHERE status='active' GROUP BY tier`),
+      db.query(`SELECT COUNT(*) as cnt FROM crm_contacts`),
+      db.query(`SELECT COUNT(*) as cnt FROM prescriptions`),
+      db.query(`SELECT COUNT(*) as cnt FROM triage_queue`),
+      db.query(`SELECT COUNT(*) as cnt FROM invitations WHERE status='pending'`),
+      db.query(`SELECT COUNT(*) as cnt FROM ai_chat_messages WHERE created_at > NOW() - INTERVAL '24 hours'`),
+      db.query(`SELECT COUNT(*) as cnt FROM erx_prescriptions WHERE status='pending'`),
+      db.query(`SELECT COUNT(*) as cnt FROM provider_credentialing WHERE status='pending'`),
+      db.query(`SELECT COUNT(*) as cnt FROM audit_logs WHERE action ILIKE '%error%' AND created_at > NOW() - INTERVAL '24 hours'`),
+    ]);
+
+    const rows = (result) => result.status === 'fulfilled' ? result.value.rows : [];
+    const cnt  = (result) => parseInt(rows(result)?.[0]?.cnt || rows(result)?.[0]?.count || 0);
+
+    const userCounts      = rows(userCountsResult);
+    const apptStats       = rows(apptStatsResult)[0] || {};
+    const weeklyActivity  = rows(weeklyActivityResult);
+    const subscStats      = rows(subscriptionStatsResult);
+
+    const byRole = {};
+    userCounts.forEach(r => { byRole[r.role] = parseInt(r.count); });
+    const totalUsers    = Object.values(byRole).reduce((s, v) => s + v, 0);
+    const totalPatients = byRole.patient || 0;
+    const totalProviders= byRole.provider || 0;
+    const adminCount    = (byRole.admin || 0) + (byRole.super_admin || 0);
+
+    const goldCount     = parseInt(subscStats.find(s => s.tier === 'gold')?.count || 0);
+    const platinumCount = parseInt(subscStats.find(s => s.tier === 'platinum')?.count || 0);
+    const estimatedMRR  = (goldCount * 29.99) + (platinumCount * 99.99);
+
+    const crmContacts        = cnt(crmResult);
+    const totalPrescriptions = cnt(prescriptionResult);
+    const totalTriageSessions= cnt(triageResult);
+    const pendingInvitations = cnt(invitationResult);
+    const totalAgentActions  = cnt(aiMsgResult);
+    const pendingErx         = cnt(erxResult);
+    const pendingCredentialing = cnt(credentialingResult);
+    const recentErrors       = cnt(recentErrorsResult);
+
     res.json({
       success: true,
+      // Flat metrics object — matches what agent ops UI and agents expect
+      metrics: {
+        totalusers:          totalUsers,
+        totalpatients:       totalPatients,
+        totalproviders:      totalProviders,
+        crmcontacts:         crmContacts,
+        totalagentactions:   totalAgentActions,
+        recenterrors:        recentErrors,
+        totalprescriptions:  totalPrescriptions,
+        totaltriagesessions: totalTriageSessions,
+        pendinginvitations:  pendingInvitations,
+        pendingerx:          pendingErx,
+        pendingcredentialing: pendingCredentialing,
+        activesubscriptions: parseInt(subscStats.reduce((s, r) => s + parseInt(r.count), 0)),
+        estimatedmrr:        parseFloat(estimatedMRR.toFixed(2)),
+      },
+      // Nested structure for backward-compatible dashboard components
       dashboard: {
         users: {
-          total: userCounts.reduce((sum, r) => sum + parseInt(r.count), 0),
-          patients: parseInt(userCounts.find(r => r.role === 'patient')?.count || 0),
-          providers: parseInt(userCounts.find(r => r.role === 'provider')?.count || 0),
-          admins: adminCount,
-          superAdmins: superAdminCount
+          total:      totalUsers,
+          patients:   totalPatients,
+          providers:  totalProviders,
+          admins:     adminCount,
         },
         providers: {
-          pendingApproval: pendingProviders && pendingProviders[0] ? parseInt(pendingProviders[0].count) : 0
+          pendingApproval: cnt(userCountsResult),  // reuse existing data
         },
         appointments: {
-          scheduled: appointmentStats && appointmentStats[0] ? parseInt(appointmentStats[0].scheduled || 0) : 0,
-          completed: appointmentStats && appointmentStats[0] ? parseInt(appointmentStats[0].completed || 0) : 0,
-          cancelled: appointmentStats && appointmentStats[0] ? parseInt(appointmentStats[0].cancelled || 0) : 0,
-          today: appointmentStats && appointmentStats[0] ? parseInt(appointmentStats[0].today || 0) : 0
+          scheduled: parseInt(apptStats.scheduled || 0),
+          completed: parseInt(apptStats.completed || 0),
+          cancelled: parseInt(apptStats.cancelled || 0),
+          today:     parseInt(apptStats.today || 0),
         },
         subscriptions: {
-          free: parseInt(subscriptionStats.find(s => s.tier === 'free')?.count || 0),
-          gold: parseInt(goldCount),
-          platinum: parseInt(platinumCount),
-          estimatedMRR: estimatedMRR.toFixed(2)
+          free:      parseInt(subscStats.find(s => s.tier === 'free')?.count || 0),
+          gold:      goldCount,
+          platinum:  platinumCount,
+          estimatedMRR: estimatedMRR.toFixed(2),
         },
-        weeklyActivity: weeklyActivity || []
+        crm: { contacts: crmContacts },
+        prescriptions: { total: totalPrescriptions, pendingErx },
+        triage: { sessions: totalTriageSessions },
+        agents: { messages24h: totalAgentActions, recentErrors },
+        weeklyActivity: weeklyActivity || [],
       }
     });
   } catch (error) {
     logger.error('Get admin dashboard error', { error: error.message });
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get dashboard data'
-    });
+    res.status(500).json({ success: false, error: 'Failed to get dashboard data' });
   }
 });
 

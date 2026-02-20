@@ -122,6 +122,50 @@ try {
 let invitationDb; // Direct DB access for invitation/sign-up actions
 // (invitations module uses the routes, we query DB directly for agent context)
 
+// =========================================================================
+// LIVE PLATFORM CONTEXT — injected into every agent system prompt
+// Agents always speak from real numbers, never hallucinate platform stats.
+// =========================================================================
+async function getLivePlatformContext() {
+  const queries = await Promise.allSettled([
+    db.query(`SELECT role, COUNT(*) cnt FROM users WHERE is_active=true GROUP BY role`),
+    db.query(`SELECT COUNT(*) cnt FROM crm_contacts`),
+    db.query(`SELECT COUNT(*) cnt FROM crm_contacts WHERE status='lead'`),
+    db.query(`SELECT COUNT(*) cnt FROM prescriptions`),
+    db.query(`SELECT COUNT(*) cnt FROM triage_queue`),
+    db.query(`SELECT COUNT(*) cnt FROM appointments WHERE status='scheduled'`),
+    db.query(`SELECT COUNT(*) cnt FROM appointments WHERE status='completed'`),
+    db.query(`SELECT COUNT(*) cnt FROM invitations WHERE status='pending'`),
+    db.query(`SELECT COUNT(*) cnt FROM ai_chat_messages WHERE created_at > NOW() - INTERVAL '24 hours'`),
+    db.query(`SELECT COUNT(*) cnt FROM subscriptions WHERE status='active'`),
+    db.query(`SELECT COUNT(*) cnt FROM erx_prescriptions WHERE status='pending'`),
+    db.query(`SELECT COUNT(*) cnt FROM provider_credentialing WHERE status='pending'`),
+  ]);
+
+  const safe = (i) => parseInt(queries[i].status === 'fulfilled' ? queries[i].value?.rows?.[0]?.cnt || 0 : 0);
+  const userRows = queries[0].status === 'fulfilled' ? queries[0].value.rows : [];
+  const byRole = {};
+  userRows.forEach(r => { byRole[r.role] = parseInt(r.cnt); });
+
+  return {
+    totalUsers:           Object.values(byRole).reduce((s, v) => s + v, 0),
+    totalPatients:        byRole.patient || 0,
+    totalProviders:       byRole.provider || 0,
+    totalAdmins:          (byRole.admin || 0) + (byRole.super_admin || 0),
+    crmContacts:          safe(1),
+    crmLeads:             safe(2),
+    totalPrescriptions:   safe(3),
+    totalTriageSessions:  safe(4),
+    scheduledAppts:       safe(5),
+    completedAppts:       safe(6),
+    pendingInvitations:   safe(7),
+    agentMessages24h:     safe(8),
+    activeSubscriptions:  safe(9),
+    pendingErx:           safe(10),
+    pendingCredentialing: safe(11),
+  };
+}
+
 // All routes require admin
 const adminOnly = [authenticate, requireRole('admin', 'super_admin')];
 
@@ -314,9 +358,13 @@ router.post('/messages', ...adminOnly, async (req, res) => {
     }
 
     // Generate agent response if addressed to a specific agent
+    // NOTE: generateAgentResponse is self-contained; it does NOT need agentOrchestrator.
     let agentResponse = null;
-    if (recipientId && recipientId !== 'all' && agentOrchestrator) {
-      const response = await generateAgentResponse(recipientId, content, req.user, { attachments });
+    if (recipientId && recipientId !== 'all') {
+      // Fetch live platform snapshot so agents always have real numbers
+      let platformContext = {};
+      try { platformContext = await getLivePlatformContext(); } catch { /* non-critical */ }
+      const response = await generateAgentResponse(recipientId, content, req.user, { attachments, platformContext });
       if (response) {
         const cleanContent = sanitizeAgentText(response.content);
         const responseResult = await db.query(`
@@ -902,8 +950,29 @@ try {
 
 async function generateAgentResponse(agentType, userMessage, user, options = {}) {
   const agentName = AGENT_NAMES[agentType] || agentType;
-  const persona = AGENT_PERSONAS[agentType] || `You are the ${agentType} agent for DoctaRx.`;
   const attachments = Array.isArray(options.attachments) ? options.attachments : [];
+
+  // Build live platform data block for system prompt
+  const ctx = options.platformContext || {};
+  const platformBlock = Object.keys(ctx).length ? `
+
+LIVE PLATFORM DATA (as of right now — use these numbers when answering):
+Total users: ${ctx.totalUsers}
+Patients: ${ctx.totalPatients}
+Providers: ${ctx.totalProviders}
+Admins: ${ctx.totalAdmins}
+CRM contacts: ${ctx.crmContacts} (${ctx.crmLeads} leads)
+Prescriptions: ${ctx.totalPrescriptions} total, ${ctx.pendingErx} pending e-Rx
+Triage sessions: ${ctx.totalTriageSessions}
+Appointments: ${ctx.scheduledAppts} scheduled, ${ctx.completedAppts} completed
+Active subscriptions: ${ctx.activeSubscriptions}
+Pending provider invitations: ${ctx.pendingInvitations}
+Pending credentialing applications: ${ctx.pendingCredentialing}
+Agent messages (last 24h): ${ctx.agentMessages24h}
+` : '';
+
+  const basPersona = AGENT_PERSONAS[agentType] || `You are the ${agentType} agent for DoctaRx.`;
+  const persona = basPersona + platformBlock;
 
   // ── 1. Slash commands (instant, no LLM) ─────────────────────────────────
   const slash = parseSlashCommand(userMessage);
