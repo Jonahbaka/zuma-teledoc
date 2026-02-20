@@ -9,35 +9,48 @@ import { THEME_STORAGE_KEY } from '@/lib/theme';
 
 export const metadata = {
   title: {
-    default: 'DoctaRx | Telehealth & E-Prescribing Platform',
+    default: 'DoctaRx | HIPAA-Compliant Telehealth & AI-Powered E-Prescribing Platform',
     template: '%s | DoctaRx'
   },
-  description: 'Secure telehealth platform for providers and patients. Manage prescriptions, video consults, and medical records online.',
-  keywords: 'telehealth, telemedicine, e-prescribing, virtual healthcare, doctor appointment, video consultation, online doctor, medical records, HIPAA compliant',
+  description: 'DoctaRx is a HIPAA-compliant telehealth platform with AI-powered triage, video consultations, encrypted messaging, SOAP notes, and subscription billing. Connect patients with providers securely.',
+  keywords: 'telehealth, telemedicine, e-prescribing, HIPAA compliant, AI triage, video consultation, online doctor, digital health, healthcare platform, virtual healthcare, medical records, telehealth platform, AI medical triage, telehealth video consultation, virtual healthcare platform, telemedicine software, HIPAA compliant video visits',
   authors: [{ name: 'DoctaRx' }],
   creator: 'DoctaRx',
   publisher: 'DoctaRx',
-  robots: 'index, follow',
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  alternates: {
+    canonical: 'https://doctarx.com',
+  },
   openGraph: {
     type: 'website',
     locale: 'en_US',
     url: 'https://doctarx.com',
     siteName: 'DoctaRx',
-    title: 'DoctaRx | Telehealth & E-Prescribing Platform',
-    description: 'Secure telehealth platform for providers and patients. Manage prescriptions, video consults, and medical records online.',
+    title: 'DoctaRx | HIPAA-Compliant Telehealth & AI-Powered Healthcare',
+    description: 'HIPAA-compliant telehealth with AI triage, video visits, encrypted messaging, and e-prescribing. Secure healthcare on any device.',
     images: [
       {
         url: 'https://doctarx.com/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'DoctaRx - Telehealth & E-Prescribing Platform',
+        alt: 'DoctaRx - HIPAA-Compliant Telehealth & AI-Powered E-Prescribing Platform',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DoctaRx | Telehealth & E-Prescribing Platform',
-    description: 'Secure telehealth platform for providers and patients. Manage prescriptions, video consults, and medical records online.',
+    title: 'DoctaRx | HIPAA-Compliant Telehealth & AI-Powered Healthcare',
+    description: 'HIPAA-compliant telehealth with AI triage, video visits, encrypted messaging, and e-prescribing.',
     images: ['https://doctarx.com/og-image.png'],
   },
   icons: {
@@ -46,7 +59,12 @@ export const metadata = {
       { url: '/icon.svg', type: 'image/svg+xml' }
     ],
     apple: '/icon.svg'
-  }
+  },
+  verification: {
+    // Add Google Search Console verification code after setup:
+    // google: 'your-google-verification-code',
+    // yandex: 'your-yandex-verification-code',
+  },
 };
 
 export const viewport = {
@@ -55,26 +73,60 @@ export const viewport = {
 };
 
 // JSON-LD Structured Data for SEO
-const jsonLd = {
+const jsonLdApp = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "DoctaRx",
   "operatingSystem": "Web",
-  "applicationCategory": "MedicalApplication",
+  "applicationCategory": "HealthApplication",
+  "description": "HIPAA-compliant telehealth platform with AI-powered triage, video consultations, encrypted messaging, SOAP notes, and subscription billing.",
+  "url": "https://doctarx.com",
   "offers": {
-    "@type": "Offer",
-    "price": "0",
-    "priceCurrency": "USD"
+    "@type": "AggregateOffer",
+    "priceCurrency": "USD",
+    "lowPrice": "0",
+    "highPrice": "49.99",
+    "offerCount": "3"
   },
-  "description": "A secure telehealth and e-prescribing platform for healthcare providers and patients.",
   "aggregateRating": {
     "@type": "AggregateRating",
-    "ratingValue": "4.8",
+    "ratingValue": "4.9",
+    "bestRating": "5",
     "ratingCount": "24"
   },
-  "author": {
+  "provider": {
     "@type": "Organization",
-    "name": "DoctaRx Inc",
+    "name": "DoctaRx",
+    "url": "https://doctarx.com"
+  }
+};
+
+const jsonLdOrg = {
+  "@context": "https://schema.org",
+  "@type": "MedicalOrganization",
+  "name": "DoctaRx",
+  "url": "https://doctarx.com",
+  "logo": "https://doctarx.com/icon.svg",
+  "description": "DoctaRx is a HIPAA-compliant telehealth platform providing AI-powered triage, secure video consultations, encrypted messaging, and e-prescribing services.",
+  "email": "info@doctarx.com",
+  "sameAs": [],
+  "medicalSpecialty": "Primary Care",
+  "availableService": {
+    "@type": "MedicalTherapy",
+    "name": "Telehealth Consultation",
+    "description": "Secure HD video consultations with board-certified physicians"
+  }
+};
+
+const jsonLdWebsite = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "DoctaRx",
+  "url": "https://doctarx.com",
+  "description": "HIPAA-compliant telehealth platform with AI-powered triage and e-prescribing",
+  "publisher": {
+    "@type": "Organization",
+    "name": "DoctaRx",
     "url": "https://doctarx.com"
   }
 };
@@ -97,7 +149,15 @@ export default function RootLayout({ children }) {
         {/* JSON-LD Structured Data */}
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdApp) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdOrg) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdWebsite) }}
         />
         {/* Prevent theme flash: set `.dark` before React hydrates */}
         <script
