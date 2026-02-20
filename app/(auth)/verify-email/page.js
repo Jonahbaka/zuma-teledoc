@@ -31,7 +31,7 @@ function VerifyEmailContent() {
       const response = await api.post('/auth/verify-email', { token: verificationToken });
       if (response.data.success) {
         setStatus('success');
-        setMessage('Your email is verified — you're all set!');
+        setMessage("Your email is verified — you're all set!");
         toast({ title: 'Email verified ✓', description: 'Welcome aboard!', variant: 'success' });
         // Redirect to role-specific dashboard after 2.5 s
         setTimeout(() => {
