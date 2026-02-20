@@ -1,16 +1,24 @@
 'use client';
 
+/**
+ * GoogleAnalytics — GA4 via native gtag.js
+ *
+ * Design decisions:
+ * - Single tracking path: native gtag only (react-ga4 removed to eliminate duplicate hits)
+ * - send_page_view: false on init → we fire exactly ONE page_view per SPA route change
+ * - gtag.js script only loads in production → dev traffic never pollutes GA data
+ * - gtag function always defined → window.gtag() calls never throw in dev mode
+ * - NEXT_PUBLIC_GA_MEASUREMENT_ID must be set at build time (embedded into JS bundle)
+ */
+
 import { useEffect, Suspense } from 'react';
 import Script from 'next/script';
 import { usePathname, useSearchParams } from 'next/navigation';
-import ReactGA from 'react-ga4';
 
-// Google Analytics Measurement ID
-const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-S9C6QBY7DD';
+const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+const IS_PROD = process.env.NODE_ENV === 'production';
 
-// Initialize React GA4
-let initialized = false;
-
+// ─── Internal Realtime Session (unchanged) ────────────────────────────────
 function getRealtimeSessionId() {
   if (typeof window === 'undefined') return null;
   const key = 'drx_rt_sid';
@@ -62,70 +70,85 @@ function trackRealtimePageView(pathname, searchParams) {
       keepalive: true
     }).catch(() => {});
   } catch {
-    // No-op: tracking must never break UX.
+    // Tracking must never break UX.
   }
 }
 
-// Inner component that uses useSearchParams (must be wrapped in Suspense)
+// ─── SPA Route Tracker (inner — needs Suspense for useSearchParams) ────────
 function GoogleAnalyticsInner() {
-  const pathname = usePathname();
+  const pathname    = usePathname();
   const searchParams = useSearchParams();
 
-  // Initialize GA4 on mount
   useEffect(() => {
-    if (!initialized && GA_MEASUREMENT_ID) {
-      ReactGA.initialize(GA_MEASUREMENT_ID);
-      initialized = true;
-    }
-  }, []);
+    if (!pathname) return;
 
-  // Track page views on route change
-  useEffect(() => {
-    if (initialized && pathname) {
-      const url = pathname + (searchParams?.toString() ? `?${searchParams.toString()}` : '');
-      
-      // Track with react-ga4
-      ReactGA.send({ hitType: 'pageview', page: url });
-      
-      // Also track with gtag for redundancy
-      if (typeof window !== 'undefined' && window.gtag) {
-        window.gtag('config', GA_MEASUREMENT_ID, {
-          page_path: url,
-        });
+    const url = pathname + (searchParams?.toString() ? `?${searchParams.toString()}` : '');
+
+    // Fire exactly one page_view per route change via native gtag.
+    // We use gtag('event', 'page_view') — not gtag('config') — so we don't
+    // accidentally re-initialize the tracker or double-fire on SPA transitions.
+    if (typeof window !== 'undefined' && window.gtag && GA_MEASUREMENT_ID) {
+      window.gtag('event', 'page_view', {
+        page_path:     url,
+        page_title:    typeof document !== 'undefined' ? document.title : '',
+        page_location: typeof window  !== 'undefined' ? window.location.href : ''
+      });
+
+      if (!IS_PROD) {
+        console.log(`[GA4 Debug] page_view → ${url}`);
       }
-
-      // Send internal realtime analytics event for the Admin realtime dashboard.
-      trackRealtimePageView(pathname, searchParams);
     }
+
+    // Internal realtime tracking always runs (feeds the admin Realtime dashboard).
+    trackRealtimePageView(pathname, searchParams);
   }, [pathname, searchParams]);
 
   return null;
 }
 
-// Main component with Suspense wrapper
+// ─── Main Export ──────────────────────────────────────────────────────────
 export default function GoogleAnalytics() {
   if (!GA_MEASUREMENT_ID) {
+    if (!IS_PROD) {
+      console.warn('[GA4] NEXT_PUBLIC_GA_MEASUREMENT_ID is not set — analytics disabled. Add it to .env and rebuild.');
+    }
     return null;
   }
 
   return (
     <>
-      {/* Google Analytics Script */}
-      <Script
-        src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-        strategy="afterInteractive"
-      />
-      <Script id="google-analytics" strategy="afterInteractive">
+      {/*
+        gtag.js remote script — production only.
+        In dev, window.gtag is still defined (via the init script below)
+        but no data is actually sent to Google.
+      */}
+      {IS_PROD && (
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+          strategy="afterInteractive"
+        />
+      )}
+
+      {/*
+        Gtag initialisation:
+          - Always defines window.gtag so helper exports work in every env
+          - send_page_view: false — disables the automatic page_view on init
+            so GoogleAnalyticsInner fires the single authoritative page_view
+          - debug_mode: true in non-production → visible in GA4 DebugView
+      */}
+      <Script id="ga4-init" strategy="afterInteractive">
         {`
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
-          gtag('js', new Date());
+          window.gtag = gtag;
+          ${IS_PROD ? "gtag('js', new Date());" : ""}
           gtag('config', '${GA_MEASUREMENT_ID}', {
-            page_path: window.location.pathname,
+            send_page_view: false${IS_PROD ? '' : ',\n            debug_mode: true'}
           });
+          ${!IS_PROD ? `console.log('[GA4 Debug] Configured in dev mode (no hits sent): ${GA_MEASUREMENT_ID}');` : ''}
         `}
       </Script>
-      {/* Wrap the component that uses useSearchParams in Suspense */}
+
       <Suspense fallback={null}>
         <GoogleAnalyticsInner />
       </Suspense>
@@ -133,65 +156,44 @@ export default function GoogleAnalytics() {
   );
 }
 
-// Helper function to track page views manually
+// ─── Helper Exports ───────────────────────────────────────────────────────
+
+/** Manually fire a page_view (e.g. after a modal or virtual page). */
 export const pageview = (url) => {
-  if (typeof window !== 'undefined') {
-    ReactGA.send({ hitType: 'pageview', page: url });
-    if (window.gtag) {
-      window.gtag('config', GA_MEASUREMENT_ID, {
-        page_path: url,
-      });
-    }
-  }
+  if (typeof window === 'undefined' || !window.gtag || !GA_MEASUREMENT_ID) return;
+  window.gtag('event', 'page_view', {
+    page_path:     url,
+    page_title:    document.title,
+    page_location: window.location.origin + url
+  });
+  if (!IS_PROD) console.log(`[GA4 Debug] manual page_view → ${url}`);
 };
 
-// Helper function to track custom events
+/** Fire a custom GA4 event. */
 export const trackEvent = ({ action, category, label, value }) => {
-  if (typeof window !== 'undefined') {
-    ReactGA.event({
-      category: category,
-      action: action,
-      label: label,
-      value: value,
-    });
-  }
+  if (typeof window === 'undefined' || !window.gtag) return;
+  window.gtag('event', action, {
+    event_category: category,
+    event_label:    label,
+    ...(value !== undefined ? { value } : {})
+  });
+  if (!IS_PROD) console.log(`[GA4 Debug] event: ${action}`, { category, label, value });
 };
 
-// Track specific healthcare events
+/** Pre-built healthcare conversion events. */
 export const trackHealthcareEvent = {
-  appointmentBooked: (appointmentType) => {
-    trackEvent({
-      action: 'appointment_booked',
-      category: 'engagement',
-      label: appointmentType,
-    });
-  },
-  videoCallStarted: () => {
-    trackEvent({
-      action: 'video_call_started',
-      category: 'telehealth',
-      label: 'consultation',
-    });
-  },
-  prescriptionSent: () => {
-    trackEvent({
-      action: 'prescription_sent',
-      category: 'e_prescribing',
-      label: 'sent',
-    });
-  },
-  userRegistered: (userType) => {
-    trackEvent({
-      action: 'user_registered',
-      category: 'conversion',
-      label: userType,
-    });
-  },
-  subscriptionStarted: (plan) => {
-    trackEvent({
-      action: 'subscription_started',
-      category: 'revenue',
-      label: plan,
-    });
-  },
+  appointmentBooked: (appointmentType) =>
+    trackEvent({ action: 'appointment_booked', category: 'engagement', label: appointmentType }),
+
+  videoCallStarted: () =>
+    trackEvent({ action: 'video_call_started', category: 'telehealth', label: 'consultation' }),
+
+  prescriptionSent: () =>
+    trackEvent({ action: 'prescription_sent', category: 'e_prescribing', label: 'sent' }),
+
+  userRegistered: (userType) =>
+    trackEvent({ action: 'user_registered', category: 'conversion', label: userType }),
+
+  subscriptionStarted: (plan) =>
+    trackEvent({ action: 'subscription_started', category: 'revenue', label: plan }),
 };
