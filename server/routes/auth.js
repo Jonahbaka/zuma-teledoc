@@ -273,10 +273,21 @@ router.post('/register', async (req, res) => {
         lastName: user.last_name,
         role: user.role
       });
+
+      // Nova AI concierge — personal welcome (non-blocking, fire-and-forget)
+      const novaService = require('../services/agentNotificationService');
+      novaService.sendWelcomeFromNova({
+        id:        user.id,
+        email:     user.email,
+        firstName: user.first_name,
+        lastName:  user.last_name,
+        role:      user.role
+      }).catch(err => logger.warn('Nova welcome (non-fatal):', err.message));
+
     } catch (emailError) {
-      logger.error('Failed to send verification/welcome notifications', { 
-        error: emailError.message, 
-        userId: user.id 
+      logger.error('Failed to send verification/welcome notifications', {
+        error: emailError.message,
+        userId: user.id
       });
       // Don't fail registration if email/notification fails
     }

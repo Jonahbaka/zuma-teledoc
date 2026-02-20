@@ -2,18 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { 
-  Calendar, Video, MessageSquare, FileText, Clock, 
-  ChevronRight, User, Activity, Bell, Plus, Pill, 
+import {
+  Calendar, Video, MessageSquare, FileText, Clock,
+  ChevronRight, User, Activity, Bell, Plus, Pill,
   Shield, Heart, AlertCircle, Phone, Stethoscope,
   TrendingUp, Droplets, Scale, ThermometerSun, CheckCircle2,
-  ArrowRight, Sparkles, CreditCard, RefreshCw
+  ArrowRight, Sparkles, CreditCard, RefreshCw, Mail, X
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { appointmentsAPI, notificationsAPI } from '@/lib/api';
+import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime, formatRelativeTime, cn } from '@/lib/utils';
+import { toast } from '@/components/ui/use-toast';
 import TriageFlow from '@/components/hive/TriageFlow';
 
 // Mock data for patient-centric widgets
@@ -89,12 +91,26 @@ export default function PatientDashboard() {
   const [appointments, setAppointments] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+  const [verifyBannerDismissed, setVerifyBannerDismissed] = useState(false);
+  const [resendingVerify, setResendingVerify] = useState(false);
+
   // Mock states
   const [medications] = useState(MOCK_MEDICATIONS);
   const [vitals] = useState(MOCK_VITALS);
   const [insurance] = useState(MOCK_INSURANCE);
   const [messages] = useState(MOCK_MESSAGES);
+
+  const handleResendVerification = async () => {
+    setResendingVerify(true);
+    try {
+      await api.post('/auth/resend-verification');
+      toast({ title: 'Verification email sent!', description: 'Check your inbox and click the link to verify.', variant: 'success' });
+    } catch (err) {
+      toast({ title: 'Could not resend', description: err.response?.data?.error || 'Try again in a moment.', variant: 'destructive' });
+    } finally {
+      setResendingVerify(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -131,6 +147,30 @@ export default function PatientDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Email Verification Banner */}
+      {!user?.isVerified && !verifyBannerDismissed && (
+        <div className="flex items-center gap-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 rounded-2xl px-5 py-4">
+          <div className="bg-amber-100 dark:bg-amber-900/60 p-2 rounded-full flex-shrink-0">
+            <Mail className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Verify your email to unlock full access</p>
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">We sent a link to <strong>{user?.email}</strong>. Click it to verify your account.</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button size="sm" variant="outline"
+              className="border-amber-400 text-amber-700 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-300 dark:hover:bg-amber-900/40 text-xs"
+              onClick={handleResendVerification} disabled={resendingVerify}>
+              {resendingVerify ? 'Sending…' : 'Resend email'}
+            </Button>
+            <button onClick={() => setVerifyBannerDismissed(true)}
+              className="text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 p-1 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Welcome Section with Dual CTAs */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>

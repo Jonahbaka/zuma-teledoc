@@ -901,6 +901,66 @@ const sendOpsAlertEmail = async ({ subject, html, text, metadata }) => {
   }
 };
 
+/**
+ * Send a personalized email from Nova (AI health concierge)
+ * Distinctive design that makes it clear this is a personal message from Nova.
+ */
+const sendNovaEmail = async ({ to, recipientName, role, subject, message, ctaText, ctaUrl }) => {
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+
+    const bodyContent = `
+      <p style="margin: 0 0 20px 0; font-size: 17px; font-weight: 600; color: #1e1b4b;">
+        Hi ${recipientName},
+      </p>
+
+      <p style="margin: 0 0 24px 0; font-size: 16px; line-height: 1.75; color: #334155;">
+        ${message}
+      </p>
+
+      <div style="background: linear-gradient(135deg, #ede9fe 0%, #d1fae5 100%); border-radius: 14px; padding: 20px 24px; margin: 0 0 24px 0; border: 1px solid #c4b5fd;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+          <tr>
+            <td style="width: 44px; vertical-align: top; padding-right: 14px;">
+              <div style="width: 44px; height: 44px; background: linear-gradient(135deg, #7c3aed 0%, #10b981 100%); border-radius: 50%; text-align: center; line-height: 44px; font-size: 20px;">
+                🤖
+              </div>
+            </td>
+            <td style="vertical-align: middle;">
+              <p style="margin: 0; font-size: 13px; font-weight: 700; color: #5b21b6; text-transform: uppercase; letter-spacing: 0.05em;">Nova · AI Health Concierge</p>
+              <p style="margin: 4px 0 0 0; font-size: 13px; color: #6d28d9;">DoctaRx · doctarx.com</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    const html = generateEmailTemplate({
+      preheader: message.slice(0, 90),
+      headerIcon: '🤖',
+      headerTitle: 'A message from Nova',
+      headerSubtitle: `Your personal AI health concierge at DoctaRx`,
+      headerColor: '#5b21b6',
+      headerColorEnd: '#10b981',
+      bodyContent,
+      ctaButton: ctaText && ctaUrl ? {
+        text: ctaText,
+        url: ctaUrl,
+        color: '#7c3aed',
+        colorEnd: '#5b21b6'
+      } : null,
+      footerNote: '✨ Nova is DoctaRx\'s AI health concierge. She learns your preferences over time to give you a more personal experience.',
+      recipientEmail: to
+    });
+
+    await sendEmail({ to, subject: subject || `A message from Nova — DoctaRx`, html });
+    logger.info('Nova email sent', { to });
+  } catch (error) {
+    logger.error('Failed to send Nova email', { error: error.message, to });
+    throw error;
+  }
+};
+
 module.exports = {
   sendWelcomeEmail,
   sendAppointmentNotification,
@@ -910,6 +970,7 @@ module.exports = {
   sendNewMessageEmail,
   sendProviderInvitationEmail,
   sendOpsAlertEmail,
+  sendNovaEmail,
   // Export for advanced use
   sendEmail,
   generateEmailTemplate

@@ -2,17 +2,19 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { CheckCircle, XCircle, Loader2, Mail } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Mail, Sparkles } from 'lucide-react';
 import api from '@/lib/api';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
-  const [status, setStatus] = useState('verifying'); // verifying, success, error
-  const [message, setMessage] = useState('Verifying your email address...');
+  const router       = useRouter();
+  const { user }     = useAuth();
+  const [status, setStatus]   = useState('verifying'); // verifying | success | error
+  const [message, setMessage] = useState('Verifying your email address…');
+  const [resending, setResending] = useState(false);
   const token = searchParams.get('token');
 
   useEffect(() => {
@@ -20,132 +22,169 @@ function VerifyEmailContent() {
       verifyEmail(token);
     } else {
       setStatus('error');
-      setMessage('No verification token provided');
+      setMessage('No verification token found in this link. Try clicking the button in your email again.');
     }
   }, [token]);
 
   const verifyEmail = async (verificationToken) => {
     try {
-      const response = await api.post('/auth/verify-email', {
-        token: verificationToken
-      });
-
+      const response = await api.post('/auth/verify-email', { token: verificationToken });
       if (response.data.success) {
         setStatus('success');
-        setMessage('Your email address has been verified successfully!');
-        toast({
-          title: 'Email Verified',
-          description: 'Your email address has been verified successfully.',
-          variant: 'success'
-        });
-        
-        // Redirect to dashboard after 3 seconds
+        setMessage('Your email is verified — you're all set!');
+        toast({ title: 'Email verified ✓', description: 'Welcome aboard!', variant: 'success' });
+        // Redirect to role-specific dashboard after 2.5 s
         setTimeout(() => {
-          router.push('/dashboard');
-        }, 3000);
+          const role = user?.role;
+          if (role === 'provider') router.push('/provider/dashboard');
+          else if (role === 'admin' || role === 'super_admin') router.push('/admin/dashboard');
+          else router.push('/patient/dashboard');
+        }, 2500);
       }
     } catch (error) {
       setStatus('error');
-      setMessage(error.response?.data?.error || 'Failed to verify email address. The link may have expired.');
+      setMessage(
+        error.response?.data?.error ||
+        'This link may have expired. Request a new one below.'
+      );
       toast({
-        title: 'Verification Failed',
-        description: error.response?.data?.error || 'Failed to verify email address',
+        title: 'Verification failed',
+        description: error.response?.data?.error || 'The link is invalid or expired.',
         variant: 'destructive'
       });
     }
   };
 
   const resendVerification = async () => {
+    setResending(true);
     try {
-      const response = await api.post('/auth/resend-verification');
-      if (response.data.success) {
-        toast({
-          title: 'Email Sent',
-          description: 'A new verification email has been sent to your email address.',
-          variant: 'success'
-        });
-      }
+      await api.post('/auth/resend-verification');
+      toast({
+        title: 'Email sent!',
+        description: 'Check your inbox for a fresh verification link.',
+        variant: 'success'
+      });
     } catch (error) {
       toast({
-        title: 'Error',
-        description: error.response?.data?.error || 'Failed to resend verification email',
+        title: 'Could not resend',
+        description: error.response?.data?.error || 'Please try again in a moment.',
         variant: 'destructive'
       });
+    } finally {
+      setResending(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-950/30 to-slate-900 p-4">
+      {/* Background glow */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-purple-600/10 rounded-full blur-[120px]" />
+      </div>
+
+      <div className="relative w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+        {/* Header bar */}
+        <div className={`h-1.5 w-full ${status === 'success' ? 'bg-emerald-500' : status === 'error' ? 'bg-red-500' : 'bg-gradient-to-r from-purple-500 to-blue-500 animate-pulse'}`} />
+
+        <div className="p-8 text-center space-y-6">
+          {/* Icon */}
+          <div className="flex justify-center">
             {status === 'verifying' && (
-              <Loader2 className="w-16 h-16 text-blue-500 animate-spin mx-auto" />
+              <div className="w-20 h-20 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
+              </div>
             )}
             {status === 'success' && (
-              <CheckCircle className="w-16 h-16 text-purple-500 mx-auto" />
+              <div className="w-20 h-20 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                <CheckCircle className="w-10 h-10 text-emerald-400" />
+              </div>
             )}
             {status === 'error' && (
-              <XCircle className="w-16 h-16 text-red-500 mx-auto" />
+              <div className="w-20 h-20 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                <XCircle className="w-10 h-10 text-red-400" />
+              </div>
             )}
           </div>
-          <CardTitle className="text-2xl">
-            {status === 'verifying' && 'Verifying Email'}
-            {status === 'success' && 'Email Verified'}
-            {status === 'error' && 'Verification Failed'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-center text-slate-600">{message}</p>
-          
+
+          {/* Title */}
+          <div>
+            <h1 className="text-2xl font-bold text-white">
+              {status === 'verifying' && 'Verifying your email…'}
+              {status === 'success'   && 'Email verified!'}
+              {status === 'error'     && 'Verification failed'}
+            </h1>
+            <p className="mt-2 text-slate-400 leading-relaxed">{message}</p>
+          </div>
+
+          {/* Success state */}
           {status === 'success' && (
-            <div className="text-center">
-              <p className="text-sm text-slate-500 mb-4">
-                Redirecting to your dashboard...
-              </p>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 justify-center text-emerald-400 text-sm font-medium">
+                <Sparkles className="w-4 h-4" />
+                Redirecting you to your dashboard…
+              </div>
               <Button
-                onClick={() => router.push('/dashboard')}
-                className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                onClick={() => {
+                  const role = user?.role;
+                  if (role === 'provider') router.push('/provider/dashboard');
+                  else if (role === 'admin' || role === 'super_admin') router.push('/admin/dashboard');
+                  else router.push('/patient/dashboard');
+                }}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl"
               >
                 Go to Dashboard
               </Button>
             </div>
           )}
-          
+
+          {/* Error state */}
           {status === 'error' && (
             <div className="space-y-3">
               <Button
                 onClick={resendVerification}
-                className="w-full bg-blue-500 hover:bg-blue-600"
+                disabled={resending}
+                className="w-full bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-xl"
               >
-                <Mail className="w-4 h-4 mr-2" />
-                Resend Verification Email
+                {resending ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending…</>
+                ) : (
+                  <><Mail className="w-4 h-4 mr-2" /> Send a new verification email</>
+                )}
               </Button>
               <Button
-                variant="outline"
-                onClick={() => router.push('/login')}
-                className="w-full"
+                variant="ghost"
+                onClick={() => router.push('/patient/login')}
+                className="w-full text-slate-400 hover:text-white hover:bg-white/5 rounded-xl"
               >
-                Back to Login
+                Back to login
               </Button>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Nova footer */}
+        <div className="px-8 pb-6 text-center">
+          <p className="text-xs text-slate-500">
+            🤖 Need help? Nova, your DoctaRx AI concierge, is always available in your dashboard.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
 
 function VerifyEmailFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-      <div className="flex items-center gap-2">
-        <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
-        <span className="text-slate-400">Verifying...</span>
+    <div className="min-h-screen flex items-center justify-center bg-slate-900">
+      <div className="flex items-center gap-3">
+        <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+        <span className="text-slate-400">Verifying…</span>
       </div>
     </div>
   );
-}export default function VerifyEmailPage() {
+}
+
+export default function VerifyEmailPage() {
   return (
     <Suspense fallback={<VerifyEmailFallback />}>
       <VerifyEmailContent />
