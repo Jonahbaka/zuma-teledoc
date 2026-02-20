@@ -271,6 +271,7 @@ class SkillRegistry {
 
   categorizeIntent(intentType) {
     const categories = {
+      // Read operations
       query_database: 'read',
       fetch_metrics: 'read',
       analyze_data: 'read',
@@ -278,11 +279,18 @@ class SkillRegistry {
       get_revenue_data: 'read',
       get_appointment_data: 'read',
       get_ga4_realtime_metrics: 'read',
+      // Clinical (read-level — advisory only, never prescribes)
       medical_unit_consult: 'read',
+      // Communication
       send_email: 'communicate',
       send_notification: 'communicate',
+      // Write operations
+      create_record: 'write',
+      update_record: 'write',
+      // Financial
       process_payment: 'financial',
       update_pricing: 'financial',
+      // External
       api_call_external: 'external',
       register_ein: 'external',
       file_report: 'external',
@@ -296,6 +304,7 @@ class SkillRegistry {
 
   estimateRisk(intentType, skillRiskLevel = 'medium') {
     const riskByIntent = {
+      // Read operations — low risk
       query_database: 0.05,
       fetch_metrics: 0.05,
       analyze_data: 0.08,
@@ -303,11 +312,18 @@ class SkillRegistry {
       get_revenue_data: 0.1,
       get_appointment_data: 0.1,
       get_ga4_realtime_metrics: 0.05,
+      // Clinical — moderate (advisory, never prescribes)
       medical_unit_consult: 0.2,
+      // Write operations
+      create_record: 0.3,
+      update_record: 0.35,
+      // Communication — moderate
       send_notification: 0.2,
       send_email: 0.35,
+      // Financial — high
       process_payment: 0.8,
       update_pricing: 0.7,
+      // External — high to critical
       api_call_external: 0.85,
       register_ein: 0.9,
       open_bank_account: 0.95,
@@ -497,6 +513,463 @@ class SkillRegistry {
           { name: 'Compile Report', intentType: 'analyze_data', description: 'Generate comprehensive daily report' }
         ],
         riskLevel: 'minimal', isReversible: true, involvesPhi: false, involvesFinancial: false
+      },
+
+      // ═══════════════════════════════════════════════════════════════
+      //  CLINICAL SKILLS (Asclepius + Triage Nurse)
+      // ═══════════════════════════════════════════════════════════════
+
+      {
+        skillName: 'clinical.triage.symptom_assessment',
+        displayName: 'Symptom Triage Assessment',
+        description: 'Patient-facing symptom intake with auto-escalation for MI/CVA/sepsis/anaphylaxis. Collects chief complaint, HPI, ROS. Outputs urgency tier.',
+        category: 'clinical',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Collect Chief Complaint', intentType: 'medical_unit_consult', description: 'Gather patient chief complaint and symptom timeline' },
+          { name: 'Screen for Emergency', intentType: 'medical_unit_consult', description: 'Pattern-match critical symptoms (chest pain, face droop, high fever+confusion, throat swelling). Hard-escalate to 911 if matched.' },
+          { name: 'Assess Urgency Tier', intentType: 'analyze_data', description: 'Classify as emergency / urgent / semi-urgent / routine based on symptom severity and acuity' },
+          { name: 'Generate Triage Summary', intentType: 'analyze_data', description: 'Compile triage output for provider review with recommended next steps' }
+        ],
+        inputSchema: { required: ['symptoms'], optional: ['patientAge', 'medications', 'medicalHistory'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'clinical.triage.emergency_escalation',
+        displayName: 'Emergency Escalation (911)',
+        description: 'Hard-coded emergency override. Pattern-matches critical symptoms and immediately returns 911 advisory. No LLM reasoning — direct pattern match.',
+        category: 'clinical',
+        skillType: 'automation',
+        steps: [
+          { name: 'Critical Pattern Match', intentType: 'medical_unit_consult', description: 'Match symptoms against MI/CVA/sepsis/anaphylaxis patterns' },
+          { name: 'Issue 911 Advisory', intentType: 'send_notification', description: 'Return immediate 911 advisory in patient-safe language and notify provider' }
+        ],
+        riskLevel: 'critical', isReversible: false, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'clinical.differential.generate',
+        displayName: 'Generate Differential Diagnosis',
+        description: 'Generates ranked differential diagnosis from most likely to most dangerous. Quantifies uncertainty per diagnosis. Maps symptoms to organ systems.',
+        category: 'clinical',
+        skillType: 'analysis',
+        steps: [
+          { name: 'Map to Organ Systems', intentType: 'medical_unit_consult', description: 'Map symptoms to cardiovascular, respiratory, GI, neuro, endocrine, MSK, psych systems' },
+          { name: 'Generate Differential', intentType: 'medical_unit_consult', description: 'Rank diagnoses by likelihood and severity. Quantify confidence per diagnosis.' },
+          { name: 'Identify Red Flags', intentType: 'medical_unit_consult', description: 'Flag must-not-miss diagnoses and recommend urgent workup if needed' },
+          { name: 'Suggest Workup', intentType: 'analyze_data', description: 'Recommend labs, imaging, and referrals to narrow the differential' }
+        ],
+        inputSchema: { required: ['symptoms', 'audience'], optional: ['age', 'sex', 'history', 'medications', 'vitals', 'labs'] },
+        riskLevel: 'high', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'clinical.differential.refine',
+        displayName: 'Refine Differential Diagnosis',
+        description: 'Takes existing differential + new data (labs, imaging), narrows the list, adjusts confidence scores, suggests next diagnostic steps.',
+        category: 'clinical',
+        skillType: 'analysis',
+        steps: [
+          { name: 'Integrate New Data', intentType: 'medical_unit_consult', description: 'Incorporate new lab results, imaging, or clinical findings into existing differential' },
+          { name: 'Adjust Confidence Scores', intentType: 'medical_unit_consult', description: 'Re-rank diagnoses based on updated evidence. Remove ruled-out diagnoses.' },
+          { name: 'Recommend Next Steps', intentType: 'analyze_data', description: 'Suggest additional workup or confirm working diagnosis' }
+        ],
+        inputSchema: { required: ['existingDifferential', 'newFindings'], optional: ['labResults', 'imagingResults'] },
+        riskLevel: 'high', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'clinical.consult.provider',
+        displayName: 'Provider Clinical Consult',
+        description: 'Clinical-language consult for licensed providers. References guidelines (USPSTF, AHA, IDSA). Decision support only — not a prescriber.',
+        category: 'clinical',
+        skillType: 'query',
+        steps: [
+          { name: 'Clinical Consult', intentType: 'medical_unit_consult', description: 'Generate clinical-language response using provider-grade medical terminology and guideline references' }
+        ],
+        inputSchema: { required: ['question'], optional: ['patientContext', 'specialty'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'clinical.consult.patient',
+        displayName: 'Patient Health Guidance',
+        description: 'Plain-language health guidance for patients. Empathetic, calm, no jargon. Explains symptoms, what to watch for, when to seek care.',
+        category: 'clinical',
+        skillType: 'query',
+        steps: [
+          { name: 'Patient Guidance', intentType: 'medical_unit_consult', description: 'Generate patient-friendly health guidance in plain language with empathetic tone' }
+        ],
+        inputSchema: { required: ['question'], optional: ['symptoms', 'medications'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'clinical.note.generate_soap',
+        displayName: 'Generate SOAP Note',
+        description: 'Generates structured SOAP note (Subjective, Objective, Assessment, Plan) from telehealth encounter. Provider reviews and signs. AI content labeled.',
+        category: 'clinical',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Extract Subjective', intentType: 'medical_unit_consult', description: 'Extract chief complaint, HPI, ROS, and PMH from encounter transcript' },
+          { name: 'Compile Objective', intentType: 'medical_unit_consult', description: 'Organize vitals, exam findings, and labs into objective section' },
+          { name: 'Generate Assessment', intentType: 'medical_unit_consult', description: 'Synthesize differential diagnosis and working assessment' },
+          { name: 'Draft Plan', intentType: 'medical_unit_consult', description: 'Draft treatment plan including medications, follow-up, referrals, and patient education' }
+        ],
+        inputSchema: { required: ['encounterTranscript'], optional: ['vitals', 'labs', 'chiefComplaint'] },
+        riskLevel: 'high', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'clinical.note.after_visit_summary',
+        displayName: 'After-Visit Summary',
+        description: 'Generates patient-friendly after-visit summary: what was discussed, decisions made, medications reviewed, follow-up instructions, red flags.',
+        category: 'clinical',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Summarize Visit', intentType: 'medical_unit_consult', description: 'Create plain-language summary of the encounter and clinical decisions' },
+          { name: 'List Action Items', intentType: 'analyze_data', description: 'Compile medications, follow-up appointments, and red flags to watch for' }
+        ],
+        inputSchema: { required: ['encounterSummary'], optional: ['medications', 'followUpDate'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+
+      // ═══════════════════════════════════════════════════════════════
+      //  PHARMACY SKILLS (Pharmacist Agent)
+      // ═══════════════════════════════════════════════════════════════
+
+      {
+        skillName: 'pharmacy.interaction.check',
+        displayName: 'Drug Interaction Check',
+        description: 'Checks drug-drug interactions, contraindications, duplicate therapies, and dosing concerns for a proposed medication against current med list.',
+        category: 'clinical',
+        skillType: 'analysis',
+        steps: [
+          { name: 'Fetch Current Medications', intentType: 'query_database', description: 'Retrieve patient current medication list from EHR' },
+          { name: 'Check Interactions', intentType: 'medical_unit_consult', description: 'Analyze proposed drug against current meds for DDI, contraindications, and duplicate therapy' },
+          { name: 'Generate Safety Report', intentType: 'analyze_data', description: 'Compile interaction findings with severity ratings and alternatives' }
+        ],
+        inputSchema: { required: ['proposedMedication', 'patientId'], optional: ['currentMedications', 'allergies'] },
+        riskLevel: 'high', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'pharmacy.medication.reconciliation',
+        displayName: 'Medication Reconciliation',
+        description: 'Compares medications across sources (patient-reported, pharmacy, EHR). Identifies discrepancies, duplicates, and gaps. Outputs reconciled list.',
+        category: 'clinical',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Gather Med Sources', intentType: 'query_database', description: 'Pull medication lists from patient intake, pharmacy records, and provider records' },
+          { name: 'Compare and Reconcile', intentType: 'medical_unit_consult', description: 'Identify discrepancies, duplicates, and missing medications across sources' },
+          { name: 'Generate Reconciled List', intentType: 'analyze_data', description: 'Produce unified reconciled medication list for provider review' }
+        ],
+        inputSchema: { required: ['patientId'], optional: ['patientReportedMeds', 'pharmacyRecords'] },
+        riskLevel: 'high', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'pharmacy.education.patient',
+        displayName: 'Medication Education',
+        description: 'Patient-friendly medication education: what the drug does, how to take it, side effects, what to report, food/drug interactions.',
+        category: 'clinical',
+        skillType: 'query',
+        steps: [
+          { name: 'Generate Education', intentType: 'medical_unit_consult', description: 'Create plain-language medication education covering purpose, dosing, side effects, and interactions' }
+        ],
+        inputSchema: { required: ['medicationName'], optional: ['patientAge', 'otherMeds'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'pharmacy.refill.workflow',
+        displayName: 'Prescription Refill Workflow',
+        description: 'End-to-end refill management: verify active prescription → check interactions → route to provider → notify patient.',
+        category: 'clinical',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Verify Prescription', intentType: 'query_database', description: 'Confirm prescription is active and has remaining refills' },
+          { name: 'Check Current Interactions', intentType: 'medical_unit_consult', description: 'Verify no new interactions with current medication list' },
+          { name: 'Route to Provider', intentType: 'send_notification', description: 'Send refill authorization request to prescribing provider' },
+          { name: 'Notify Patient', intentType: 'send_notification', description: 'Confirm refill status to patient via secure message' }
+        ],
+        inputSchema: { required: ['patientId', 'prescriptionId'] },
+        riskLevel: 'high', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'pharmacy.formulary.check',
+        displayName: 'Insurance Formulary Check',
+        description: 'Checks if a medication is on the patient insurance formulary. Suggests tier-equivalent alternatives if not covered.',
+        category: 'financial',
+        skillType: 'query',
+        steps: [
+          { name: 'Check Formulary', intentType: 'query_database', description: 'Look up medication on insurance formulary and determine tier/coverage' },
+          { name: 'Suggest Alternatives', intentType: 'analyze_data', description: 'If not covered, identify therapeutically equivalent alternatives on formulary' }
+        ],
+        inputSchema: { required: ['medicationName', 'insurancePlan'], optional: ['diagnosis'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: false, involvesFinancial: false
+      },
+
+      // ═══════════════════════════════════════════════════════════════
+      //  SCHEDULING & PATIENT FLOW SKILLS (The Weaver)
+      // ═══════════════════════════════════════════════════════════════
+
+      {
+        skillName: 'ops.scheduling.book_appointment',
+        displayName: 'Book Telehealth Appointment',
+        description: 'Books a telehealth appointment: matches patient with available provider by specialty, availability, insurance, and preference.',
+        category: 'operations',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Match Provider', intentType: 'query_database', description: 'Find available providers matching specialty, insurance, and time preferences' },
+          { name: 'Reserve Slot', intentType: 'create_record', description: 'Book the appointment slot and create calendar entry' },
+          { name: 'Send Confirmation', intentType: 'send_notification', description: 'Send confirmation via SMS and email with prep instructions' }
+        ],
+        inputSchema: { required: ['patientId', 'specialty'], optional: ['preferredDate', 'preferredProvider', 'insurancePlan'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'ops.scheduling.reschedule',
+        displayName: 'Reschedule Appointment',
+        description: 'Handles rescheduling: finds next slot, updates calendar, notifies parties. Tracks reschedule patterns for no-show prediction.',
+        category: 'operations',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Find Next Available', intentType: 'query_database', description: 'Find next available slot with same provider or equivalent' },
+          { name: 'Update Appointment', intentType: 'create_record', description: 'Move appointment to new slot, update calendar' },
+          { name: 'Notify All Parties', intentType: 'send_notification', description: 'Send rescheduling confirmation to patient and provider' }
+        ],
+        inputSchema: { required: ['appointmentId'], optional: ['preferredDate', 'reason'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'ops.scheduling.waitlist',
+        displayName: 'Waitlist Management',
+        description: 'Manages patient waitlist. When slot opens, auto-notifies next eligible patient. Tracks acceptance rates.',
+        category: 'operations',
+        skillType: 'automation',
+        steps: [
+          { name: 'Check Waitlist', intentType: 'query_database', description: 'Get next patient on waitlist matching open slot criteria' },
+          { name: 'Offer Slot', intentType: 'send_notification', description: 'Notify waitlisted patient of available appointment' },
+          { name: 'Track Response', intentType: 'fetch_metrics', description: 'Track acceptance/decline and move to next patient if declined' }
+        ],
+        inputSchema: { required: ['openSlotId'], optional: ['specialty', 'provider'] },
+        riskLevel: 'low', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'ops.reminders.appointment',
+        displayName: 'Appointment Reminders',
+        description: 'Automated appointment reminders at 48hr, 24hr, and 2hr intervals via SMS/email. Includes prep instructions.',
+        category: 'operations',
+        skillType: 'automation',
+        steps: [
+          { name: 'Fetch Upcoming Appointments', intentType: 'query_database', description: 'Get appointments needing reminders in next 48 hours' },
+          { name: 'Send Reminders', intentType: 'send_notification', description: 'Send reminder via SMS and email with telehealth link and prep instructions' }
+        ],
+        riskLevel: 'low', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+
+      // ═══════════════════════════════════════════════════════════════
+      //  INSURANCE & BILLING SKILLS (The Alchemist + The Accountant)
+      // ═══════════════════════════════════════════════════════════════
+
+      {
+        skillName: 'billing.insurance.verify_eligibility',
+        displayName: 'Insurance Eligibility Verification',
+        description: 'Real-time eligibility verification: active coverage, copay, deductible status, network status before the visit.',
+        category: 'financial',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Query Payer', intentType: 'api_call_external', description: 'Submit 270 eligibility inquiry to insurance payer' },
+          { name: 'Parse Response', intentType: 'analyze_data', description: 'Parse 271 response for coverage details, copay, deductible remaining' },
+          { name: 'Update Patient Record', intentType: 'create_record', description: 'Store verified eligibility in patient insurance record' }
+        ],
+        inputSchema: { required: ['patientId', 'insurancePlanId'], optional: ['serviceDate', 'cptCodes'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: true, involvesFinancial: false, involvesExternal: true
+      },
+      {
+        skillName: 'billing.insurance.prior_auth',
+        displayName: 'Prior Authorization Workflow',
+        description: 'End-to-end prior auth: determine if PA required → gather documentation → submit to payer → track status → notify.',
+        category: 'financial',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Check PA Requirement', intentType: 'query_database', description: 'Determine if service requires prior authorization for this payer' },
+          { name: 'Gather Clinical Documentation', intentType: 'query_database', description: 'Collect supporting clinical documentation for medical necessity' },
+          { name: 'Submit PA Request', intentType: 'api_call_external', description: 'Submit prior authorization request to payer with supporting docs' },
+          { name: 'Track and Notify', intentType: 'send_notification', description: 'Track PA status and notify provider and patient of decision' }
+        ],
+        inputSchema: { required: ['patientId', 'serviceCode', 'insurancePlanId'], optional: ['clinicalNotes', 'urgency'] },
+        riskLevel: 'high', isReversible: false, involvesPhi: true, involvesFinancial: false, involvesExternal: true
+      },
+      {
+        skillName: 'billing.claims.submit',
+        displayName: 'Submit Insurance Claim',
+        description: 'Generates and submits 837P insurance claim. Validates CPT/ICD-10 codes, ensures medical necessity documentation.',
+        category: 'financial',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Validate Codes', intentType: 'analyze_data', description: 'Verify CPT and ICD-10 code accuracy and medical necessity linkage' },
+          { name: 'Generate 837P', intentType: 'create_record', description: 'Compile claim in 837P format with all required fields' },
+          { name: 'Submit to Clearinghouse', intentType: 'api_call_external', description: 'Submit claim electronically via clearinghouse' },
+          { name: 'Track Submission', intentType: 'create_record', description: 'Log claim submission and set follow-up reminders' }
+        ],
+        inputSchema: { required: ['encounterId', 'patientId', 'providerId'], optional: ['cptCodes', 'icdCodes'] },
+        riskLevel: 'high', isReversible: false, involvesPhi: true, involvesFinancial: true, involvesExternal: true
+      },
+      {
+        skillName: 'billing.claims.denial_management',
+        displayName: 'Denial Management & Appeal',
+        description: 'Analyzes denied claims, identifies denial reason, generates appeal letter with supporting documentation, resubmits.',
+        category: 'financial',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Analyze Denial', intentType: 'analyze_data', description: 'Parse denial reason code and identify root cause' },
+          { name: 'Gather Appeal Evidence', intentType: 'query_database', description: 'Collect clinical documentation supporting medical necessity' },
+          { name: 'Generate Appeal Letter', intentType: 'medical_unit_consult', description: 'Draft appeal letter with clinical justification and supporting references' },
+          { name: 'Resubmit Claim', intentType: 'api_call_external', description: 'Submit corrected claim or formal appeal to payer' }
+        ],
+        inputSchema: { required: ['claimId', 'denialReasonCode'] },
+        riskLevel: 'high', isReversible: false, involvesPhi: true, involvesFinancial: true, involvesExternal: true
+      },
+      {
+        skillName: 'billing.coding.suggest',
+        displayName: 'CPT/ICD-10 Code Suggestion',
+        description: 'Given an encounter note, suggests appropriate CPT and ICD-10 codes. Flags upcoding/downcoding risks. Provider confirms.',
+        category: 'financial',
+        skillType: 'analysis',
+        steps: [
+          { name: 'Parse Encounter', intentType: 'medical_unit_consult', description: 'Extract diagnoses, procedures, and complexity from encounter documentation' },
+          { name: 'Suggest Codes', intentType: 'analyze_data', description: 'Map to CPT and ICD-10 codes with confidence scores' },
+          { name: 'Validate Compliance', intentType: 'analyze_data', description: 'Check for upcoding/downcoding risk, bundling issues, and modifier requirements' }
+        ],
+        inputSchema: { required: ['encounterNote'], optional: ['specialty', 'visitType'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'billing.payment.collect',
+        displayName: 'Patient Payment Collection',
+        description: 'Manages patient payments via Stripe: sends payment links, tracks balances, offers payment plans, processes copays.',
+        category: 'financial',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Calculate Amount Due', intentType: 'query_database', description: 'Determine patient responsibility from EOB and outstanding balance' },
+          { name: 'Generate Payment Link', intentType: 'api_call_external', description: 'Create Stripe payment link or invoice for patient' },
+          { name: 'Send Payment Request', intentType: 'send_notification', description: 'Send payment link to patient via secure message or email' },
+          { name: 'Track Payment', intentType: 'fetch_metrics', description: 'Monitor payment status and send follow-up if unpaid after 7 days' }
+        ],
+        inputSchema: { required: ['patientId', 'amountDue'], optional: ['paymentPlan', 'dueDate'] },
+        riskLevel: 'high', isReversible: false, involvesPhi: false, involvesFinancial: true, involvesExternal: true
+      },
+
+      // ═══════════════════════════════════════════════════════════════
+      //  PATIENT ENGAGEMENT SKILLS (Multi-Agent)
+      // ═══════════════════════════════════════════════════════════════
+
+      {
+        skillName: 'engagement.onboard.new_patient',
+        displayName: 'New Patient Onboarding',
+        description: 'Full onboarding: registration → insurance verification → intake forms → medication history → consent → first appointment.',
+        category: 'operations',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Create Patient Record', intentType: 'create_record', description: 'Create patient account with demographics and contact info' },
+          { name: 'Verify Insurance', intentType: 'api_call_external', description: 'Run eligibility verification on provided insurance' },
+          { name: 'Send Intake Forms', intentType: 'send_notification', description: 'Send digital intake forms, consent documents, and medication history questionnaire' },
+          { name: 'Schedule First Visit', intentType: 'create_record', description: 'Book initial telehealth consultation based on patient needs' }
+        ],
+        inputSchema: { required: ['firstName', 'lastName', 'dateOfBirth', 'email'], optional: ['phone', 'insuranceInfo', 'chiefComplaint'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: true, involvesFinancial: false, involvesExternal: true
+      },
+      {
+        skillName: 'engagement.followup.post_visit',
+        displayName: 'Post-Visit Follow-Up',
+        description: 'Automated post-visit check-in at 24hr and 7 days: symptom status, medication issues, need for follow-up. Escalates concerning responses.',
+        category: 'clinical',
+        skillType: 'automation',
+        steps: [
+          { name: 'Send 24hr Check-In', intentType: 'send_notification', description: 'Send secure message checking on symptoms and medication tolerability' },
+          { name: 'Analyze Response', intentType: 'medical_unit_consult', description: 'Evaluate patient response for concerning symptoms or medication issues' },
+          { name: 'Escalate or Confirm', intentType: 'send_notification', description: 'If concerning: route to provider. If stable: send 7-day follow-up.' }
+        ],
+        inputSchema: { required: ['encounterId', 'patientId'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'engagement.education.condition',
+        displayName: 'Condition-Specific Patient Education',
+        description: 'Personalized patient education: what the condition is, treatment options, lifestyle modifications, when to seek urgent care.',
+        category: 'clinical',
+        skillType: 'query',
+        steps: [
+          { name: 'Generate Education Material', intentType: 'medical_unit_consult', description: 'Create plain-language education on the diagnosed condition, tailored to patient literacy and cultural context' }
+        ],
+        inputSchema: { required: ['conditionName'], optional: ['patientAge', 'readingLevel', 'language'] },
+        riskLevel: 'low', isReversible: true, involvesPhi: false, involvesFinancial: false
+      },
+      {
+        skillName: 'engagement.recall.preventive',
+        displayName: 'Preventive Care Recall',
+        description: 'Tracks preventive care gaps: overdue screenings, missing vaccinations, annual wellness visits. Sends recalls to eligible patients.',
+        category: 'operations',
+        skillType: 'automation',
+        steps: [
+          { name: 'Identify Gaps', intentType: 'query_database', description: 'Screen patient population for overdue preventive services based on age, sex, and risk factors' },
+          { name: 'Generate Recall List', intentType: 'analyze_data', description: 'Prioritize patients by overdue interval and clinical risk' },
+          { name: 'Send Recalls', intentType: 'send_notification', description: 'Send personalized recall notices via preferred communication channel' }
+        ],
+        riskLevel: 'low', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+
+      // ═══════════════════════════════════════════════════════════════
+      //  COMPLIANCE & QUALITY SKILLS (The Guardian)
+      // ═══════════════════════════════════════════════════════════════
+
+      {
+        skillName: 'compliance.hipaa.breach_assessment',
+        displayName: 'Breach Risk Assessment',
+        description: 'If potential breach detected: identify scope, determine notification requirements (HHS, patients), generate incident report, initiate containment.',
+        category: 'compliance',
+        skillType: 'workflow',
+        steps: [
+          { name: 'Assess Scope', intentType: 'query_database', description: 'Identify number of records affected, data types exposed, and attack vector' },
+          { name: 'Determine Notification Requirements', intentType: 'analyze_data', description: 'Apply HIPAA breach notification rule: HHS within 60 days if 500+ records, individual notification, media if 500+ in one state' },
+          { name: 'Generate Incident Report', intentType: 'analyze_data', description: 'Compile formal incident report with timeline, scope, and containment actions' },
+          { name: 'Initiate Containment', intentType: 'send_notification', description: 'Alert security team, disable compromised access, preserve evidence' }
+        ],
+        inputSchema: { required: ['incidentDescription'], optional: ['affectedSystems', 'discoveryDate'] },
+        riskLevel: 'critical', isReversible: false, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'compliance.consent.manage',
+        displayName: 'Consent Management',
+        description: 'Tracks patient consent forms: informed consent, telehealth consent, data sharing, research. Alerts on expired or missing consents.',
+        category: 'compliance',
+        skillType: 'automation',
+        steps: [
+          { name: 'Audit Consent Status', intentType: 'query_database', description: 'Check consent forms on file: telehealth, treatment, data sharing, research' },
+          { name: 'Identify Gaps', intentType: 'analyze_data', description: 'Flag patients with missing or expired consent documents' },
+          { name: 'Send Consent Requests', intentType: 'send_notification', description: 'Send digital consent forms to patients with gaps' }
+        ],
+        riskLevel: 'medium', isReversible: true, involvesPhi: true, involvesFinancial: false
+      },
+      {
+        skillName: 'compliance.credentialing.verify',
+        displayName: 'Provider Credentialing Verification',
+        description: 'Verifies provider credentials: medical license, DEA, board certification, malpractice insurance, NPI. Tracks expirations.',
+        category: 'compliance',
+        skillType: 'analysis',
+        steps: [
+          { name: 'Query Credential Sources', intentType: 'query_database', description: 'Check provider credentials on file: license, DEA, boards, insurance, NPI' },
+          { name: 'Verify External Sources', intentType: 'api_call_external', description: 'Cross-reference with NPPES, state licensing boards, and verification services' },
+          { name: 'Generate Credential Report', intentType: 'analyze_data', description: 'Compile credentialing status report with expiration alerts' }
+        ],
+        inputSchema: { required: ['providerId'], optional: ['credentialTypes'] },
+        riskLevel: 'medium', isReversible: true, involvesPhi: false, involvesFinancial: false, involvesExternal: true
+      },
+      {
+        skillName: 'compliance.quality.measures',
+        displayName: 'Quality Measures Tracking',
+        description: 'Tracks HEDIS, MIPS/MACRA, and state-specific quality measures. Identifies care gaps. Generates quality improvement reports.',
+        category: 'compliance',
+        skillType: 'analysis',
+        steps: [
+          { name: 'Fetch Quality Data', intentType: 'query_database', description: 'Pull clinical data for applicable quality measures' },
+          { name: 'Calculate Measure Rates', intentType: 'analyze_data', description: 'Compute numerator/denominator for each measure, identify gaps' },
+          { name: 'Generate QI Report', intentType: 'analyze_data', description: 'Produce quality improvement report with actionable recommendations' }
+        ],
+        riskLevel: 'low', isReversible: true, involvesPhi: true, involvesFinancial: false
       }
     ];
 
