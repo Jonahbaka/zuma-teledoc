@@ -547,7 +547,8 @@ async function initializeApp() {
   loadRoute('/api/auth/zoho/recruit', './routes/zohoRecruitAuth');
   loadRoute('/api/hive', './routes/hive');
   loadRoute('/api/deploy', './routes/deploy');
-  console.log('✅ API routes loading complete (+ Hive Gateway)');
+  loadRoute('/api/openclaw', './routes/openclawApi');
+  console.log('✅ API routes loading complete (+ Hive Gateway + OpenClaw REST API)');
   
   // Initialize Predictive Intelligence Engine (non-blocking)
   try {

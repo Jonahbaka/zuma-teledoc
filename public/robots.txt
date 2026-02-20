@@ -1,9 +1,69 @@
 # DoctaRx Robots.txt
+# https://doctarx.com
+
+# Allow major search engine crawlers
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Slurp
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+User-agent: Baiduspider
+Allow: /
+
+User-agent: YandexBot
+Allow: /
+
+# Default rule for all other bots
 User-agent: *
 Allow: /
+
+# Block authenticated and internal routes
 Disallow: /api/
+Disallow: /admin/
+Disallow: /patient/dashboard/
+Disallow: /patient/appointments/
+Disallow: /patient/triage/
+Disallow: /patient/prescriptions/
+Disallow: /patient/records/
+Disallow: /patient/messages/
+Disallow: /patient/notifications/
+Disallow: /patient/billing/
+Disallow: /patient/pharmacy/
+Disallow: /patient/wallet/
+Disallow: /patient/subscription/
+Disallow: /patient/profile/
+Disallow: /patient/settings/
+Disallow: /provider/dashboard/
+Disallow: /provider/triage-queue/
+Disallow: /provider/triage/
+Disallow: /provider/prescriptions/
+Disallow: /provider/call/
+Disallow: /provider/imaging/
+Disallow: /provider/schedule/
+Disallow: /provider/patients/
+Disallow: /provider/visits/
+Disallow: /provider/claims/
+Disallow: /provider/referrals/
+Disallow: /provider/hospital-network/
+Disallow: /provider/analytics/
+Disallow: /provider/messages/
+Disallow: /provider/notifications/
+Disallow: /provider/profile/
+Disallow: /provider/credentialing/
+Disallow: /provider/settings/
 Disallow: /secure/admin
 Disallow: /_next/
+Disallow: /test-payment/
+Disallow: /forgot-password/
+Disallow: /reset-password/
+Disallow: /verify-email/
 
 # Sitemap
 Sitemap: https://doctarx.com/sitemap.xml
