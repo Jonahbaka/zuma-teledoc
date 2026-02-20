@@ -95,6 +95,66 @@ router.delete('/contacts/:id', ...adminOnly, async (req, res) => {
   }
 });
 
+// ─── INBOX THREADS (real agent outreach conversations) ──────────
+
+router.get('/threads', ...adminOnly, async (req, res) => {
+  try {
+    const db = require('../db');
+    // Return email interactions grouped by contact as inbox threads
+    const { rows } = await db.query(`
+      SELECT
+        i.id,
+        i.contact_id,
+        c.first_name || ' ' || c.last_name AS contact_name,
+        c.email AS contact_email,
+        c.contact_type,
+        i.subject,
+        i.content AS preview,
+        i.interaction_type,
+        i.email_status,
+        i.agent_type,
+        i.created_at,
+        i.read_at,
+        (SELECT COUNT(*) FROM crm_interactions i2 WHERE i2.contact_id = i.contact_id AND i2.interaction_type IN ('email_sent','email_reply','reply')) AS message_count
+      FROM crm_interactions i
+      JOIN crm_contacts c ON c.id = i.contact_id
+      WHERE i.interaction_type IN ('email_sent','email_reply','reply','inbound')
+      ORDER BY i.created_at DESC
+      LIMIT 100
+    `);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/threads/:contactId/messages', ...adminOnly, async (req, res) => {
+  try {
+    const db = require('../db');
+    const { rows } = await db.query(`
+      SELECT
+        i.id,
+        i.subject,
+        i.content,
+        i.interaction_type,
+        i.agent_type,
+        i.email_status,
+        i.created_at,
+        CASE WHEN i.interaction_type IN ('email_reply','reply','inbound') THEN 'in' ELSE 'out' END AS direction,
+        CASE WHEN i.interaction_type IN ('email_reply','reply','inbound') THEN c.first_name || ' ' || c.last_name
+             ELSE 'DoctaRx Agent' END AS sender
+      FROM crm_interactions i
+      JOIN crm_contacts c ON c.id = i.contact_id
+      WHERE i.contact_id = $1
+        AND i.interaction_type IN ('email_sent','email_reply','reply','inbound')
+      ORDER BY i.created_at ASC
+    `, [req.params.contactId]);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ─── EMAIL OUTREACH ─────────────────────────────────────────────
 
 router.post('/contacts/:id/email', ...adminOnly, async (req, res) => {

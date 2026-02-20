@@ -108,7 +108,9 @@ export default function CRMPage() {
   const [emailForm, setEmailForm] = useState({ subject: '', body: '' });
 
   /* Inbox tab state */
-  const [threads] = useState(MOCK_THREADS);
+  const [threads, setThreads] = useState([]);
+  const [threadMessages, setThreadMessages] = useState({});
+  const [threadsLoading, setThreadsLoading] = useState(false);
   const [selectedThread, setSelectedThread] = useState(null);
   const [replyContent, setReplyContent] = useState('');
   const [showCompose, setShowCompose] = useState(false);
@@ -116,7 +118,7 @@ export default function CRMPage() {
   const [showAISuggest, setShowAISuggest] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [composeForm, setComposeForm] = useState({ to: '', subject: '', body: '' });
-  const emailUnread = threads.filter(t => t.unread).length;
+  const emailUnread = threads.filter(t => !t.read_at).length;
 
   /* Reports tab state */
   const [reportItems, setReportItems] = useState([]);
@@ -162,6 +164,21 @@ export default function CRMPage() {
     } catch (err) { return null; }
   }, []);
 
+  /* ── load inbox threads from real CRM interactions ── */
+  const loadThreads = useCallback(async () => {
+    setThreadsLoading(true);
+    const data = await apiCall('/threads');
+    if (data) setThreads(data);
+    setThreadsLoading(false);
+  }, [apiCall]);
+
+  /* ── load messages for a thread (by contact) ── */
+  const loadThreadMessages = useCallback(async (contactId) => {
+    if (threadMessages[contactId]) return;
+    const data = await apiCall(`/threads/${contactId}/messages`);
+    if (data) setThreadMessages(prev => ({ ...prev, [contactId]: data }));
+  }, [apiCall, threadMessages]);
+
   /* ── load CRM data ── */
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -181,6 +198,7 @@ export default function CRMPage() {
   }, [apiCall, filter]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => { if (activeTab === 'inbox') loadThreads(); }, [activeTab, loadThreads]);
 
   /* ── load Reports ── */
   const loadReports = useCallback(async () => {
@@ -244,12 +262,13 @@ export default function CRMPage() {
     setShowAISuggest(true);
     await new Promise(r => setTimeout(r, 1200));
     const thread = selectedThread;
+    const firstName = thread?.contact_name?.split(' ')[0] || 'there';
     const suggestions = {
-      positive: `Hi ${thread?.contact?.name?.split(' ')[0] || 'there'},\n\nThank you for your interest! I'd love to schedule a quick call to walk you through everything in detail.\n\nAre you available for a 15-minute call this week?\n\nBest regards,\nDoctaRx Team`,
-      urgent: `Hi ${thread?.contact?.name?.split(' ')[0] || 'there'},\n\nThank you for flagging this urgency. I've escalated this to our legal team and you'll hear back within 4 business hours.\n\nApologies for any inconvenience.\n\nBest regards,\nDoctaRx Team`,
-      neutral: `Hi ${thread?.contact?.name?.split(' ')[0] || 'there'},\n\nThank you for your message. I'd be happy to answer any questions you have.\n\nLooking forward to connecting!\n\nBest regards,\nDoctaRx Team`,
+      replied: `Hi ${firstName},\n\nThank you for your interest! I'd love to schedule a quick call to walk you through everything in detail.\n\nAre you available for a 15-minute call this week?\n\nBest regards,\nDoctaRx Team`,
+      bounced: `Hi ${firstName},\n\nWe noticed our previous email may not have reached you. I wanted to follow up and ensure you received our outreach.\n\nPlease don't hesitate to reach out to us at info@doctarx.com or 408-585-9255.\n\nBest regards,\nDoctaRx Team`,
+      neutral: `Hi ${firstName},\n\nThank you for your message. I'd be happy to answer any questions you have.\n\nLooking forward to connecting!\n\nBest regards,\nDoctaRx Team`,
     };
-    setAiSuggestion(suggestions[thread?.sentiment] || suggestions.neutral);
+    setAiSuggestion(suggestions[thread?.email_status] || suggestions.neutral);
     setAiLoading(false);
   };
 
@@ -796,30 +815,41 @@ export default function CRMPage() {
 
             {/* Thread Items */}
             <div className="flex-1 overflow-auto">
-              {threads.map(thread => {
-                const sentiment = SENTIMENT_STYLE[thread.sentiment] || SENTIMENT_STYLE.neutral;
+              {threadsLoading ? (
+                <div className="flex items-center justify-center h-32 text-gray-500 text-sm gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
+                </div>
+              ) : threads.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-gray-600 text-sm gap-2 px-4 text-center">
+                  <Inbox className="w-8 h-8 opacity-30" />
+                  <p>No outreach emails yet.</p>
+                  <p className="text-xs text-gray-700">Agent emails to CRM contacts will appear here.</p>
+                </div>
+              ) : threads.map(thread => {
+                const statusStyle = thread.email_status === 'replied' ? SENTIMENT_STYLE.positive :
+                  thread.email_status === 'bounced' ? SENTIMENT_STYLE.negative : SENTIMENT_STYLE.neutral;
                 return (
-                  <button key={thread.id} onClick={() => setSelectedThread(thread)}
+                  <button key={thread.id} onClick={() => { setSelectedThread(thread); loadThreadMessages(thread.contact_id); }}
                     className={`w-full text-left p-4 border-b border-gray-800 transition-colors hover:bg-gray-800/60 ${
                       selectedThread?.id === thread.id ? 'bg-gray-800 border-l-2 border-l-blue-500' : ''
                     }`}>
                     <div className="flex items-start gap-3">
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center flex-shrink-0 text-sm font-bold">
-                        {thread.contact.name.charAt(0)}
+                        {(thread.contact_name || '?').charAt(0)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
-                          <p className={`text-sm truncate ${thread.unread ? 'font-semibold text-white' : 'text-gray-300'}`}>
-                            {thread.contact.name}
+                          <p className={`text-sm truncate ${!thread.read_at ? 'font-semibold text-white' : 'text-gray-300'}`}>
+                            {thread.contact_name}
                           </p>
-                          <span className="text-[10px] text-gray-500 flex-shrink-0 ml-1">{thread.time}</span>
+                          <span className="text-[10px] text-gray-500 flex-shrink-0 ml-1">{timeAgo(thread.created_at)}</span>
                         </div>
-                        <p className={`text-xs truncate mb-1 ${thread.unread ? 'text-gray-200' : 'text-gray-500'}`}>{thread.subject}</p>
+                        <p className={`text-xs truncate mb-1 ${!thread.read_at ? 'text-gray-200' : 'text-gray-500'}`}>{thread.subject}</p>
                         <div className="flex items-center gap-1.5">
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${sentiment.bg} ${sentiment.text} border ${sentiment.border}`}>
-                            {sentiment.label}
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusStyle.bg} ${statusStyle.text} border ${statusStyle.border}`}>
+                            {thread.email_status || thread.interaction_type}
                           </span>
-                          {thread.unread && <span className="w-2 h-2 rounded-full bg-blue-500 ml-auto" />}
+                          {!thread.read_at && <span className="w-2 h-2 rounded-full bg-blue-500 ml-auto" />}
                         </div>
                       </div>
                     </div>
@@ -837,16 +867,20 @@ export default function CRMPage() {
                 <div className="px-6 py-4 border-b border-gray-800 bg-gray-900/30">
                   <h3 className="font-semibold text-white">{selectedThread.subject}</h3>
                   <p className="text-sm text-gray-400 mt-0.5">
-                    {selectedThread.contact.name} &lt;{selectedThread.contact.email}&gt;
-                    <span className={`ml-2 text-[10px] px-2 py-0.5 rounded ${SENTIMENT_STYLE[selectedThread.sentiment]?.bg} ${SENTIMENT_STYLE[selectedThread.sentiment]?.text} border ${SENTIMENT_STYLE[selectedThread.sentiment]?.border}`}>
-                      {SENTIMENT_STYLE[selectedThread.sentiment]?.label}
+                    {selectedThread.contact_name} &lt;{selectedThread.contact_email}&gt;
+                    <span className={`ml-2 text-[10px] px-2 py-0.5 rounded ${SENTIMENT_STYLE.neutral.bg} ${SENTIMENT_STYLE.neutral.text} border ${SENTIMENT_STYLE.neutral.border}`}>
+                      {selectedThread.email_status || selectedThread.interaction_type}
                     </span>
                   </p>
                 </div>
 
                 {/* Messages */}
                 <div className="flex-1 overflow-auto p-6 space-y-4">
-                  {(MOCK_MESSAGES[selectedThread.id] || []).map(msg => (
+                  {(threadMessages[selectedThread.contact_id] || []).length === 0 ? (
+                    <div className="flex items-center justify-center h-24 text-gray-600 text-sm gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Loading messages...
+                    </div>
+                  ) : (threadMessages[selectedThread.contact_id] || []).map(msg => (
                     <div key={msg.id} className={`flex ${msg.direction === 'out' ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[75%] rounded-2xl px-4 py-3 ${
                         msg.direction === 'out'
@@ -855,7 +889,7 @@ export default function CRMPage() {
                       }`}>
                         <p className="text-xs font-medium mb-1 text-gray-400">{msg.sender}</p>
                         <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                        <p className="text-[10px] text-gray-500 mt-2 text-right">{msg.time}</p>
+                        <p className="text-[10px] text-gray-500 mt-2 text-right">{timeAgo(msg.created_at)}</p>
                       </div>
                     </div>
                   ))}

@@ -27,7 +27,7 @@ const COMPANY = {
   fullName: 'DoctaRx Telehealth Services',
   phone: '408-585-9255',
   website: 'https://doctarx.com',
-  supportEmail: 'support@doctarx.com'
+  supportEmail: 'info@doctarx.com'
 };
 
 // Create transporter with enhanced configuration
