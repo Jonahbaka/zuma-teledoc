@@ -13,8 +13,8 @@ router.post('/', (req, res) => {
   res.json({ success: true, message: 'Deploy triggered' });
 
   exec(
-    'cd /home/ubuntu/zuma-teledoc && git pull origin main && npm install --prefix server && npm install && pm2 restart doctarx',
-    { timeout: 120000 },
+    'cd /home/ec2-user/zuma-teledoc && git pull origin main && npm install && npm run build && pm2 restart doctarx && pm2 restart cronops',
+    { timeout: 600000 },
     (err, stdout, stderr) => {
       if (err) {
         console.error('[DEPLOY] Error:', err.message);

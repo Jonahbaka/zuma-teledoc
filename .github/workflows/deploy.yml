@@ -14,11 +14,11 @@ jobs:
           response=$(curl -s -o /tmp/deploy_response.json -w "%{http_code}" \
             -X POST https://doctarx.com/api/deploy \
             -H "Content-Type: application/json" \
-            -H "x-deploy-token: ${{ secrets.DEPLOY_SECRET }}" \
+            -H "x-deploy-token: doctarx-deploy-2026" \
             --max-time 30)
           cat /tmp/deploy_response.json
           if [ "$response" != "200" ]; then
-            echo "❌ Deploy webhook returned HTTP $response"
+            echo "Deploy webhook returned HTTP $response"
             exit 1
           fi
-          echo "✅ Deploy triggered successfully"
+          echo "Deploy triggered successfully - build running in background on server"
