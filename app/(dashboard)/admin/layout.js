@@ -7,7 +7,7 @@ import {
   Shield, FileText, Bell, Settings, Database, MessageSquare,
   Mail, Megaphone, Link2, UserPlus, Zap, FolderCog, Wallet,
   Bot, Brain, Radio, Contact, Target, Globe, Landmark, Briefcase,
-  Code2, Inbox
+  Code2
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
@@ -63,7 +63,6 @@ const navigationGroups = [
     name: 'AI & Intelligence',
     icon: Brain,
     items: [
-      { name: 'Agent Inbox', href: '/admin/inbox', icon: Inbox },
       { name: 'AI Agent Ops', href: '/admin/agent-ops', icon: Bot },
       { name: 'Agent Command Center', href: '/admin/agent-chat', icon: Radio },
       { name: 'AI CRM & Outreach', href: '/admin/crm', icon: Contact },
@@ -115,7 +114,7 @@ export default function AdminLayout({ children }) {
     return navigationGroups.map(group => ({
       ...group,
       items: group.items.map(item => {
-        if (item.href === '/admin/inbox' && inboxUnread > 0) {
+        if (item.href === '/admin/crm' && inboxUnread > 0) {
           return { ...item, badge: inboxUnread > 99 ? '99+' : String(inboxUnread) };
         }
         return item;

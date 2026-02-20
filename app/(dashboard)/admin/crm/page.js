@@ -7,11 +7,15 @@ import {
   ChevronRight, ArrowUpRight, Clock, Target, Zap, Phone,
   Linkedin, Twitter, CheckCircle2, XCircle, PauseCircle,
   PlayCircle, FileText, Sparkles, Bot, Crown, Shield,
-  MessageSquare, TrendingUp, ExternalLink, RefreshCw
+  MessageSquare, TrendingUp, ExternalLink, RefreshCw,
+  Inbox, MailOpen, AlertTriangle, Bug, Activity, Radar,
+  Hexagon, Calculator, Atom, Check, CheckCheck, ChevronDown,
+  Bell, Brain, AlertCircle, Play
 } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+/* ─── existing CRM constants ────────────────────────────── */
 const CONTACT_TYPES = [
   { id: 'provider', label: 'Providers', icon: Stethoscope, color: 'text-blue-400', bg: 'bg-blue-900/30' },
   { id: 'investor', label: 'Investors', icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-900/30' },
@@ -34,7 +38,93 @@ const PIPELINE_STAGES = [
   { id: 'nurturing', label: 'Nurturing', color: 'bg-rose-600' },
 ];
 
+/* ─── Inbox tab constants ────────────────────────────────── */
+const SENTIMENT_STYLE = {
+  positive: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', label: 'Positive' },
+  neutral:  { bg: 'bg-gray-500/10',    border: 'border-gray-500/20',    text: 'text-gray-400',    label: 'Neutral'  },
+  negative: { bg: 'bg-red-500/10',     border: 'border-red-500/20',     text: 'text-red-400',     label: 'Negative' },
+  urgent:   { bg: 'bg-amber-500/10',   border: 'border-amber-500/20',   text: 'text-amber-400',   label: 'Urgent'   },
+};
+
+const MOCK_THREADS = [
+  { id: '1', contact: { name: 'Dr. Sarah Johnson', email: 'sjohnson@memorial.com', type: 'provider' }, subject: 'RE: Telehealth Onboarding Opportunity', preview: 'Thank you for the detailed overview. I wanted to discuss the scheduling flexibility...', time: '2h ago', unread: true,  sentiment: 'positive', messages: 3 },
+  { id: '2', contact: { name: 'Mark Rivera',       email: 'mrivera@venturecap.io',  type: 'investor' }, subject: 'Interested in Q1 Investment Round',    preview: 'Your pitch deck was very compelling. A few questions about your growth metrics...', time: '5h ago', unread: true,  sentiment: 'positive', messages: 2 },
+  { id: '3', contact: { name: 'Dr. Keiko Tanaka',  email: 'ktanaka@cityhealth.org', type: 'provider' }, subject: 'Following up on partnership proposal',  preview: 'I spoke with our department head and we are open to a 3-month pilot...', time: 'Yesterday', unread: false, sentiment: 'neutral',  messages: 4 },
+  { id: '4', contact: { name: 'James Okonkwo',     email: 'james.o@nursenetwork.com', type: 'nurse' }, subject: 'Telehealth platform query',              preview: 'I am interested in joining but have some concerns about the shift schedule...', time: '2 days ago', unread: false, sentiment: 'neutral', messages: 1 },
+  { id: '5', contact: { name: 'Angela Martinez',   email: 'amarti@globalhealth.com', type: 'partner' }, subject: 'URGENT: Contract review needed',        preview: 'Our legal team flagged a few clauses in the partnership agreement...', time: '3 days ago', unread: false, sentiment: 'urgent', messages: 6 },
+];
+
+const MOCK_MESSAGES = {
+  '1': [
+    { id: 'm1', direction: 'out', content: 'Hi Dr. Johnson,\n\nThank you for your interest in DoctaRx telehealth services. I wanted to follow up on our initial outreach and provide more details about our flexible scheduling and competitive compensation package.\n\nOur platform offers:\n- 100% remote consultations\n- Flexible scheduling (set your own hours)\n- Competitive per-consultation rates\n- Malpractice coverage included\n\nWould you be available for a brief 15-minute call this week?\n\nBest regards,\nThe DoctaRx Team', time: '3h ago', sender: 'DoctaRx Agent' },
+    { id: 'm2', direction: 'in',  content: 'Thank you for the detailed overview. I wanted to discuss the scheduling flexibility in more detail. I currently see patients 3 days a week and am looking to add telehealth on my off days. Is there a minimum hourly commitment?', time: '2.5h ago', sender: 'Dr. Sarah Johnson' },
+    { id: 'm3', direction: 'out', content: 'Great question Dr. Johnson! We have no minimum hourly commitment — you can see as few or as many patients as you like. Many of our providers start with just 5–10 hours per week and adjust from there.\n\nShall I send over the provider agreement so you can review the full terms?', time: '2h ago', sender: 'DoctaRx Agent' },
+  ],
+  '2': [
+    { id: 'm4', direction: 'out', content: 'Dear Mr. Rivera,\n\nFollowing our pitch deck submission, I wanted to personally reach out to discuss DoctaRx\'s Q1 investment round. We\'re targeting $2M to accelerate our provider network expansion across 5 new states.\n\nOur current metrics:\n- 847 registered patients\n- 23 active providers\n- 98% patient satisfaction rate\n\nWould you be open to a 30-minute Zoom call?\n\nBest,\nDoctaRx Team', time: '6h ago', sender: 'DoctaRx Agent' },
+    { id: 'm5', direction: 'in',  content: 'Your pitch deck was very compelling. A few questions about your growth metrics — specifically your patient acquisition cost and monthly recurring revenue. Also, what is your current burn rate?', time: '5h ago', sender: 'Mark Rivera' },
+  ],
+  '3': [
+    { id: 'm6', direction: 'out', content: 'Hello Dr. Tanaka,\n\nI hope this message finds you well. I wanted to revisit the partnership proposal we discussed last month regarding integrating DoctaRx into City Health\'s referral network.', time: '2 days ago', sender: 'DoctaRx Agent' },
+    { id: 'm7', direction: 'in',  content: 'Thank you for following up. I\'ve been meaning to get back to you.', time: '2 days ago', sender: 'Dr. Keiko Tanaka' },
+    { id: 'm8', direction: 'out', content: 'No worries at all! We understand these decisions take time. Would it help if we scheduled a demo for your department leadership?', time: '1 day ago', sender: 'DoctaRx Agent' },
+    { id: 'm9', direction: 'in',  content: 'I spoke with our department head and we are open to a 3-month pilot. Can you send over the formal proposal with pricing details?', time: 'Yesterday', sender: 'Dr. Keiko Tanaka' },
+  ],
+  '4': [
+    { id: 'm10', direction: 'in', content: 'I am interested in joining but have some concerns about the shift schedule and how it works with malpractice coverage as a travel nurse.', time: '2 days ago', sender: 'James Okonkwo' },
+  ],
+  '5': [
+    { id: 'm11', direction: 'out', content: 'Hi Angela, hope all is well at Global Health. Sending you the revised partnership agreement as discussed.', time: '3 days ago', sender: 'DoctaRx Agent' },
+    { id: 'm12', direction: 'in',  content: 'Thank you for sending this over.', time: '3 days ago', sender: 'Angela Martinez' },
+    { id: 'm13', direction: 'out', content: 'Please let me know if you have any questions!', time: '3 days ago', sender: 'DoctaRx Agent' },
+    { id: 'm14', direction: 'in',  content: 'Our legal team flagged a few clauses in the partnership agreement. Specifically section 4.2 regarding liability and section 7.1 on data sharing. URGENT review needed.', time: '3 days ago', sender: 'Angela Martinez' },
+    { id: 'm15', direction: 'out', content: 'We take legal review seriously. I\'ll loop in our legal team today and get back to you within 24 hours.', time: '2 days ago', sender: 'DoctaRx Agent' },
+    { id: 'm16', direction: 'in',  content: 'Please expedite — our board meeting is on Thursday and we need to finalize this before then.', time: '3 days ago', sender: 'Angela Martinez' },
+  ],
+};
+
+/* ─── Reports tab constants ──────────────────────────────── */
+const AGENT_MAP = {
+  ceo:          { name: 'The Conductor', icon: Crown,      color: 'text-yellow-400', bg: 'bg-yellow-900/40', border: 'border-yellow-500/20' },
+  operations:   { name: 'The Weaver',    icon: Activity,   color: 'text-blue-400',   bg: 'bg-blue-900/40',   border: 'border-blue-500/20'   },
+  growth:       { name: 'The Scout',     icon: Radar,      color: 'text-emerald-400',bg: 'bg-emerald-900/40',border: 'border-emerald-500/20'},
+  revenue:      { name: 'The Alchemist', icon: Zap,        color: 'text-amber-400',  bg: 'bg-amber-900/40',  border: 'border-amber-500/20'  },
+  compliance:   { name: 'The Guardian',  icon: Shield,     color: 'text-red-400',    bg: 'bg-red-900/40',    border: 'border-red-500/20'    },
+  governance:   { name: 'The Sage',      icon: Eye,        color: 'text-purple-400', bg: 'bg-purple-900/40', border: 'border-purple-500/20' },
+  researcher:   { name: 'The Oracle',    icon: Search,     color: 'text-cyan-400',   bg: 'bg-cyan-900/40',   border: 'border-cyan-500/20'   },
+  economics:    { name: 'The Economist', icon: BarChart3,  color: 'text-green-400',  bg: 'bg-green-900/40',  border: 'border-green-500/20'  },
+  physicist:    { name: 'The Architect', icon: Atom,       color: 'text-indigo-400', bg: 'bg-indigo-900/40', border: 'border-indigo-500/20' },
+  mathematician:{ name: 'The Calculator',icon: Calculator, color: 'text-pink-400',   bg: 'bg-pink-900/40',   border: 'border-pink-500/20'   },
+  vortex_math:  { name: 'The Tesseract', icon: Hexagon,   color: 'text-violet-400', bg: 'bg-violet-900/40', border: 'border-violet-500/20' },
+  devops:       { name: 'The Debugger',  icon: Bug,        color: 'text-lime-400',   bg: 'bg-lime-900/40',   border: 'border-lime-500/20'   },
+  heartbeat:    { name: 'Heartbeat',     icon: Activity,   color: 'text-rose-400',   bg: 'bg-rose-900/40',   border: 'border-rose-500/20'   },
+};
+
+const TYPE_LABELS = {
+  alert:    { label: 'Alert',    icon: AlertTriangle, color: 'text-red-400',     bg: 'bg-red-500/10',     border: 'border-red-500/30'     },
+  report:   { label: 'Report',   icon: BarChart3,     color: 'text-blue-400',    bg: 'bg-blue-500/10',    border: 'border-blue-500/30'    },
+  text:     { label: 'Message',  icon: Mail,          color: 'text-gray-400',    bg: 'bg-gray-500/10',    border: 'border-gray-500/30'    },
+  result:   { label: 'Result',   icon: Check,         color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
+  request:  { label: 'Request',  icon: Bell,          color: 'text-amber-400',   bg: 'bg-amber-500/10',   border: 'border-amber-500/30'   },
+  approval: { label: 'Approval', icon: FileText,      color: 'text-purple-400',  bg: 'bg-purple-500/10',  border: 'border-purple-500/30'  },
+};
+
+const timeAgo = (date) => {
+  const d = new Date(date);
+  const diff = Date.now() - d.getTime();
+  const mins = Math.round(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(diff / 3600000);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(diff / 86400000);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString();
+};
+
+/* ─────────────────────────────────────────────────────────── */
 export default function CRMPage() {
+  /* existing CRM state */
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboard, setDashboard] = useState(null);
   const [contacts, setContacts] = useState([]);
@@ -50,8 +140,30 @@ export default function CRMPage() {
   const [selectedContact, setSelectedContact] = useState(null);
   const [emailForm, setEmailForm] = useState({ subject: '', body: '' });
 
+  /* Inbox tab state */
+  const [threads] = useState(MOCK_THREADS);
+  const [selectedThread, setSelectedThread] = useState(null);
+  const [replyContent, setReplyContent] = useState('');
+  const [showCompose, setShowCompose] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState('');
+  const [showAISuggest, setShowAISuggest] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [composeForm, setComposeForm] = useState({ to: '', subject: '', body: '' });
+  const emailUnread = threads.filter(t => t.unread).length;
+
+  /* Reports tab state */
+  const [reportItems, setReportItems] = useState([]);
+  const [reportUnread, setReportUnread] = useState(0);
+  const [reportFilter, setReportFilter] = useState('all');
+  const [reportExpanded, setReportExpanded] = useState(null);
+  const [reportRefreshing, setReportRefreshing] = useState(false);
+  const [reportSummary, setReportSummary] = useState(null);
+  const [waking, setWaking] = useState(false);
+  const [missionRunning, setMissionRunning] = useState(false);
+
   const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 
+  /* ── CRM API ── */
   const apiCall = useCallback(async (endpoint, method = 'GET', body = null) => {
     const token = getToken();
     const options = {
@@ -67,6 +179,23 @@ export default function CRMPage() {
     } catch (err) { return null; }
   }, []);
 
+  /* ── Inbox (agent) API ── */
+  const inboxApi = useCallback(async (endpoint, method = 'GET', body = null) => {
+    const token = getToken();
+    const options = {
+      method,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+    };
+    if (body) options.body = JSON.stringify(body);
+    try {
+      const res = await fetch(`${API_URL}/inbox${endpoint}`, options);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      return data.data;
+    } catch (err) { return null; }
+  }, []);
+
+  /* ── load CRM data ── */
   const loadAll = useCallback(async () => {
     setLoading(true);
     const [dash, cs, cps, tpls, srcs] = await Promise.all([
@@ -86,6 +215,33 @@ export default function CRMPage() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  /* ── load Reports ── */
+  const loadReports = useCallback(async () => {
+    const params = new URLSearchParams({ limit: '100' });
+    if (reportFilter === 'unread') params.set('unread', 'true');
+    if (reportFilter === 'alert' || reportFilter === 'report') params.set('type', reportFilter);
+    const [inboxData, summaryData] = await Promise.all([
+      inboxApi(`/?${params.toString()}`),
+      inboxApi('/summary')
+    ]);
+    if (inboxData) {
+      setReportItems(inboxData.items || []);
+      setReportUnread(inboxData.unreadCount || 0);
+    }
+    if (summaryData) setReportSummary(summaryData);
+  }, [inboxApi, reportFilter]);
+
+  useEffect(() => {
+    if (activeTab === 'reports') loadReports();
+  }, [activeTab, loadReports]);
+
+  useEffect(() => {
+    if (activeTab !== 'reports') return;
+    const interval = setInterval(loadReports, 60000);
+    return () => clearInterval(interval);
+  }, [activeTab, loadReports]);
+
+  /* ── CRM actions ── */
   const addContact = async () => {
     const result = await apiCall('/contacts', 'POST', contactForm);
     if (result) {
@@ -104,16 +260,8 @@ export default function CRMPage() {
     }
   };
 
-  const approveCampaign = async (id) => {
-    await apiCall(`/campaigns/${id}/approve`, 'POST');
-    loadAll();
-  };
-
-  const sendCampaign = async (id) => {
-    await apiCall(`/campaigns/${id}/send`, 'POST', { limit: 10 });
-    loadAll();
-  };
-
+  const approveCampaign = async (id) => { await apiCall(`/campaigns/${id}/approve`, 'POST'); loadAll(); };
+  const sendCampaign = async (id) => { await apiCall(`/campaigns/${id}/send`, 'POST', { limit: 10 }); loadAll(); };
   const sendDirectEmail = async () => {
     if (!selectedContact || !emailForm.subject) return;
     await apiCall(`/contacts/${selectedContact.id}/email`, 'POST', emailForm);
@@ -121,10 +269,64 @@ export default function CRMPage() {
     setEmailForm({ subject: '', body: '' });
     loadAll();
   };
+  const updateStage = async (id, stage) => { await apiCall(`/contacts/${id}/stage`, 'PUT', { stage }); loadAll(); };
 
-  const updateStage = async (id, stage) => {
-    await apiCall(`/contacts/${id}/stage`, 'PUT', { stage });
-    loadAll();
+  /* ── Inbox tab actions ── */
+  const handleGetAISuggestion = async () => {
+    setAiLoading(true);
+    setShowAISuggest(true);
+    await new Promise(r => setTimeout(r, 1200));
+    const thread = selectedThread;
+    const suggestions = {
+      positive: `Hi ${thread?.contact?.name?.split(' ')[0] || 'there'},\n\nThank you for your interest! I'd love to schedule a quick call to walk you through everything in detail.\n\nAre you available for a 15-minute call this week?\n\nBest regards,\nDoctaRx Team`,
+      urgent: `Hi ${thread?.contact?.name?.split(' ')[0] || 'there'},\n\nThank you for flagging this urgency. I've escalated this to our legal team and you'll hear back within 4 business hours.\n\nApologies for any inconvenience.\n\nBest regards,\nDoctaRx Team`,
+      neutral: `Hi ${thread?.contact?.name?.split(' ')[0] || 'there'},\n\nThank you for your message. I'd be happy to answer any questions you have.\n\nLooking forward to connecting!\n\nBest regards,\nDoctaRx Team`,
+    };
+    setAiSuggestion(suggestions[thread?.sentiment] || suggestions.neutral);
+    setAiLoading(false);
+  };
+
+  const handleSendReply = () => {
+    if (!replyContent.trim() || !selectedThread) return;
+    setReplyContent('');
+    setShowAISuggest(false);
+    setAiSuggestion('');
+  };
+
+  /* ── Reports tab actions ── */
+  const handleReportRefresh = async () => {
+    setReportRefreshing(true);
+    await loadReports();
+    setReportRefreshing(false);
+  };
+
+  const wakeUpAgents = async () => {
+    setWaking(true);
+    await inboxApi('/wake-up', 'POST');
+    setTimeout(async () => { await loadReports(); setWaking(false); }, 8000);
+  };
+
+  const runMissions = async () => {
+    setMissionRunning(true);
+    await inboxApi('/run-missions', 'POST');
+    setTimeout(async () => { await loadReports(); setMissionRunning(false); }, 5000);
+  };
+
+  const markAllReportsRead = async () => {
+    await inboxApi('/mark-read', 'POST', { ids: 'all' });
+    await loadReports();
+  };
+
+  const deleteReport = async (id, e) => {
+    e?.stopPropagation();
+    await inboxApi(`/${id}`, 'DELETE');
+    setReportItems(prev => prev.filter(i => i.id !== id));
+  };
+
+  const toggleReportExpand = (id) => {
+    setReportExpanded(prev => prev === id ? null : id);
+    const item = reportItems.find(i => i.id === id);
+    if (item && !item.read_at) inboxApi('/mark-read', 'POST', { ids: [id] });
   };
 
   if (loading && !dashboard) {
@@ -138,11 +340,12 @@ export default function CRMPage() {
     );
   }
 
+  /* ═══════════════════════════════════════════════════════════ */
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="bg-gray-900 border-b border-gray-800 px-6 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-emerald-600 to-cyan-700 rounded-xl flex items-center justify-center">
               <Users className="w-6 h-6 text-white" />
@@ -150,41 +353,46 @@ export default function CRMPage() {
             <div>
               <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-300 bg-clip-text text-transparent">AI AGENT CRM</h1>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <Bot className="w-2.5 h-2.5" /> AI-Powered
-                </span>
-                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                  <Mail className="w-2.5 h-2.5" /> Zoho Mail
-                </span>
-                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                  <Globe className="w-2.5 h-2.5" /> Web Scraping
-                </span>
+                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><Bot className="w-2.5 h-2.5" /> AI-Powered</span>
+                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20"><Mail className="w-2.5 h-2.5" /> Zoho Mail</span>
+                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20"><Globe className="w-2.5 h-2.5" /> Web Scraping</span>
                 <span className="text-[10px] text-gray-500">{dashboard?.totalContacts || 0} contacts</span>
               </div>
             </div>
           </div>
-          <div className="flex gap-1">
+
+          {/* Tab bar */}
+          <div className="flex gap-1 flex-wrap">
             {[
               { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-              { id: 'contacts', label: 'Contacts', icon: Users },
+              { id: 'contacts',  label: 'Contacts',  icon: Users },
               { id: 'campaigns', label: 'Campaigns', icon: Send },
               { id: 'templates', label: 'Templates', icon: FileText },
-              { id: 'sources', label: 'Sources', icon: Globe },
+              { id: 'sources',   label: 'Sources',   icon: Globe },
+              { id: 'inbox',     label: 'Inbox',     icon: Inbox,   badge: emailUnread || null },
+              { id: 'reports',   label: 'Reports',   icon: Bot,     badge: reportUnread || null },
             ].map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 ${
+                className={`px-3 py-2 text-sm font-medium rounded-lg flex items-center gap-1.5 relative ${
                   activeTab === tab.id ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
-                <tab.icon className="w-4 h-4" /> {tab.label}
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+                {tab.badge > 0 && (
+                  <span className={`ml-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    activeTab === tab.id ? 'bg-white/20 text-white' :
+                    tab.id === 'inbox' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-purple-500/20 text-purple-400'}`}>
+                    {tab.badge}
+                  </span>
+                )}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* DASHBOARD TAB */}
+      {/* ══ DASHBOARD TAB ══ */}
       {activeTab === 'dashboard' && dashboard && (
         <div className="p-6 max-w-[1400px] mx-auto">
-          {/* Stats Row */}
           <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
             {CONTACT_TYPES.map(ct => {
               const count = dashboard.contactsByType?.find(c => c.contact_type === ct.id)?.count || 0;
@@ -198,7 +406,6 @@ export default function CRMPage() {
             })}
           </div>
 
-          {/* Pipeline */}
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-emerald-400" /> Pipeline</h3>
           <div className="grid grid-cols-5 md:grid-cols-10 gap-2 mb-6">
             {PIPELINE_STAGES.map(stage => {
@@ -214,7 +421,6 @@ export default function CRMPage() {
             })}
           </div>
 
-          {/* Email Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
               <div className="flex items-center gap-2 mb-2"><Mail className="w-4 h-4 text-blue-400" /><span className="text-sm text-gray-400">Emails Sent Today</span></div>
@@ -231,13 +437,11 @@ export default function CRMPage() {
             </div>
           </div>
 
-          {/* Recent Interactions */}
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2"><Clock className="w-5 h-5 text-amber-400" /> Recent Activity</h3>
           <div className="space-y-2">
             {(dashboard.recentInteractions || []).slice(0, 10).map((i, idx) => (
               <div key={i.id || idx} className="bg-gray-900 rounded-lg p-3 border border-gray-800 flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                  i.interaction_type?.includes('email') ? 'bg-blue-900/40' : 'bg-purple-900/40'}`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${i.interaction_type?.includes('email') ? 'bg-blue-900/40' : 'bg-purple-900/40'}`}>
                   {i.interaction_type?.includes('email') ? <Mail className="w-4 h-4 text-blue-400" /> : <MessageSquare className="w-4 h-4 text-purple-400" />}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -257,7 +461,7 @@ export default function CRMPage() {
         </div>
       )}
 
-      {/* CONTACTS TAB */}
+      {/* ══ CONTACTS TAB ══ */}
       {activeTab === 'contacts' && (
         <div className="p-6 max-w-[1400px] mx-auto">
           <div className="flex items-center justify-between mb-4">
@@ -284,7 +488,6 @@ export default function CRMPage() {
             </button>
           </div>
 
-          {/* Add Contact Form */}
           {showAddContact && (
             <div className="bg-gray-900 border border-emerald-800/30 rounded-xl p-6 mb-6">
               <h3 className="font-medium text-lg mb-4 flex items-center gap-2"><UserPlus className="w-5 h-5 text-emerald-400" /> Add Contact</h3>
@@ -328,7 +531,6 @@ export default function CRMPage() {
             </div>
           )}
 
-          {/* Contact List */}
           <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
             <table className="w-full">
               <thead>
@@ -349,15 +551,11 @@ export default function CRMPage() {
                   return (
                     <tr key={c.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
                       <td className="px-4 py-3">
-                        <div>
-                          <p className="text-sm font-medium">{c.first_name} {c.last_name}</p>
-                          <p className="text-xs text-gray-500">{c.email}</p>
-                        </div>
+                        <p className="text-sm font-medium">{c.first_name} {c.last_name}</p>
+                        <p className="text-xs text-gray-500">{c.email}</p>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-1 rounded ${typeInfo?.bg || 'bg-gray-800'} ${typeInfo?.color || 'text-gray-400'}`}>
-                          {c.contact_type}
-                        </span>
+                        <span className={`text-xs px-2 py-1 rounded ${typeInfo?.bg || 'bg-gray-800'} ${typeInfo?.color || 'text-gray-400'}`}>{c.contact_type}</span>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-400">{c.organization || '-'}</td>
                       <td className="px-4 py-3">
@@ -369,15 +567,12 @@ export default function CRMPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <div className="w-12 bg-gray-800 rounded-full h-1.5">
-                            <div className={`rounded-full h-1.5 ${c.lead_score > 70 ? 'bg-emerald-500' : c.lead_score > 40 ? 'bg-amber-500' : 'bg-gray-600'}`}
-                              style={{ width: `${c.lead_score}%` }} />
+                            <div className={`rounded-full h-1.5 ${c.lead_score > 70 ? 'bg-emerald-500' : c.lead_score > 40 ? 'bg-amber-500' : 'bg-gray-600'}`} style={{ width: `${c.lead_score}%` }} />
                           </div>
                           <span className="text-xs text-gray-500">{c.lead_score}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500">
-                        {c.last_contacted_at ? new Date(c.last_contacted_at).toLocaleDateString() : 'Never'}
-                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{c.last_contacted_at ? new Date(c.last_contacted_at).toLocaleDateString() : 'Never'}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <button onClick={() => { setSelectedContact(c); setEmailForm({ subject: '', body: '' }); }}
@@ -385,9 +580,7 @@ export default function CRMPage() {
                             <Mail className="w-3.5 h-3.5" />
                           </button>
                           {c.linkedin_url && (
-                            <a href={c.linkedin_url} target="_blank" rel="noreferrer" className="p-1.5 hover:bg-blue-900/30 rounded text-blue-400" title="LinkedIn">
-                              <Linkedin className="w-3.5 h-3.5" />
-                            </a>
+                            <a href={c.linkedin_url} target="_blank" rel="noreferrer" className="p-1.5 hover:bg-blue-900/30 rounded text-blue-400"><Linkedin className="w-3.5 h-3.5" /></a>
                           )}
                         </div>
                       </td>
@@ -405,7 +598,6 @@ export default function CRMPage() {
             )}
           </div>
 
-          {/* Email Modal */}
           {selectedContact && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
               <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-lg p-6">
@@ -443,7 +635,7 @@ export default function CRMPage() {
         </div>
       )}
 
-      {/* CAMPAIGNS TAB */}
+      {/* ══ CAMPAIGNS TAB ══ */}
       {activeTab === 'campaigns' && (
         <div className="p-6 max-w-[1400px] mx-auto">
           <div className="flex items-center justify-between mb-6">
@@ -562,7 +754,7 @@ export default function CRMPage() {
         </div>
       )}
 
-      {/* TEMPLATES TAB */}
+      {/* ══ TEMPLATES TAB ══ */}
       {activeTab === 'templates' && (
         <div className="p-6 max-w-[1400px] mx-auto">
           <h2 className="text-xl font-bold flex items-center gap-2 mb-6"><FileText className="w-6 h-6 text-purple-400" /> Email Templates</h2>
@@ -592,7 +784,7 @@ export default function CRMPage() {
         </div>
       )}
 
-      {/* SOURCES TAB */}
+      {/* ══ SOURCES TAB ══ */}
       {activeTab === 'sources' && (
         <div className="p-6 max-w-[1400px] mx-auto">
           <h2 className="text-xl font-bold flex items-center gap-2 mb-6"><Globe className="w-6 h-6 text-cyan-400" /> Scraping Sources — Provider &amp; Investor Directories</h2>
@@ -613,6 +805,337 @@ export default function CRMPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ══ INBOX TAB ══ */}
+      {activeTab === 'inbox' && (
+        <div className="flex" style={{ height: 'calc(100vh - 73px)' }}>
+          {/* Thread List */}
+          <div className="w-80 flex-shrink-0 border-r border-gray-800 flex flex-col bg-gray-900/50">
+            {/* Search + Compose */}
+            <div className="p-3 border-b border-gray-800 space-y-2">
+              <div className="relative">
+                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input type="text" placeholder="Search inbox..."
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <button onClick={() => setShowCompose(true)}
+                className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium flex items-center justify-center gap-2">
+                <Plus className="w-4 h-4" /> Compose
+              </button>
+            </div>
+
+            {/* Thread Items */}
+            <div className="flex-1 overflow-auto">
+              {threads.map(thread => {
+                const sentiment = SENTIMENT_STYLE[thread.sentiment] || SENTIMENT_STYLE.neutral;
+                return (
+                  <button key={thread.id} onClick={() => setSelectedThread(thread)}
+                    className={`w-full text-left p-4 border-b border-gray-800 transition-colors hover:bg-gray-800/60 ${
+                      selectedThread?.id === thread.id ? 'bg-gray-800 border-l-2 border-l-blue-500' : ''
+                    }`}>
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center flex-shrink-0 text-sm font-bold">
+                        {thread.contact.name.charAt(0)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <p className={`text-sm truncate ${thread.unread ? 'font-semibold text-white' : 'text-gray-300'}`}>
+                            {thread.contact.name}
+                          </p>
+                          <span className="text-[10px] text-gray-500 flex-shrink-0 ml-1">{thread.time}</span>
+                        </div>
+                        <p className={`text-xs truncate mb-1 ${thread.unread ? 'text-gray-200' : 'text-gray-500'}`}>{thread.subject}</p>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${sentiment.bg} ${sentiment.text} border ${sentiment.border}`}>
+                            {sentiment.label}
+                          </span>
+                          {thread.unread && <span className="w-2 h-2 rounded-full bg-blue-500 ml-auto" />}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Message Detail */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {selectedThread ? (
+              <>
+                {/* Thread header */}
+                <div className="px-6 py-4 border-b border-gray-800 bg-gray-900/30">
+                  <h3 className="font-semibold text-white">{selectedThread.subject}</h3>
+                  <p className="text-sm text-gray-400 mt-0.5">
+                    {selectedThread.contact.name} &lt;{selectedThread.contact.email}&gt;
+                    <span className={`ml-2 text-[10px] px-2 py-0.5 rounded ${SENTIMENT_STYLE[selectedThread.sentiment]?.bg} ${SENTIMENT_STYLE[selectedThread.sentiment]?.text} border ${SENTIMENT_STYLE[selectedThread.sentiment]?.border}`}>
+                      {SENTIMENT_STYLE[selectedThread.sentiment]?.label}
+                    </span>
+                  </p>
+                </div>
+
+                {/* Messages */}
+                <div className="flex-1 overflow-auto p-6 space-y-4">
+                  {(MOCK_MESSAGES[selectedThread.id] || []).map(msg => (
+                    <div key={msg.id} className={`flex ${msg.direction === 'out' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[75%] rounded-2xl px-4 py-3 ${
+                        msg.direction === 'out'
+                          ? 'bg-blue-600/20 border border-blue-500/20 text-blue-100'
+                          : 'bg-gray-800 border border-gray-700 text-gray-200'
+                      }`}>
+                        <p className="text-xs font-medium mb-1 text-gray-400">{msg.sender}</p>
+                        <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                        <p className="text-[10px] text-gray-500 mt-2 text-right">{msg.time}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* AI Suggestion */}
+                {showAISuggest && (
+                  <div className="mx-6 mb-3 p-4 bg-purple-900/20 border border-purple-500/30 rounded-xl">
+                    <p className="text-xs font-medium text-purple-400 mb-2 flex items-center gap-1"><Sparkles className="w-3 h-3" /> AI Suggested Reply</p>
+                    {aiLoading ? (
+                      <div className="flex items-center gap-2 text-gray-400 text-sm"><RefreshCw className="w-4 h-4 animate-spin" /> Generating...</div>
+                    ) : (
+                      <>
+                        <p className="text-sm text-gray-300 whitespace-pre-wrap">{aiSuggestion}</p>
+                        <div className="flex gap-2 mt-3">
+                          <button onClick={() => setReplyContent(aiSuggestion)}
+                            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded-lg text-xs font-medium">Use This</button>
+                          <button onClick={() => { setShowAISuggest(false); setAiSuggestion(''); }}
+                            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs">Dismiss</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Reply Box */}
+                <div className="p-4 border-t border-gray-800 bg-gray-900/30">
+                  <textarea value={replyContent} onChange={e => setReplyContent(e.target.value)}
+                    placeholder="Write a reply..."
+                    rows={3} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 resize-none mb-3" />
+                  <div className="flex items-center gap-2">
+                    <button onClick={handleSendReply} disabled={!replyContent.trim()}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50">
+                      <Send className="w-4 h-4" /> Send
+                    </button>
+                    <button onClick={handleGetAISuggestion}
+                      className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/30 rounded-lg text-sm text-purple-400 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4" /> AI Suggest
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-center p-8">
+                <div>
+                  <MailOpen className="w-16 h-16 text-gray-700 mx-auto mb-4" />
+                  <p className="text-gray-400 text-lg font-medium">Select a conversation</p>
+                  <p className="text-gray-600 text-sm mt-2">Choose a thread from the left to view messages and reply.</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Compose Modal */}
+          {showCompose && (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+              <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-lg p-6">
+                <h3 className="font-medium text-lg mb-4 flex items-center gap-2"><Mail className="w-5 h-5 text-blue-400" /> New Email</h3>
+                <div className="space-y-3 mb-4">
+                  <input type="text" value={composeForm.to} onChange={e => setComposeForm(f => ({ ...f, to: e.target.value }))}
+                    placeholder="To: email@example.com" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+                  <input type="text" value={composeForm.subject} onChange={e => setComposeForm(f => ({ ...f, subject: e.target.value }))}
+                    placeholder="Subject..." className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+                  <textarea value={composeForm.body} onChange={e => setComposeForm(f => ({ ...f, body: e.target.value }))}
+                    placeholder="Message body..." rows={8} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => { setShowCompose(false); setComposeForm({ to: '', subject: '', body: '' }); }}
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium flex items-center gap-2">
+                    <Send className="w-4 h-4" /> Send
+                  </button>
+                  <button onClick={() => setShowCompose(false)} className="px-5 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">Cancel</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ REPORTS TAB ══ */}
+      {activeTab === 'reports' && (
+        <div className="p-6 max-w-[1400px] mx-auto">
+          {/* Header row */}
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-indigo-700 rounded-xl flex items-center justify-center">
+                <Inbox className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-white">Agent Reports & Briefings</h2>
+                <p className="text-xs text-gray-500">Proactive briefings, alerts, and results from your AI agents</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={wakeUpAgents} disabled={waking}
+                className="px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
+                <Zap className={`w-3.5 h-3.5 ${waking ? 'animate-spin' : ''}`} />
+                {waking ? 'Waking...' : 'Wake Up Agents'}
+              </button>
+              <button onClick={runMissions} disabled={missionRunning}
+                className="px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
+                <Globe className={`w-3.5 h-3.5 ${missionRunning ? 'animate-spin' : ''}`} />
+                {missionRunning ? 'Running...' : 'Web Missions'}
+              </button>
+              {reportUnread > 0 && (
+                <button onClick={markAllReportsRead}
+                  className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-medium flex items-center gap-1.5 text-gray-300 border border-gray-700">
+                  <CheckCheck className="w-3.5 h-3.5" /> Mark read ({reportUnread})
+                </button>
+              )}
+              <button onClick={handleReportRefresh} disabled={reportRefreshing}
+                className="px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-xs font-medium flex items-center gap-1.5 disabled:opacity-50">
+                <RefreshCw className={`w-3.5 h-3.5 ${reportRefreshing ? 'animate-spin' : ''}`} /> Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Summary Cards */}
+          {reportSummary && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <div className="flex items-center gap-2 mb-2"><Mail className="w-4 h-4 text-purple-400" /><span className="text-xs text-gray-400">Unread</span></div>
+                <p className="text-3xl font-bold text-purple-400">{reportUnread}</p>
+              </div>
+              <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <div className="flex items-center gap-2 mb-2"><AlertTriangle className="w-4 h-4 text-red-400" /><span className="text-xs text-gray-400">Alerts (24h)</span></div>
+                <p className="text-3xl font-bold text-red-400">{reportSummary.messageStats?.find(s => s.message_type === 'alert')?.count || 0}</p>
+              </div>
+              <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <div className="flex items-center gap-2 mb-2"><BarChart3 className="w-4 h-4 text-blue-400" /><span className="text-xs text-gray-400">Reports (24h)</span></div>
+                <p className="text-3xl font-bold text-blue-400">{reportSummary.messageStats?.find(s => s.message_type === 'report')?.count || 0}</p>
+              </div>
+              <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <div className="flex items-center gap-2 mb-2"><Bot className="w-4 h-4 text-emerald-400" /><span className="text-xs text-gray-400">Active Agents</span></div>
+                <p className="text-3xl font-bold text-emerald-400">{reportSummary.activeAgents?.length || 0}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Pending Proposals Banner */}
+          {reportSummary?.pendingProposals?.length > 0 && (
+            <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4 mb-6 flex items-center gap-3">
+              <AlertCircle className="w-6 h-6 text-amber-400 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-300">
+                  {reportSummary.pendingProposals.length} pending proposal{reportSummary.pendingProposals.length > 1 ? 's' : ''} awaiting approval
+                </p>
+                <p className="text-xs text-amber-400/60 mt-0.5">{reportSummary.pendingProposals.map(p => p.title).join(' · ')}</p>
+              </div>
+              <a href="/admin/agent-ops" className="px-4 py-2 bg-amber-600 hover:bg-amber-700 rounded-lg text-sm font-medium flex items-center gap-2">
+                Review <ArrowUpRight className="w-3 h-3" />
+              </a>
+            </div>
+          )}
+
+          {/* Filters */}
+          <div className="flex items-center gap-2 mb-4">
+            {['all', 'unread', 'alert', 'report'].map(f => (
+              <button key={f} onClick={() => setReportFilter(f)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  reportFilter === f ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                {f === 'all' ? 'All' : f === 'unread' ? `Unread (${reportUnread})` : f.charAt(0).toUpperCase() + f.slice(1) + 's'}
+              </button>
+            ))}
+          </div>
+
+          {/* Report Items */}
+          <div className="space-y-2">
+            {reportItems.length === 0 ? (
+              <div className="bg-gray-900 rounded-xl p-16 text-center border border-gray-800">
+                <Inbox className="w-16 h-16 text-gray-700 mx-auto mb-4" />
+                <p className="text-gray-400 text-lg">{reportFilter === 'unread' ? 'All caught up!' : 'No messages yet'}</p>
+                <p className="text-gray-600 text-sm mt-2">
+                  {reportFilter === 'unread'
+                    ? 'All agent messages have been read.'
+                    : 'Agents will post briefings, alerts, and reports here automatically.'}
+                </p>
+              </div>
+            ) : reportItems.map(item => {
+              const agent = AGENT_MAP[item.sender_id] || { name: item.sender_name, icon: Bot, color: 'text-gray-400', bg: 'bg-gray-800', border: 'border-gray-700' };
+              const AgentIcon = agent.icon;
+              const typeInfo = TYPE_LABELS[item.message_type] || TYPE_LABELS.text;
+              const TypeIcon = typeInfo.icon;
+              const isUnread = !item.read_at;
+              const isExpanded = reportExpanded === item.id;
+              let meta = {};
+              try { meta = typeof item.metadata === 'string' ? JSON.parse(item.metadata || '{}') : (item.metadata || {}); } catch {}
+              const lines = item.content.split('\n').filter(l => l.trim());
+              const preview = lines.slice(0, 2).join(' ').replace(/\*\*/g, '').replace(/[#_]/g, '').substring(0, 200);
+
+              return (
+                <div key={item.id} className={`rounded-xl border transition-all group ${
+                  isUnread ? `bg-gray-900/90 ${agent.border} border-l-4 shadow-lg` : 'bg-gray-900/50 border-gray-800 hover:border-gray-700'
+                } ${isExpanded ? 'ring-1 ring-purple-500/30' : ''}`}>
+                  <div onClick={() => toggleReportExpand(item.id)} className="flex items-center gap-3 px-5 py-4 cursor-pointer">
+                    <div className={`w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center ${agent.bg}`}>
+                      <AgentIcon className={`w-5 h-5 ${agent.color}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className={`text-sm font-semibold ${isUnread ? 'text-white' : 'text-gray-300'}`}>{agent.name}</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${typeInfo.bg} ${typeInfo.color} border ${typeInfo.border} font-medium`}>{typeInfo.label}</span>
+                        {meta.severity === 'critical' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-bold animate-pulse">CRITICAL</span>}
+                        {meta.severity === 'high' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 font-medium">HIGH</span>}
+                        {meta.aiGenerated && <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30">AI</span>}
+                      </div>
+                      <p className={`text-sm truncate ${isUnread ? 'text-gray-200' : 'text-gray-500'}`}>{preview}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3" /> {timeAgo(item.created_at)}</span>
+                      {isUnread && <span className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse" />}
+                      <button onClick={(e) => deleteReport(item.id, e)}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-900/30 rounded-lg transition-all">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="px-5 pb-5 border-t border-gray-800">
+                      <div className="pt-4">
+                        <pre className="whitespace-pre-wrap font-sans text-sm text-gray-300 leading-relaxed">{item.content}</pre>
+                        {meta.metrics && (
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {Object.entries(meta.metrics).map(([key, val]) => (
+                              <span key={key} className="text-xs bg-gray-800 px-3 py-1.5 rounded-lg">
+                                {key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}:
+                                <span className="font-medium text-emerald-300 ml-1">{typeof val === 'number' ? val.toLocaleString() : val}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-4 flex items-center gap-2">
+                          <span className="text-xs text-gray-600">{new Date(item.created_at).toLocaleString()}</span>
+                          <span className="text-gray-700">·</span>
+                          <span className="text-xs text-gray-600">{item.sender_id}</span>
+                          <button onClick={(e) => deleteReport(item.id, e)}
+                            className="ml-auto px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/30 rounded-lg flex items-center gap-1">
+                            <Trash2 className="w-3 h-3" /> Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
