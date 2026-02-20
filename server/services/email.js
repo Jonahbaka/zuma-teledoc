@@ -25,11 +25,7 @@ const BRAND = {
 const COMPANY = {
   name: 'DoctaRx',
   fullName: 'DoctaRx Telehealth Services',
-  address: '123 Healthcare Blvd, Suite 100',
-  city: 'San Francisco',
-  state: 'CA',
-  zip: '94105',
-  country: 'USA',
+  phone: '408-585-9255',
   website: 'https://doctarx.com',
   supportEmail: 'support@doctarx.com'
 };
@@ -234,8 +230,8 @@ const generateEmailTemplate = ({
             <td style="background-color: ${BRAND.dark}; padding: 32px; text-align: center;">
               <p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; color: rgba(255,255,255,0.7); line-height: 1.6;">
                 ${COMPANY.fullName}<br>
-                ${COMPANY.address}<br>
-                ${COMPANY.city}, ${COMPANY.state} ${COMPANY.zip}, ${COMPANY.country}
+                <a href="tel:${COMPANY.phone}" style="color: rgba(255,255,255,0.7); text-decoration: none;">${COMPANY.phone}</a> &nbsp;|&nbsp;
+                <a href="mailto:${COMPANY.supportEmail}" style="color: rgba(255,255,255,0.7); text-decoration: none;">${COMPANY.supportEmail}</a>
               </p>
               
               <!-- Social links -->

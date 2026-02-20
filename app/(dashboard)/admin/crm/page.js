@@ -46,42 +46,9 @@ const SENTIMENT_STYLE = {
   urgent:   { bg: 'bg-amber-500/10',   border: 'border-amber-500/20',   text: 'text-amber-400',   label: 'Urgent'   },
 };
 
-const MOCK_THREADS = [
-  { id: '1', contact: { name: 'Dr. Sarah Johnson', email: 'sjohnson@memorial.com', type: 'provider' }, subject: 'RE: Telehealth Onboarding Opportunity', preview: 'Thank you for the detailed overview. I wanted to discuss the scheduling flexibility...', time: '2h ago', unread: true,  sentiment: 'positive', messages: 3 },
-  { id: '2', contact: { name: 'Mark Rivera',       email: 'mrivera@venturecap.io',  type: 'investor' }, subject: 'Interested in Q1 Investment Round',    preview: 'Your pitch deck was very compelling. A few questions about your growth metrics...', time: '5h ago', unread: true,  sentiment: 'positive', messages: 2 },
-  { id: '3', contact: { name: 'Dr. Keiko Tanaka',  email: 'ktanaka@cityhealth.org', type: 'provider' }, subject: 'Following up on partnership proposal',  preview: 'I spoke with our department head and we are open to a 3-month pilot...', time: 'Yesterday', unread: false, sentiment: 'neutral',  messages: 4 },
-  { id: '4', contact: { name: 'James Okonkwo',     email: 'james.o@nursenetwork.com', type: 'nurse' }, subject: 'Telehealth platform query',              preview: 'I am interested in joining but have some concerns about the shift schedule...', time: '2 days ago', unread: false, sentiment: 'neutral', messages: 1 },
-  { id: '5', contact: { name: 'Angela Martinez',   email: 'amarti@globalhealth.com', type: 'partner' }, subject: 'URGENT: Contract review needed',        preview: 'Our legal team flagged a few clauses in the partnership agreement...', time: '3 days ago', unread: false, sentiment: 'urgent', messages: 6 },
-];
+const MOCK_THREADS = [];
 
-const MOCK_MESSAGES = {
-  '1': [
-    { id: 'm1', direction: 'out', content: 'Hi Dr. Johnson,\n\nThank you for your interest in DoctaRx telehealth services. I wanted to follow up on our initial outreach and provide more details about our flexible scheduling and competitive compensation package.\n\nOur platform offers:\n- 100% remote consultations\n- Flexible scheduling (set your own hours)\n- Competitive per-consultation rates\n- Malpractice coverage included\n\nWould you be available for a brief 15-minute call this week?\n\nBest regards,\nThe DoctaRx Team', time: '3h ago', sender: 'DoctaRx Agent' },
-    { id: 'm2', direction: 'in',  content: 'Thank you for the detailed overview. I wanted to discuss the scheduling flexibility in more detail. I currently see patients 3 days a week and am looking to add telehealth on my off days. Is there a minimum hourly commitment?', time: '2.5h ago', sender: 'Dr. Sarah Johnson' },
-    { id: 'm3', direction: 'out', content: 'Great question Dr. Johnson! We have no minimum hourly commitment — you can see as few or as many patients as you like. Many of our providers start with just 5–10 hours per week and adjust from there.\n\nShall I send over the provider agreement so you can review the full terms?', time: '2h ago', sender: 'DoctaRx Agent' },
-  ],
-  '2': [
-    { id: 'm4', direction: 'out', content: 'Dear Mr. Rivera,\n\nFollowing our pitch deck submission, I wanted to personally reach out to discuss DoctaRx\'s Q1 investment round. We\'re targeting $2M to accelerate our provider network expansion across 5 new states.\n\nOur current metrics:\n- 847 registered patients\n- 23 active providers\n- 98% patient satisfaction rate\n\nWould you be open to a 30-minute Zoom call?\n\nBest,\nDoctaRx Team', time: '6h ago', sender: 'DoctaRx Agent' },
-    { id: 'm5', direction: 'in',  content: 'Your pitch deck was very compelling. A few questions about your growth metrics — specifically your patient acquisition cost and monthly recurring revenue. Also, what is your current burn rate?', time: '5h ago', sender: 'Mark Rivera' },
-  ],
-  '3': [
-    { id: 'm6', direction: 'out', content: 'Hello Dr. Tanaka,\n\nI hope this message finds you well. I wanted to revisit the partnership proposal we discussed last month regarding integrating DoctaRx into City Health\'s referral network.', time: '2 days ago', sender: 'DoctaRx Agent' },
-    { id: 'm7', direction: 'in',  content: 'Thank you for following up. I\'ve been meaning to get back to you.', time: '2 days ago', sender: 'Dr. Keiko Tanaka' },
-    { id: 'm8', direction: 'out', content: 'No worries at all! We understand these decisions take time. Would it help if we scheduled a demo for your department leadership?', time: '1 day ago', sender: 'DoctaRx Agent' },
-    { id: 'm9', direction: 'in',  content: 'I spoke with our department head and we are open to a 3-month pilot. Can you send over the formal proposal with pricing details?', time: 'Yesterday', sender: 'Dr. Keiko Tanaka' },
-  ],
-  '4': [
-    { id: 'm10', direction: 'in', content: 'I am interested in joining but have some concerns about the shift schedule and how it works with malpractice coverage as a travel nurse.', time: '2 days ago', sender: 'James Okonkwo' },
-  ],
-  '5': [
-    { id: 'm11', direction: 'out', content: 'Hi Angela, hope all is well at Global Health. Sending you the revised partnership agreement as discussed.', time: '3 days ago', sender: 'DoctaRx Agent' },
-    { id: 'm12', direction: 'in',  content: 'Thank you for sending this over.', time: '3 days ago', sender: 'Angela Martinez' },
-    { id: 'm13', direction: 'out', content: 'Please let me know if you have any questions!', time: '3 days ago', sender: 'DoctaRx Agent' },
-    { id: 'm14', direction: 'in',  content: 'Our legal team flagged a few clauses in the partnership agreement. Specifically section 4.2 regarding liability and section 7.1 on data sharing. URGENT review needed.', time: '3 days ago', sender: 'Angela Martinez' },
-    { id: 'm15', direction: 'out', content: 'We take legal review seriously. I\'ll loop in our legal team today and get back to you within 24 hours.', time: '2 days ago', sender: 'DoctaRx Agent' },
-    { id: 'm16', direction: 'in',  content: 'Please expedite — our board meeting is on Thursday and we need to finalize this before then.', time: '3 days ago', sender: 'Angela Martinez' },
-  ],
-};
+const MOCK_MESSAGES = {};
 
 /* ─── Reports tab constants ──────────────────────────────── */
 const AGENT_MAP = {
