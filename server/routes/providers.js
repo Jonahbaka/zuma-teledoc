@@ -210,9 +210,69 @@ router.post('/me/time-off',
          RETURNING *`,
         [req.user.id, data.startDatetime, data.endDatetime, data.reason, data.isRecurring]
       );
-      
-      // TODO: Cancel affected appointments and notify patients
-      
+
+      // Cancel affected appointments and notify patients
+      try {
+        const { rows: affectedAppointments } = await db.query(
+          `SELECT a.id, a.patient_id, a.scheduled_at,
+                  p.first_name as patient_first_name, p.last_name as patient_last_name,
+                  pr.first_name as provider_first_name, pr.last_name as provider_last_name
+           FROM appointments a
+           JOIN users p ON p.id = a.patient_id
+           JOIN users pr ON pr.id = a.provider_id
+           WHERE a.provider_id = $1
+             AND a.scheduled_at BETWEEN $2 AND $3
+             AND a.status IN ('scheduled', 'confirmed')`,
+          [req.user.id, data.startDatetime, data.endDatetime]
+        );
+
+        if (affectedAppointments.length > 0) {
+          const appointmentIds = affectedAppointments.map(a => a.id);
+
+          // Cancel all affected appointments in bulk
+          await db.query(
+            `UPDATE appointments
+             SET status = 'cancelled',
+                 cancelled_at = NOW(),
+                 cancelled_by = $1,
+                 cancellation_reason = $2,
+                 updated_at = NOW()
+             WHERE id = ANY($3::uuid[])`,
+            [
+              req.user.id,
+              data.reason ? `Provider time off: ${data.reason}` : 'Provider unavailable during this period',
+              appointmentIds
+            ]
+          );
+
+          // Notify each affected patient
+          const notificationService = require('../services/notifications');
+          for (const appt of affectedAppointments) {
+            const apptData = {
+              id: appt.id,
+              scheduledAt: appt.scheduled_at,
+              providerFirstName: appt.provider_first_name,
+              providerLastName: appt.provider_last_name,
+              patientFirstName: appt.patient_first_name,
+              patientLastName: appt.patient_last_name
+            };
+            await notificationService.sendAppointmentNotification(apptData, appt.patient_id, 'patient', 'cancelled');
+          }
+
+          logger.info('Affected appointments cancelled for time off', {
+            providerId: req.user.id,
+            timeOffId: rows[0].id,
+            cancelledCount: affectedAppointments.length
+          });
+        }
+      } catch (cancellationError) {
+        logger.error('Failed to cancel affected appointments for time off', {
+          error: cancellationError.message,
+          providerId: req.user.id
+        });
+        // Don't fail the time-off creation if cancellation has issues
+      }
+
       logger.info('Time off added', { providerId: req.user.id, timeOffId: rows[0].id });
       
       res.status(201).json({

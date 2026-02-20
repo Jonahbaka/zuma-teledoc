@@ -724,6 +724,7 @@ const AGENT_TOOL_PERMISSIONS = {
   mathematician:    ['get_platform_stats','query_revenue','query_appointments','query_patients','query_agent_results','log_agent_result'],
   vortex_math:      ['get_platform_stats','query_agent_results','log_agent_result'],
   devops:           ['get_platform_stats','query_agent_results','list_credentials','github_operation','search_web','log_agent_result'],
+  engineering:      ['get_platform_stats','query_agent_results','list_credentials','github_operation','search_web','scrape_url','log_agent_result','query_patients','query_providers','list_uploaded_files','read_uploaded_file'],
   asclepius:        ['medical_consult','query_patients','query_prescriptions','query_triage','log_agent_result'],
   triage_nurse:     ['medical_consult','query_triage','query_patients','log_agent_result','send_platform_notification'],
   pharmacist:       ['medical_consult','query_prescriptions','query_patients','log_agent_result']

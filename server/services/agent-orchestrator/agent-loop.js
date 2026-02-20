@@ -248,13 +248,29 @@ async function runGeminiFallbackLoop(agentType, agentName, agentPersona, userMes
 
   if (!text) {
     // Last resort: format the raw data ourselves without LLM
-    const lines = ['Here is the live data I retrieved:'];
-    for (const { name, input, result } of toolCallTrace) {
-      if (result.success !== false && result.data) {
-        lines.push(`\n${name}: ${JSON.stringify(result.data).slice(0, 400)}`);
+    // NOTE: toolCallTrace entries use { tool, input, result } — destructure correctly
+    const lines = ['Here is the live data retrieved from the platform:'];
+    for (const { tool: toolName, result } of toolCallTrace) {
+      if (result && result.success !== false) {
+        const data = result.data || result;
+        // Format the data as readable sentences rather than raw JSON
+        if (toolName === 'get_platform_stats' && data) {
+          const d = typeof data === 'object' ? data : {};
+          const parts = [];
+          if (d.totalUsers != null) parts.push(`${d.totalUsers} total users`);
+          if (d.totalPatients != null) parts.push(`${d.totalPatients} patients`);
+          if (d.totalProviders != null) parts.push(`${d.totalProviders} providers`);
+          if (d.crmContacts != null) parts.push(`${d.crmContacts} CRM contacts`);
+          if (d.activeSubscriptions != null) parts.push(`${d.activeSubscriptions} active subscriptions`);
+          if (parts.length > 0) lines.push(`Platform: ${parts.join(', ')}.`);
+        } else {
+          const raw = JSON.stringify(data).slice(0, 300);
+          lines.push(`${toolName}: ${raw}`);
+        }
       }
     }
-    text = lines.join('\n') || '⚠️ LLM unavailable and no data retrieved.';
+    if (lines.length === 1) lines.push('No data was retrieved. The LLM is currently unavailable.');
+    text = lines.join('\n');
   }
 
   return {
