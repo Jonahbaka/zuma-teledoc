@@ -399,7 +399,7 @@ async function initializeApp() {
         defaultSrc: ["'self'"],
         // Next.js requires 'unsafe-inline' and 'unsafe-eval' + wasm-unsafe-eval for MediaPipe WASM
         scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-eval'", "https://www.googletagmanager.com", "https://www.google-analytics.com"],
-        scriptSrcElem: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://www.google-analytics.com"],
+        scriptSrcElem: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://static.cloudflareinsights.com"],
         // Allow inline styles and Google Fonts
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
