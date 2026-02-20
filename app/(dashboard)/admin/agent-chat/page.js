@@ -609,34 +609,29 @@ export default function AgentChatPage() {
       {/* CHAT TAB */}
       {activeTab === 'chat' && (
         <div className="flex h-[calc(100vh-140px)]">
-          {/* Agent Sidebar */}
-          <div className="w-64 bg-gray-900/70 border-r border-gray-800 overflow-y-auto">
-            <div className="p-3">
-              <p className="text-xs text-gray-500 uppercase font-medium mb-2 px-2">Select Agent</p>
+          {/* Agent Sidebar — icon-only, tooltip on hover */}
+          <div className="w-16 bg-gray-900/70 border-r border-gray-800 overflow-y-auto flex-shrink-0">
+            <div className="p-2 flex flex-col gap-1">
               {AGENTS.map(agent => {
                 const AgentIcon = agent.icon;
                 const persona = agent.id === 'all' ? getAgentPersona('runtime') : getAgentPersona(agent.id);
                 const isSpeaking = agent.id !== 'all' && typingAgentIds.has(normalizeAgentId(agent.id));
+                const label = agent.id === 'all' ? 'Broadcast — All agents' : `${persona.name} — ${persona.role}`;
                 return (
-                  <button key={agent.id} onClick={() => setSelectedAgent(agent.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 text-left transition-colors ${
-                      selectedAgent === agent.id ? 'bg-purple-600/20 border border-purple-500/30' : 'hover:bg-gray-800/50'}`}>
-                    <div className="shrink-0">
-                      {agent.id === 'all' ? (
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
-                          <AgentIcon className="w-4 h-4 text-white" />
-                        </div>
-                      ) : (
-                        <HolographicAvatar persona={persona} size="sm" isSpeaking={isSpeaking} online />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium truncate ${selectedAgent === agent.id ? 'text-white' : 'text-gray-300'}`}>
-                        {agent.id === 'all' ? 'Broadcast' : persona.name}
-                      </p>
-                      <p className="text-xs text-gray-500 truncate">{agent.id === 'all' ? 'All agents' : persona.role}</p>
-                    </div>
-                    {agent.id !== 'all' && <span className="w-2 h-2 rounded-full bg-emerald-400" title="Online" />}
+                  <button
+                    key={agent.id}
+                    onClick={() => setSelectedAgent(agent.id)}
+                    title={label}
+                    className={`w-full flex items-center justify-center p-1.5 rounded-lg transition-colors ${
+                      selectedAgent === agent.id ? 'bg-purple-600/20 ring-1 ring-purple-500/40' : 'hover:bg-gray-800/60'}`}
+                  >
+                    {agent.id === 'all' ? (
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
+                        <AgentIcon className="w-4 h-4 text-white" />
+                      </div>
+                    ) : (
+                      <HolographicAvatar persona={persona} size="sm" isSpeaking={isSpeaking} online />
+                    )}
                   </button>
                 );
               })}
