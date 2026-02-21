@@ -334,7 +334,7 @@ const TOOL_EXECUTORS = {
     await safeCount(`SELECT COUNT(*)::int AS c FROM users`, 'total_users');
     await safeCount(`SELECT COUNT(*)::int AS c FROM users WHERE role = 'patient'`, 'total_patients');
     await safeCount(`SELECT COUNT(*)::int AS c FROM users WHERE role IN ('provider','admin')`, 'total_providers');
-    await safeCount(`SELECT COUNT(*)::int AS c FROM users WHERE role = 'provider' AND (is_approved = false OR is_approved IS NULL)`, 'pending_providers');
+    await safeCount(`SELECT COUNT(*)::int AS c FROM users WHERE role = 'provider' AND (provider_status = 'pending' OR provider_status IS NULL)`, 'pending_providers');
     await safeCount(`SELECT COUNT(*)::int AS c FROM video_sessions`, 'total_appointments');
     await safeCount(`SELECT COUNT(*)::int AS c FROM video_sessions WHERE created_at > NOW() - INTERVAL '7 days'`, 'appointments_this_week');
     await safeCount(`SELECT COUNT(*)::int AS c FROM video_sessions WHERE created_at > NOW() - INTERVAL '24 hours'`, 'appointments_today');
@@ -387,15 +387,15 @@ const TOOL_EXECUTORS = {
       limit = Math.min(Number(limit) || 20, 50);
       const params = [];
       let where = `WHERE role = 'provider'`;
-      if (status === 'approved') { where += ` AND is_approved = true`; }
-      if (status === 'pending') { where += ` AND (is_approved = false OR is_approved IS NULL)`; }
+      if (status === 'approved') { where += ` AND provider_status = 'approved'`; }
+      if (status === 'pending') { where += ` AND (provider_status = 'pending' OR provider_status IS NULL)`; }
       if (search) {
         params.push(`%${search.toLowerCase()}%`);
         where += ` AND (LOWER(first_name) LIKE $${params.length} OR LOWER(last_name) LIKE $${params.length} OR LOWER(email) LIKE $${params.length})`;
       }
       params.push(limit);
       const r = await db.query(
-        `SELECT id, first_name, last_name, email, phone, specialty, is_approved, created_at
+        `SELECT id, first_name, last_name, email, phone, specialty, provider_status, created_at
          FROM users ${where} ORDER BY created_at DESC LIMIT $${params.length}`, params
       );
       return { success: true, data: r.rows, count: r.rows.length };
@@ -409,10 +409,10 @@ const TOOL_EXECUTORS = {
       limit = Math.min(Number(limit) || 20, 50);
       const cutoff = new Date(Date.now() - (Number(days_back) || 7) * 86400000).toISOString();
       const params = [cutoff, limit];
-      let where = `WHERE created_at >= $1`;
+      let where = `WHERE vs.created_at >= $1`;
       if (status && status !== 'all') {
         params.splice(1, 0, status);
-        where += ` AND status = $2`;
+        where += ` AND vs.status = $2`;
         params[2] = limit;
       }
       const r = await db.query(
