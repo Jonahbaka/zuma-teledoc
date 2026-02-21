@@ -26,6 +26,9 @@ try { githubService = require('./github-service'); } catch (e) { /* optional */ 
 let credentialVault;
 try { credentialVault = require('./credential-vault'); } catch (e) { /* optional */ }
 
+let crmService;
+try { crmService = require('../crmService'); } catch (e) { /* optional */ }
+
 // ─────────────────────────────────────────────────────────────────────────
 // TOOL DEFINITIONS (what the LLM sees)
 // ─────────────────────────────────────────────────────────────────────────
@@ -132,6 +135,34 @@ const TOOL_DEFINITIONS = {
         lead_score: { type: 'number', description: '0-100 quality score' }
       },
       required: ['first_name', 'last_name']
+    }
+  },
+
+  update_crm_contact: {
+    description: 'Update a CRM contact\'s pipeline stage, lead score, or notes. Use after outreach, a call, or any interaction that changes the contact\'s status.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        contact_id: { type: 'string', description: 'The CRM contact ID to update' },
+        pipeline_stage: { type: 'string', description: 'New stage: new, researching, outreach_queued, contacted, responded, interested, negotiating, converted, lost, nurturing' },
+        lead_score: { type: 'number', description: 'New lead score 0-100' },
+        notes: { type: 'string', description: 'Add context notes about this contact' }
+      },
+      required: ['contact_id']
+    }
+  },
+
+  send_crm_email: {
+    description: 'Send a personalized outreach email to a CRM contact via Zoho Mail. Logs the interaction automatically. Use for provider recruitment, investor outreach, or partnership inquiries.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        contact_id: { type: 'string', description: 'The CRM contact ID to email' },
+        subject: { type: 'string', description: 'Email subject line' },
+        body: { type: 'string', description: 'Email body text (plain text or simple HTML). Use {{first_name}} for personalization.' },
+        agent_type: { type: 'string', description: 'The agent sending this (e.g. growth, corporate_skills)' }
+      },
+      required: ['contact_id', 'subject', 'body']
     }
   },
 
@@ -481,6 +512,53 @@ const TOOL_EXECUTORS = {
     }
   },
 
+  async update_crm_contact({ contact_id, pipeline_stage, lead_score, notes } = {}) {
+    try {
+      if (!contact_id) return { success: false, error: 'contact_id is required' };
+      const updates = {};
+      if (pipeline_stage) updates.pipeline_stage = pipeline_stage;
+      if (lead_score != null) updates.lead_score = lead_score;
+      if (notes) updates.notes = notes;
+      if (Object.keys(updates).length === 0) return { success: false, error: 'No fields to update' };
+      if (crmService) {
+        if (pipeline_stage) await crmService.updatePipelineStage(contact_id, pipeline_stage, 'agent');
+        if (lead_score != null) await crmService.updateLeadScore(contact_id, lead_score, 'agent update');
+        if (notes && !pipeline_stage && lead_score == null) await crmService.updateContact(contact_id, { notes });
+      } else {
+        const setClauses = [];
+        const params = [];
+        if (pipeline_stage) { params.push(pipeline_stage); setClauses.push(`pipeline_stage = $${params.length}`); }
+        if (lead_score != null) { params.push(lead_score); setClauses.push(`lead_score = $${params.length}`); }
+        if (notes) { params.push(notes); setClauses.push(`notes = $${params.length}`); }
+        params.push(contact_id);
+        await db.query(`UPDATE crm_contacts SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $${params.length}`, params);
+      }
+      return { success: true, message: `Contact ${contact_id} updated.`, updates };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  async send_crm_email({ contact_id, subject, body, agent_type = 'agent' } = {}) {
+    try {
+      if (!contact_id || !subject || !body) return { success: false, error: 'contact_id, subject, and body are required' };
+      if (crmService) {
+        const result = await crmService.sendEmail(contact_id, subject, body, agent_type);
+        return result;
+      }
+      // Fallback: log the email intent without sending
+      await db.query(
+        `INSERT INTO crm_interactions (contact_id, type, subject, content, direction, agent_type, created_at)
+         VALUES ($1, 'email_queued', $2, $3, 'out', $4, NOW())
+         ON CONFLICT DO NOTHING`,
+        [contact_id, subject, body, agent_type]
+      );
+      return { success: true, message: 'Email queued (CRM service unavailable, logged for manual send).' };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  },
+
   async query_triage({ days_back = 7, urgency, limit = 20 } = {}) {
     try {
       limit = Math.min(Number(limit) || 20, 50);
@@ -712,12 +790,12 @@ const TOOL_EXECUTORS = {
 // Which tools each agent type has access to by default
 const AGENT_TOOL_PERMISSIONS = {
   ceo:              Object.keys(TOOL_DEFINITIONS),
-  operations:       ['get_platform_stats','query_patients','query_providers','query_appointments','query_crm','create_crm_contact','search_web','scrape_url','list_credentials','log_agent_result','send_platform_notification','list_uploaded_files','read_uploaded_file'],
-  growth:           ['get_platform_stats','query_crm','create_crm_contact','search_web','scrape_url','list_credentials','log_agent_result','query_providers','query_agent_results','list_uploaded_files','read_uploaded_file'],
-  revenue:          ['get_platform_stats','query_revenue','query_crm','search_web','log_agent_result','list_credentials','query_agent_results'],
+  operations:       ['get_platform_stats','query_patients','query_providers','query_appointments','query_crm','create_crm_contact','update_crm_contact','send_crm_email','search_web','scrape_url','list_credentials','log_agent_result','send_platform_notification','list_uploaded_files','read_uploaded_file'],
+  growth:           ['get_platform_stats','query_crm','create_crm_contact','update_crm_contact','send_crm_email','search_web','scrape_url','list_credentials','log_agent_result','query_providers','query_agent_results','list_uploaded_files','read_uploaded_file'],
+  revenue:          ['get_platform_stats','query_revenue','query_crm','update_crm_contact','search_web','log_agent_result','list_credentials','query_agent_results'],
   compliance:       ['get_platform_stats','query_patients','query_providers','query_prescriptions','query_appointments','list_credentials','query_agent_results','log_agent_result'],
   governance:       ['get_platform_stats','query_agent_results','list_credentials','log_agent_result'],
-  corporate_skills: ['get_platform_stats','search_web','scrape_url','list_credentials','log_agent_result','query_crm','create_crm_contact','query_providers'],
+  corporate_skills: ['get_platform_stats','search_web','scrape_url','list_credentials','log_agent_result','query_crm','create_crm_contact','update_crm_contact','send_crm_email','query_providers'],
   researcher:       ['search_web','scrape_url','get_platform_stats','query_crm','create_crm_contact','log_agent_result','list_uploaded_files','read_uploaded_file'],
   economics:        ['get_platform_stats','query_revenue','search_web','log_agent_result','query_crm'],
   physicist:        ['get_platform_stats','query_appointments','query_agent_results','log_agent_result'],

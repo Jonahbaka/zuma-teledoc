@@ -98,7 +98,7 @@ function initialize() {
       const Anthropic = require('@anthropic-ai/sdk');
       anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
       activeProvider = 'claude';
-      activeModelName = 'claude-sonnet-4-5-20250929';
+      activeModelName = 'claude-sonnet-4-6';
       console.log(`  🟣 Claude: ${activeModelName} — PRIMARY (Agentic Reasoning)`);
       console.log(`  🟣 Provider: Anthropic — Pay-as-you-go`);
 
@@ -137,7 +137,7 @@ async function verifyClaude() {
   } catch (err) {
     // Try older model
     console.warn(`  ⚠️ ${activeModelName} failed: ${err.message.substring(0, 80)}`);
-    const fallbacks = ['claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514', 'claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022'];
+    const fallbacks = ['claude-sonnet-4-6', 'claude-sonnet-4-5-20251001', 'claude-sonnet-4-20250514', 'claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022'];
     for (const model of fallbacks) {
       if (model === activeModelName) continue;
       try {

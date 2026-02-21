@@ -731,12 +731,20 @@ router.get('/accounts', ...adminOnly, async (req, res) => {
  * Check which LLM provider is active (Claude or Gemini)
  */
 router.get('/llm-status', ...adminOnly, (req, res) => {
+  const uptimeSecs = Math.round(process.uptime());
+  const d = Math.floor(uptimeSecs / 86400);
+  const h = Math.floor((uptimeSecs % 86400) / 3600);
+  const m = Math.floor((uptimeSecs % 3600) / 60);
+  const uptimeFormatted = d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+
   const status = {
     available: llmService ? llmService.isAvailable() : false,
+    provider: llmService ? (llmService.getActiveProvider?.() || null) : null,
+    model: llmService ? (llmService.getActiveModelName?.() || null) : null,
     anthropicKeySet: !!process.env.ANTHROPIC_API_KEY,
     geminiKeySet: !!process.env.GEMINI_API_KEY,
     serverTime: new Date().toISOString(),
-    uptime: Math.round(process.uptime() / 60) + ' minutes',
+    uptime: uptimeFormatted,
     nodeVersion: process.version
   };
   res.json({ success: true, data: status });

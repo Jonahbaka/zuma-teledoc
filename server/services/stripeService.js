@@ -13,6 +13,8 @@ const Stripe = require('stripe');
 const db = require('../db');
 const logger = require('../middleware/logger');
 const membershipService = require('./membershipService');
+const emailService = require('./email');
+const notificationService = require('./notifications');
 
 // Initialize Stripe with secret key
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -1048,8 +1050,40 @@ async function handlePaymentFailed(invoice) {
       );
       await membershipService.suspendCardsForUser({ userId, reason: 'invoice_payment_failed' });
 
-      // TODO: Send notification to user about failed payment (email + in-app)
-      logger.warn('Payment failed', { userId, invoiceId: invoice.id });
+      // Notify user about failed payment via in-app + email
+      try {
+        await notificationService.sendBillingNotification(
+          userId,
+          'Payment Failed — Action Required',
+          'Your subscription payment failed and your account has been temporarily downgraded. Please update your payment method to restore full access.',
+          invoice.id
+        );
+      } catch (notifErr) {
+        logger.warn('Failed to send billing notification', { userId, error: notifErr.message });
+      }
+      try {
+        const userResult = await db.query('SELECT email, first_name FROM users WHERE id = $1', [userId]);
+        const user = userResult.rows[0];
+        if (user?.email) {
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+          await emailService.sendEmail({
+            to: user.email,
+            subject: 'Action Required: Your DoctaRx Payment Failed',
+            html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+              <h2 style="color:#7c3aed">Payment Failed</h2>
+              <p>Hi ${user.first_name || 'there'},</p>
+              <p>We were unable to process your subscription payment. Your account has been temporarily downgraded to the free plan and your membership card has been suspended.</p>
+              <p>To restore full access, please update your payment method:</p>
+              <a href="${appUrl}/dashboard/billing" style="display:inline-block;background:#7c3aed;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;margin:16px 0">Update Payment Method</a>
+              <p style="color:#6b7280;font-size:13px">Invoice ID: ${invoice.id}</p>
+              <p style="color:#6b7280;font-size:12px">DoctaRx | info@doctarx.com</p>
+            </div>`
+          });
+        }
+      } catch (emailErr) {
+        logger.warn('Failed to send payment failed email', { userId, error: emailErr.message });
+      }
+      logger.warn('Payment failed — user notified', { userId, invoiceId: invoice.id });
     }
   } catch (error) {
     logger.error('Error handling payment failed', { error: error.message });
