@@ -442,7 +442,7 @@ const TOOL_EXECUTORS = {
         params[2] = limit;
       }
       const r = await db.query(
-        `SELECT p.id, p.medication_name, p.dosage, p.status, p.created_at,
+        `SELECT p.id, p.medication_name, p.dosage_strength, p.dosage_form, p.status, p.created_at,
                 u.first_name AS patient_first, u.last_name AS patient_last,
                 pr.first_name AS provider_first, pr.last_name AS provider_last
          FROM prescriptions p
