@@ -567,6 +567,7 @@ async function initializeApp() {
   loadRoute('/api/deploy', './routes/deploy');
   loadRoute('/api/upload-build', './routes/upload-build');
   loadRoute('/api/upload-build-binary', './routes/upload-build-binary');
+  loadRoute('/api/upload-build-chunked', './routes/upload-build-chunked');
   loadRoute('/api/restart', './routes/restart');
   loadRoute('/api/openclaw', './routes/openclawApi');
   console.log('✅ API routes loading complete (+ Hive Gateway + OpenClaw REST API)');
