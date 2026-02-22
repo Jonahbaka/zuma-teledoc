@@ -6,45 +6,40 @@ const { execSync } = require('child_process');
 
 router.get('/', (req, res) => {
   try {
-    const projectRoot = '/home/ec2-user/zuma-teledoc';
-    const nextDir = path.join(projectRoot, '.next');
+    const projectRoot = process.cwd();
+    const creatorFile = path.join(projectRoot, 'server', 'routes', 'creator.js');
+    const indexFile = path.join(projectRoot, 'server', 'index.js');
     
-    const diagnostics = {
+    const diagnosis = {
+      timestamp: new Date().toISOString(),
       projectRoot,
-      projectExists: fs.existsSync(projectRoot),
-      nextDirExists: fs.existsSync(nextDir),
-      nextDirSize: null,
-      nextDirFiles: [],
-      nodeModulesExists: fs.existsSync(path.join(projectRoot, 'node_modules')),
-      packageJsonExists: fs.existsSync(path.join(projectRoot, 'package.json')),
-      pmStatus: null,
-      timestamp: new Date().toISOString()
+      files: {
+        creatorExists: fs.existsSync(creatorFile),
+        creatorSize: fs.existsSync(creatorFile) ? fs.statSync(creatorFile).size : 0,
+        indexExists: fs.existsSync(indexFile),
+      },
+      gitStatus: null,
+      lastCommit: null,
+      nodeVersion: process.version,
+      pmid: process.env.pm_id,
     };
 
-    if (diagnostics.nextDirExists) {
-      try {
-        const stat = fs.statSync(nextDir);
-        diagnostics.nextDirSize = stat.size;
-        diagnostics.nextDirFiles = fs.readdirSync(nextDir).slice(0, 10);
-      } catch (e) {
-        diagnostics.nextDirError = e.message;
-      }
-    }
-
-    // Check PM2 status
     try {
-      const pmOutput = execSync('pm2 status doctarx 2>&1 || echo "not running"', {
-        encoding: 'utf-8',
-        timeout: 5000
-      }).trim();
-      diagnostics.pmStatus = pmOutput;
+      diagnosis.gitStatus = execSync('git status --short', { cwd: projectRoot, encoding: 'utf-8' });
+      diagnosis.lastCommit = execSync('git log --oneline -1', { cwd: projectRoot, encoding: 'utf-8' });
     } catch (e) {
-      diagnostics.pmError = e.message;
+      diagnosis.gitError = e.message;
     }
 
-    res.json(diagnostics);
+    // Check if creator route is in index.js
+    if (fs.existsSync(indexFile)) {
+      const indexContent = fs.readFileSync(indexFile, 'utf-8');
+      diagnosis.creatorRoutedInIndex = indexContent.includes("loadRoute('/api/creator'");
+    }
+
+    res.json({ success: true, diagnosis });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
