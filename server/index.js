@@ -573,6 +573,7 @@ async function initializeApp() {
   loadRoute('/api/restart', './routes/restart');
   loadRoute('/api/diagnose', './routes/diagnose');
   loadRoute('/api/creator', './routes/creator');
+  loadRoute('/api/social', './routes/social');
   loadRoute('/pitch-deck', './routes/pitch-deck');
   loadRoute('/api/openclaw', './routes/openclawApi');
   console.log('✅ API routes loading complete (+ Hive Gateway + OpenClaw REST API)');
@@ -743,6 +744,15 @@ async function initializeApp() {
   
   initialized = true;
   console.log('✅ Express API ready');
+
+  // Start Social Media Scheduler
+  try {
+    const socialScheduler = require('./services/socialSchedulerService');
+    socialScheduler.start();
+    console.log('✅ Social Media Scheduler started');
+  } catch (err) {
+    console.error('⚠️  Social Scheduler failed to start:', err.message);
+  }
   
   // Next.js deferred initialization (skip on startup, load async only if .next exists)
   console.log('⏳ Deferring Next.js initialization...');
