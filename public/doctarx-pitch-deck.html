@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DoctaRx Pitch Deck - 2026</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #05070a;
+            color: #e2e8f0;
+            scroll-snap-type: y mandatory;
+            overflow-y: scroll;
+            height: 100vh;
+        }
+        section {
+            height: 100vh;
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 4rem;
+            position: relative;
+            border-bottom: 1px solid #1e293b;
+        }
+        .gradient-text {
+            background: linear-gradient(90deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .glass {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .stat-card {
+            padding: 1.5rem;
+            border-radius: 1rem;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid #334155;
+        }
+        @media print {
+            section { height: auto; scroll-snap-align: none; page-break-after: always; }
+            body { overflow: visible; }
+            .controls { display: none !important; }
+        }
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+        .download-btn {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+        .download-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        }
+        .download-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="deck-content">
+    <!-- SLIDE 1: TITLE -->
+    <section class="items-center text-center">
+        <div class="w-32 h-32 bg-gradient-to-tr from-blue-600 to-purple-600 rounded-3xl mb-8 flex items-center justify-center shadow-2xl shadow-blue-500/20">
+            <div class="w-16 h-16 bg-white rounded-full"></div>
+        </div>
+        <h1 class="text-7xl font-bold mb-4">DoctaRx</h1>
+        <p class="text-2xl text-blue-400 font-light mb-8 max-w-2xl">Doctor-Led Telehealth, Supercharged by AI</p>
+        <p class="text-lg text-slate-400 mb-12">Making Healthcare Accessible, Affordable, and Intelligent</p>
+        <div class="flex gap-4 text-sm font-semibold tracking-widest uppercase text-slate-500">
+            <span>Doctor-Led</span>
+            <span>&bull;</span>
+            <span>HIPAA Compliant</span>
+            <span>&bull;</span>
+            <span>AI-Enhanced</span>
+        </div>
+        <div class="mt-16 glass px-6 py-4 rounded-full flex gap-8 items-center">
+            <div>
+                <p class="text-xs text-slate-500 uppercase">Founder</p>
+                <p class="text-sm">Jonah Baka</p>
+            </div>
+            <div class="w-px h-8 bg-slate-700"></div>
+            <div>
+                <p class="text-xs text-slate-500 uppercase">Round</p>
+                <p class="text-sm">Seed - Feb 2026</p>
+            </div>
+        </div>
+    </section>
+    <!-- SLIDE 2: THE PROBLEM -->
+    <section>
+        <h2 class="text-sm font-bold tracking-[0.2em] uppercase text-blue-500 mb-4">The Problem</h2>
+        <h3 class="text-5xl font-bold mb-12 max-w-4xl leading-tight">Healthcare is broken—and <span class="gradient-text">83 Million</span> Americans know it.</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div class="stat-card">
+                <p class="text-4xl font-bold text-white mb-2">83M</p>
+                <p class="text-slate-400">Americans lack adequate healthcare access, primarily in rural and underserved areas.</p>
+            </div>
+            <div class="stat-card">
+                <p class="text-4xl font-bold text-white mb-2">$4.5T</p>
+                <p class="text-slate-400">US Annual Spending. Yet outcomes rank 37th globally due to massive systemic inefficiency.</p>
+            </div>
+            <div class="stat-card">
+                <p class="text-4xl font-bold text-white mb-2">24 Days</p>
+                <p class="text-slate-400">Average wait time for a new patient appointment. Urgent needs often go unmet for weeks.</p>
+            </div>
+        </div>
+        <div class="mt-12 grid grid-cols-2 gap-4 text-slate-300">
+            <div class="flex items-center gap-3">
+                <span class="text-red-500">&#10005;</span> Provider burnout & administrative overload
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="text-red-500">&#10005;</span> No price transparency or upfront costs
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="text-red-500">&#10005;</span> Fragmented medical records & EMR silos
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="text-red-500">&#10005;</span> Insurance complexity & billing denials
+            </div>
+        </div>
+    </section>
+    <!-- SLIDE 3: THE SOLUTION -->
+    <section>
+        <h2 class="text-sm font-bold tracking-[0.2em] uppercase text-purple-500 mb-4">Our Solution</h2>
+        <h3 class="text-5xl font-bold mb-12 max-w-4xl">Doctor-first telehealth, enhanced by AI built for <span class="gradient-text">scale</span>.</h3>
+        <div class="grid grid-cols-2 gap-8">
+            <div class="glass p-8 rounded-2xl">
+                <h4 class="text-xl font-bold mb-2 text-white">Instant Access</h4>
+                <p class="text-slate-400 leading-relaxed">See a board-certified doctor in minutes, not weeks. Licensed providers available via video/chat with AI-assisted triage.</p>
+            </div>
+            <div class="glass p-8 rounded-2xl">
+                <h4 class="text-xl font-bold mb-2 text-white">AI-Assisted Workflows</h4>
+                <p class="text-slate-400 leading-relaxed">Automated SOAP note drafting, smart triage routing, and predictive health insights. Doctors make every final decision.</p>
+            </div>
+            <div class="glass p-8 rounded-2xl">
+                <h4 class="text-xl font-bold mb-2 text-white">Transparent Pricing</h4>
+                <p class="text-slate-400 leading-relaxed">Subscriptions from $19.99/mo. No surprise bills. Real-time insurance eligibility checks at the point of care.</p>
+            </div>
+            <div class="glass p-8 rounded-2xl">
+                <h4 class="text-xl font-bold mb-2 text-white">FHIR-Native Security</h4>
+                <p class="text-slate-400 leading-relaxed">End-to-end encryption, SOC 2 compliant, and seamless interoperability with existing health systems.</p>
+            </div>
+        </div>
+    </section>
+    <!-- SLIDE 4: THE PRODUCT -->
+    <section>
+        <h2 class="text-sm font-bold tracking-[0.2em] uppercase text-emerald-500 mb-4">The Product</h2>
+        <h3 class="text-5xl font-bold mb-12">A Full-Stack Clinical Platform</h3>
+
+        <div class="grid grid-cols-3 gap-4">
+            <div class="stat-card border-l-4 border-l-blue-500">
+                <h5 class="font-bold text-white">Video Consultations</h5>
+                <p class="text-xs text-slate-400 mt-1">HD video with AI clinical scribing</p>
+            </div>
+            <div class="stat-card border-l-4 border-l-blue-500">
+                <h5 class="font-bold text-white">E-Prescribing</h5>
+                <p class="text-xs text-slate-400 mt-1">Direct-to-pharmacy integration</p>
+            </div>
+            <div class="stat-card border-l-4 border-l-blue-500">
+                <h5 class="font-bold text-white">AI-Powered Triage</h5>
+                <p class="text-xs text-slate-400 mt-1">Smart symptom & acuity routing</p>
+            </div>
+            <div class="stat-card border-l-4 border-l-purple-500">
+                <h5 class="font-bold text-white">Insurance Wallet</h5>
+                <p class="text-xs text-slate-400 mt-1">OCR card scanning & eligibility</p>
+            </div>
+            <div class="stat-card border-l-4 border-l-purple-500">
+                <h5 class="font-bold text-white">Clinical Records</h5>
+                <p class="text-xs text-slate-400 mt-1">FHIR-native internal EHR</p>
+            </div>
+            <div class="stat-card border-l-4 border-l-purple-500">
+                <h5 class="font-bold text-white">Provider Dashboard</h5>
+                <p class="text-xs text-slate-400 mt-1">Unified revenue & schedule mgmt</p>
+            </div>
+            <div class="stat-card border-l-4 border-l-emerald-500">
+                <h5 class="font-bold text-white">Predictive Analytics</h5>
+                <p class="text-xs text-slate-400 mt-1">ML insights for patient outcomes</p>
+            </div>
+            <div class="stat-card border-l-4 border-l-emerald-500">
+                <h5 class="font-bold text-white">Payment Processing</h5>
+                <p class="text-xs text-slate-400 mt-1">Stripe billing & automated claims</p>
+            </div>
+            <div class="stat-card border-l-4 border-l-emerald-500 bg-slate-800">
+                <h5 class="font-bold text-blue-400">OpenClaw AI</h5>
+                <p class="text-xs text-slate-400 mt-1">Core AI Ops automation layer</p>
+            </div>
+        </div>
+    </section>
+    <!-- SLIDE 5: MARKET OPPORTUNITY -->
+    <section>
+        <h2 class="text-sm font-bold tracking-[0.2em] uppercase text-orange-500 mb-4">Market Opportunity</h2>
+        <h3 class="text-5xl font-bold mb-12">Telehealth is <span class="gradient-text">Inevitable</span>.</h3>
+        <div class="flex gap-12 items-end">
+            <div class="flex-1">
+                <div class="relative h-64 flex items-end gap-4">
+                    <div class="flex-1 bg-slate-800 rounded-t-xl p-4 flex flex-col justify-end">
+                        <p class="text-xs text-slate-500 uppercase">TAM</p>
+                        <p class="text-2xl font-bold">$460B</p>
+                        <p class="text-[10px] text-slate-400">US Healthcare Svc</p>
+                    </div>
+                    <div class="flex-1 bg-blue-900 rounded-t-xl p-4 flex flex-col justify-end h-3/4">
+                        <p class="text-xs text-blue-300 uppercase">SAM</p>
+                        <p class="text-2xl font-bold">$83B</p>
+                        <p class="text-[10px] text-blue-400">Telehealth 2030</p>
+                    </div>
+                    <div class="flex-1 bg-gradient-to-t from-blue-600 to-purple-600 rounded-t-xl p-4 flex flex-col justify-end h-1/4">
+                        <p class="text-xs text-white uppercase">SOM</p>
+                        <p class="text-2xl font-bold">$830M</p>
+                        <p class="text-[10px] text-white/70">1% Capture Plan</p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex-1 grid grid-cols-1 gap-4">
+                <div class="glass p-4 rounded-xl text-sm">
+                    <span class="text-emerald-500 font-bold">&uarr; 48.1% CAGR</span> - AI in Healthcare growth (2024-2030)
+                </div>
+                <div class="glass p-4 rounded-xl text-sm">
+                    <span class="text-blue-400 font-bold">124K deficit</span> - Projected physician shortage by 2034
+                </div>
+                <div class="glass p-4 rounded-xl text-sm">
+                    <span class="text-purple-400 font-bold">CMS Expanded</span> - Permanent reimbursement for virtual visits
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- SLIDE 6: BUSINESS MODEL -->
+    <section>
+        <h2 class="text-sm font-bold tracking-[0.2em] uppercase text-blue-500 mb-4">Business Model</h2>
+        <h3 class="text-5xl font-bold mb-12">High Margin, Recurring Revenue</h3>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-6">
+            <div class="stat-card">
+                <div class="flex justify-between items-start mb-4">
+                    <h4 class="font-bold">Patient Subs</h4>
+                    <span class="bg-emerald-500/10 text-emerald-500 text-[10px] px-2 py-1 rounded">85% Margin</span>
+                </div>
+                <p class="text-2xl font-bold">$19.99 - $79.99</p>
+                <p class="text-xs text-slate-500 mt-1">Monthly recurring revenue (B2C)</p>
+            </div>
+            <div class="stat-card">
+                <div class="flex justify-between items-start mb-4">
+                    <h4 class="font-bold">Provider Platform</h4>
+                    <span class="bg-emerald-500/10 text-emerald-500 text-[10px] px-2 py-1 rounded">90% Margin</span>
+                </div>
+                <p class="text-2xl font-bold">$99 - $499</p>
+                <p class="text-xs text-slate-500 mt-1">SaaS fees for practitioners</p>
+            </div>
+            <div class="stat-card">
+                <div class="flex justify-between items-start mb-4">
+                    <h4 class="font-bold">Consultation Fees</h4>
+                    <span class="bg-blue-500/10 text-blue-500 text-[10px] px-2 py-1 rounded">35% Margin</span>
+                </div>
+                <p class="text-2xl font-bold">$49 - $129</p>
+                <p class="text-xs text-slate-500 mt-1">Per-visit fees for non-subs</p>
+            </div>
+            <div class="stat-card">
+                <div class="flex justify-between items-start mb-4">
+                    <h4 class="font-bold">Enterprise</h4>
+                    <span class="bg-purple-500/10 text-purple-500 text-[10px] px-2 py-1 rounded">75% Margin</span>
+                </div>
+                <p class="text-2xl font-bold">$2,000+</p>
+                <p class="text-xs text-slate-500 mt-1">White-label & employer deals</p>
+            </div>
+            <div class="stat-card col-span-2 flex items-center justify-around bg-blue-900/20 border-blue-500/30">
+                <div class="text-center">
+                    <p class="text-xs text-slate-400">Target LTV/CAC</p>
+                    <p class="text-2xl font-bold">5 : 1</p>
+                </div>
+                <div class="w-px h-10 bg-slate-700"></div>
+                <div class="text-center">
+                    <p class="text-xs text-slate-400">Blended Gross Margin</p>
+                    <p class="text-2xl font-bold">70%+</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- SLIDE 7: FINANCIAL PROJECTIONS -->
+    <section>
+        <h2 class="text-sm font-bold tracking-[0.2em] uppercase text-emerald-500 mb-4">Financial Projections</h2>
+        <h3 class="text-5xl font-bold mb-8">Path to <span class="gradient-text">$120M ARR</span></h3>
+        <div class="overflow-hidden rounded-xl glass">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-slate-800 text-slate-400">
+                    <tr>
+                        <th class="p-4">Metric</th>
+                        <th class="p-4">Year 1</th>
+                        <th class="p-4">Year 2</th>
+                        <th class="p-4">Year 3</th>
+                        <th class="p-4">Year 4</th>
+                        <th class="p-4">Year 5</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800">
+                    <tr>
+                        <td class="p-4 font-semibold">Patients</td>
+                        <td class="p-4">500</td>
+                        <td class="p-4">5,000</td>
+                        <td class="p-4">25,000</td>
+                        <td class="p-4">75,000</td>
+                        <td class="p-4">200,000</td>
+                    </tr>
+                    <tr>
+                        <td class="p-4 font-semibold">Providers</td>
+                        <td class="p-4">25</td>
+                        <td class="p-4">100</td>
+                        <td class="p-4">400</td>
+                        <td class="p-4">1,200</td>
+                        <td class="p-4">3,000</td>
+                    </tr>
+                    <tr class="bg-blue-500/5">
+                        <td class="p-4 font-bold text-blue-400">Revenue</td>
+                        <td class="p-4">$120K</td>
+                        <td class="p-4">$1.8M</td>
+                        <td class="p-4">$12M</td>
+                        <td class="p-4">$45M</td>
+                        <td class="p-4">$120M</td>
+                    </tr>
+                    <tr>
+                        <td class="p-4 font-semibold">Gross Margin</td>
+                        <td class="p-4">65%</td>
+                        <td class="p-4">70%</td>
+                        <td class="p-4">75%</td>
+                        <td class="p-4">78%</td>
+                        <td class="p-4">80%</td>
+                    </tr>
+                    <tr>
+                        <td class="p-4 font-semibold">Net Income</td>
+                        <td class="p-4 text-red-400">($360K)</td>
+                        <td class="p-4 text-red-400">($600K)</td>
+                        <td class="p-4 text-emerald-400">$3M</td>
+                        <td class="p-4 text-emerald-400">$18M</td>
+                        <td class="p-4 text-emerald-400">$60M</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-8 grid grid-cols-3 gap-8">
+            <div class="text-center p-4 glass rounded-xl border-emerald-500/20">
+                <p class="text-xs text-slate-500 uppercase">Break-Even</p>
+                <p class="text-xl font-bold">Month 18</p>
+            </div>
+            <div class="text-center p-4 glass rounded-xl border-blue-500/20">
+                <p class="text-xs text-slate-500 uppercase">Year 5 ARR</p>
+                <p class="text-xl font-bold">$120M</p>
+            </div>
+            <div class="text-center p-4 glass rounded-xl border-purple-500/20">
+                <p class="text-xs text-slate-500 uppercase">Est. Valuation (10x)</p>
+                <p class="text-xl font-bold">$1.2B</p>
+            </div>
+        </div>
+    </section>
+    <!-- SLIDE 8: THE TEAM -->
+    <section>
+        <h2 class="text-sm font-bold tracking-[0.2em] uppercase text-purple-500 mb-4">The Team</h2>
+        <h3 class="text-5xl font-bold mb-12">Human Leadership, AI-Amplified Execution</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+            <div class="flex gap-6 items-start">
+                <div class="w-24 h-24 bg-slate-800 rounded-2xl flex-shrink-0 flex items-center justify-center overflow-hidden">
+                    <span class="text-3xl">JB</span>
+                </div>
+                <div>
+                    <h4 class="text-2xl font-bold">Jonah Baka</h4>
+                    <p class="text-blue-400 mb-4 font-semibold uppercase text-xs tracking-widest">Founder & CEO</p>
+                    <p class="text-slate-400 text-sm leading-relaxed">
+                        Full-stack engineer and product leader with deep expertise in Healthcare Architecture. Built the entire DoctaRx platform from the ground up, integrating proprietary AI triage and OpenClaw automation layers.
+                    </p>
+                </div>
+            </div>
+            <div class="glass p-8 rounded-2xl">
+                <h4 class="text-lg font-bold mb-4">Key Hires in Progress</h4>
+                <ul class="space-y-3 text-sm text-slate-300">
+                    <li class="flex items-center gap-2"><span class="w-2 h-2 bg-blue-500 rounded-full"></span> Chief Medical Officer (Clinical Oversight)</li>
+                    <li class="flex items-center gap-2"><span class="w-2 h-2 bg-blue-500 rounded-full"></span> VP Engineering (Platform Scaling)</li>
+                    <li class="flex items-center gap-2"><span class="w-2 h-2 bg-blue-500 rounded-full"></span> Compliance Officer (HIPAA/SOC 2)</li>
+                    <li class="flex items-center gap-2"><span class="w-2 h-2 bg-blue-500 rounded-full"></span> Head of Growth</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+    <!-- SLIDE 9: THE ASK -->
+    <section class="items-center text-center">
+        <h2 class="text-sm font-bold tracking-[0.2em] uppercase text-blue-500 mb-4">The Ask</h2>
+        <h3 class="text-7xl font-bold mb-8">$1,000,000</h3>
+        <p class="text-2xl text-slate-400 mb-12">Seed Round | $5M Pre-Money Valuation</p>
+        <div class="max-w-4xl w-full grid grid-cols-4 gap-4">
+            <div class="stat-card">
+                <p class="text-2xl font-bold text-white mb-2">40%</p>
+                <p class="text-[10px] text-slate-500 uppercase mb-2">Eng & Product</p>
+                <p class="text-xs text-slate-400">Core engineering & OpenClaw AI dev</p>
+            </div>
+            <div class="stat-card">
+                <p class="text-2xl font-bold text-white mb-2">25%</p>
+                <p class="text-[10px] text-slate-500 uppercase mb-2">Growth</p>
+                <p class="text-xs text-slate-400">Provider & patient acquisition</p>
+            </div>
+            <div class="stat-card">
+                <p class="text-2xl font-bold text-white mb-2">15%</p>
+                <p class="text-[10px] text-slate-500 uppercase mb-2">Compliance</p>
+                <p class="text-xs text-slate-400">SOC 2, state licensing & legal</p>
+            </div>
+            <div class="stat-card">
+                <p class="text-2xl font-bold text-white mb-2">20%</p>
+                <p class="text-[10px] text-slate-500 uppercase mb-2">Ops & Reserve</p>
+                <p class="text-xs text-slate-400">18-month runway buffer</p>
+            </div>
+        </div>
+        <div class="mt-16 flex gap-12 text-left">
+            <div class="glass p-6 rounded-xl">
+                <p class="text-xs text-slate-500 uppercase mb-1">Target Runway</p>
+                <p class="text-lg font-bold">18 Months</p>
+            </div>
+            <div class="glass p-6 rounded-xl">
+                <p class="text-xs text-slate-500 uppercase mb-1">Target ARR (M18)</p>
+                <p class="text-lg font-bold">$1.8 Million</p>
+            </div>
+        </div>
+    </section>
+    <!-- SLIDE 10: CONTACT -->
+    <section class="items-center text-center">
+        <div class="w-24 h-24 bg-gradient-to-tr from-blue-600 to-purple-600 rounded-3xl mb-8 flex items-center justify-center">
+            <div class="w-12 h-12 bg-white rounded-full"></div>
+        </div>
+        <h2 class="text-5xl font-bold mb-4">Let's Build the Future</h2>
+        <p class="text-xl text-slate-400 mb-12">Healthcare, Reimagined.</p>
+
+        <div class="space-y-4">
+            <a href="mailto:jonah.baka@doctarx.com" class="block text-2xl font-semibold hover:text-blue-400 transition">jonah.baka@doctarx.com</a>
+            <a href="https://www.linkedin.com/in/jonah-baka-b74666102" target="_blank" class="block text-slate-400 hover:text-white transition">linkedin.com/in/jonah-baka</a>
+            <a href="https://doctarx.com" target="_blank" class="block text-slate-500 hover:text-white transition">doctarx.com</a>
+        </div>
+        <p class="mt-24 text-[10px] text-slate-600 tracking-widest uppercase">Confidential &copy; 2026 DoctaRx Inc.</p>
+    </section>
+    </div>
+
+    <div class="controls flex gap-2">
+        <button id="downloadBtn" onclick="downloadPDF()" class="download-btn">
+            Download PDF
+        </button>
+        <button onclick="window.print()" class="glass px-4 py-2 rounded-full text-xs font-bold hover:bg-slate-700 transition">Print</button>
+        <button onclick="window.scrollTo({top: window.innerHeight, behavior: 'smooth'})" class="glass px-4 py-2 rounded-full text-xs font-bold hover:bg-slate-700 transition">Next Slide</button>
+    </div>
+
+    <script>
+        function downloadPDF() {
+            const btn = document.getElementById('downloadBtn');
+            btn.disabled = true;
+            btn.textContent = 'Generating PDF...';
+
+            const element = document.getElementById('deck-content');
+            const opt = {
+                margin:       0,
+                filename:     'DoctaRx-Pitch-Deck-2026.pdf',
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  {
+                    scale: 2,
+                    useCORS: true,
+                    backgroundColor: '#05070a',
+                    scrollY: 0,
+                    windowWidth: 1280
+                },
+                jsPDF:        { unit: 'in', format: [16, 9], orientation: 'landscape' },
+                pagebreak:    { mode: ['css', 'legacy'], before: 'section' }
+            };
+
+            html2pdf().set(opt).from(element).save().then(function() {
+                btn.disabled = false;
+                btn.textContent = 'Download PDF';
+            }).catch(function() {
+                btn.disabled = false;
+                btn.textContent = 'Download PDF';
+                alert('PDF generation failed. Try using the Print button instead (Save as PDF).');
+            });
+        }
+    </script>
+</body>
+</html>
