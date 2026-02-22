@@ -8,6 +8,8 @@ require('dotenv').config();
 
 // STEP 1: Minimal imports that cannot crash
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 8080;
 const HOST = '0.0.0.0';
@@ -739,33 +741,33 @@ async function initializeApp() {
   initialized = true;
   console.log('✅ Express API ready');
   
-  // Initialize Next.js last (heaviest) — NON-BLOCKING
-  console.log('⏳ Preparing Next.js (non-blocking)...');
-  try {
-    const next = require('next');
-    const dev = process.env.NODE_ENV !== 'production';
-    const nextApp = next({ dev });
-    
-    // Don't wait — prepare in background, set flag when ready
-    nextApp.prepare()
-      .then(() => {
-        handle = nextApp.getRequestHandler();
-        nextReady = true;
-        console.log('✅ Next.js ready');
-      })
-      .catch(err => {
-        console.error('❌ Next.js prepare failed:', err.message);
-      });
-    
-    // Timeout: if not ready in 120s, log and continue
-    setTimeout(() => {
-      if (!nextReady) {
-        console.error('⏱️  Next.js still not ready after 120s, continuing anyway');
-      }
-    }, 120000);
-    
-  } catch (err) {
-    console.error('❌ Next.js initialization failed:', err.message);
+  // Next.js deferred initialization (skip on startup, load async only if .next exists)
+  console.log('⏳ Deferring Next.js initialization...');
+  
+  // Check if .next directory exists
+  const nextDirExists = fs.existsSync(path.join(process.cwd(), '.next'));
+  
+  if (nextDirExists) {
+    try {
+      const next = require('next');
+      const dev = process.env.NODE_ENV !== 'production';
+      const nextApp = next({ dev });
+      
+      // Load in background, don't block startup
+      nextApp.prepare()
+        .then(() => {
+          handle = nextApp.getRequestHandler();
+          nextReady = true;
+          console.log('✅ Next.js ready');
+        })
+        .catch(err => {
+          console.error('❌ Next.js failed:', err.message);
+        });
+    } catch (err) {
+      console.error('⚠️  Next.js skipped:', err.message);
+    }
+  } else {
+    console.warn('⚠️  .next directory not found — API mode only');
   }
   
   // Catch-all for Next.js (must be last)
