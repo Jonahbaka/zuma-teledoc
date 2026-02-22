@@ -275,6 +275,24 @@ app.get('/api/health', (req, res) => {
     revision: process.env.K_REVISION,
     configuration: process.env.K_CONFIGURATION
   };
+
+  // Diagnostic: check if .next directory exists (hidden unless nextReady=false)
+  if (!nextReady) {
+    const fs = require('fs');
+    const path = require('path');
+    const nextPath = path.join(process.cwd(), '.next');
+    try {
+      health.debug = {
+        nextDirExists: fs.existsSync(nextPath),
+        cwd: process.cwd(),
+        nextPath: nextPath,
+        nodeVersion: process.version
+      };
+    } catch (e) {
+      health.debug = { error: e.message };
+    }
+  }
+
   try {
     const orchestrator = require('./services/agent-orchestrator');
     health.agents = orchestrator.agents?.size || 0;
