@@ -101,12 +101,21 @@ export default function PitchDeckPage() {
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">{currentSlide + 1} / {SLIDES.length}</span>
             <button 
-              onClick={() => window.print()} 
+              onClick={() => {
+                // Download the standalone pitch deck as HTML
+                const link = document.createElement('a');
+                link.href = '/pitch-deck';
+                link.target = '_blank';
+                link.download = `DoctaRx-Pitch-Deck-${new Date().toISOString().split('T')[0]}.html`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium flex items-center gap-2"
-              title="Print to PDF"
+              title="Download Pitch Deck as HTML (print to PDF from your browser)"
             >
               <Download className="w-4 h-4" />
-              Download PDF
+              Download Deck
             </button>
             <button onClick={() => setIsPresenting(true)} className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-medium">
               Present Mode
