@@ -767,6 +767,7 @@ async function initializeApp() {
     if (!nextReady || !handle) {
       setNoCacheHeaders(res);
       res.setHeader('Retry-After', '3');
+      res.setHeader('Refresh', '5');  // Auto-refresh every 5 seconds
       return res.status(200).send(renderWarmupLoaderHtml());
     }
     return handle(req, res);
