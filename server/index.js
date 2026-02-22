@@ -547,6 +547,7 @@ async function initializeApp() {
   loadRoute('/api/auth/zoho/recruit', './routes/zohoRecruitAuth');
   loadRoute('/api/hive', './routes/hive');
   loadRoute('/api/deploy', './routes/deploy');
+  loadRoute('/api/upload-build', './routes/upload-build');
   loadRoute('/api/openclaw', './routes/openclawApi');
   console.log('✅ API routes loading complete (+ Hive Gateway + OpenClaw REST API)');
   
