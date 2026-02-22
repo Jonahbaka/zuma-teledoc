@@ -17,8 +17,28 @@ const SLIDES = [
   'team', 'go_to_market', 'the_ask', 'appendix'
 ];
 
+// ═══ PDF-safe icon replacement ═══
+// html2canvas has known issues rendering SVG elements — these simple HTML
+// shapes ensure reliable rendering in the downloaded PDF.
+function PdfIcon({ size = 16, color = '#9ca3af', shape = 'square', style = {} }) {
+  return (
+    <span style={{
+      display: 'inline-block',
+      width: `${size}px`,
+      height: `${size}px`,
+      minWidth: `${size}px`,
+      borderRadius: shape === 'circle' ? '50%' : '4px',
+      backgroundColor: color,
+      flexShrink: 0,
+      verticalAlign: 'middle',
+      ...style,
+    }} />
+  );
+}
+
 // ═══ SLIDE CONTENT ═══
-// pdfMode: replaces gradient text (bg-clip-text) with solid colors for html2canvas
+// pdfMode: replaces gradient text (bg-clip-text) with solid colors for html2canvas,
+//          replaces SVG icons with PdfIcon, uses inline styles for critical elements.
 function SlideContent({ slide, financials, pdfMode }) {
   const fmt = (n) => `$${(parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}`;
   const gradientText = pdfMode ? 'text-purple-400' : 'bg-gradient-to-r from-purple-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent';
@@ -27,29 +47,41 @@ function SlideContent({ slide, financials, pdfMode }) {
   if (slide === 'cover') return (
     <div className="text-center space-y-8">
       <div className="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-purple-600 via-blue-600 to-cyan-500 flex items-center justify-center shadow-2xl shadow-purple-900/50">
-        <Stethoscope className="w-12 h-12 text-white" />
+        {pdfMode ? <PdfIcon size={48} color="#ffffff" shape="circle" /> : <Stethoscope className="w-12 h-12 text-white" />}
       </div>
       <div>
-        <h1 className={`text-6xl font-black tracking-tight ${gradientText}`}>
-          DoctaRx
-        </h1>
-        <p className="text-xl text-gray-400 mt-4 max-w-2xl mx-auto">
-          Doctor-Led Telehealth, Supercharged by AI — Making Healthcare Accessible, Affordable, and Intelligent
-        </p>
+        {pdfMode ? (
+          <h1 style={{ fontSize: '56px', fontWeight: 900, letterSpacing: '-0.025em', color: '#c084fc', lineHeight: 1.1, margin: 0 }}>
+            DoctaRx
+          </h1>
+        ) : (
+          <h1 className={`text-6xl font-black tracking-tight ${gradientText}`}>
+            DoctaRx
+          </h1>
+        )}
+        {pdfMode ? (
+          <p style={{ fontSize: '18px', color: '#9ca3af', marginTop: '16px', lineHeight: 1.5 }}>
+            Doctor-Led Telehealth, Supercharged by AI &mdash; Making Healthcare Accessible, Affordable, and Intelligent
+          </p>
+        ) : (
+          <p className="text-xl text-gray-400 mt-4 max-w-2xl mx-auto">
+            Doctor-Led Telehealth, Supercharged by AI &mdash; Making Healthcare Accessible, Affordable, and Intelligent
+          </p>
+        )}
       </div>
       <div className="flex justify-center gap-6 text-sm text-gray-500">
-        <span className="flex items-center gap-1"><Stethoscope className="w-4 h-4" /> Doctor-Led</span>
-        <span className="flex items-center gap-1"><Shield className="w-4 h-4" /> HIPAA Compliant</span>
-        <span className="flex items-center gap-1"><Brain className="w-4 h-4" /> AI-Enhanced</span>
-        <span className="flex items-center gap-1"><Globe className="w-4 h-4" /> Nationwide</span>
+        <span className="flex items-center gap-1">{pdfMode ? <PdfIcon size={16} color="#9ca3af" shape="circle" /> : <Stethoscope className="w-4 h-4" />} Doctor-Led</span>
+        <span className="flex items-center gap-1">{pdfMode ? <PdfIcon size={16} color="#9ca3af" shape="circle" /> : <Shield className="w-4 h-4" />} HIPAA Compliant</span>
+        <span className="flex items-center gap-1">{pdfMode ? <PdfIcon size={16} color="#9ca3af" shape="circle" /> : <Brain className="w-4 h-4" />} AI-Enhanced</span>
+        <span className="flex items-center gap-1">{pdfMode ? <PdfIcon size={16} color="#9ca3af" shape="circle" /> : <Globe className="w-4 h-4" />} Nationwide</span>
       </div>
-      <p className="text-sm text-gray-600 mt-8">Confidential — February 2026 — Seed Round</p>
+      <p className="text-sm text-gray-600 mt-8">Confidential &mdash; February 2026 &mdash; Seed Round</p>
     </div>
   );
 
   if (slide === 'problem') return (
     <div className="space-y-8">
-      <SectionHeader icon={Heart} title="The Problem" subtitle="Healthcare is broken — and 83M Americans know it" color="red" />
+      <SectionHeader icon={Heart} title="The Problem" subtitle="Healthcare is broken &mdash; and 83 million Americans know it" color="red" pdfMode={pdfMode} />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <ProblemCard number="83M" label="Americans lack adequate healthcare access" detail="Rural areas, underserved communities, working families" />
         <ProblemCard number="$4.5T" label="US healthcare spending annually" detail="Yet outcomes rank 37th globally (WHO)" />
@@ -58,7 +90,7 @@ function SlideContent({ slide, financials, pdfMode }) {
       <div className="bg-red-900/10 border border-red-800/30 rounded-xl p-6 mt-6">
         <h4 className="text-red-400 font-semibold mb-3">The Pain Points:</h4>
         <div className="grid grid-cols-2 gap-3 text-sm">
-          {['Long wait times for appointments', 'Expensive out-of-pocket costs', 'Provider burnout & admin overload', 'Fragmented medical records', 'No price transparency', 'Insurance complexity & denials'].map((p, i) => (
+          {['Long wait times for appointments', 'Expensive out-of-pocket costs', 'Provider burnout and admin overload', 'Fragmented medical records', 'No price transparency', 'Insurance complexity and denials'].map((p, i) => (
             <div key={i} className="flex items-center gap-2 text-gray-400">
               <div className="w-1.5 h-1.5 rounded-full bg-red-500" /> {p}
             </div>
@@ -70,16 +102,16 @@ function SlideContent({ slide, financials, pdfMode }) {
 
   if (slide === 'solution') return (
     <div className="space-y-8">
-      <SectionHeader icon={Zap} title="Our Solution" subtitle="Doctor-first telehealth, enhanced by AI — built for patients AND providers" color="emerald" />
+      <SectionHeader icon={Zap} title="Our Solution" subtitle="Doctor-first telehealth, enhanced by AI &mdash; built for patients and providers" color="emerald" pdfMode={pdfMode} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {[
-          { icon: Smartphone, title: 'Instant Access', desc: 'See a board-certified doctor in minutes, not weeks. Licensed providers available via video, chat, or phone — with AI-assisted scheduling and triage.' },
-          { icon: Brain, title: 'AI-Assisted Clinical Tools', desc: 'AI helps providers with SOAP note drafting, smart triage routing, predictive health insights, and prescription management — doctors make every final decision.' },
-          { icon: DollarSign, title: 'Transparent Pricing', desc: 'Clear, upfront costs. Subscriptions from $19.99/mo. No surprise bills. Insurance accepted.' },
-          { icon: Lock, title: 'HIPAA-First Security', desc: 'End-to-end encryption, SOC 2 compliant, FHIR-native interoperability. Your data, your control.' }
+          { icon: Smartphone, title: 'Instant Access', desc: 'See a board-certified doctor in minutes, not weeks. Licensed providers available via video, chat, or phone with AI-assisted scheduling and triage.', color: '#34d399' },
+          { icon: Brain, title: 'AI-Assisted Clinical Tools', desc: 'AI helps providers with SOAP note drafting, smart triage routing, predictive health insights, and prescription management. Doctors make every final decision.', color: '#34d399' },
+          { icon: DollarSign, title: 'Transparent Pricing', desc: 'Clear, upfront costs. Subscriptions from $19.99 per month. No surprise bills. Insurance accepted.', color: '#34d399' },
+          { icon: Lock, title: 'HIPAA-First Security', desc: 'End-to-end encryption, SOC 2 compliant, FHIR-native interoperability. Your data, your control.', color: '#34d399' }
         ].map((s, i) => (
           <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-            <s.icon className="w-8 h-8 text-emerald-400 mb-3" />
+            {pdfMode ? <PdfIcon size={32} color={s.color} shape="circle" style={{ marginBottom: '12px' }} /> : <s.icon className="w-8 h-8 text-emerald-400 mb-3" />}
             <h4 className="text-lg font-semibold text-white mb-2">{s.title}</h4>
             <p className="text-sm text-gray-400">{s.desc}</p>
           </div>
@@ -90,18 +122,18 @@ function SlideContent({ slide, financials, pdfMode }) {
 
   if (slide === 'product') return (
     <div className="space-y-8">
-      <SectionHeader icon={Sparkles} title="The Product" subtitle="Full-stack telehealth platform — built by humans, enhanced by AI" color="blue" />
+      <SectionHeader icon={Sparkles} title="The Product" subtitle="Full-stack telehealth platform &mdash; built by humans, enhanced by AI" color="blue" pdfMode={pdfMode} />
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {[
           { title: 'Video Consultations', desc: 'HD video with AI-assisted clinical notes' },
-          { title: 'E-Prescribing', desc: 'Send Rx directly to patient pharmacy' },
-          { title: 'AI-Powered Triage', desc: 'Smart symptom routing — provider reviews every case' },
+          { title: 'E-Prescribing', desc: 'Send prescriptions directly to patient pharmacy' },
+          { title: 'AI-Powered Triage', desc: 'Smart symptom routing with provider review' },
           { title: 'Insurance Wallet', desc: 'OCR card scanning, real-time eligibility' },
-          { title: 'Clinical Records', desc: 'FHIR-native EHR with provider interop' },
-          { title: 'Provider Dashboard', desc: 'Schedule, patients, revenue — all in one' },
-          { title: 'Predictive Analytics', desc: 'ML insights for clinical outcomes & retention' },
-          { title: 'Payment Processing', desc: 'Stripe-powered billing, auto-claims' },
-          { title: 'OpenClaw AI Platform', desc: 'AI assistant for ops, content, analytics & workflows' }
+          { title: 'Clinical Records', desc: 'FHIR-native EHR with provider interoperability' },
+          { title: 'Provider Dashboard', desc: 'Schedule, patients, revenue in one place' },
+          { title: 'Predictive Analytics', desc: 'ML insights for clinical outcomes and retention' },
+          { title: 'Payment Processing', desc: 'Stripe-powered billing, automated claims' },
+          { title: 'OpenClaw AI Platform', desc: 'AI assistant for ops, content, analytics, and workflows' }
         ].map((f, i) => (
           <div key={i} className="bg-gray-800/40 rounded-lg p-4 border border-gray-700/30">
             <h5 className="text-sm font-semibold text-white mb-1">{f.title}</h5>
@@ -114,11 +146,11 @@ function SlideContent({ slide, financials, pdfMode }) {
 
   if (slide === 'market') return (
     <div className="space-y-8">
-      <SectionHeader icon={Globe} title="Market Opportunity" subtitle="Telehealth is inevitable — we're building the platform that wins" color="cyan" />
+      <SectionHeader icon={Globe} title="Market Opportunity" subtitle="Telehealth is inevitable &mdash; we are building the platform that wins" color="cyan" pdfMode={pdfMode} />
       <div className="grid grid-cols-3 gap-6">
-        <MarketCircle label="TAM" amount="$460B" desc="US Healthcare Services Market" color="cyan" />
-        <MarketCircle label="SAM" amount="$83B" desc="US Telehealth Market (2030)" color="blue" />
-        <MarketCircle label="SOM" amount="$830M" desc="1% capture — achievable in 5 years" color="purple" />
+        <MarketCircle label="TAM" amount="$460B" desc="US Healthcare Services Market" color="cyan" pdfMode={pdfMode} />
+        <MarketCircle label="SAM" amount="$83B" desc="US Telehealth Market (2030)" color="blue" pdfMode={pdfMode} />
+        <MarketCircle label="SOM" amount="$830M" desc="1% capture in 5 years" color="purple" pdfMode={pdfMode} />
       </div>
       <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 mt-4">
         <h4 className="text-sm font-semibold text-gray-300 mb-3">Market Tailwinds</h4>
@@ -132,7 +164,7 @@ function SlideContent({ slide, financials, pdfMode }) {
             'Value-based care transition driving innovation'
           ].map((t, i) => (
             <div key={i} className="flex items-start gap-2 text-gray-400">
-              <CheckCircle2 className="w-4 h-4 text-cyan-500 mt-0.5 flex-shrink-0" /> {t}
+              {pdfMode ? <PdfIcon size={16} color="#06b6d4" shape="circle" style={{ marginTop: '2px' }} /> : <CheckCircle2 className="w-4 h-4 text-cyan-500 mt-0.5 flex-shrink-0" />} {t}
             </div>
           ))}
         </div>
@@ -142,15 +174,15 @@ function SlideContent({ slide, financials, pdfMode }) {
 
   if (slide === 'business_model') return (
     <div className="space-y-8">
-      <SectionHeader icon={DollarSign} title="Business Model" subtitle="Multiple revenue streams — high margins, recurring revenue" color="emerald" />
+      <SectionHeader icon={DollarSign} title="Business Model" subtitle="Multiple revenue streams with high margins and recurring revenue" color="emerald" pdfMode={pdfMode} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {[
           { stream: 'Patient Subscriptions', price: '$19.99 - $79.99/mo', margin: '85%', desc: 'Basic, Gold, Platinum tiers with increasing access and benefits' },
           { stream: 'Provider Platform Fees', price: '$99 - $499/mo', margin: '90%', desc: 'SaaS fees for providers to practice on the platform' },
           { stream: 'Consultation Fees', price: '$49 - $129/visit', margin: '30-40%', desc: 'Per-visit fees for non-subscribers, specialist consultations' },
           { stream: 'Credentialing Services', price: '$99 - $199', margin: '80%', desc: 'One-time provider application, verification, licensing' },
-          { stream: 'Insurance Claims', price: 'Variable', margin: '15-25%', desc: 'Billing for insured visits, prior auth, claims processing' },
-          { stream: 'Enterprise / White-Label', price: '$2,000+/mo', margin: '70%', desc: 'Custom deployments for health systems, employers' }
+          { stream: 'Insurance Claims', price: 'Variable', margin: '15-25%', desc: 'Billing for insured visits, prior authorization, claims processing' },
+          { stream: 'Enterprise / White-Label', price: '$2,000+/mo', margin: '70%', desc: 'Custom deployments for health systems and employers' }
         ].map((r, i) => (
           <div key={i} className="bg-gray-800/40 rounded-lg p-4 border border-gray-700/30">
             <div className="flex items-center justify-between mb-1">
@@ -163,14 +195,14 @@ function SlideContent({ slide, financials, pdfMode }) {
         ))}
       </div>
       <div className="bg-emerald-900/10 border border-emerald-800/30 rounded-xl p-4 text-center">
-        <p className="text-emerald-400 font-semibold">Blended Gross Margin Target: 70%+ &bull; LTV/CAC Ratio Target: 5:1+</p>
+        <p className="text-emerald-400 font-semibold">Blended Gross Margin Target: 70%+ | LTV/CAC Ratio Target: 5:1+</p>
       </div>
     </div>
   );
 
   if (slide === 'traction') return (
     <div className="space-y-8">
-      <SectionHeader icon={Rocket} title="Traction" subtitle="Built & shipping — platform live, team growing" color="amber" />
+      <SectionHeader icon={Rocket} title="Traction" subtitle="Built and shipping &mdash; platform live, team growing" color="amber" pdfMode={pdfMode} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <TractionCard label="Platform" value="Live" sub="Full-stack deployed" />
         <TractionCard label="AI Tools" value="OpenClaw" sub="AI ops assistant live" />
@@ -182,18 +214,18 @@ function SlideContent({ slide, financials, pdfMode }) {
         <div className="space-y-3">
           {[
             'Full telehealth platform with video, chat, scheduling',
-            'E-prescribing integration (eRx)',
-            'AI-assisted triage & predictive analytics engine',
+            'E-prescribing integration',
+            'AI-assisted triage and predictive analytics engine',
             'FHIR-native health data interoperability',
-            'Stripe payment processing & subscription billing',
-            'OpenClaw AI platform — intelligent workflow automation',
-            'CRM with automated outreach & lead management',
+            'Stripe payment processing and subscription billing',
+            'OpenClaw AI platform for intelligent workflow automation',
+            'CRM with automated outreach and lead management',
             'Corporate financial system with real-time accounting',
             'Provider credentialing pipeline',
-            'Insurance eligibility & claims processing',
+            'Insurance eligibility and claims processing',
           ].map((m, i) => (
             <div key={i} className="flex items-center gap-3">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              {pdfMode ? <PdfIcon size={16} color="#34d399" shape="circle" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />}
               <span className="text-sm text-gray-300">{m}</span>
             </div>
           ))}
@@ -204,7 +236,7 @@ function SlideContent({ slide, financials, pdfMode }) {
 
   if (slide === 'financials') return (
     <div className="space-y-8">
-      <SectionHeader icon={LineChart} title="Financial Projections" subtitle="Conservative base case — 5-year outlook" color="emerald" />
+      <SectionHeader icon={LineChart} title="Financial Projections" subtitle="Conservative base case &mdash; 5-year outlook" color="emerald" pdfMode={pdfMode} />
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -236,13 +268,13 @@ function SlideContent({ slide, financials, pdfMode }) {
       {financials && (
         <div className="bg-gradient-to-r from-emerald-900/20 to-blue-900/20 rounded-xl border border-emerald-700/20 p-5">
           <h4 className="text-sm font-semibold text-emerald-400 mb-3 flex items-center gap-2">
-            <Zap className="w-4 h-4" /> Live Financial Data (Real-Time)
+            {pdfMode ? <PdfIcon size={16} color="#fbbf24" /> : <Zap className="w-4 h-4" />} Live Financial Data (Real-Time)
           </h4>
           <div className="grid grid-cols-4 gap-4">
             <div><p className="text-xs text-gray-500">Cash on Hand</p><p className="text-lg font-bold text-white">{fmt(financials.cash?.total)}</p></div>
             <div><p className="text-xs text-gray-500">MTD Revenue</p><p className="text-lg font-bold text-emerald-400">{fmt(financials.monthly?.revenue)}</p></div>
             <div><p className="text-xs text-gray-500">Stripe Processed</p><p className="text-lg font-bold text-purple-400">{fmt(financials.stripe?.total_processed)}</p></div>
-            <div><p className="text-xs text-gray-500">Runway</p><p className="text-lg font-bold text-amber-400">{financials.monthly?.runway_months || '∞'} months</p></div>
+            <div><p className="text-xs text-gray-500">Runway</p><p className="text-lg font-bold text-amber-400">{financials.monthly?.runway_months || 'N/A'} months</p></div>
           </div>
         </div>
       )}
@@ -251,7 +283,7 @@ function SlideContent({ slide, financials, pdfMode }) {
 
   if (slide === 'competition') return (
     <div className="space-y-8">
-      <SectionHeader icon={Target} title="Competitive Landscape" subtitle="We win on AI-assisted clinical depth, provider experience, and price" color="purple" />
+      <SectionHeader icon={Target} title="Competitive Landscape" subtitle="We win on AI-assisted clinical depth, provider experience, and price" color="purple" pdfMode={pdfMode} />
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -278,10 +310,10 @@ function SlideContent({ slide, financials, pdfMode }) {
             ].map((row, i) => (
               <tr key={i} className="border-b border-gray-800/30">
                 <td className="py-2 text-gray-400">{row.feature}</td>
-                <td className="py-2 text-center">{row.us ? <CheckCircle2 className="w-4 h-4 text-emerald-400 inline" /> : <span className="text-gray-600">—</span>}</td>
-                <td className="py-2 text-center">{row.t ? <CheckCircle2 className="w-4 h-4 text-gray-500 inline" /> : <span className="text-gray-600">—</span>}</td>
-                <td className="py-2 text-center">{row.a ? <CheckCircle2 className="w-4 h-4 text-gray-500 inline" /> : <span className="text-gray-600">—</span>}</td>
-                <td className="py-2 text-center">{row.m ? <CheckCircle2 className="w-4 h-4 text-gray-500 inline" /> : <span className="text-gray-600">—</span>}</td>
+                <td className="py-2 text-center">{row.us ? (pdfMode ? <PdfIcon size={16} color="#34d399" shape="circle" style={{ margin: '0 auto' }} /> : <CheckCircle2 className="w-4 h-4 text-emerald-400 inline" />) : <span className="text-gray-600">&mdash;</span>}</td>
+                <td className="py-2 text-center">{row.t ? (pdfMode ? <PdfIcon size={16} color="#6b7280" shape="circle" style={{ margin: '0 auto' }} /> : <CheckCircle2 className="w-4 h-4 text-gray-500 inline" />) : <span className="text-gray-600">&mdash;</span>}</td>
+                <td className="py-2 text-center">{row.a ? (pdfMode ? <PdfIcon size={16} color="#6b7280" shape="circle" style={{ margin: '0 auto' }} /> : <CheckCircle2 className="w-4 h-4 text-gray-500 inline" />) : <span className="text-gray-600">&mdash;</span>}</td>
+                <td className="py-2 text-center">{row.m ? (pdfMode ? <PdfIcon size={16} color="#6b7280" shape="circle" style={{ margin: '0 auto' }} /> : <CheckCircle2 className="w-4 h-4 text-gray-500 inline" />) : <span className="text-gray-600">&mdash;</span>}</td>
               </tr>
             ))}
           </tbody>
@@ -290,10 +322,16 @@ function SlideContent({ slide, financials, pdfMode }) {
       <div className="bg-purple-900/10 border border-purple-700/30 rounded-xl p-5">
         <h4 className="text-sm font-semibold text-purple-400 mb-2">Our Moat</h4>
         <div className="grid grid-cols-2 gap-3 text-sm text-gray-400">
-          <div className="flex items-start gap-2"><Shield className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" /> AI-enhanced clinical tools (not bolted on — native to the platform)</div>
-          <div className="flex items-start gap-2"><Shield className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" /> OpenClaw AI platform powering operations, content, and analytics</div>
-          <div className="flex items-start gap-2"><Shield className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" /> Data flywheel: more patients → smarter AI → better care</div>
-          <div className="flex items-start gap-2"><Shield className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" /> AI-amplified team delivers 10x productivity over competitors</div>
+          {[
+            'AI-enhanced clinical tools native to the platform',
+            'OpenClaw AI platform powering operations, content, and analytics',
+            'Data flywheel: more patients lead to smarter AI and better care',
+            'AI-amplified team delivers 10x productivity over competitors'
+          ].map((moatItem, i) => (
+            <div key={i} className="flex items-start gap-2">
+              {pdfMode ? <PdfIcon size={16} color="#c084fc" style={{ marginTop: '2px' }} /> : <Shield className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" />} {moatItem}
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -301,11 +339,11 @@ function SlideContent({ slide, financials, pdfMode }) {
 
   if (slide === 'team') return (
     <div className="space-y-8">
-      <SectionHeader icon={Users} title="Team" subtitle="Experienced operators building the future of healthcare" color="blue" />
+      <SectionHeader icon={Users} title="Team" subtitle="Experienced operators building the future of healthcare" color="blue" pdfMode={pdfMode} />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <TeamCard name="Founder & CEO" role="Vision, Product, Architecture" highlights={['Full-stack engineer & product leader', 'Healthcare domain expertise', 'Built entire platform from ground up', 'AI/ML systems integration']} />
-        <TeamCard name="Key Hires (In Progress)" role="Building the Core Team" highlights={['Chief Medical Officer — clinical oversight', 'VP Engineering — platform scaling', 'Head of Growth — patient + provider acquisition', 'Compliance Officer — HIPAA & SOC 2']} />
-        <TeamCard name="OpenClaw AI Platform" role="AI-Powered Operations Layer" highlights={['Automates CRM outreach & lead gen', 'AI-assisted content & social media', 'Financial reporting & analytics', 'Clinical workflow support tools']} />
+        <TeamCard name="Founder and CEO" role="Vision, Product, Architecture" highlights={['Full-stack engineer and product leader', 'Healthcare domain expertise', 'Built entire platform from ground up', 'AI and ML systems integration']} pdfMode={pdfMode} />
+        <TeamCard name="Key Hires (In Progress)" role="Building the Core Team" highlights={['Chief Medical Officer for clinical oversight', 'VP Engineering for platform scaling', 'Head of Growth for acquisition', 'Compliance Officer for HIPAA and SOC 2']} pdfMode={pdfMode} />
+        <TeamCard name="OpenClaw AI Platform" role="AI-Powered Operations Layer" highlights={['Automates CRM outreach and lead gen', 'AI-assisted content and social media', 'Financial reporting and analytics', 'Clinical workflow support tools']} pdfMode={pdfMode} />
       </div>
       <div className="bg-blue-900/10 border border-blue-700/30 rounded-xl p-5 text-center">
         <p className="text-blue-400 text-sm">Human leadership, AI-amplified execution. OpenClaw handles repetitive operations so the team can focus on patients, providers, and growth.</p>
@@ -315,27 +353,27 @@ function SlideContent({ slide, financials, pdfMode }) {
 
   if (slide === 'go_to_market') {
     const phaseColorMap = {
-      amber: { heading: 'text-amber-400', arrow: 'text-amber-500' },
-      blue: { heading: 'text-blue-400', arrow: 'text-blue-500' },
-      emerald: { heading: 'text-emerald-400', arrow: 'text-emerald-500' },
+      amber: { heading: 'text-amber-400', arrow: 'text-amber-500', hex: '#f59e0b' },
+      blue: { heading: 'text-blue-400', arrow: 'text-blue-500', hex: '#3b82f6' },
+      emerald: { heading: 'text-emerald-400', arrow: 'text-emerald-500', hex: '#10b981' },
     };
     return (
       <div className="space-y-8">
-        <SectionHeader icon={Rocket} title="Go-to-Market Strategy" subtitle="Three-phase launch — crawl, walk, run" color="orange" />
+        <SectionHeader icon={Rocket} title="Go-to-Market Strategy" subtitle="Three-phase launch: crawl, walk, run" color="orange" pdfMode={pdfMode} />
         <div className="space-y-4">
           {[
-            { phase: 'Phase 1: Crawl (Months 1-6)', color: 'amber', items: ['Onboard first 25 providers (partner hospitals, clinics)', 'Organic patient acquisition via SEO & content marketing', 'CRM-powered outreach with AI-assisted lead generation', 'Social media presence & healthcare thought leadership', 'First 500 patients via free consultation offers'] },
-            { phase: 'Phase 2: Walk (Months 7-18)', color: 'blue', items: ['Scale to 100 providers across 10 states', 'Launch referral program (provider + patient)', 'Insurance payer partnerships', 'Employer wellness program partnerships', 'Content marketing + patient education hub'] },
-            { phase: 'Phase 3: Run (Months 19-36)', color: 'emerald', items: ['Nationwide expansion to 50 states', 'Enterprise & white-label deals', 'International expansion planning', 'Health app marketplace & API partnerships', 'IPO readiness preparation'] }
+            { phase: 'Phase 1: Crawl (Months 1-6)', color: 'amber', items: ['Onboard first 25 providers (partner hospitals, clinics)', 'Organic patient acquisition via SEO and content marketing', 'CRM-powered outreach with AI-assisted lead generation', 'Social media presence and healthcare thought leadership', 'First 500 patients via free consultation offers'] },
+            { phase: 'Phase 2: Walk (Months 7-18)', color: 'blue', items: ['Scale to 100 providers across 10 states', 'Launch referral program (provider + patient)', 'Insurance payer partnerships', 'Employer wellness program partnerships', 'Content marketing and patient education hub'] },
+            { phase: 'Phase 3: Run (Months 19-36)', color: 'emerald', items: ['Nationwide expansion to 50 states', 'Enterprise and white-label deals', 'International expansion planning', 'Health app marketplace and API partnerships', 'IPO readiness preparation'] }
           ].map((p, i) => {
-            const colors = phaseColorMap[p.color] || { heading: 'text-gray-400', arrow: 'text-gray-500' };
+            const colors = phaseColorMap[p.color] || { heading: 'text-gray-400', arrow: 'text-gray-500', hex: '#9ca3af' };
             return (
               <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
                 <h4 className={`text-base font-semibold ${colors.heading} mb-2`}>{p.phase}</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {p.items.map((item, j) => (
                     <div key={j} className="flex items-center gap-2 text-sm text-gray-400">
-                      <ArrowRight className={`w-3 h-3 ${colors.arrow} flex-shrink-0`} /> {item}
+                      {pdfMode ? <PdfIcon size={12} color={colors.hex} /> : <ArrowRight className={`w-3 h-3 ${colors.arrow} flex-shrink-0`} />} {item}
                     </div>
                   ))}
                 </div>
@@ -349,19 +387,23 @@ function SlideContent({ slide, financials, pdfMode }) {
 
   if (slide === 'the_ask') return (
     <div className="space-y-8">
-      <SectionHeader icon={Target} title="The Ask" subtitle="Seed Round — Building the future of healthcare" color="purple" />
+      <SectionHeader icon={Target} title="The Ask" subtitle="Seed Round &mdash; Building the future of healthcare" color="purple" pdfMode={pdfMode} />
       <div className="text-center mb-8">
-        <p className={`text-6xl font-black ${gradientTextAlt}`}>$1,000,000</p>
-        <p className="text-xl text-gray-400 mt-2">Seed Round &bull; Pre-Money Valuation: $5M</p>
+        {pdfMode ? (
+          <p style={{ fontSize: '56px', fontWeight: 900, color: '#22d3ee', lineHeight: 1.1, margin: 0 }}>$1,000,000</p>
+        ) : (
+          <p className={`text-6xl font-black ${gradientTextAlt}`}>$1,000,000</p>
+        )}
+        <p className="text-xl text-gray-400 mt-2">Seed Round | Pre-Money Valuation: $5M</p>
       </div>
       <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
         <h4 className="text-sm font-semibold text-gray-300 mb-4">Use of Funds</h4>
         <div className="space-y-3">
           {[
-            { label: 'Engineering & Product', pct: 40, amount: '$400K', desc: 'Full-time engineers, infrastructure scaling, OpenClaw AI development' },
-            { label: 'Sales & Marketing', pct: 25, amount: '$250K', desc: 'Provider acquisition, patient growth, brand building' },
-            { label: 'Compliance & Legal', pct: 15, amount: '$150K', desc: 'SOC 2, state licensing, legal counsel' },
-            { label: 'Operations & Team', pct: 10, amount: '$100K', desc: 'Key hires, cloud hosting, APIs, office' },
+            { label: 'Engineering and Product', pct: 40, amount: '$400K', desc: 'Full-time engineers, infrastructure scaling, OpenClaw AI development' },
+            { label: 'Sales and Marketing', pct: 25, amount: '$250K', desc: 'Provider acquisition, patient growth, brand building' },
+            { label: 'Compliance and Legal', pct: 15, amount: '$150K', desc: 'SOC 2, state licensing, legal counsel' },
+            { label: 'Operations and Team', pct: 10, amount: '$100K', desc: 'Key hires, cloud hosting, APIs, office' },
             { label: 'Reserve', pct: 10, amount: '$100K', desc: 'Runway buffer, contingency' }
           ].map((u, i) => (
             <div key={i} className="space-y-1">
@@ -379,7 +421,7 @@ function SlideContent({ slide, financials, pdfMode }) {
       </div>
       <div className="grid grid-cols-3 gap-4 mt-4">
         <div className="bg-gray-800/40 rounded-lg p-4 text-center border border-gray-700/30"><p className="text-xs text-gray-500">18-Month Runway</p><p className="text-lg font-bold text-emerald-400">Guaranteed</p></div>
-        <div className="bg-gray-800/40 rounded-lg p-4 text-center border border-gray-700/30"><p className="text-xs text-gray-500">Target ARR @ Month 18</p><p className="text-lg font-bold text-emerald-400">$1.8M</p></div>
+        <div className="bg-gray-800/40 rounded-lg p-4 text-center border border-gray-700/30"><p className="text-xs text-gray-500">Target ARR at Month 18</p><p className="text-lg font-bold text-emerald-400">$1.8M</p></div>
         <div className="bg-gray-800/40 rounded-lg p-4 text-center border border-gray-700/30"><p className="text-xs text-gray-500">Series A Ready</p><p className="text-lg font-bold text-purple-400">Month 18-24</p></div>
       </div>
     </div>
@@ -387,27 +429,31 @@ function SlideContent({ slide, financials, pdfMode }) {
 
   if (slide === 'appendix') return (
     <div className="space-y-8">
-      <SectionHeader icon={FileText} title="Appendix" subtitle="Additional details available upon request" color="gray" />
+      <SectionHeader icon={FileText} title="Appendix" subtitle="Additional details available upon request" color="gray" pdfMode={pdfMode} />
       <div className="grid grid-cols-2 gap-4">
         {[
           'Detailed financial model (3-statement)', 'Technical architecture documentation',
           'HIPAA compliance audit report', 'Provider onboarding playbook',
           'OpenClaw AI platform whitepaper', 'Insurance payer integration roadmap',
-          'Market research & competitive analysis', 'Cap table & equity structure'
+          'Market research and competitive analysis', 'Cap table and equity structure'
         ].map((item, i) => (
           <div key={i} className="flex items-center gap-3 bg-gray-800/40 rounded-lg p-4 border border-gray-700/30">
-            <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
+            {pdfMode ? <PdfIcon size={16} color="#6b7280" /> : <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />}
             <span className="text-sm text-gray-400">{item}</span>
           </div>
         ))}
       </div>
       <div className="text-center mt-8 space-y-4">
         <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-purple-600 via-blue-600 to-cyan-500 flex items-center justify-center">
-          <Stethoscope className="w-8 h-8 text-white" />
+          {pdfMode ? <PdfIcon size={32} color="#ffffff" shape="circle" /> : <Stethoscope className="w-8 h-8 text-white" />}
         </div>
-        <h3 className={`text-2xl font-bold ${gradientTextAlt}`}>DoctaRx</h3>
+        {pdfMode ? (
+          <h3 style={{ fontSize: '24px', fontWeight: 'bold', color: '#22d3ee', margin: 0 }}>DoctaRx</h3>
+        ) : (
+          <h3 className={`text-2xl font-bold ${gradientTextAlt}`}>DoctaRx</h3>
+        )}
         <p className="text-gray-500">Healthcare, Reimagined.</p>
-        <p className="text-sm text-gray-600">info@doctarx.com &bull; doctarx.com</p>
+        <p className="text-sm text-gray-600">info@doctarx.com | doctarx.com</p>
       </div>
     </div>
   );
@@ -450,7 +496,8 @@ export default function PitchDeckPage() {
   }, []);
 
   // ═══ TRUE PDF DOWNLOAD — no print dialog ═══
-  // Renders slides on-screen (behind loading overlay) so html2canvas gets proper styles
+  // Renders slides on-screen (behind loading overlay) so html2canvas gets proper styles.
+  // All SVG icons are replaced with PdfIcon in pdfMode for reliable html2canvas rendering.
   const handleDownloadPDF = useCallback(async () => {
     setIsGenerating(true);
 
@@ -507,7 +554,7 @@ export default function PitchDeckPage() {
               <Briefcase className="w-5 h-5 text-purple-400" />
               Investor Pitch Deck
             </h1>
-            <p className="text-xs text-gray-500">Confidential — For qualified investors only</p>
+            <p className="text-xs text-gray-500">Confidential &mdash; For qualified investors only</p>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">{currentSlide + 1} / {SLIDES.length}</span>
@@ -603,6 +650,8 @@ export default function PitchDeckPage() {
               color: 'white',
               overflow: 'hidden',
               fontFamily: 'system-ui, -apple-system, sans-serif',
+              fontSize: '16px',
+              lineHeight: '1.5',
             }}
           >
             <div style={{ width: '100%', maxWidth: '1024px', margin: '0 auto', padding: '48px' }}>
@@ -617,8 +666,22 @@ export default function PitchDeckPage() {
 
 // ═══ Reusable Components ═══
 
-function SectionHeader({ icon: Icon, title, subtitle, color }) {
+function SectionHeader({ icon: Icon, title, subtitle, color, pdfMode }) {
   const colors = { red: 'text-red-400', emerald: 'text-emerald-400', blue: 'text-blue-400', cyan: 'text-cyan-400', purple: 'text-purple-400', amber: 'text-amber-400', orange: 'text-orange-400', gray: 'text-gray-400' };
+  const hexColors = { red: '#f87171', emerald: '#34d399', blue: '#60a5fa', cyan: '#22d3ee', purple: '#c084fc', amber: '#fbbf24', orange: '#fb923c', gray: '#9ca3af' };
+
+  if (pdfMode) {
+    return (
+      <div style={{ marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
+          <span style={{ display: 'inline-block', width: '24px', height: '24px', minWidth: '24px', borderRadius: '6px', backgroundColor: hexColors[color] || '#9ca3af' }} />
+          <h2 style={{ fontSize: '26px', fontWeight: 'bold', color: '#ffffff', margin: 0, lineHeight: '1.3' }}>{title}</h2>
+        </div>
+        <p style={{ color: '#6b7280', fontSize: '15px', margin: 0, lineHeight: '1.4' }}>{subtitle}</p>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-2">
@@ -640,7 +703,7 @@ function ProblemCard({ number, label, detail }) {
   );
 }
 
-function MarketCircle({ label, amount, desc, color }) {
+function MarketCircle({ label, amount, desc, color, pdfMode }) {
   const colors = { cyan: 'from-cyan-600 to-cyan-800 border-cyan-500', blue: 'from-blue-600 to-blue-800 border-blue-500', purple: 'from-purple-600 to-purple-800 border-purple-500' };
   return (
     <div className="text-center">
@@ -674,11 +737,11 @@ function ProjectionRow({ label, values, highlight }) {
   );
 }
 
-function TeamCard({ name, role, highlights }) {
+function TeamCard({ name, role, highlights, pdfMode }) {
   return (
     <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
       <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 mx-auto mb-4 flex items-center justify-center">
-        <Users className="w-8 h-8 text-white" />
+        {pdfMode ? <PdfIcon size={32} color="#ffffff" shape="circle" /> : <Users className="w-8 h-8 text-white" />}
       </div>
       <h4 className="text-lg font-semibold text-white text-center">{name}</h4>
       <p className="text-xs text-gray-500 text-center mb-3">{role}</p>
