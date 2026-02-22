@@ -68,6 +68,9 @@ public/mediapipe-models/
 .cache/
 .turbo/
 
+# Agent identity protocol (contains secrets — stays on server only)
+SOUL.md
+
 # PHI and sensitive data (HIPAA compliance)
 uploads/
 server/uploads/
