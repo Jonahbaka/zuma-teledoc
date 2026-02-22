@@ -6,10 +6,26 @@ import {
   Zap, Target, BarChart3, ChevronRight, ChevronLeft, ArrowRight,
   Heart, Brain, Building2, Rocket, Award, CheckCircle2,
   Smartphone, Lock, Clock, Star, Sparkles, PieChart,
-  LineChart, Briefcase, FileText
+  LineChart, Briefcase, FileText, Download
 } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
+
+// ═══ PRINT STYLES ═══
+if (typeof window !== 'undefined') {
+  const style = document.createElement('style');
+  style.innerHTML = `
+    @media print {
+      body { margin: 0; padding: 0; background: white; }
+      .pitch-slide { page-break-after: always; }
+      button { display: none !important; }
+      .slide-controls { display: none !important; }
+      .slide-thumbnails { display: none !important; }
+      .slide-presenter { height: auto !important; min-height: 11in; }
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 // ═══ PITCH DECK SLIDES ═══
 const SLIDES = [
@@ -84,6 +100,14 @@ export default function PitchDeckPage() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">{currentSlide + 1} / {SLIDES.length}</span>
+            <button 
+              onClick={() => window.print()} 
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium flex items-center gap-2"
+              title="Print to PDF"
+            >
+              <Download className="w-4 h-4" />
+              Download PDF
+            </button>
             <button onClick={() => setIsPresenting(true)} className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-medium">
               Present Mode
             </button>
