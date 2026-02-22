@@ -739,27 +739,33 @@ async function initializeApp() {
   initialized = true;
   console.log('✅ Express API ready');
   
-  // Initialize Next.js last (heaviest)
-  console.log('⏳ Preparing Next.js...');
+  // Initialize Next.js last (heaviest) — NON-BLOCKING
+  console.log('⏳ Preparing Next.js (non-blocking)...');
   try {
     const next = require('next');
     const dev = process.env.NODE_ENV !== 'production';
     const nextApp = next({ dev });
     
-    // Timeout-protected prepare (prevent hanging)
-    const preparePromise = nextApp.prepare();
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Next.js prepare timeout (60s)')), 60000)
-    );
+    // Don't wait — prepare in background, set flag when ready
+    nextApp.prepare()
+      .then(() => {
+        handle = nextApp.getRequestHandler();
+        nextReady = true;
+        console.log('✅ Next.js ready');
+      })
+      .catch(err => {
+        console.error('❌ Next.js prepare failed:', err.message);
+      });
     
-    await Promise.race([preparePromise, timeoutPromise]);
-    handle = nextApp.getRequestHandler();
-    nextReady = true;
-    console.log('✅ Next.js ready');
+    // Timeout: if not ready in 120s, log and continue
+    setTimeout(() => {
+      if (!nextReady) {
+        console.error('⏱️  Next.js still not ready after 120s, continuing anyway');
+      }
+    }, 120000);
+    
   } catch (err) {
-    console.error('❌ Next.js failed:', err.message);
-    // Continue anyway — API routes will work, but SSR will serve the loader HTML
-    console.warn('⚠️  Continuing without Next.js SSR (API routes still functional)');
+    console.error('❌ Next.js initialization failed:', err.message);
   }
   
   // Catch-all for Next.js (must be last)
