@@ -567,6 +567,7 @@ async function initializeApp() {
   loadRoute('/api/auth/zoho/recruit', './routes/zohoRecruitAuth');
   loadRoute('/api/hive', './routes/hive');
   loadRoute('/api/deploy', './routes/deploy');
+  loadRoute('/api/force-rebuild', './routes/force-rebuild');
   loadRoute('/api/upload-build', './routes/upload-build');
   loadRoute('/api/upload-build-binary', './routes/upload-build-binary');
   loadRoute('/api/upload-build-chunked', './routes/upload-build-chunked');
