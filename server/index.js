@@ -725,12 +725,20 @@ async function initializeApp() {
     const dev = process.env.NODE_ENV !== 'production';
     const nextApp = next({ dev });
     
-    await nextApp.prepare();
+    // Timeout-protected prepare (prevent hanging)
+    const preparePromise = nextApp.prepare();
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Next.js prepare timeout (60s)')), 60000)
+    );
+    
+    await Promise.race([preparePromise, timeoutPromise]);
     handle = nextApp.getRequestHandler();
     nextReady = true;
     console.log('✅ Next.js ready');
   } catch (err) {
     console.error('❌ Next.js failed:', err.message);
+    // Continue anyway — API routes will work, but SSR will serve the loader HTML
+    console.warn('⚠️  Continuing without Next.js SSR (API routes still functional)');
   }
   
   // Catch-all for Next.js (must be last)
