@@ -313,29 +313,39 @@ function SlideContent({ slide, financials, pdfMode }) {
     </div>
   );
 
-  if (slide === 'go_to_market') return (
-    <div className="space-y-8">
-      <SectionHeader icon={Rocket} title="Go-to-Market Strategy" subtitle="Three-phase launch — crawl, walk, run" color="orange" />
-      <div className="space-y-4">
-        {[
-          { phase: 'Phase 1: Crawl (Months 1-6)', color: 'amber', items: ['Onboard first 25 providers (partner hospitals, clinics)', 'Organic patient acquisition via SEO & content marketing', 'CRM-powered outreach with AI-assisted lead generation', 'Social media presence & healthcare thought leadership', 'First 500 patients via free consultation offers'] },
-          { phase: 'Phase 2: Walk (Months 7-18)', color: 'blue', items: ['Scale to 100 providers across 10 states', 'Launch referral program (provider + patient)', 'Insurance payer partnerships', 'Employer wellness program partnerships', 'Content marketing + patient education hub'] },
-          { phase: 'Phase 3: Run (Months 19-36)', color: 'emerald', items: ['Nationwide expansion to 50 states', 'Enterprise & white-label deals', 'International expansion planning', 'Health app marketplace & API partnerships', 'IPO readiness preparation'] }
-        ].map((p, i) => (
-          <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-            <h4 className={`text-base font-semibold text-${p.color}-400 mb-2`}>{p.phase}</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {p.items.map((item, j) => (
-                <div key={j} className="flex items-center gap-2 text-sm text-gray-400">
-                  <ArrowRight className={`w-3 h-3 text-${p.color}-500 flex-shrink-0`} /> {item}
+  if (slide === 'go_to_market') {
+    const phaseColorMap = {
+      amber: { heading: 'text-amber-400', arrow: 'text-amber-500' },
+      blue: { heading: 'text-blue-400', arrow: 'text-blue-500' },
+      emerald: { heading: 'text-emerald-400', arrow: 'text-emerald-500' },
+    };
+    return (
+      <div className="space-y-8">
+        <SectionHeader icon={Rocket} title="Go-to-Market Strategy" subtitle="Three-phase launch — crawl, walk, run" color="orange" />
+        <div className="space-y-4">
+          {[
+            { phase: 'Phase 1: Crawl (Months 1-6)', color: 'amber', items: ['Onboard first 25 providers (partner hospitals, clinics)', 'Organic patient acquisition via SEO & content marketing', 'CRM-powered outreach with AI-assisted lead generation', 'Social media presence & healthcare thought leadership', 'First 500 patients via free consultation offers'] },
+            { phase: 'Phase 2: Walk (Months 7-18)', color: 'blue', items: ['Scale to 100 providers across 10 states', 'Launch referral program (provider + patient)', 'Insurance payer partnerships', 'Employer wellness program partnerships', 'Content marketing + patient education hub'] },
+            { phase: 'Phase 3: Run (Months 19-36)', color: 'emerald', items: ['Nationwide expansion to 50 states', 'Enterprise & white-label deals', 'International expansion planning', 'Health app marketplace & API partnerships', 'IPO readiness preparation'] }
+          ].map((p, i) => {
+            const colors = phaseColorMap[p.color] || { heading: 'text-gray-400', arrow: 'text-gray-500' };
+            return (
+              <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                <h4 className={`text-base font-semibold ${colors.heading} mb-2`}>{p.phase}</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {p.items.map((item, j) => (
+                    <div key={j} className="flex items-center gap-2 text-sm text-gray-400">
+                      <ArrowRight className={`w-3 h-3 ${colors.arrow} flex-shrink-0`} /> {item}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-        ))}
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   if (slide === 'the_ask') return (
     <div className="space-y-8">
@@ -440,8 +450,13 @@ export default function PitchDeckPage() {
   }, []);
 
   // ═══ TRUE PDF DOWNLOAD — no print dialog ═══
+  // Renders slides on-screen (behind loading overlay) so html2canvas gets proper styles
   const handleDownloadPDF = useCallback(async () => {
     setIsGenerating(true);
+
+    // Brief delay to let React render the loading overlay + visible PDF container
+    await new Promise(r => setTimeout(r, 400));
+
     try {
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
         import('jspdf'),
@@ -461,16 +476,19 @@ export default function PitchDeckPage() {
           logging: false,
           width: 1280,
           height: 720,
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: 1280,
+          windowHeight: 720,
         });
 
         if (i > 0) pdf.addPage([1280, 720], 'landscape');
-        pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 1280, 720);
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 1280, 720);
       }
 
       pdf.save(`DoctaRx-Pitch-Deck-${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (err) {
       console.error('PDF generation failed:', err);
-      // Graceful fallback: try window.print()
       window.print();
     } finally {
       setIsGenerating(false);
@@ -549,8 +567,28 @@ export default function PitchDeckPage() {
         <div className="h-full bg-gradient-to-r from-purple-500 to-cyan-500 transition-all duration-300" style={{ width: `${((currentSlide + 1) / SLIDES.length) * 100}%` }} />
       </div>
 
-      {/* ═══ HIDDEN PDF RENDER — all 13 slides for html2canvas capture ═══ */}
-      <div style={{ position: 'fixed', top: '-20000px', left: '-20000px', width: '1280px', zIndex: -1 }} aria-hidden="true">
+      {/* ═══ LOADING OVERLAY — covers screen while PDF renders behind it ═══ */}
+      {isGenerating && (
+        <div className="fixed inset-0 z-[9998] bg-gray-950/95 flex flex-col items-center justify-center">
+          <Loader2 className="w-12 h-12 text-purple-400 animate-spin mb-4" />
+          <p className="text-lg font-semibold text-white">Generating PDF...</p>
+          <p className="text-sm text-gray-500 mt-1">Rendering all 13 slides</p>
+        </div>
+      )}
+
+      {/* ═══ PDF RENDER — on-screen during generation (behind overlay), hidden otherwise ═══ */}
+      <div
+        style={{
+          position: 'fixed',
+          left: isGenerating ? '0' : '-20000px',
+          top: isGenerating ? '0' : '-20000px',
+          width: '1280px',
+          zIndex: isGenerating ? 9997 : -1,
+          opacity: isGenerating ? 1 : 0,
+          pointerEvents: 'none',
+        }}
+        aria-hidden="true"
+      >
         {SLIDES.map((s, i) => (
           <div
             key={s}
