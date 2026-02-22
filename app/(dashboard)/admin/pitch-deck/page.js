@@ -1,15 +1,51 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState, useCallback } from 'react';
 
 export default function PitchDeckPage() {
   const containerRef = useRef(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleNextSlide = () => {
     if (containerRef.current) {
       containerRef.current.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
     }
   };
+
+  const handleDownloadPDF = useCallback(async () => {
+    setIsGenerating(true);
+    try {
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas')
+      ]);
+
+      const sections = containerRef.current.querySelectorAll('section');
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [1280, 720] });
+
+      for (let i = 0; i < sections.length; i++) {
+        const section = sections[i];
+        const canvas = await html2canvas(section, {
+          scale: 2,
+          backgroundColor: '#05070a',
+          useCORS: true,
+          logging: false,
+          windowWidth: 1280,
+          windowHeight: 720,
+        });
+
+        if (i > 0) pdf.addPage([1280, 720], 'landscape');
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 1280, 720);
+      }
+
+      pdf.save(`DoctaRx-Pitch-Deck-${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      window.print();
+    } finally {
+      setIsGenerating(false);
+    }
+  }, []);
 
   return (
     <>
@@ -449,8 +485,24 @@ export default function PitchDeckPage() {
         </section>
 
         {/* CONTROLS */}
+        {/* LOADING OVERLAY */}
+        {isGenerating && (
+          <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center">
+            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="text-lg font-semibold text-white">Generating PDF...</p>
+            <p className="text-sm text-slate-500 mt-1">Rendering all 10 slides</p>
+          </div>
+        )}
+
+        {/* CONTROLS */}
         <div className="fixed bottom-5 right-5 z-[100] flex gap-2 no-print">
-          <button onClick={() => window.print()} className="glass px-4 py-2 rounded-full text-xs font-bold hover:bg-slate-700 transition">Export PDF</button>
+          <button
+            onClick={handleDownloadPDF}
+            disabled={isGenerating}
+            className="glass px-4 py-2 rounded-full text-xs font-bold hover:bg-slate-700 transition disabled:opacity-50 disabled:cursor-wait flex items-center gap-2"
+          >
+            {isGenerating ? 'Generating...' : 'Download PDF'}
+          </button>
           <button onClick={handleNextSlide} className="glass px-4 py-2 rounded-full text-xs font-bold hover:bg-slate-700 transition">Next Slide</button>
         </div>
 
