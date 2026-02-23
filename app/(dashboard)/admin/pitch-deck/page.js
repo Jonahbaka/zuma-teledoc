@@ -25,14 +25,27 @@ export default function PitchDeckPage() {
 
       for (let i = 0; i < sections.length; i++) {
         const section = sections[i];
+
+        // Force section to exact PDF dimensions during capture
+        // (sections are 100vh which may differ from 720px, causing distortion)
+        const saved = section.style.cssText;
+        section.style.cssText += ';height:720px!important;min-height:720px!important;max-height:720px!important;width:1280px!important;overflow:hidden!important;padding:3rem 4rem!important;';
+
         const canvas = await html2canvas(section, {
           scale: 2,
           backgroundColor: '#05070a',
           useCORS: true,
           logging: false,
+          width: 1280,
+          height: 720,
+          scrollX: 0,
+          scrollY: 0,
           windowWidth: 1280,
           windowHeight: 720,
         });
+
+        // Restore original styles
+        section.style.cssText = saved;
 
         if (i > 0) pdf.addPage([1280, 720], 'landscape');
         pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 1280, 720);
@@ -429,8 +442,8 @@ export default function PitchDeckPage() {
         {/* SLIDE 9: THE ASK */}
         <section className="items-center text-center">
           <h2 className="text-sm font-bold tracking-[0.2em] uppercase text-blue-500 mb-4">The Ask</h2>
-          <h3 className="text-7xl font-bold mb-8">$1,000,000</h3>
-          <p className="text-2xl text-slate-400 mb-12">Seed Round | $5M Pre-Money Valuation</p>
+          <h3 className="text-7xl font-bold mb-8">$2,500,000</h3>
+          <p className="text-2xl text-slate-400 mb-12">Seed Round | $10M Pre-Money Valuation</p>
 
           <div className="max-w-4xl w-full grid grid-cols-4 gap-4">
             <div className="stat-card">
