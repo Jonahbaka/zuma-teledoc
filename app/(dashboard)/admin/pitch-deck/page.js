@@ -12,49 +12,290 @@ export default function PitchDeckPage() {
     }
   };
 
+  // ═══ TEXT-BASED PDF — native jsPDF drawing, not html2canvas screenshots ═══
   const handleDownloadPDF = useCallback(async () => {
     setIsGenerating(true);
     try {
-      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-        import('jspdf'),
-        import('html2canvas')
-      ]);
-
-      const sections = containerRef.current.querySelectorAll('section');
+      const { default: jsPDF } = await import('jspdf');
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [1280, 720] });
 
-      for (let i = 0; i < sections.length; i++) {
-        const section = sections[i];
+      // Color palette
+      const BG = [5, 7, 10];
+      const W = [255, 255, 255];
+      const S3 = [203, 213, 225]; // slate-300
+      const S4 = [148, 163, 184]; // slate-400
+      const S5 = [100, 116, 139]; // slate-500
+      const S6 = [71, 85, 105];
+      const S7 = [51, 65, 85];
+      const S8 = [30, 41, 59];
+      const B4 = [96, 165, 250];  // blue-400
+      const B5 = [59, 130, 246];
+      const B6 = [37, 99, 235];
+      const B9 = [30, 58, 138];
+      const P5 = [168, 85, 247];  // purple-500
+      const E4 = [52, 211, 153];  // emerald-400
+      const E5 = [16, 185, 129];
+      const O5 = [249, 115, 22];  // orange-500
+      const R4 = [248, 113, 113]; // red-400
+      const R5 = [239, 68, 68];
 
-        // Force section to exact PDF dimensions during capture
-        // (sections are 100vh which may differ from 720px, causing distortion)
-        const saved = section.style.cssText;
-        section.style.cssText += ';height:720px!important;min-height:720px!important;max-height:720px!important;width:1280px!important;overflow:hidden!important;padding:3rem 4rem!important;';
+      // Helpers
+      const bg = () => { pdf.setFillColor(...BG); pdf.rect(0, 0, 1280, 720, 'F'); };
+      const tc = (c) => pdf.setTextColor(...c);
+      const fc = (c) => pdf.setFillColor(...c);
+      const dc = (c) => pdf.setDrawColor(...c);
+      const ft = (s, sz) => { pdf.setFontSize(sz); pdf.setFont('helvetica', s); };
+      const wrap = (t, w) => pdf.splitTextToSize(t, w);
+      const box = (x, y, w, h, bl) => {
+        fc([15, 23, 42]); pdf.roundedRect(x, y, w, h, 10, 10, 'F');
+        dc(S7); pdf.roundedRect(x, y, w, h, 10, 10, 'S');
+        if (bl) { fc(bl); pdf.rect(x, y + 6, 4, h - 12, 'F'); }
+      };
+      const glass = (x, y, w, h) => {
+        fc(S8); pdf.roundedRect(x, y, w, h, 10, 10, 'F');
+        dc(S7); pdf.roundedRect(x, y, w, h, 10, 10, 'S');
+      };
+      const label = (t, c, y) => { ft('bold', 11); tc(c); pdf.text(t.toUpperCase(), 64, y || 60); };
+      const title = (t, y, mw) => {
+        ft('bold', 42); tc(W);
+        const ln = wrap(t, mw || 900);
+        pdf.text(ln, 64, y || 100);
+        return (y || 100) + ln.length * 50;
+      };
+      const newSlide = () => pdf.addPage([1280, 720], 'landscape');
 
-        const canvas = await html2canvas(section, {
-          scale: 2,
-          backgroundColor: '#05070a',
-          useCORS: true,
-          logging: false,
-          width: 1280,
-          height: 720,
-          scrollX: 0,
-          scrollY: 0,
-          windowWidth: 1280,
-          windowHeight: 720,
-        });
+      // ────────── SLIDE 1: TITLE ──────────
+      bg();
+      fc(B6); pdf.roundedRect(590, 130, 100, 100, 20, 20, 'F');
+      fc(W); pdf.circle(640, 180, 28, 'F');
+      ft('bold', 64); tc(W); pdf.text('DoctaRx', 640, 300, { align: 'center' });
+      ft('normal', 22); tc(B4); pdf.text('Doctor-Led Telehealth, Supercharged by AI', 640, 345, { align: 'center' });
+      ft('normal', 16); tc(S4); pdf.text('Making Healthcare Accessible, Affordable, and Intelligent', 640, 385, { align: 'center' });
+      ft('bold', 11); tc(S5); pdf.text('DOCTOR-LED    \u2022    HIPAA COMPLIANT    \u2022    AI-ENHANCED', 640, 430, { align: 'center' });
+      glass(480, 480, 320, 65);
+      ft('normal', 9); tc(S5); pdf.text('FOUNDER', 525, 503); pdf.text('ROUND', 700, 503);
+      ft('normal', 13); tc(W); pdf.text('Jonah Baka', 525, 525); pdf.text('Seed - Feb 2026', 700, 525);
+      dc(S7); pdf.line(665, 492, 665, 535);
 
-        // Restore original styles
-        section.style.cssText = saved;
+      // ────────── SLIDE 2: THE PROBLEM ──────────
+      newSlide(); bg();
+      label('The Problem', B5);
+      const y2 = title('Healthcare is broken\u2014and 83 Million Americans know it.', 100);
+      const cY2 = y2 + 15;
+      const stats = [
+        { n: '83M', d: 'Americans lack adequate healthcare access, primarily in rural and underserved areas.' },
+        { n: '$4.5T', d: 'US Annual Spending. Yet outcomes rank 37th globally due to massive systemic inefficiency.' },
+        { n: '24 Days', d: 'Average wait time for a new patient appointment. Urgent needs often go unmet for weeks.' },
+      ];
+      stats.forEach((s, i) => {
+        const cx = 64 + i * 384;
+        box(cx, cY2, 368, 140);
+        ft('bold', 32); tc(W); pdf.text(s.n, cx + 24, cY2 + 40);
+        ft('normal', 12); tc(S4); pdf.text(wrap(s.d, 320), cx + 24, cY2 + 68);
+      });
+      const pY = cY2 + 170;
+      const pains = ['Provider burnout & administrative overload', 'No price transparency or upfront costs', 'Fragmented medical records & EMR silos', 'Insurance complexity & billing denials'];
+      pains.forEach((p, i) => {
+        const px = i < 2 ? 64 : 640; const py = pY + (i % 2) * 30;
+        ft('bold', 14); tc(R5); pdf.text('\u2715', px, py);
+        ft('normal', 13); tc(S3); pdf.text(p, px + 22, py);
+      });
 
-        if (i > 0) pdf.addPage([1280, 720], 'landscape');
-        pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 1280, 720);
-      }
+      // ────────── SLIDE 3: OUR SOLUTION ──────────
+      newSlide(); bg();
+      label('Our Solution', P5);
+      title('Doctor-first telehealth, enhanced by AI built for scale.', 100);
+      const sols = [
+        { t: 'Instant Access', d: 'See a board-certified doctor in minutes, not weeks. Licensed providers available via video/chat with AI-assisted triage.' },
+        { t: 'AI-Assisted Workflows', d: 'Automated SOAP note drafting, smart triage routing, and predictive health insights. Doctors make every final decision.' },
+        { t: 'Transparent Pricing', d: 'Subscriptions from $19.99/mo. No surprise bills. Real-time insurance eligibility checks at the point of care.' },
+        { t: 'FHIR-Native Security', d: 'End-to-end encryption, SOC 2 compliant, and seamless interoperability with existing health systems.' },
+      ];
+      sols.forEach((s, i) => {
+        const sx = 64 + (i % 2) * 590; const sy = 200 + Math.floor(i / 2) * 190;
+        glass(sx, sy, 570, 170);
+        ft('bold', 18); tc(W); pdf.text(s.t, sx + 24, sy + 35);
+        ft('normal', 13); tc(S4); pdf.text(wrap(s.d, 520), sx + 24, sy + 60);
+      });
+
+      // ────────── SLIDE 4: THE PRODUCT ──────────
+      newSlide(); bg();
+      label('The Product', E5);
+      title('A Full-Stack Clinical Platform', 100);
+      const prods = [
+        { n: 'Video Consultations', d: 'HD video with AI clinical scribing', c: B5 },
+        { n: 'E-Prescribing', d: 'Direct-to-pharmacy integration', c: B5 },
+        { n: 'AI-Powered Triage', d: 'Smart symptom & acuity routing', c: B5 },
+        { n: 'Insurance Wallet', d: 'OCR card scanning & eligibility', c: P5 },
+        { n: 'Clinical Records', d: 'FHIR-native internal EHR', c: P5 },
+        { n: 'Provider Dashboard', d: 'Unified revenue & schedule mgmt', c: P5 },
+        { n: 'Predictive Analytics', d: 'ML insights for patient outcomes', c: E5 },
+        { n: 'Payment Processing', d: 'Stripe billing & automated claims', c: E5 },
+        { n: 'OpenClaw AI', d: 'Core AI Ops automation layer', c: E5 },
+      ];
+      prods.forEach((p, i) => {
+        const px = 64 + (i % 3) * 390; const py = 170 + Math.floor(i / 3) * 100;
+        box(px, py, 370, 80, p.c);
+        ft('bold', 14); tc(i === 8 ? B4 : W); pdf.text(p.n, px + 20, py + 30);
+        ft('normal', 11); tc(S4); pdf.text(p.d, px + 20, py + 52);
+      });
+
+      // ────────── SLIDE 5: MARKET OPPORTUNITY ──────────
+      newSlide(); bg();
+      label('Market Opportunity', O5);
+      title('Telehealth is Inevitable.', 100);
+      // Bars
+      const bB = 530; const bW = 160; const bG = 30; const bX = 64;
+      fc(S8); pdf.roundedRect(bX, bB - 280, bW, 280, 8, 8, 'F');
+      ft('normal', 10); tc(S5); pdf.text('TAM', bX + 16, bB - 248);
+      ft('bold', 22); tc(W); pdf.text('$460B', bX + 16, bB - 218);
+      ft('normal', 9); tc(S4); pdf.text('US Healthcare Svc', bX + 16, bB - 198);
+
+      fc(B9); pdf.roundedRect(bX + bW + bG, bB - 210, bW, 210, 8, 8, 'F');
+      ft('normal', 10); tc([147, 197, 253]); pdf.text('SAM', bX + bW + bG + 16, bB - 178);
+      ft('bold', 22); tc(W); pdf.text('$83B', bX + bW + bG + 16, bB - 148);
+      ft('normal', 9); tc(B4); pdf.text('Telehealth 2030', bX + bW + bG + 16, bB - 128);
+
+      fc(B6); pdf.roundedRect(bX + 2 * (bW + bG), bB - 100, bW, 100, 8, 8, 'F');
+      ft('normal', 10); tc(W); pdf.text('SOM', bX + 2 * (bW + bG) + 16, bB - 73);
+      ft('bold', 22); tc(W); pdf.text('$830M', bX + 2 * (bW + bG) + 16, bB - 43);
+      ft('normal', 9); tc(W); pdf.text('1% Capture Plan', bX + 2 * (bW + bG) + 16, bB - 23);
+
+      const tws = [
+        { h: '\u2191 48.1% CAGR', t: ' - AI in Healthcare growth (2024-2030)', c: E5 },
+        { h: '124K deficit', t: ' - Projected physician shortage by 2034', c: B4 },
+        { h: 'CMS Expanded', t: ' - Permanent reimbursement for virtual visits', c: P5 },
+      ];
+      tws.forEach((tw, i) => {
+        const ty = 200 + i * 80;
+        glass(640, ty, 580, 60);
+        ft('bold', 13); tc(tw.c); pdf.text(tw.h, 660, ty + 35);
+        ft('normal', 13); tc(S3);
+        pdf.text(tw.t, 660 + pdf.getTextWidth(tw.h), ty + 35);
+      });
+
+      // ────────── SLIDE 6: BUSINESS MODEL ──────────
+      newSlide(); bg();
+      label('Business Model', B5);
+      title('High Margin, Recurring Revenue', 100);
+      const revs = [
+        { n: 'Patient Subs', m: '85% Margin', p: '$19.99 - $79.99', d: 'Monthly recurring revenue (B2C)', mc: E5 },
+        { n: 'Provider Platform', m: '90% Margin', p: '$99 - $499', d: 'SaaS fees for practitioners', mc: E5 },
+        { n: 'Consultation Fees', m: '35% Margin', p: '$49 - $129', d: 'Per-visit fees for non-subs', mc: B5 },
+      ];
+      revs.forEach((r, i) => {
+        const rx = 64 + i * 390;
+        box(rx, 170, 370, 150);
+        ft('bold', 14); tc(W); pdf.text(r.n, rx + 20, 200);
+        ft('bold', 9); tc(r.mc); pdf.text(r.m, rx + 250, 200);
+        ft('bold', 22); tc(W); pdf.text(r.p, rx + 20, 240);
+        ft('normal', 11); tc(S5); pdf.text(r.d, rx + 20, 265);
+      });
+      // Enterprise card
+      box(64, 340, 370, 150);
+      ft('bold', 14); tc(W); pdf.text('Enterprise', 84, 370);
+      ft('bold', 9); tc(P5); pdf.text('75% Margin', 314, 370);
+      ft('bold', 22); tc(W); pdf.text('$2,000+', 84, 410);
+      ft('normal', 11); tc(S5); pdf.text('White-label & employer deals', 84, 435);
+      // LTV/CAC summary
+      box(454 + 30, 340, 730, 150);
+      ft('normal', 11); tc(S4); pdf.text('Target LTV/CAC', 560, 390);
+      ft('bold', 24); tc(W); pdf.text('5 : 1', 560, 425);
+      dc(S7); pdf.line(730, 360, 730, 470);
+      ft('normal', 11); tc(S4); pdf.text('Blended Gross Margin', 790, 390);
+      ft('bold', 24); tc(W); pdf.text('70%+', 790, 425);
+
+      // ────────── SLIDE 7: FINANCIAL PROJECTIONS ──────────
+      newSlide(); bg();
+      label('Financial Projections', E5);
+      title('Path to $120M ARR', 100);
+      const tX = 64; const tY = 160; const tW2 = 1152; const cW = tW2 / 6; const rH = 40;
+      // Header
+      fc(S8); pdf.roundedRect(tX, tY, tW2, rH, 8, 8, 'F');
+      ft('bold', 12); tc(S4);
+      ['Metric', 'Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'].forEach((h, i) => pdf.text(h, tX + i * cW + 20, tY + 26));
+      // Rows
+      const tRows = [
+        { l: 'Patients', v: ['500', '5,000', '25,000', '75,000', '200,000'] },
+        { l: 'Providers', v: ['25', '100', '400', '1,200', '3,000'] },
+        { l: 'Revenue', v: ['$120K', '$1.8M', '$12M', '$45M', '$120M'], hi: true },
+        { l: 'Gross Margin', v: ['65%', '70%', '75%', '78%', '80%'] },
+        { l: 'Net Income', v: ['($360K)', '($600K)', '$3M', '$18M', '$60M'], cm: [R4, R4, E4, E4, E4] },
+      ];
+      tRows.forEach((r, ri) => {
+        const rY = tY + rH + ri * rH;
+        dc(S8); pdf.line(tX, rY + rH, tX + tW2, rY + rH);
+        ft(r.hi ? 'bold' : 'normal', 12); tc(r.hi ? B4 : W); pdf.text(r.l, tX + 20, rY + 26);
+        r.v.forEach((v, vi) => { tc(r.cm ? r.cm[vi] : (r.hi ? B4 : S3)); pdf.text(v, tX + (vi + 1) * cW + 20, rY + 26); });
+      });
+      // Summary
+      const sY = tY + rH + tRows.length * rH + 30;
+      [{ l: 'BREAK-EVEN', v: 'Month 18' }, { l: 'YEAR 5 ARR', v: '$120M' }, { l: 'EST. VALUATION (10X)', v: '$1.2B' }].forEach((s, i) => {
+        const sx = 64 + i * 390;
+        glass(sx, sY, 370, 70);
+        ft('normal', 10); tc(S5); pdf.text(s.l, sx + 185, sY + 25, { align: 'center' });
+        ft('bold', 18); tc(W); pdf.text(s.v, sx + 185, sY + 52, { align: 'center' });
+      });
+
+      // ────────── SLIDE 8: THE TEAM ──────────
+      newSlide(); bg();
+      label('The Team', P5);
+      title('Human Leadership, AI-Amplified Execution', 100);
+      // Founder
+      fc(S8); pdf.roundedRect(64, 190, 90, 90, 16, 16, 'F');
+      ft('bold', 28); tc(S4); pdf.text('JB', 86, 245);
+      ft('bold', 22); tc(W); pdf.text('Jonah Baka', 180, 220);
+      ft('bold', 10); tc(B4); pdf.text('FOUNDER & CEO', 180, 240);
+      ft('normal', 12); tc(S4);
+      pdf.text(wrap('Full-stack engineer and product leader with deep expertise in Healthcare Architecture. Built the entire DoctaRx platform from the ground up, integrating proprietary AI triage and OpenClaw automation layers.', 400), 180, 268);
+      // Key Hires
+      glass(640, 190, 580, 230);
+      ft('bold', 16); tc(W); pdf.text('Key Hires in Progress', 670, 225);
+      ['Chief Medical Officer (Clinical Oversight)', 'VP Engineering (Platform Scaling)', 'Compliance Officer (HIPAA/SOC 2)', 'Head of Growth'].forEach((h, i) => {
+        const hy = 265 + i * 35;
+        fc(B5); pdf.circle(685, hy - 4, 4, 'F');
+        ft('normal', 13); tc(S3); pdf.text(h, 700, hy);
+      });
+
+      // ────────── SLIDE 9: THE ASK ──────────
+      newSlide(); bg();
+      ft('bold', 11); tc(B5); pdf.text('THE ASK', 640, 100, { align: 'center' });
+      ft('bold', 64); tc(W); pdf.text('$2,500,000', 640, 200, { align: 'center' });
+      ft('normal', 22); tc(S4); pdf.text('Seed Round | $10M Pre-Money Valuation', 640, 250, { align: 'center' });
+      const funds = [
+        { p: '40%', l: 'ENG & PRODUCT', d: 'Core engineering & OpenClaw AI dev' },
+        { p: '25%', l: 'GROWTH', d: 'Provider & patient acquisition' },
+        { p: '15%', l: 'COMPLIANCE', d: 'SOC 2, state licensing & legal' },
+        { p: '20%', l: 'OPS & RESERVE', d: '18-month runway buffer' },
+      ];
+      funds.forEach((f, i) => {
+        const fx = 200 + i * 230;
+        box(fx, 300, 210, 140);
+        ft('bold', 22); tc(W); pdf.text(f.p, fx + 20, 340);
+        ft('bold', 9); tc(S5); pdf.text(f.l, fx + 20, 365);
+        ft('normal', 11); tc(S4); pdf.text(wrap(f.d, 170), fx + 20, 390);
+      });
+      glass(420, 480, 180, 60);
+      ft('normal', 9); tc(S5); pdf.text('TARGET RUNWAY', 440, 505);
+      ft('bold', 14); tc(W); pdf.text('18 Months', 440, 525);
+      glass(680, 480, 180, 60);
+      ft('normal', 9); tc(S5); pdf.text('TARGET ARR (M18)', 700, 505);
+      ft('bold', 14); tc(W); pdf.text('$1.8 Million', 700, 525);
+
+      // ────────── SLIDE 10: CONTACT ──────────
+      newSlide(); bg();
+      fc(B6); pdf.roundedRect(600, 140, 80, 80, 16, 16, 'F');
+      fc(W); pdf.circle(640, 180, 22, 'F');
+      ft('bold', 42); tc(W); pdf.text("Let's Build the Future", 640, 290, { align: 'center' });
+      ft('normal', 18); tc(S4); pdf.text('Healthcare, Reimagined.', 640, 325, { align: 'center' });
+      ft('bold', 22); tc(W); pdf.text('jonah.baka@doctarx.com', 640, 400, { align: 'center' });
+      ft('normal', 14); tc(S4); pdf.text('linkedin.com/in/jonah-baka', 640, 435, { align: 'center' });
+      ft('normal', 14); tc(S5); pdf.text('doctarx.com', 640, 465, { align: 'center' });
+      ft('normal', 9); tc(S6); pdf.text('CONFIDENTIAL \u00A9 2026 DOCTARX INC.', 640, 600, { align: 'center' });
 
       pdf.save(`DoctaRx-Pitch-Deck-${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (err) {
       console.error('PDF generation failed:', err);
-      window.print();
     } finally {
       setIsGenerating(false);
     }
