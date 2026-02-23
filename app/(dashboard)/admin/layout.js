@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, Users, UserCheck, BarChart3, DollarSign, 
   Shield, FileText, Bell, Settings, Database, MessageSquare,
@@ -73,22 +73,28 @@ const navigationGroups = [
   }
 ];
 
+// Public routes that don't require authentication
+const PUBLIC_ADMIN_ROUTES = ['/admin/pitch-deck'];
+
 export default function AdminLayout({ children }) {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [inboxUnread, setInboxUnread] = useState(0);
+  const isPublicRoute = PUBLIC_ADMIN_ROUTES.includes(pathname);
   const normalizedRole = String(user?.role || '').trim().toLowerCase();
   const isAdminRole = ['admin', 'super_admin', 'administrator', 'superadmin', 'super-admin'].includes(normalizedRole);
 
   useEffect(() => {
+    if (isPublicRoute) return;
     if (!loading && !isAuthenticated) {
       router.push('/secure/admin');
     }
-    
+
     if (!loading && isAuthenticated && !isAdminRole) {
       router.push('/secure/admin');
     }
-  }, [loading, isAuthenticated, isAdminRole, router]);
+  }, [loading, isAuthenticated, isAdminRole, router, isPublicRoute]);
 
   // Fetch inbox unread count
   useEffect(() => {
@@ -122,6 +128,11 @@ export default function AdminLayout({ children }) {
     }));
   }, [inboxUnread]);
 
+  // Public routes render children directly — no auth, no dashboard shell
+  if (isPublicRoute) {
+    return <>{children}</>;
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -135,7 +146,7 @@ export default function AdminLayout({ children }) {
   }
 
   return (
-    <DashboardLayout 
+    <DashboardLayout
       navigation={navigation}
       navigationGroups={dynamicGroups}
       portalName="Admin"
