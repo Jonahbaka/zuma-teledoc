@@ -598,7 +598,7 @@ export default function OpenClawOpsPortal() {
                         </span>
                       </div>
                       <div className="bg-black/35 border border-white/10 rounded-2xl overflow-hidden">
-                        <div className="max-h-[360px] overflow-y-auto font-mono text-xs p-4 space-y-2">
+                        <div className="max-h-[200px] overflow-y-auto font-mono text-xs p-3 space-y-1.5">
                           {terminalLogs.slice(0, 60).map((l) => (
                             <div key={l.id} className="flex gap-3 items-start">
                               <span className="text-slate-600 shrink-0">[{new Date(l.createdAt || Date.now()).toLocaleTimeString()}]</span>

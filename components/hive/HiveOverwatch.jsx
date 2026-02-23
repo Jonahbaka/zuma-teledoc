@@ -159,15 +159,15 @@ export default function HiveOverwatch() {
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {agents.map((a) => (
-            <div key={a.id} className="flex items-center gap-3 bg-gray-950 border border-gray-800 rounded-lg p-3">
-              <div className={cn('w-8 h-8 rounded-lg bg-gradient-to-br flex items-center justify-center', AGENT_COLORS[a.id] || 'from-gray-600 to-gray-500')}>
-                <Brain className="w-4 h-4 text-white" />
+            <div key={a.id} className="flex items-center gap-3 bg-gray-950 border border-gray-800 rounded-xl p-4">
+              <div className={cn('w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-lg', AGENT_COLORS[a.id] || 'from-gray-600 to-gray-500')}>
+                <Brain className="w-5 h-5 text-white" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-white">{a.name}</p>
-                <p className="text-[10px] text-gray-500">{a.type}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-base font-bold text-white truncate">{a.name}</p>
+                <p className="text-xs text-gray-400">{a.type}</p>
               </div>
-              <div className={cn('ml-auto w-2 h-2 rounded-full', paused ? 'bg-yellow-500' : 'bg-green-500')} />
+              <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', paused ? 'bg-yellow-500' : 'bg-green-500 animate-pulse')} />
             </div>
           ))}
         </div>
