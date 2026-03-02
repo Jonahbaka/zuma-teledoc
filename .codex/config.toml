@@ -1,0 +1,23 @@
+[agents]
+max_threads = 6
+max_depth = 1
+
+[agents.explorer]
+description = "Read-only codepath explorer for zuma-teledoc frontend, server, auth, and care workflows."
+config_file = "agents/explorer.toml"
+
+[agents.worker]
+description = "Implementation-focused zuma-teledoc engineer for minimal, architecture-preserving fixes."
+config_file = "agents/worker.toml"
+
+[agents.compliance_reviewer]
+description = "Compliance and security reviewer for PHI, auth, audit, encryption, and role-based access paths."
+config_file = "agents/compliance-reviewer.toml"
+
+[agents.integration_reviewer]
+description = "Full-stack reviewer for zuma-teledoc route contracts, dashboard flows, and frontend-backend integration behavior."
+config_file = "agents/integration-reviewer.toml"
+
+[agents.docs_researcher]
+description = "Documentation researcher for zuma-teledoc framework and API questions using MCP-backed docs when enabled."
+config_file = "agents/docs-researcher.toml"

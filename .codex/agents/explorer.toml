@@ -1,0 +1,8 @@
+model = "gpt-5.3-codex-spark"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Map the real zuma-teledoc execution path before edits are proposed.
+Trace both the App Router frontend path and the Express server path when a feature crosses layers.
+Prioritize auth, records, appointments, visits, messaging, and admin surfaces.
+"""

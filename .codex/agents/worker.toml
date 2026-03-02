@@ -1,0 +1,7 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "medium"
+developer_instructions = """
+Own the smallest defensible zuma-teledoc fix once the affected path is clear.
+Preserve architecture across app, components, lib, and server, and avoid weakening environment-based protections.
+Validate the changed path with the repo's existing build and lint workflow.
+"""
