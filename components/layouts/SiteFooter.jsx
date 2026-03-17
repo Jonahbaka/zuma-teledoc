@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ShieldCheck, Lock, KeyRound, ArrowRight, Mail } from 'lucide-react';
+import { ShieldCheck, Lock, KeyRound, ArrowRight, Mail, Pill } from 'lucide-react';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 const FooterLink = ({ href, children }) => (
@@ -41,30 +41,30 @@ export default function SiteFooter() {
             </Link>
 
             <p className="text-sm leading-relaxed text-slate-400 max-w-sm">
-              Modern telehealth platform providing HIPAA-compliant virtual healthcare services. Secured by NVIDIA NemoClaw OpenShell sandboxed AI infrastructure.
+              Nigeria&apos;s modern telehealth platform. Consult doctors online, get prescriptions, and receive medications from pharmacies near you.
             </p>
 
             {/* Contact Email */}
-            <a 
-              href="mailto:info@doctarx.com" 
+            <a
+              href="mailto:hello@doctarx.ng"
               className="inline-flex items-center gap-2 text-sm text-purple-300 hover:text-purple-200 transition-colors"
             >
               <Mail className="w-4 h-4" />
-              info@doctarx.com
+              hello@doctarx.ng
             </a>
 
             <div className="flex flex-wrap gap-3 pt-1">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-white/5 border border-white/10 text-purple-100">
                 <ShieldCheck className="w-4 h-4 text-purple-300" />
-                HIPAA
+                Secure
               </div>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-white/5 border border-white/10 text-emerald-100">
                 <Lock className="w-4 h-4 text-emerald-300" />
-                SSL
+                Encrypted
               </div>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-white/5 border border-white/10 text-indigo-100">
-                <KeyRound className="w-4 h-4 text-indigo-300" />
-                End-to-End Encrypted
+                <Pill className="w-4 h-4 text-indigo-300" />
+                Pharmacy Network
               </div>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-500/20 text-green-100">
                 <ShieldCheck className="w-4 h-4 text-green-400" />
@@ -76,36 +76,38 @@ export default function SiteFooter() {
           <div className="hidden lg:block lg:col-span-1" />
 
           {/* Links */}
-          <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-3 gap-8">
+          <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-8">
             <div>
               <h3 className="text-white text-sm font-semibold uppercase tracking-wider mb-4">
-                Platform
+                Patients
               </h3>
               <ul className="space-y-3">
-                <li><FooterLink href="/#features">Features</FooterLink></li>
+                <li><FooterLink href="/patient/register">Book Consultation</FooterLink></li>
+                <li><FooterLink href="/#how-it-works">How it Works</FooterLink></li>
                 <li><FooterLink href="/#pricing">Pricing</FooterLink></li>
-                <li><FooterLink href="/register?role=provider">For Providers</FooterLink></li>
-                <li>
-                  <Link
-                    href="/register"
-                    className="group inline-flex items-center text-sm font-semibold text-purple-200 hover:text-purple-100 transition-colors"
-                  >
-                    Get Started
-                    <ArrowRight className="ml-2 w-4 h-4 transition-transform group-hover:translate-x-1" />
-                  </Link>
-                </li>
+                <li><FooterLink href="/patient/login">Patient Login</FooterLink></li>
               </ul>
             </div>
 
             <div>
               <h3 className="text-white text-sm font-semibold uppercase tracking-wider mb-4">
-                Resources
+                Providers
               </h3>
               <ul className="space-y-3">
-                <li><FooterLink href="/help">Help Center</FooterLink></li>
-                <li><FooterLink href="/blog">Blog</FooterLink></li>
-                <li><FooterLink href="/faq">FAQs</FooterLink></li>
-                <li><FooterLink href="/contact">Contact Us</FooterLink></li>
+                <li><FooterLink href="/provider/register">Join as Provider</FooterLink></li>
+                <li><FooterLink href="/provider/login">Provider Login</FooterLink></li>
+                <li><FooterLink href="/#features">Features</FooterLink></li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-white text-sm font-semibold uppercase tracking-wider mb-4">
+                Pharmacies
+              </h3>
+              <ul className="space-y-3">
+                <li><FooterLink href="/pharmacy/register">Register Pharmacy</FooterLink></li>
+                <li><FooterLink href="/pharmacy/login">Pharmacy Login</FooterLink></li>
+                <li><FooterLink href="/#pharmacy">Learn More</FooterLink></li>
               </ul>
             </div>
 
@@ -116,8 +118,8 @@ export default function SiteFooter() {
               <ul className="space-y-3">
                 <li><FooterLink href="/privacy">Privacy Policy</FooterLink></li>
                 <li><FooterLink href="/terms">Terms of Service</FooterLink></li>
-                <li><FooterLink href="/hipaa">HIPAA Notice</FooterLink></li>
-                <li><FooterLink href="/accessibility">Accessibility</FooterLink></li>
+                <li><FooterLink href="/contact">Contact Us</FooterLink></li>
+                <li><FooterLink href="/faq">FAQs</FooterLink></li>
               </ul>
             </div>
           </div>
@@ -126,7 +128,7 @@ export default function SiteFooter() {
         {/* Bottom bar */}
         <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-xs text-slate-400 order-2 md:order-1">
-            © {year} DoctaRx. All rights reserved.
+            &copy; {year} DoctaRx Nigeria. All rights reserved.
           </p>
 
           <div className="order-1 md:order-2 flex items-center gap-3 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
@@ -143,5 +145,3 @@ export default function SiteFooter() {
     </footer>
   );
 }
-
-

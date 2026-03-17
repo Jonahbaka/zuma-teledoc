@@ -10,11 +10,11 @@ import { THEME_STORAGE_KEY } from '@/lib/theme';
 
 export const metadata = {
   title: {
-    default: 'DoctaRx | HIPAA-Compliant Telehealth & AI-Powered E-Prescribing Platform',
-    template: '%s | DoctaRx'
+    default: 'DoctaRx Nigeria | Online Doctor Consultations, Prescriptions & Pharmacy Delivery',
+    template: '%s | DoctaRx Nigeria'
   },
-  description: 'DoctaRx is a HIPAA-compliant telehealth platform with AI-powered triage, video consultations, encrypted messaging, SOAP notes, and subscription billing. Connect patients with providers securely.',
-  keywords: 'telehealth, telemedicine, e-prescribing, HIPAA compliant, AI triage, video consultation, online doctor, digital health, healthcare platform, virtual healthcare, medical records, telehealth platform, AI medical triage, telehealth video consultation, virtual healthcare platform, telemedicine software, HIPAA compliant video visits',
+  description: 'DoctaRx is Nigeria\'s telehealth platform. See a doctor online, get prescriptions, and receive medications from pharmacies near you. Pay with cash, bank transfer, or card.',
+  keywords: 'telehealth Nigeria, online doctor Nigeria, telemedicine, e-prescribing, pharmacy delivery Lagos, video consultation, doctor app Nigeria, digital health Africa, healthcare platform Nigeria, virtual healthcare, prescription delivery, pharmacy network Nigeria',
   authors: [{ name: 'DoctaRx' }],
   creator: 'DoctaRx',
   publisher: 'DoctaRx',

@@ -428,7 +428,7 @@ function ProviderRegisterContent() {
           {/* Security Badge */}
           <div className="flex items-center justify-center gap-2 mt-6 text-sm text-slate-400">
             <Shield className="w-4 h-4" />
-            <span>HIPAA Compliant • Healthcare-Grade Security • NemoClaw OpenShell Protected</span>
+            <span>Secure Platform • Healthcare-Grade Encryption • NemoClaw Protected</span>
           </div>
         </div>
       </main>
