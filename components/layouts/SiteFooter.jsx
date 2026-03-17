@@ -41,7 +41,7 @@ export default function SiteFooter() {
             </Link>
 
             <p className="text-sm leading-relaxed text-slate-400 max-w-sm">
-              Modern telehealth platform providing HIPAA-compliant virtual healthcare services with cutting-edge technology.
+              Modern telehealth platform providing HIPAA-compliant virtual healthcare services. Secured by NVIDIA NemoClaw OpenShell sandboxed AI infrastructure.
             </p>
 
             {/* Contact Email */}
@@ -65,6 +65,10 @@ export default function SiteFooter() {
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-white/5 border border-white/10 text-indigo-100">
                 <KeyRound className="w-4 h-4 text-indigo-300" />
                 End-to-End Encrypted
+              </div>
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-500/20 text-green-100">
+                <ShieldCheck className="w-4 h-4 text-green-400" />
+                NemoClaw Sandbox
               </div>
             </div>
           </div>

@@ -68,6 +68,9 @@ export default function PrivacyPolicyPage() {
               <p>
                 We implement industry-standard security measures including encryption, secure authentication, and regular security audits. Your data is protected with 256-bit SSL encryption and stored in HIPAA-compliant data centers.
               </p>
+              <p className="mt-4">
+                All AI-powered features on DoctaRx operate within the <strong>NVIDIA NemoClaw OpenShell</strong> secure sandbox. This means AI agents are strictly isolated with read-only access to clinical data, no unauthorized network egress, and automatic PII scrubbing on all outbound communications. A Privacy Router strips identifiable information before any data reaches external AI providers, and every agent action is logged to a compliance audit trail.
+              </p>
             </section>
 
             <section>

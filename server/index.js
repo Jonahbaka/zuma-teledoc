@@ -52,7 +52,9 @@ try {
 
 // Minimal health check - available immediately
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady });
+  let nemoClawStatus = 'not_loaded';
+  try { const nc = require('./services/nemoclaw'); nemoClawStatus = nc.initialized ? 'online' : 'initializing'; } catch {}
+  res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady, nemoClaw: nemoClawStatus });
 });
 
 function setNoCacheHeaders(res) {
@@ -677,6 +679,23 @@ async function initializeApp() {
     console.error('🏛️ Agent Social: Not available -', err.message);
   }
 
+  // ═══ NEMOCLAW — OpenShell Secure Sandbox for Medical Agents ═══
+  try {
+    const nemoClawService = require('./services/nemoclaw');
+    const agentOrchestrator = (() => { try { return require('./services/agent-orchestrator'); } catch { return null; } })();
+    nemoClawService.initialize({
+      orchestrator: agentOrchestrator,
+      db,
+      app
+    }).then(() => {
+      console.log('🛡️ NemoClaw: ONLINE — OpenShell secure sandbox active');
+    }).catch(err => {
+      console.error('🛡️ NemoClaw: Init warning -', err.message);
+    });
+  } catch (err) {
+    console.error('🛡️ NemoClaw: Not available -', err.message);
+  }
+
   // ═══ CRM SERVICE — AI Agent Customer Relationship Management ═══
   try {
     const crmService = require('./services/crmService');
@@ -718,6 +737,7 @@ async function initializeApp() {
   const gracefulShutdown = async (signal) => {
     console.log(`${signal} received. Shutting down...`);
     try {
+      try { const nc = require('./services/nemoclaw'); await nc.shutdown(); } catch {}
       if (db) await db.close();
       process.exit(0);
     } catch (error) {

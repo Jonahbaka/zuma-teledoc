@@ -68,15 +68,33 @@ export default function HIPAANoticePage() {
             <section>
               <h2 className="text-2xl font-semibold text-purple-800 mb-4">Security Measures</h2>
               <p>
-                We use industry-standard security measures to protect your PHI, including:
+                We use industry-standard and next-generation security measures to protect your PHI, including:
               </p>
               <ul className="list-disc pl-6 space-y-2">
                 <li>256-bit SSL encryption for all data transmission</li>
-                <li>Encrypted storage of all health records</li>
-                <li>Secure authentication and access controls</li>
+                <li>Encrypted storage of all health records (AES-256-GCM)</li>
+                <li>Secure authentication and access controls with multi-factor authentication</li>
                 <li>Regular security audits and monitoring</li>
                 <li>HIPAA-compliant data centers</li>
               </ul>
+            </section>
+
+            <section>
+              <h2 className="text-2xl font-semibold text-purple-800 mb-4">AI Agent Security — NVIDIA NemoClaw</h2>
+              <p>
+                DoctaRx uses AI-powered clinical decision support agents to assist providers and patients. To ensure the highest standard of data safety, all AI agents operate within the <strong>NVIDIA NemoClaw OpenShell</strong> secure sandbox environment:
+              </p>
+              <ul className="list-disc pl-6 space-y-2">
+                <li><strong>Sandboxed Execution:</strong> Every AI agent runs in a strictly isolated OpenShell container. Agents cannot access data outside their permitted scope.</li>
+                <li><strong>Read-Only Patient Data:</strong> AI agents have read-only access to clinical data — they cannot modify, copy, or exfiltrate patient records.</li>
+                <li><strong>No Unauthorized Egress:</strong> Network egress is denied by default. Only approved, allowlisted services (such as our encrypted database) can be reached from within the sandbox.</li>
+                <li><strong>Automatic PII Scrubbing:</strong> A Privacy Router middleware automatically detects and redacts personally identifiable information (SSN, phone, email, MRN, date of birth, addresses) before any data reaches external AI providers.</li>
+                <li><strong>Full Audit Trail:</strong> Every agent action, data access, and intent declaration is logged to a tamper-evident audit trail retained for the HIPAA-required minimum of 7 years.</li>
+                <li><strong>Compliance-First Governance:</strong> Agent actions pass through a governance pipeline — The Guardian (compliance agent) can veto any action that poses a risk to patient privacy.</li>
+              </ul>
+              <p className="mt-4">
+                This architecture ensures that your health data is never exposed to uncontrolled AI processing. NemoClaw provides defense-in-depth security that exceeds industry standards for healthcare AI deployments.
+              </p>
             </section>
 
             <section>

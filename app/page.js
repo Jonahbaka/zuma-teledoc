@@ -266,6 +266,7 @@ export default function HomePage() {
 
             <div className="flex items-center gap-6 pt-2 text-sm text-muted-foreground font-medium">
               <div className="flex items-center gap-2"><ShieldCheck size={18} className="text-emerald-500" /> HIPAA Compliant</div>
+              <div className="flex items-center gap-2"><Lock size={18} className="text-green-500" /> NemoClaw Secured</div>
               <div className="flex items-center gap-2"><Star size={18} className="text-yellow-500 fill-yellow-500" /> 4.9/5 Rating</div>
             </div>
           </div>
@@ -364,6 +365,25 @@ export default function HomePage() {
             <Link href="/patient/register" className="inline-flex items-center gap-2 text-blue-500 dark:text-blue-300 font-bold hover:opacity-90 transition-colors border-b border-blue-500/30 pb-0.5">
               Start your registration <ArrowRight size={16} />
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Security Trust Banner */}
+      <section className="py-16 bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border-y border-emerald-800/30">
+        <div className="max-w-5xl mx-auto px-6 text-center">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold mb-6">
+            <ShieldCheck size={14} /> Enterprise-Grade Security
+          </div>
+          <h3 className="text-2xl md:text-3xl font-bold text-white mb-4">Your data is protected by NVIDIA NemoClaw</h3>
+          <p className="text-slate-400 max-w-2xl mx-auto mb-8">
+            Every AI agent on DoctaRx runs inside an isolated NemoClaw OpenShell sandbox. Patient data stays read-only, network egress is blocked by default, and a Privacy Router scrubs PII before anything reaches external services.
+          </p>
+          <div className="flex flex-wrap justify-center gap-6 text-sm text-slate-300">
+            <div className="flex items-center gap-2"><Lock size={16} className="text-emerald-400" /> Sandboxed AI Agents</div>
+            <div className="flex items-center gap-2"><ShieldCheck size={16} className="text-emerald-400" /> Read-Only Patient Data</div>
+            <div className="flex items-center gap-2"><Lock size={16} className="text-emerald-400" /> Zero Unauthorized Egress</div>
+            <div className="flex items-center gap-2"><ShieldCheck size={16} className="text-emerald-400" /> Automatic PII Scrubbing</div>
           </div>
         </div>
       </section>

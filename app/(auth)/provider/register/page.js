@@ -206,8 +206,8 @@ function ProviderRegisterContent() {
                 <div>
                   <p className="text-sm text-amber-200 font-medium">Credential Verification Required</p>
                   <p className="text-xs text-amber-300/70 mt-1">
-                    All provider accounts require verification of medical credentials before activation. 
-                    This typically takes 1-2 business days.
+                    All provider accounts require verification of medical credentials before activation.
+                    This typically takes 1-2 business days. Your data is secured within NVIDIA NemoClaw OpenShell sandboxes.
                   </p>
                 </div>
               </div>
@@ -428,7 +428,7 @@ function ProviderRegisterContent() {
           {/* Security Badge */}
           <div className="flex items-center justify-center gap-2 mt-6 text-sm text-slate-400">
             <Shield className="w-4 h-4" />
-            <span>HIPAA Compliant • Healthcare-Grade Security</span>
+            <span>HIPAA Compliant • Healthcare-Grade Security • NemoClaw OpenShell Protected</span>
           </div>
         </div>
       </main>

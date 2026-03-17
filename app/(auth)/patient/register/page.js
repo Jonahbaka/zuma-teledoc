@@ -294,7 +294,7 @@ export default function PatientRegisterPage() {
 
                   <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs text-muted-foreground flex items-start gap-2">
                     <Shield className="w-4 h-4 mt-0.5" />
-                    <span>HIPAA-compliant onboarding. Your account data is encrypted in transit and at rest.</span>
+                    <span>HIPAA-compliant onboarding. Your account data is encrypted in transit and at rest. All AI agents operate within NVIDIA NemoClaw OpenShell secure sandboxes.</span>
                   </div>
 
                   <div className="flex gap-3">
@@ -340,7 +340,7 @@ export default function PatientRegisterPage() {
           {/* Security Badge */}
           <div className="flex items-center justify-center gap-2 mt-6 text-sm text-muted-foreground">
             <Shield className="w-4 h-4" />
-            <span>HIPAA Compliant • 256-bit Encryption</span>
+            <span>HIPAA Compliant • 256-bit Encryption • NemoClaw Sandboxed AI</span>
           </div>
         </div>
       </main>
