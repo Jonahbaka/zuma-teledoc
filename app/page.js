@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { cn } from '@/lib/utils';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
+import CountrySelector from '@/components/CountrySelector';
 
 // Culturally relevant imagery — Black/African healthcare professionals and patients
 const HERO_IMAGE = "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=2000";
@@ -87,6 +88,9 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans selection:bg-blue-500/30">
+      {/* Country Selector Modal */}
+      <CountrySelector />
+
       {/* Emergency Banner */}
       {emergencyBannerVisible && (
         <div className="fixed top-0 left-0 right-0 z-[60] bg-red-900/80 border-b border-red-500/20 backdrop-blur-md text-white">

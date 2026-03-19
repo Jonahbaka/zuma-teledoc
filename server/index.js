@@ -579,6 +579,23 @@ async function initializeApp() {
   loadRoute('/api/social', './routes/social');
   loadRoute('/pitch-deck', './routes/pitch-deck');
   loadRoute('/api/openclaw', './routes/openclawApi');
+  // --- NIGERIA REGION ROUTES (separate layer, does NOT modify US routes) ---
+  loadRoute('/api/ng', '../ng/routes');
+  console.log('🇳🇬 Nigeria region routes loaded at /api/ng/*');
+
+  // Run Nigeria migrations (non-blocking)
+  try {
+    const { runNgMigrations } = require('../ng/migrations/migrate');
+    const pool = require('./db').getPool();
+    runNgMigrations(pool).then(result => {
+      console.log(`🇳🇬 Nigeria DB migrations: ${result.ran} new, ${result.total} total`);
+    }).catch(err => {
+      console.error('🇳🇬 Nigeria migrations warning:', err.message);
+    });
+  } catch (err) {
+    console.error('🇳🇬 Nigeria migrations skipped:', err.message);
+  }
+
   console.log('✅ API routes loading complete (+ Hive Gateway + OpenClaw REST API)');
   
   // Initialize Predictive Intelligence Engine (non-blocking)
