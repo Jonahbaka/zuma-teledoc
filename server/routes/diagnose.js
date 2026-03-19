@@ -38,31 +38,38 @@ router.get('/', (req, res) => {
     }
 
     // NG diagnostics
-    const ngRoutesFile = path.join(projectRoot, 'ng', 'routes', 'index.js');
-    const ngDbFile = path.join(projectRoot, 'server', 'db', 'index.js');
     diagnosis.ng = {
-      routesFileExists: fs.existsSync(ngRoutesFile),
       ngDirExists: fs.existsSync(path.join(projectRoot, 'ng')),
-      ngConfigExists: fs.existsSync(path.join(projectRoot, 'ng', 'config', 'index.js')),
-      dbHasGetPool: false,
-      routeLoadError: null,
+      routesFileExists: fs.existsSync(path.join(projectRoot, 'ng', 'routes', 'index.js')),
+      configExists: fs.existsSync(path.join(projectRoot, 'ng', 'config', 'index.js')),
     };
-    // Check if db exports getPool
+
+    // List ng/ directory
     try {
-      const dbMod = require('../db');
-      diagnosis.ng.dbHasGetPool = typeof dbMod.getPool === 'function';
+      diagnosis.ng.ngFiles = execSync('find ng -type f -name "*.js" | head -20', { cwd: projectRoot, encoding: 'utf-8' });
     } catch (e) {
-      diagnosis.ng.dbHasGetPool = 'error: ' + e.message;
+      diagnosis.ng.ngFiles = 'error: ' + e.message;
     }
-    // Try loading NG routes
+
+    // Check db exports
+    try {
+      const dbExports = Object.keys(require('../db'));
+      diagnosis.ng.dbExports = dbExports;
+    } catch (e) {
+      diagnosis.ng.dbError = e.message;
+    }
+
+    // Try loading NG routes and capture the REAL error
+    try {
+      delete require.cache[require.resolve('../../ng/routes')];
+    } catch (e) { /* not cached */ }
     try {
       require('../../ng/routes');
-      diagnosis.ng.routeLoadError = null;
       diagnosis.ng.routesLoaded = true;
     } catch (e) {
-      diagnosis.ng.routeLoadError = e.message;
-      diagnosis.ng.routeLoadStack = e.stack?.split('\n').slice(0, 5).join('\n');
       diagnosis.ng.routesLoaded = false;
+      diagnosis.ng.routeError = e.message;
+      diagnosis.ng.routeStack = e.stack?.split('\n').slice(0, 8).join('\n');
     }
 
     res.json({ success: true, diagnosis });

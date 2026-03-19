@@ -580,8 +580,14 @@ async function initializeApp() {
   loadRoute('/pitch-deck', './routes/pitch-deck');
   loadRoute('/api/openclaw', './routes/openclawApi');
   // --- NIGERIA REGION ROUTES (separate layer, does NOT modify US routes) ---
-  loadRoute('/api/ng', '../ng/routes');
-  console.log('🇳🇬 Nigeria region routes loaded at /api/ng/*');
+  try {
+    const ngRouter = require('../ng/routes');
+    app.use('/api/ng', ngRouter);
+    console.log('🇳🇬 Nigeria region routes loaded at /api/ng/*');
+  } catch (err) {
+    console.error('🇳🇬 Nigeria routes FAILED to load:', err.message);
+    console.error('🇳🇬 Stack:', err.stack?.split('\n').slice(0, 5).join('\n'));
+  }
 
   // Run Nigeria migrations (non-blocking)
   try {
