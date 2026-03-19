@@ -17,10 +17,21 @@ export default function NigeriaLogin() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.post('/api/auth/login', { email, password });
-      if (res.data.user) {
+      // Clear stale tokens
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+      }
+
+      const res = await api.post('/auth/login', { email, password });
+
+      if (res.data.success) {
+        // Store tokens
+        if (res.data.accessToken) localStorage.setItem('accessToken', res.data.accessToken);
+        if (res.data.refreshToken) localStorage.setItem('refreshToken', res.data.refreshToken);
+
         // Redirect based on role
-        const role = res.data.user.role;
+        const role = res.data.user?.role;
         if (role === 'admin' || role === 'super_admin') {
           router.push('/ng/admin');
         } else {
@@ -28,61 +39,115 @@ export default function NigeriaLogin() {
         }
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed');
+      setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#f8fafc' }}>
       <div className="w-full max-w-md">
+        {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/ng" className="inline-flex items-center space-x-2">
-            <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold">Rx</span>
+            <div className="w-12 h-12 bg-green-600 rounded-2xl flex items-center justify-center shadow-lg shadow-green-600/20">
+              <span className="text-white font-bold text-lg">Rx</span>
             </div>
-            <span className="text-2xl font-bold text-gray-900">ZumaRx</span>
+            <span className="text-2xl font-bold" style={{ color: '#111827' }}>ZumaRx</span>
           </Link>
-          <p className="text-gray-500 mt-2">Sign in to your account</p>
+          <p className="mt-2 text-sm" style={{ color: '#6b7280' }}>Sign in to your account</p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm p-6">
+        {/* Card */}
+        <div className="rounded-2xl shadow-xl p-6 sm:p-8" style={{ background: '#ffffff' }}>
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+            <div className="mb-4 px-4 py-3 rounded-xl text-sm" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c' }}>
               {error}
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
-                className="w-full px-3 py-2 border rounded-lg focus:ring-green-500 focus:border-green-500" />
+              <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                placeholder="you@example.com"
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  fontSize: '16px',
+                  borderRadius: '12px',
+                  border: '1.5px solid #d1d5db',
+                  outline: 'none',
+                  color: '#111827',
+                  background: '#f9fafb',
+                  WebkitAppearance: 'none',
+                }}
+                onFocus={e => { e.target.style.borderColor = '#16a34a'; e.target.style.boxShadow = '0 0 0 3px rgba(22,163,74,0.1)'; }}
+                onBlur={e => { e.target.style.borderColor = '#d1d5db'; e.target.style.boxShadow = 'none'; }}
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
-                className="w-full px-3 py-2 border rounded-lg focus:ring-green-500 focus:border-green-500" />
+              <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                placeholder="Enter your password"
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  fontSize: '16px',
+                  borderRadius: '12px',
+                  border: '1.5px solid #d1d5db',
+                  outline: 'none',
+                  color: '#111827',
+                  background: '#f9fafb',
+                  WebkitAppearance: 'none',
+                }}
+                onFocus={e => { e.target.style.borderColor = '#16a34a'; e.target.style.boxShadow = '0 0 0 3px rgba(22,163,74,0.1)'; }}
+                onBlur={e => { e.target.style.borderColor = '#d1d5db'; e.target.style.boxShadow = 'none'; }}
+              />
             </div>
-            <button type="submit" disabled={loading}
-              className="w-full py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50">
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '14px',
+                fontSize: '16px',
+                fontWeight: '600',
+                borderRadius: '12px',
+                border: 'none',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                color: '#ffffff',
+                background: loading ? '#86efac' : '#16a34a',
+                transition: 'background 0.2s',
+              }}
+            >
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
 
-          <div className="mt-4 text-center text-sm">
-            <Link href="/ng/auth/register" className="text-green-600 hover:underline">
+          <div className="mt-5 text-center text-sm" style={{ color: '#6b7280' }}>
+            <Link href="/ng/auth/register" style={{ color: '#16a34a', fontWeight: '500' }}>
               Create an account
             </Link>
-            <span className="mx-2 text-gray-300">|</span>
-            <Link href="/(auth)/forgot-password" className="text-gray-500 hover:underline">
+            <span className="mx-2">|</span>
+            <Link href="/forgot-password" style={{ color: '#6b7280' }}>
               Forgot password?
             </Link>
           </div>
 
-          <div className="mt-6 pt-4 border-t text-center">
-            <Link href="/ng/pharmacy/onboarding" className="text-sm text-green-600 font-medium hover:underline">
+          <div className="mt-6 pt-4 text-center" style={{ borderTop: '1px solid #e5e7eb' }}>
+            <Link href="/ng/pharmacy/onboarding" className="text-sm font-medium" style={{ color: '#16a34a' }}>
               Register as a Pharmacy
             </Link>
           </div>

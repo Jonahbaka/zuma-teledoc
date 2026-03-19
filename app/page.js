@@ -16,12 +16,12 @@ import { cn } from '@/lib/utils';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import CountrySelector from '@/components/CountrySelector';
 
-// Culturally relevant imagery — Black/African healthcare professionals and patients
-const HERO_IMAGE = "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=2000";
-const PATIENT_MOMENT_IMAGE = "https://images.unsplash.com/photo-1590650153855-d9e808231d41?auto=format&fit=crop&q=80&w=1200";
-const DOCTOR_IMAGE = "https://images.unsplash.com/photo-1582750433449-648ed127bb54?auto=format&fit=crop&q=80&w=1200";
-const PHARMACY_IMAGE = "https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&q=80&w=1200";
-const FAMILY_IMAGE = "https://images.unsplash.com/photo-1609220136736-443140cffec6?auto=format&fit=crop&q=80&w=1200";
+// Abstract / illustration-style healthcare imagery (no stock photos of people)
+const HERO_IMAGE = "https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&q=80&w=2000"; // medical supplies flat-lay
+const PATIENT_MOMENT_IMAGE = "https://images.unsplash.com/photo-1584982751601-97dcc096659c?auto=format&fit=crop&q=80&w=1200"; // stethoscope on blue
+const DOCTOR_IMAGE = "https://images.unsplash.com/photo-1631815588090-d4bfec5b1ccb?auto=format&fit=crop&q=80&w=1200"; // abstract medical tech
+const PHARMACY_IMAGE = "https://images.unsplash.com/photo-1585435557343-3b092031a831?auto=format&fit=crop&q=80&w=1200"; // colorful pills/capsules
+const FAMILY_IMAGE = "https://images.unsplash.com/photo-1559757175-5700dde675bc?auto=format&fit=crop&q=80&w=1200"; // heart health abstract
 
 const NAV_LINKS = [
   { label: "Features", href: "#features" },
