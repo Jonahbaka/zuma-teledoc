@@ -154,9 +154,15 @@ const close = async () => {
   console.log('Database pool closed');
 };
 
+/**
+ * Return the raw pool (used by NG region services)
+ */
+const getPool = () => pool;
+
 module.exports = {
   query,
   getClient,
+  getPool,
   transaction,
   healthCheck,
   close,
