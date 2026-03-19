@@ -37,6 +37,34 @@ router.get('/', (req, res) => {
       diagnosis.creatorRoutedInIndex = indexContent.includes("loadRoute('/api/creator'");
     }
 
+    // NG diagnostics
+    const ngRoutesFile = path.join(projectRoot, 'ng', 'routes', 'index.js');
+    const ngDbFile = path.join(projectRoot, 'server', 'db', 'index.js');
+    diagnosis.ng = {
+      routesFileExists: fs.existsSync(ngRoutesFile),
+      ngDirExists: fs.existsSync(path.join(projectRoot, 'ng')),
+      ngConfigExists: fs.existsSync(path.join(projectRoot, 'ng', 'config', 'index.js')),
+      dbHasGetPool: false,
+      routeLoadError: null,
+    };
+    // Check if db exports getPool
+    try {
+      const dbMod = require('../db');
+      diagnosis.ng.dbHasGetPool = typeof dbMod.getPool === 'function';
+    } catch (e) {
+      diagnosis.ng.dbHasGetPool = 'error: ' + e.message;
+    }
+    // Try loading NG routes
+    try {
+      require('../../ng/routes');
+      diagnosis.ng.routeLoadError = null;
+      diagnosis.ng.routesLoaded = true;
+    } catch (e) {
+      diagnosis.ng.routeLoadError = e.message;
+      diagnosis.ng.routeLoadStack = e.stack?.split('\n').slice(0, 5).join('\n');
+      diagnosis.ng.routesLoaded = false;
+    }
+
     res.json({ success: true, diagnosis });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
