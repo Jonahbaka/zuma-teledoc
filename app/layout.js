@@ -10,11 +10,11 @@ import { THEME_STORAGE_KEY } from '@/lib/theme';
 
 export const metadata = {
   title: {
-    default: 'DoctaRx Nigeria | Online Doctor Consultations, Prescriptions & Pharmacy Delivery',
-    template: '%s | DoctaRx Nigeria'
+    default: 'DoctaRx | Virtual Care, Prescriptions, and Pharmacy Coordination',
+    template: '%s | DoctaRx'
   },
-  description: 'DoctaRx is Nigeria\'s telehealth platform. See a doctor online, get prescriptions, and receive medications from pharmacies near you. Pay with cash, bank transfer, or card.',
-  keywords: 'telehealth Nigeria, online doctor Nigeria, telemedicine, e-prescribing, pharmacy delivery Lagos, video consultation, doctor app Nigeria, digital health Africa, healthcare platform Nigeria, virtual healthcare, prescription delivery, pharmacy network Nigeria',
+  description: 'DoctaRx is a modern healthcare platform for virtual care, secure messaging, e-prescribing, prescription routing, and pharmacy coordination across market-specific experiences.',
+  keywords: 'telehealth platform, virtual care, e-prescribing, secure messaging, pharmacy coordination, digital health, healthcare operations',
   authors: [{ name: 'DoctaRx' }],
   creator: 'DoctaRx',
   publisher: 'DoctaRx',
@@ -80,21 +80,8 @@ const jsonLdApp = {
   "name": "DoctaRx",
   "operatingSystem": "Web",
   "applicationCategory": "HealthApplication",
-  "description": "HIPAA-compliant telehealth platform with AI-powered triage, video consultations, encrypted messaging, SOAP notes, and subscription billing.",
+  "description": "Telehealth, messaging, prescription routing, and pharmacy coordination with market-specific experiences.",
   "url": "https://doctarx.com",
-  "offers": {
-    "@type": "AggregateOffer",
-    "priceCurrency": "USD",
-    "lowPrice": "0",
-    "highPrice": "49.99",
-    "offerCount": "3"
-  },
-  "aggregateRating": {
-    "@type": "AggregateRating",
-    "ratingValue": "4.9",
-    "bestRating": "5",
-    "ratingCount": "24"
-  },
   "provider": {
     "@type": "Organization",
     "name": "DoctaRx",
@@ -108,14 +95,14 @@ const jsonLdOrg = {
   "name": "DoctaRx",
   "url": "https://doctarx.com",
   "logo": "https://doctarx.com/icon.svg",
-  "description": "DoctaRx is a HIPAA-compliant telehealth platform providing AI-powered triage, secure video consultations, encrypted messaging, and e-prescribing services.",
+  "description": "DoctaRx is a healthcare technology platform for virtual care, secure communication, prescription routing, and pharmacy coordination.",
   "email": "info@doctarx.com",
   "sameAs": [],
   "medicalSpecialty": "Primary Care",
   "availableService": {
     "@type": "MedicalTherapy",
-    "name": "Telehealth Consultation",
-    "description": "Secure HD video consultations with board-certified physicians"
+    "name": "Digital Healthcare Workflow",
+    "description": "Secure virtual care, messaging, prescription routing, and pharmacy coordination"
   }
 };
 
@@ -124,7 +111,7 @@ const jsonLdWebsite = {
   "@type": "WebSite",
   "name": "DoctaRx",
   "url": "https://doctarx.com",
-  "description": "HIPAA-compliant telehealth platform with AI-powered triage and e-prescribing",
+  "description": "Market-specific digital healthcare experiences for virtual care, prescription routing, and pharmacy coordination",
   "publisher": {
     "@type": "Organization",
     "name": "DoctaRx",

@@ -33,7 +33,7 @@ const REGIONS = {
     code: 'NG',
     name: 'Nigeria',
     currency: 'NGN',
-    currencySymbol: '₦',
+    currencySymbol: '\u20A6',
     locale: 'en-NG',
     timezone: 'Africa/Lagos',
     paymentProviders: ['paystack', 'flutterwave'],
@@ -43,14 +43,14 @@ const REGIONS = {
     drugDatabase: 'NAFDAC',
     prescriptionFormat: 'NG_RX',
     insuranceSystem: 'NHIS',
-    taxRate: 0.075, // 7.5% VAT
+    taxRate: 0.075,
     features: {
-      telemedicine: false, // Phase 2
+      telemedicine: false,
       ePrescribing: true,
-      insurance: false, // Phase 2 (NHIS)
+      insurance: false,
       pharmacy: true,
-      aiTriage: false, // Phase 2
-      videoConsult: false, // Phase 2
+      aiTriage: false,
+      videoConsult: false,
       deliveryTracking: true,
       ussd: true,
       bankTransfer: true,
@@ -64,9 +64,9 @@ const REGIONS = {
     ],
     deliveryPartners: ['gokada', 'kwik', 'maxng'],
     subscriptionTiers: {
-      basic: { price: 20000, label: 'Basic (₦20,000/mo)' },
-      standard: { price: 50000, label: 'Standard (₦50,000/mo)' },
-      premium: { price: 100000, label: 'Premium (₦100,000/mo)' },
+      basic: { price: 20000, label: 'Basic (\u20A620,000/mo)' },
+      standard: { price: 50000, label: 'Standard (\u20A650,000/mo)' },
+      premium: { price: 100000, label: 'Premium (\u20A6100,000/mo)' },
     },
     rxFees: {
       min: 100,
