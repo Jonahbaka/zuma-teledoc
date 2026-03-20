@@ -98,7 +98,7 @@ export default function HomePage() {
             <div className="flex items-center justify-center gap-2 text-xs sm:text-sm">
               <div className="bg-red-500/20 p-1 rounded-full animate-pulse"><Activity size={14} className="text-red-400" /></div>
               <span className="text-center leading-tight">
-                Medical emergency? Call <strong>112</strong> or go to the nearest hospital immediately.
+                Medical emergency? Call <strong>911</strong> or go to the nearest emergency room immediately.
               </span>
               <button onClick={() => setEmergencyBannerVisible(false)} className="ml-2 p-1 hover:bg-white/20 rounded transition-colors flex-shrink-0" aria-label="Dismiss banner">
                 <X className="w-4 h-4" />
@@ -254,7 +254,7 @@ export default function HomePage() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
               </span>
-              <span className="text-xs font-semibold text-blue-500 dark:text-blue-300 tracking-wide uppercase">Now Available Across Nigeria</span>
+              <span className="text-xs font-semibold text-blue-500 dark:text-blue-300 tracking-wide uppercase">HIPAA-Compliant Telehealth Platform</span>
             </div>
 
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-foreground tracking-tight leading-[1.1]">
@@ -265,7 +265,7 @@ export default function HomePage() {
             </h1>
 
             <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-lg">
-              See a doctor online, get your prescription, and have medications delivered from a pharmacy near you. No long queues. Pay with cash, transfer, or card.
+              See a board-certified US physician online, get your prescription, and have medications sent to a pharmacy near you. Insurance accepted. No waiting rooms.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 pt-2">
@@ -301,8 +301,8 @@ export default function HomePage() {
                 <div className="bg-black/60 backdrop-blur-md p-4 rounded-2xl border border-white/10 flex items-center gap-4 max-w-xs">
                   <div className="bg-blue-600/20 p-2.5 rounded-full"><Video size={20} className="text-blue-300" /></div>
                   <div>
-                    <div className="text-sm font-bold text-white">Dr. Adaeze Okafor, MD</div>
-                    <div className="text-xs text-blue-300 font-medium">General Practice</div>
+                    <div className="text-sm font-bold text-white">Licensed Physician</div>
+                    <div className="text-xs text-blue-300 font-medium">Primary Care · Board Certified</div>
                   </div>
                 </div>
                 <div className="w-24 h-32 bg-gray-800 rounded-xl border border-white/10 shadow-lg overflow-hidden hidden sm:block">
@@ -325,14 +325,14 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6">
           <SectionHeading
             badge="Why DoctaRx"
-            title="Healthcare designed for Nigeria"
-            subtitle="We built a healthcare experience that works the way Nigerians live — simple, affordable, and connected to your local pharmacy."
+            title="Healthcare designed for you"
+            subtitle="We built a HIPAA-compliant telehealth experience that connects you to board-certified US physicians — from home, any time, any device."
           />
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             <FeatureCard
               icon={Clock}
               title="Available 24/7"
-              desc="See a doctor anytime — early morning, late night, weekends. No waiting in crowded clinics."
+              desc="See a doctor anytime — early morning, late night, weekends. No waiting rooms, no appointments required."
               colorClass="text-blue-500 dark:text-blue-300"
               bgClass="bg-blue-500/10"
               image={PATIENT_MOMENT_IMAGE}
@@ -340,7 +340,7 @@ export default function HomePage() {
             <FeatureCard
               icon={Stethoscope}
               title="Licensed Doctors"
-              desc="Every provider on our platform is a verified, licensed medical professional registered in Nigeria."
+              desc="Every provider on our platform is a verified, board-certified medical professional licensed in the United States."
               colorClass="text-emerald-500 dark:text-emerald-300"
               bgClass="bg-emerald-500/10"
               image={DOCTOR_IMAGE}
@@ -402,7 +402,7 @@ export default function HomePage() {
               <SectionHeading
                 badge="For Patients"
                 title="Healthcare that comes to you"
-                subtitle="No more long hospital queues. See a doctor from your phone, get your prescription, and choose any pharmacy near you."
+                subtitle="No waiting rooms. See a board-certified doctor from your phone, get your prescription sent to any pharmacy near you — in minutes."
                 align="left"
               />
               <ul className="space-y-5">
@@ -411,7 +411,7 @@ export default function HomePage() {
                   { icon: Pill, text: "Prescriptions sent directly to your preferred pharmacy" },
                   { icon: MapPin, text: "Find and choose pharmacies near your location" },
                   { icon: Truck, text: "Pickup or delivery — track your medication in real-time" },
-                  { icon: Banknote, text: "Pay with cash, bank transfer, or card — no wahala" },
+                  { icon: CreditCard, text: "Pay with insurance, HSA/FSA, or card — no hassle" },
                   { icon: ShieldCheck, text: "Your health data is encrypted and secure" }
                 ].map((item, idx) => (
                   <li key={idx} className="flex items-start gap-4 group">
@@ -429,7 +429,7 @@ export default function HomePage() {
               </Link>
             </div>
             <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-border aspect-[4/5]">
-              <img src={FAMILY_IMAGE} alt="Nigerian family receiving healthcare" className="w-full h-full object-cover" />
+              <img src={FAMILY_IMAGE} alt="Patient receiving telehealth care" className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
               <div className="absolute bottom-6 left-6 right-6">
                 <div className="bg-white/10 backdrop-blur-xl p-4 rounded-2xl border border-white/20">
@@ -437,7 +437,7 @@ export default function HomePage() {
                     <div className="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center"><CheckCircle size={20} className="text-white" /></div>
                     <div>
                       <div className="text-white font-bold text-sm">Prescription Ready</div>
-                      <div className="text-white/70 text-xs">HealthPlus Pharmacy, Lekki</div>
+                      <div className="text-white/70 text-xs">Community Pharmacy · 0.3 mi away</div>
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -456,13 +456,13 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div className="order-2 lg:order-1 relative rounded-3xl overflow-hidden shadow-2xl border border-border aspect-[4/5]">
-              <img src={DOCTOR_IMAGE} alt="Nigerian doctor using telehealth platform" className="w-full h-full object-cover" />
+              <img src={DOCTOR_IMAGE} alt="Healthcare provider using telehealth platform" className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
               <div className="absolute bottom-6 left-6 right-6 space-y-3">
                 <div className="bg-white/10 backdrop-blur-xl p-3 rounded-xl border border-white/20 flex items-center gap-3">
                   <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center"><Calendar size={16} className="text-white" /></div>
                   <div className="flex-1">
-                    <div className="text-white font-medium text-xs">Next: Consultation with Chinedu O.</div>
+                    <div className="text-white font-medium text-xs">Next: Consultation with Patient J.</div>
                     <div className="text-white/60 text-[10px]">2:30 PM Today</div>
                   </div>
                 </div>
@@ -514,7 +514,7 @@ export default function HomePage() {
           <SectionHeading
             badge="For Pharmacies"
             title="More prescriptions. More customers."
-            subtitle="Join the DoctaRx pharmacy network and receive digital prescriptions from verified doctors across Nigeria."
+            subtitle="Join the DoctaRx pharmacy network and receive digital prescriptions from board-certified physicians across the United States."
           />
 
           <div className="grid md:grid-cols-3 gap-6 mb-16">
@@ -580,9 +580,9 @@ export default function HomePage() {
                   <div className="text-xs bg-purple-500/10 text-purple-500 px-2 py-0.5 rounded-full font-semibold">3 New</div>
                 </div>
                 {[
-                  { name: "Amoxicillin 500mg", patient: "Chioma A.", status: "Pending", statusColor: "bg-yellow-500" },
-                  { name: "Metformin 850mg", patient: "Emeka O.", status: "Confirmed", statusColor: "bg-emerald-500" },
-                  { name: "Amlodipine 5mg", patient: "Fatima M.", status: "Ready", statusColor: "bg-blue-500" }
+                  { name: "Amoxicillin 500mg", patient: "Sarah M.", status: "Pending", statusColor: "bg-yellow-500" },
+                  { name: "Metformin 850mg", patient: "James R.", status: "Confirmed", statusColor: "bg-emerald-500" },
+                  { name: "Amlodipine 5mg", patient: "Lisa T.", status: "Ready", statusColor: "bg-blue-500" }
                 ].map((rx, idx) => (
                   <div key={idx} className="bg-background rounded-xl p-4 border border-border flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -610,17 +610,17 @@ export default function HomePage() {
       <section className="py-16 bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border-y border-emerald-800/30">
         <div className="max-w-5xl mx-auto px-6 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold mb-6">
-            <ShieldCheck size={14} /> Enterprise-Grade Security
+            <ShieldCheck size={14} /> HIPAA-Compliant &amp; Enterprise-Grade
           </div>
           <h3 className="text-2xl md:text-3xl font-bold text-white mb-4">Your health data is protected</h3>
           <p className="text-slate-400 max-w-2xl mx-auto mb-8">
-            DoctaRx uses NVIDIA NemoClaw OpenShell sandboxed AI and end-to-end encryption to keep your medical records, prescriptions, and personal information completely secure.
+            DoctaRx uses sandboxed AI and end-to-end encryption to keep your medical records, prescriptions, and personal information completely secure — fully HIPAA-compliant.
           </p>
           <div className="flex flex-wrap justify-center gap-6 text-sm text-slate-300">
+            <div className="flex items-center gap-2"><ShieldCheck size={16} className="text-emerald-400" /> HIPAA Compliant</div>
             <div className="flex items-center gap-2"><Lock size={16} className="text-emerald-400" /> End-to-End Encryption</div>
             <div className="flex items-center gap-2"><ShieldCheck size={16} className="text-emerald-400" /> Sandboxed AI Agents</div>
-            <div className="flex items-center gap-2"><Lock size={16} className="text-emerald-400" /> PII Auto-Scrubbing</div>
-            <div className="flex items-center gap-2"><ShieldCheck size={16} className="text-emerald-400" /> Audit Trail</div>
+            <div className="flex items-center gap-2"><Lock size={16} className="text-emerald-400" /> Audit Trail</div>
           </div>
         </div>
       </section>
@@ -636,17 +636,17 @@ export default function HomePage() {
             {/* Single Visit */}
             <div className="bg-background rounded-3xl p-8 border border-border flex flex-col hover:border-primary/30 transition-colors">
               <div className="text-lg font-medium text-muted-foreground mb-2">Single Consultation</div>
-              <div className="text-4xl font-bold text-foreground mb-1">&#8358;5,000</div>
+              <div className="text-4xl font-bold text-foreground mb-1">$49</div>
               <div className="text-sm text-muted-foreground mb-6">per consultation</div>
               <ul className="space-y-4 mb-8 flex-1">
                 <li className="flex items-start gap-3 text-muted-foreground text-sm">
                   <CheckCircle size={16} className="text-blue-500 mt-0.5 shrink-0" /> Video or chat consultation
                 </li>
                 <li className="flex items-start gap-3 text-muted-foreground text-sm">
-                  <CheckCircle size={16} className="text-blue-500 mt-0.5 shrink-0" /> Prescription to any pharmacy
+                  <CheckCircle size={16} className="text-blue-500 mt-0.5 shrink-0" /> Prescription sent to any pharmacy
                 </li>
                 <li className="flex items-start gap-3 text-muted-foreground text-sm">
-                  <CheckCircle size={16} className="text-blue-500 mt-0.5 shrink-0" /> Pay cash, transfer, or card
+                  <CheckCircle size={16} className="text-blue-500 mt-0.5 shrink-0" /> Insurance, HSA/FSA, or card
                 </li>
               </ul>
               <Link href="/patient/register" className="w-full block text-center py-3 rounded-xl border border-border hover:bg-accent text-foreground transition-colors font-medium">
@@ -657,12 +657,12 @@ export default function HomePage() {
             {/* Membership */}
             <div className="bg-gradient-to-b from-blue-900/20 to-background rounded-3xl p-8 border border-blue-500/30 flex flex-col relative overflow-hidden shadow-[0_0_40px_rgba(37,99,235,0.1)]">
               <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl uppercase tracking-wider">Most Popular</div>
-              <div className="text-lg font-medium text-blue-300 mb-2">Family Plan</div>
-              <div className="text-4xl font-bold text-foreground mb-1">&#8358;3,000<span className="text-lg text-muted-foreground">/mo</span></div>
-              <div className="text-sm text-muted-foreground mb-6">per family member</div>
+              <div className="text-lg font-medium text-blue-300 mb-2">Membership Plan</div>
+              <div className="text-4xl font-bold text-foreground mb-1">$29<span className="text-lg text-muted-foreground">/mo</span></div>
+              <div className="text-sm text-muted-foreground mb-6">per household</div>
               <ul className="space-y-4 mb-8 flex-1">
                 <li className="flex items-start gap-3 text-muted-foreground text-sm">
-                  <CheckCircle size={16} className="text-blue-500 mt-0.5 shrink-0" /> &#8358;3,500 per visit (save &#8358;1,500)
+                  <CheckCircle size={16} className="text-blue-500 mt-0.5 shrink-0" /> $39 per visit (save $10 per consult)
                 </li>
                 <li className="flex items-start gap-3 text-muted-foreground text-sm">
                   <CheckCircle size={16} className="text-blue-500 mt-0.5 shrink-0" /> Unlimited messaging with care team
@@ -674,8 +674,8 @@ export default function HomePage() {
                   <CheckCircle size={16} className="text-blue-500 mt-0.5 shrink-0" /> Annual health check-up
                 </li>
               </ul>
-              <Link href="/patient/register?plan=family" className="w-full block text-center py-3 rounded-xl bg-blue-600 hover:bg-blue-500 transition-colors text-white font-bold shadow-lg shadow-blue-900/30">
-                Start Family Plan
+              <Link href="/patient/register?plan=membership" className="w-full block text-center py-3 rounded-xl bg-blue-600 hover:bg-blue-500 transition-colors text-white font-bold shadow-lg shadow-blue-900/30">
+                Start Membership
               </Link>
             </div>
 
@@ -710,13 +710,13 @@ export default function HomePage() {
       <section className="py-16 bg-card/40 border-b border-border">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <h3 className="text-2xl font-bold text-foreground mb-3">Pay however you prefer</h3>
-          <p className="text-muted-foreground mb-10">We accept the payment methods Nigerians use every day.</p>
+          <p className="text-muted-foreground mb-10">We accept the payment methods Americans rely on every day.</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             {[
-              { icon: Banknote, label: "Cash Payment", desc: "Pay at the pharmacy", color: "text-emerald-500", bg: "bg-emerald-500/10" },
-              { icon: Building2, label: "Bank Transfer", desc: "Direct transfer", color: "text-blue-500", bg: "bg-blue-500/10" },
-              { icon: CreditCard, label: "Card Payment", desc: "Debit or credit card", color: "text-purple-500", bg: "bg-purple-500/10" },
-              { icon: Phone, label: "Mobile Money", desc: "USSD or mobile wallet", color: "text-amber-500", bg: "bg-amber-500/10" }
+              { icon: ShieldCheck, label: "Health Insurance", desc: "Most major plans accepted", color: "text-emerald-500", bg: "bg-emerald-500/10" },
+              { icon: CreditCard, label: "FSA / HSA", desc: "Tax-advantaged spending", color: "text-blue-500", bg: "bg-blue-500/10" },
+              { icon: Banknote, label: "Credit & Debit Card", desc: "Visa, MC, Amex, Discover", color: "text-purple-500", bg: "bg-purple-500/10" },
+              { icon: Building2, label: "Bank Transfer", desc: "ACH direct transfer", color: "text-amber-500", bg: "bg-amber-500/10" }
             ].map((method, idx) => (
               <div key={idx} className="bg-background rounded-2xl p-6 border border-border hover:border-primary/20 transition-colors text-center group">
                 <div className={`w-14 h-14 ${method.bg} rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform`}>
@@ -735,7 +735,7 @@ export default function HomePage() {
         <div className="max-w-5xl mx-auto text-center">
           <h2 className="text-4xl font-bold text-white mb-6">Ready to get better healthcare?</h2>
           <p className="text-xl text-blue-100/90 mb-10 max-w-2xl mx-auto">
-            Join thousands of Nigerians who have discovered a better way to access doctors, prescriptions, and medications.
+            Join thousands of patients across the United States who have discovered a smarter way to access care, prescriptions, and medications.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/patient/register">
@@ -763,13 +763,13 @@ export default function HomePage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground justify-center">
-              <a href="mailto:hello@doctarx.ng" className="hover:text-foreground transition-colors">hello@doctarx.ng</a>
+              <a href="mailto:hello@doctarx.com" className="hover:text-foreground transition-colors">hello@doctarx.com</a>
               <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
               <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>
               <Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link>
             </div>
 
-            <p className="text-sm text-muted-foreground">&copy; {new Date().getFullYear()} DoctaRx Nigeria. All rights reserved.</p>
+            <p className="text-sm text-muted-foreground">&copy; {new Date().getFullYear()} DoctaRx, Inc. All rights reserved.</p>
           </div>
         </div>
       </footer>
