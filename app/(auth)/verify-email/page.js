@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { CheckCircle, XCircle, Loader2, Mail, Sparkles } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
-import { toProviderPortalPath } from '@/lib/providerPortal';
+import { getProviderLoginPath, toProviderPortalPath } from '@/lib/providerPortal';
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
@@ -17,33 +17,23 @@ function VerifyEmailContent() {
   const [message, setMessage] = useState('Verifying your email address…');
   const [resending, setResending] = useState(false);
   const token = searchParams.get('token');
+  const roleHint = searchParams.get('role');
+  const marketHint = searchParams.get('market');
+  const providerRouteOptions = {
+    user,
+    market: marketHint || undefined,
+    pathname: marketHint === 'NG' ? '/ng/provider' : marketHint === 'US' ? '/provider' : '',
+  };
+  const providerDashboardPath = toProviderPortalPath('/dashboard', providerRouteOptions);
+  const providerLoginPath = getProviderLoginPath(providerRouteOptions);
 
-  useEffect(() => {
-    if (token) {
-      verifyEmail(token);
-    } else {
-      setStatus('error');
-      setMessage('No verification token found in this link. Try clicking the button in your email again.');
-    }
-  }, [token]);
-
-  const verifyEmail = async (verificationToken) => {
+  const verifyEmail = useCallback(async (verificationToken) => {
     try {
       const response = await api.post('/auth/verify-email', { token: verificationToken });
       if (response.data.success) {
         setStatus('success');
         setMessage("Your email is verified — you're all set!");
         toast({ title: 'Email verified ✓', description: 'Welcome aboard!', variant: 'success' });
-        // Redirect to role-specific dashboard after 2.5 s
-        setTimeout(() => {
-          const role = user?.role;
-          if (role === 'provider') router.push(toProviderPortalPath('/dashboard', {
-            user,
-            pathname: typeof window !== 'undefined' ? window.location.pathname : '',
-          }));
-          else if (role === 'admin' || role === 'super_admin') router.push('/admin/dashboard');
-          else router.push('/patient/dashboard');
-        }, 2500);
       }
     } catch (error) {
       setStatus('error');
@@ -57,7 +47,35 @@ function VerifyEmailContent() {
         variant: 'destructive'
       });
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (token) {
+      verifyEmail(token);
+    } else {
+      setStatus('error');
+      setMessage('No verification token found in this link. Try clicking the button in your email again.');
+    }
+  }, [token, verifyEmail]);
+
+  useEffect(() => {
+    if (status !== 'success') {
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      const role = user?.role || roleHint;
+      if (role === 'provider') {
+        router.push(user ? providerDashboardPath : providerLoginPath);
+      } else if (role === 'admin' || role === 'super_admin') {
+        router.push('/admin/dashboard');
+      } else {
+        router.push('/patient/dashboard');
+      }
+    }, 2500);
+
+    return () => clearTimeout(timeoutId);
+  }, [providerDashboardPath, providerLoginPath, roleHint, router, status, user]);
 
   const resendVerification = async () => {
     setResending(true);
@@ -129,13 +147,14 @@ function VerifyEmailContent() {
               </div>
               <Button
                 onClick={() => {
-                  const role = user?.role;
-                  if (role === 'provider') router.push(toProviderPortalPath('/dashboard', {
-                    user,
-                    pathname: typeof window !== 'undefined' ? window.location.pathname : '',
-                  }));
-                  else if (role === 'admin' || role === 'super_admin') router.push('/admin/dashboard');
-                  else router.push('/patient/dashboard');
+                  const role = user?.role || roleHint;
+                  if (role === 'provider') {
+                    router.push(user ? providerDashboardPath : providerLoginPath);
+                  } else if (role === 'admin' || role === 'super_admin') {
+                    router.push('/admin/dashboard');
+                  } else {
+                    router.push('/patient/dashboard');
+                  }
                 }}
                 className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl"
               >
@@ -160,7 +179,15 @@ function VerifyEmailContent() {
               </Button>
               <Button
                 variant="ghost"
-                onClick={() => router.push('/patient/login')}
+                onClick={() => {
+                  const role = user?.role || roleHint;
+                  if (role === 'provider') {
+                    router.push(providerLoginPath);
+                    return;
+                  }
+
+                  router.push('/patient/login');
+                }}
                 className="w-full text-slate-400 hover:text-white hover:bg-white/5 rounded-xl"
               >
                 Back to login

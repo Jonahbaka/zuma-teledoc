@@ -254,7 +254,8 @@ router.post('/register', async (req, res) => {
         email: user.email,
         firstName: user.first_name,
         lastName: user.last_name,
-        role: user.role
+        role: user.role,
+        country: data.country || null
       }, verificationToken);
       
       // Send welcome email
@@ -1328,7 +1329,7 @@ router.post('/resend-verification',
     try {
       // Check if already verified
       const { rows: users } = await db.query(
-        'SELECT id, email, first_name, last_name, role, is_verified FROM users WHERE id = $1',
+        'SELECT id, email, first_name, last_name, role, country, is_verified FROM users WHERE id = $1',
         [req.user.id]
       );
       
@@ -1373,7 +1374,8 @@ router.post('/resend-verification',
         email: user.email,
         firstName: user.first_name,
         lastName: user.last_name,
-        role: user.role
+        role: user.role,
+        country: user.country
       }, verificationToken);
       
       logger.info('Verification email resent', { userId: req.user.id });

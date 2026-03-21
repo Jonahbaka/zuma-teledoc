@@ -21,11 +21,29 @@ import { resolveProviderMarket, toProviderPortalPath } from '@/lib/providerPorta
 
 /* ─────────────────── constants ─────────────────── */
 
-const AI_SUGGESTIONS = [
-  { type: 'insight', text: 'Consider confirming symptom duration and onset pattern.', confidence: 92 },
-  { type: 'action', text: 'Suggest comprehensive medication history review.', confidence: 85 },
-  { type: 'alert', text: 'Check for potential drug interactions with current medications.', confidence: 90 },
+const CONSULTATION_CHECKLIST = [
+  { type: 'insight', text: 'Confirm symptom duration, onset, and progression.' },
+  { type: 'action', text: 'Review current medications, allergies, and recent changes.' },
+  { type: 'alert', text: 'Document red flags or escalation triggers before closing the visit.' },
 ];
+
+const getRawPatientName = (appointment) =>
+  `${appointment?.patientFirstName || ''} ${appointment?.patientLastName || ''}`.trim();
+
+const getPatientDisplayName = (appointment) =>
+  getRawPatientName(appointment) || 'On-demand care session';
+
+const getPatientInitials = (appointment) => {
+  const firstInitial = appointment?.patientFirstName?.[0] || '';
+  const lastInitial = appointment?.patientLastName?.[0] || '';
+  const initials = `${firstInitial}${lastInitial}`.toUpperCase();
+  return initials || 'VC';
+};
+
+const getWaitingRoomCopy = (appointment) =>
+  getRawPatientName(appointment)
+    ? `${appointment.patientFirstName} can join the waiting room at any time`
+    : 'A patient can join the waiting room at any time';
 
 const FILTER_OPTIONS = [
   { id: 'none', label: 'None', css: 'none' },
@@ -93,10 +111,10 @@ export default function ProviderVideoCallPage() {
     if (isStandalone) {
       setAppointment({
         id: 'standalone', type: 'video', status: 'in_progress',
-        patientFirstName: 'Awaiting', patientLastName: 'Patient',
+        patientFirstName: '', patientLastName: '',
         providerFirstName: user?.firstName || '', providerLastName: user?.lastName || '',
         scheduledAt: new Date().toISOString(), durationMinutes: 30,
-        reasonForVisit: 'On-demand provider video call'
+        reasonForVisit: 'Direct care video session'
       });
       if (user?.firstName) setUserName(`Dr. ${user.firstName}${user.lastName ? ` ${user.lastName}` : ''}`);
       setLoading(false);
@@ -157,6 +175,9 @@ export default function ProviderVideoCallPage() {
     </div>
   );
 
+  const patientDisplayName = getPatientDisplayName(appointment);
+  const patientInitials = getPatientInitials(appointment);
+
   return (
     <div className="h-screen flex flex-col bg-[#121212] text-white overflow-hidden font-sans selection:bg-blue-500/30">
       {/* ── Top Bar ── */}
@@ -176,7 +197,7 @@ export default function ProviderVideoCallPage() {
           <div className="h-5 w-px bg-gray-700 mx-1" />
           <div>
             <h2 className="text-sm font-medium text-gray-200">
-              Consultation: {appointment.patientFirstName} {appointment.patientLastName}
+              Consultation: {patientDisplayName}
             </h2>
             <span className="text-xs text-gray-500 flex items-center gap-1">
               <ShieldCheck size={10} className="text-emerald-500" /> {isNigeriaPortal ? 'NDPA aligned' : 'HIPAA encrypted'} &middot; E2E Secure
@@ -187,7 +208,7 @@ export default function ProviderVideoCallPage() {
           {isInCall && <CallTimer />}
           <div className="flex -space-x-2">
             <div className="w-8 h-8 rounded-full border-2 border-[#121212] bg-gray-700 flex items-center justify-center text-xs font-medium">
-              {(appointment.patientFirstName?.[0] || '').toUpperCase()}{(appointment.patientLastName?.[0] || '').toUpperCase()}
+              {patientInitials}
             </div>
             <div className="w-8 h-8 rounded-full border-2 border-[#121212] bg-blue-600 flex items-center justify-center text-xs font-medium">
               {(appointment.providerFirstName?.[0] || 'D').toUpperCase()}{(appointment.providerLastName?.[0] || 'R').toUpperCase()}
@@ -239,9 +260,12 @@ const CallTimer = () => {
 const Lobby = ({
   appointment, userName, setUserName, onJoin, micOn, setMicOn, camOn, setCamOn,
   localStream, ensureLocalStream, mediaError
-}) => (
-  <div className="h-full flex items-center justify-center p-6">
-    <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-5 gap-8 items-center">
+}) => {
+  const patientDisplayName = getPatientDisplayName(appointment);
+
+  return (
+    <div className="h-full flex items-center justify-center p-6">
+      <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-5 gap-8 items-center">
       {/* Camera preview */}
       <div className="lg:col-span-3 bg-[#1e1e1e] rounded-2xl overflow-hidden border border-gray-800">
         <div className="aspect-video relative flex items-center justify-center bg-gray-800">
@@ -268,7 +292,7 @@ const Lobby = ({
       <div className="lg:col-span-2 space-y-5">
         <h1 className="text-2xl font-semibold leading-snug">Ready to join?</h1>
         <p className="text-gray-400">
-          Appointment with <span className="text-white font-medium">{appointment.patientFirstName} {appointment.patientLastName}</span>
+          Appointment with <span className="text-white font-medium">{patientDisplayName}</span>
         </p>
 
         <div className="bg-[#1e1e1e] rounded-xl p-4 space-y-3 text-sm border border-gray-800">
@@ -298,12 +322,13 @@ const Lobby = ({
 
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          <span>{appointment.patientFirstName} can join the waiting room at any time</span>
+          <span>{getWaitingRoomCopy(appointment)}</span>
         </div>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*              CAMERA PREVIEW (Lobby)                                */
@@ -425,7 +450,7 @@ const ActiveCall = ({
         <ClinicalCoPilot
           appointmentId={appointment?.id}
           patientId={appointment?.patientId}
-          patientName={`${appointment?.patientFirstName || ''} ${appointment?.patientLastName || ''}`.trim()}
+          patientName={getPatientDisplayName(appointment)}
         />
       </div>
 
@@ -507,19 +532,20 @@ const ActiveCall = ({
 /*                   PATIENT VIDEO AREA                               */
 /* ═══════════════════════════════════════════════════════════════════ */
 
-const PatientVideoArea = ({ appointment }) => (
-  <div className="relative w-full h-full bg-gray-800 rounded-2xl overflow-hidden shadow-2xl border border-gray-700 group">
+const PatientVideoArea = ({ appointment }) => {
+  const patientDisplayName = getPatientDisplayName(appointment);
+  const patientInitials = getPatientInitials(appointment);
+
+  return (
+    <div className="relative w-full h-full bg-gray-800 rounded-2xl overflow-hidden shadow-2xl border border-gray-700 group">
     {/* Patient placeholder — when WebRTC connects, replace with real stream */}
     <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
       <div className="text-center">
         <div className="w-28 h-28 mx-auto rounded-full bg-[#5f6368] flex items-center justify-center mb-5 shadow-xl">
-          <span className="text-4xl font-medium text-white">
-            {(appointment.patientFirstName?.[0] || '').toUpperCase()}
-            {(appointment.patientLastName?.[0] || '').toUpperCase()}
-          </span>
+          <span className="text-4xl font-medium text-white">{patientInitials}</span>
         </div>
         <h2 className="text-xl font-medium mb-2 text-white">
-          {appointment.patientFirstName} {appointment.patientLastName}
+          {patientDisplayName}
         </h2>
         <div className="flex items-center justify-center gap-2 text-gray-400 text-sm">
           <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
@@ -539,7 +565,7 @@ const PatientVideoArea = ({ appointment }) => (
     {/* Name Tag */}
     <div className="absolute bottom-4 left-4 flex items-center gap-2">
       <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2 border border-white/5">
-        <span className="text-white text-sm font-medium">{appointment.patientFirstName} {appointment.patientLastName}</span>
+        <span className="text-white text-sm font-medium">{patientDisplayName}</span>
         <span className="text-xs text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">Patient</span>
       </div>
     </div>
@@ -550,9 +576,10 @@ const PatientVideoArea = ({ appointment }) => (
         <ShieldCheck size={10} className="text-emerald-500" />
         <span className="text-[10px] text-gray-400">Secure</span>
       </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*              SELF VIEW (Provider camera — real feed)                */
@@ -667,7 +694,7 @@ const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
           <div>
             <h3 className="text-white font-semibold text-sm">DoctaRx AI</h3>
             <span className="text-xs text-green-400 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> Active
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400" /> Available
             </span>
           </div>
         </div>
@@ -680,11 +707,11 @@ const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
       <div className="flex border-b border-gray-800">
         <button onClick={() => setActiveTab('insight')}
           className={`flex-1 py-3 text-xs font-medium transition-colors ${activeTab === 'insight' ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5' : 'text-gray-400 hover:text-white'}`}>
-          Live Insights
+          Visit Guide
         </button>
         <button onClick={() => setActiveTab('notes')}
           className={`flex-1 py-3 text-xs font-medium transition-colors ${activeTab === 'notes' ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5' : 'text-gray-400 hover:text-white'}`}>
-          Smart Notes
+          SOAP Notes
         </button>
       </div>
 
@@ -692,34 +719,24 @@ const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
         {activeTab === 'insight' && (
           <>
-            {/* Sentiment */}
+            {/* Session guide */}
             <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700 space-y-2">
-              <div className="flex items-center justify-between text-xs text-gray-400">
-                <span>Patient Sentiment</span>
-                <span className="text-emerald-400">Calm</span>
-              </div>
-              <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                <div className="h-full w-3/4 bg-gradient-to-r from-green-500 via-emerald-400 to-green-400 transition-all duration-1000" />
-              </div>
+              <div className="text-xs text-gray-400">Session setup</div>
+              <p className="text-xs text-gray-300 leading-relaxed">
+                Use this panel as a documentation checklist while you confirm identity, safety concerns,
+                medications, and the reason for visit.
+              </p>
             </div>
 
             {/* Suggestions */}
             <div className="space-y-3">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Suggested Actions</h4>
-              {AI_SUGGESTIONS.map((item, idx) => (
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Consultation checklist</h4>
+              {CONSULTATION_CHECKLIST.map((item, idx) => (
                 <div key={idx} className="bg-gray-800 p-3 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors group cursor-pointer">
                   <div className="flex items-start gap-3">
                     {item.type === 'alert' ? <ShieldCheck size={16} className="text-red-400 mt-0.5" /> : <Sparkles size={16} className="text-blue-400 mt-0.5" />}
                     <div>
                       <p className="text-sm text-gray-200 leading-snug">{item.text}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-[10px] bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded border border-gray-600">
-                          {item.confidence}% Confidence
-                        </span>
-                        <button className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-blue-400 hover:underline">
-                          Apply
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -729,11 +746,11 @@ const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
             {/* Real-time context */}
             <div className="bg-blue-500/10 p-3 rounded-xl border border-blue-500/20 space-y-2">
               <div className="flex items-center gap-2 text-xs text-blue-300">
-                <Brain size={14} /> Real-time Analysis
+                <Brain size={14} /> Documentation note
               </div>
               <p className="text-xs text-blue-200/80 leading-relaxed">
-                Monitoring conversation patterns, symptom mentions, and medication references.
-                AI will flag relevant clinical insights in real-time.
+                SOAP generation and Clinical Co-Pilot outputs depend on captured visit data.
+                This guide is reference-only and should not be treated as live clinical analysis.
               </p>
             </div>
           </>
