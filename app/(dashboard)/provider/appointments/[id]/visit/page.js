@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Save, Send, User, Calendar, Clock,
@@ -18,9 +18,11 @@ import { toast } from '@/components/ui/use-toast';
 import AISoapAssist from '@/components/provider/AISoapAssist';
 import EPrescribe from '@/components/provider/ePrescribe';
 import { insuranceAPI, pharmacyAPI, rtbcAPI, triageAPI } from '@/lib/api';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 export default function ProviderVisitPage() {
   const params = useParams();
+  const pathname = usePathname();
   const router = useRouter();
   const appointmentId = params.id;
 
@@ -250,7 +252,7 @@ export default function ProviderVisitPage() {
         if (sign) {
           await api.post(`/visits/${response.data.visit.id}/sign`);
           toast({ title: 'Visit note signed and saved' });
-          router.push('/provider/dashboard');
+          router.push(toProviderPortalPath('/dashboard', { pathname }));
         } else {
           toast({ title: 'Draft saved successfully' });
         }
@@ -300,7 +302,7 @@ export default function ProviderVisitPage() {
       <div className="text-center py-12">
         <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
         <h2 className="text-xl font-semibold text-slate-900">Appointment Not Found</h2>
-        <Link href="/provider/dashboard">
+        <Link href={toProviderPortalPath('/dashboard', { pathname })}>
           <Button variant="link" className="mt-4">Return to Dashboard</Button>
         </Link>
       </div>
@@ -314,7 +316,7 @@ export default function ProviderVisitPage() {
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link href="/provider/dashboard">
+              <Link href={toProviderPortalPath('/dashboard', { pathname })}>
                 <Button variant="ghost" size="icon">
                   <ArrowLeft className="w-5 h-5" />
                 </Button>

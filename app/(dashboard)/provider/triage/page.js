@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   BrainCircuit, AlertTriangle, CheckCircle, Clock, User, Sparkles, 
   Pill, Activity, Zap, ArrowRight, ChevronRight, Thermometer,
@@ -13,10 +13,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 export default function ProviderTriageDashboard() {
   const auth = useAuth();
   const user = auth?.user || null;
+  const pathname = usePathname();
   const router = useRouter();
   const [triageCases, setTriageCases] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -141,7 +143,7 @@ export default function ProviderTriageDashboard() {
   };
 
   const handleOpenVisit = (appointmentId) => {
-    router.push(`/provider/appointments/${appointmentId}/visit`);
+    router.push(toProviderPortalPath(`/appointments/${appointmentId}/visit`, { pathname, user }));
   };
 
   if (loading) {
@@ -492,10 +494,10 @@ export default function ProviderTriageDashboard() {
                     <Button
                       variant="outline"
                       className="w-full"
-                      onClick={() => router.push(`/provider/appointments/${selectedCase.id}`)}
+                      onClick={() => router.push(toProviderPortalPath(`/appointments/${selectedCase.id}/visit`, { pathname, user }))}
                     >
                       <FileText className="w-4 h-4 mr-2" />
-                      View Appointment
+                      Open Visit
                     </Button>
                   </div>
                 </CardContent>

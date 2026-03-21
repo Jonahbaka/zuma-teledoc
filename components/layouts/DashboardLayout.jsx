@@ -15,6 +15,11 @@ import { LanguageToggle } from '@/components/ui/language-toggle';
 import { notificationsAPI } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
+import {
+  getProviderHomePath,
+  getProviderInvitePatientPath,
+  toProviderPortalPath,
+} from '@/lib/providerPortal';
 
 export default function DashboardLayout({ 
   children, 
@@ -82,7 +87,8 @@ export default function DashboardLayout({
 
   const handleCopyInviteLink = async () => {
     const baseUrl = window.location.origin;
-    const inviteLink = `${baseUrl}/patient/register?ref=${user?.id || 'provider'}`;
+    const invitePath = getProviderInvitePatientPath({ pathname, user });
+    const inviteLink = `${baseUrl}${invitePath}${invitePath.includes('?') ? '&' : '?'}ref=${user?.id || 'provider'}`;
     try {
       await navigator.clipboard.writeText(inviteLink);
       setCopied(true);
@@ -212,7 +218,7 @@ export default function DashboardLayout({
       )}>
         {/* Logo */}
         <div className="h-16 flex items-center justify-between px-4 border-b border-border">
-          <Link href="/" className="flex items-center gap-2">
+          <Link href={isProviderPortal ? getProviderHomePath({ pathname, user }) : '/'} className="flex items-center gap-2">
             <div>
               <span className="inline-flex rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-800">
                 <DoctaRxLogo className="h-7 w-auto" />
@@ -307,7 +313,7 @@ export default function DashboardLayout({
             {isProviderPortal && (
               <div className="relative">
                 <div className="hidden sm:flex items-center gap-2 mr-2">
-                  <Link href="/provider/patients?action=new">
+                  <Link href={toProviderPortalPath('/patients?action=new', { pathname, user })}>
                     <Button 
                       size="sm" 
                       className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25"
@@ -316,7 +322,7 @@ export default function DashboardLayout({
                       New Patient
                     </Button>
                   </Link>
-                  <Link href="/provider/visits?action=new">
+                  <Link href={toProviderPortalPath('/visits?action=new', { pathname, user })}>
                     <Button 
                       size="sm" 
                       variant="outline"
@@ -365,7 +371,7 @@ export default function DashboardLayout({
                       />
                       <div className="absolute right-0 mt-2 w-48 bg-popover rounded-xl shadow-lg border border-border py-2 z-50">
                         <Link
-                          href="/provider/patients?action=new"
+                          href={toProviderPortalPath('/patients?action=new', { pathname, user })}
                           className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent"
                           onClick={() => setQuickActionsOpen(false)}
                         >
@@ -373,7 +379,7 @@ export default function DashboardLayout({
                           New Patient
                         </Link>
                         <Link
-                          href="/provider/visits?action=new"
+                          href={toProviderPortalPath('/visits?action=new', { pathname, user })}
                           className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent"
                           onClick={() => setQuickActionsOpen(false)}
                         >
@@ -401,7 +407,9 @@ export default function DashboardLayout({
             <ThemeToggle />
             
             {/* Notifications */}
-            <Link href={`/${getRoleRoute(user?.role)}/notifications`}>
+            <Link href={user?.role === 'provider'
+              ? toProviderPortalPath('/notifications', { pathname, user })
+              : `/${getRoleRoute(user?.role)}/notifications`}>
               <Button variant="ghost" size="icon" className="relative">
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
@@ -413,7 +421,9 @@ export default function DashboardLayout({
             </Link>
 
             {/* Settings */}
-            <Link href={`/${getRoleRoute(user?.role)}/settings`}>
+            <Link href={user?.role === 'provider'
+              ? toProviderPortalPath('/settings', { pathname, user })
+              : `/${getRoleRoute(user?.role)}/settings`}>
               <Button variant="ghost" size="icon">
                 <Settings className="w-5 h-5" />
               </Button>

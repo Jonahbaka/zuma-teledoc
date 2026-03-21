@@ -7,6 +7,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
@@ -36,7 +37,10 @@ function VerifyEmailContent() {
         // Redirect to role-specific dashboard after 2.5 s
         setTimeout(() => {
           const role = user?.role;
-          if (role === 'provider') router.push('/provider/dashboard');
+          if (role === 'provider') router.push(toProviderPortalPath('/dashboard', {
+            user,
+            pathname: typeof window !== 'undefined' ? window.location.pathname : '',
+          }));
           else if (role === 'admin' || role === 'super_admin') router.push('/admin/dashboard');
           else router.push('/patient/dashboard');
         }, 2500);
@@ -126,7 +130,10 @@ function VerifyEmailContent() {
               <Button
                 onClick={() => {
                   const role = user?.role;
-                  if (role === 'provider') router.push('/provider/dashboard');
+                  if (role === 'provider') router.push(toProviderPortalPath('/dashboard', {
+                    user,
+                    pathname: typeof window !== 'undefined' ? window.location.pathname : '',
+                  }));
                   else if (role === 'admin' || role === 'super_admin') router.push('/admin/dashboard');
                   else router.push('/patient/dashboard');
                 }}

@@ -409,10 +409,17 @@ export const MARKET_HOME_DATA = {
     loginItems: [
       {
         label: 'Sign In',
-        description: 'Patient, pharmacy, and admin access',
+        description: 'Patient and pharmacy access',
         href: '/ng/auth/login',
         icon: User,
         tone: 'emerald',
+      },
+      {
+        label: 'Provider Portal',
+        description: 'Clinical workspace and video visits',
+        href: '/ng/provider/login',
+        icon: Stethoscope,
+        tone: 'blue',
       },
       {
         label: 'Pharmacy Onboarding',
@@ -443,6 +450,13 @@ export const MARKET_HOME_DATA = {
         href: '/ng/patient/prescriptions',
         icon: Package,
         tone: 'blue',
+      },
+      {
+        label: 'Provider',
+        description: 'Join the clinical network',
+        href: '/ng/provider/register',
+        icon: Stethoscope,
+        tone: 'slate',
       },
       {
         label: 'Register Pharmacy',
@@ -732,6 +746,8 @@ export const MARKET_HOME_DATA = {
         {
           title: 'Operations',
           links: [
+            { label: 'Provider Login', href: '/ng/provider/login' },
+            { label: 'Provider Registration', href: '/ng/provider/register' },
             { label: 'Admin Access', href: '/ng/admin' },
             { label: 'Contact', href: '/contact' },
             { label: 'US Experience', href: '/' },

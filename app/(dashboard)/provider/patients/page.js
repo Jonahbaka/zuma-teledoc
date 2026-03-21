@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Users, Search, Calendar, ChevronRight, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -9,8 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { formatDateTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 export default function ProviderPatientsPage() {
+  const pathname = usePathname();
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -89,7 +92,7 @@ export default function ProviderPatientsPage() {
       ) : (
         <div className="grid gap-4">
           {filteredPatients.map((patient) => (
-            <Link key={patient.id} href={`/provider/patients/${patient.id}`}>
+            <Link key={patient.id} href={toProviderPortalPath(`/patients/${patient.id}`, { pathname })}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">

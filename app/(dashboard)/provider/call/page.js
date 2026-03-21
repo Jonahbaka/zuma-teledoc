@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 /**
  * Provider-only standalone call entrypoint (no appointment required).
@@ -9,10 +10,11 @@ import { useRouter } from 'next/navigation';
  */
 export default function ProviderStandaloneCallEntry() {
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    router.replace('/provider/appointments/standalone/call');
-  }, [router]);
+    router.replace(toProviderPortalPath('/appointments/standalone/call', { pathname }));
+  }, [pathname, router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">

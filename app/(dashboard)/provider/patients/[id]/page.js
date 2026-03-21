@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
   User, Calendar, FileText, ArrowLeft, Loader2, 
@@ -14,9 +14,11 @@ import { formatDateTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { clinicalEhrAPI } from '@/lib/api';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 export default function PatientDetailPage() {
   const params = useParams();
+  const pathname = usePathname();
   const router = useRouter();
   const patientId = params.id;
 
@@ -75,7 +77,7 @@ export default function PatientDetailPage() {
     return (
       <div className="text-center py-12">
         <p className="text-slate-500">Patient not found</p>
-        <Link href="/provider/patients">
+        <Link href={toProviderPortalPath('/patients', { pathname })}>
           <Button variant="link" className="mt-4">Back to Patients</Button>
         </Link>
       </div>
@@ -85,7 +87,7 @@ export default function PatientDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Link href="/provider/patients">
+        <Link href={toProviderPortalPath('/patients', { pathname })}>
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-5 h-5" />
           </Button>
@@ -132,7 +134,7 @@ export default function PatientDetailPage() {
                 <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Identity Verified</Badge>
               )}
               <div className="flex gap-2">
-                <Link href={`/provider/patients/${patientId}/ehr`}>
+                <Link href={toProviderPortalPath(`/patients/${patientId}/ehr`, { pathname })}>
                   <Button className="bg-purple-600 hover:bg-purple-700 w-full">Open Chart</Button>
                 </Link>
               </div>
@@ -154,7 +156,7 @@ export default function PatientDetailPage() {
               ) : (
                 <div className="space-y-3">
                   {appointments.slice(0, 5).map((apt) => (
-                    <Link key={apt.id} href={`/provider/appointments/${apt.id}/visit`}>
+                    <Link key={apt.id} href={toProviderPortalPath(`/appointments/${apt.id}/visit`, { pathname })}>
                       <div className="p-3 border rounded-lg hover:bg-slate-50 cursor-pointer">
                         <div className="flex items-center justify-between">
                           <div>

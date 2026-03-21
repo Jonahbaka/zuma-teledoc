@@ -1,0 +1,56 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/providers/AuthProvider';
+import DashboardLayout from '@/components/layouts/DashboardLayout';
+import { getProviderNavigation } from '@/components/provider/providerNavigation';
+
+const LOGIN_PATHS = {
+  US: '/provider/login',
+  NG: '/ng/provider/login',
+};
+
+export default function ProviderPortalLayout({ children, market = 'US' }) {
+  const { user, loading, isAuthenticated } = useAuth();
+  const router = useRouter();
+  const providerPrefix = market === 'NG' ? '/ng/provider' : '/provider';
+
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      router.push(LOGIN_PATHS[market] || LOGIN_PATHS.US);
+      return;
+    }
+
+    if (!loading && isAuthenticated && user?.role !== 'provider') {
+      if (user?.role === 'admin' || user?.role === 'super_admin') {
+        router.push('/admin/dashboard');
+        return;
+      }
+
+      router.push(`/${user?.role || 'patient'}/dashboard`);
+    }
+  }, [loading, isAuthenticated, user, router, market]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || user?.role !== 'provider') {
+    return null;
+  }
+
+  return (
+    <DashboardLayout
+      navigation={getProviderNavigation(providerPrefix)}
+      portalName="Provider"
+      portalColor="from-purple-600 to-purple-800"
+    >
+      {children}
+    </DashboardLayout>
+  );
+}

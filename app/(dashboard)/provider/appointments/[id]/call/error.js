@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 async function clearCachesBestEffort() {
   try {
@@ -21,6 +23,7 @@ async function clearCachesBestEffort() {
 
 export default function ProviderCallError({ error, reset }) {
   const [clearing, setClearing] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     // eslint-disable-next-line no-console
@@ -65,10 +68,10 @@ export default function ProviderCallError({ error, reset }) {
             {clearing ? 'Clearing cache...' : 'Clear cache and reload'}
           </button>
           <Link
-            href="/provider/appointments"
+            href={toProviderPortalPath('/schedule', { pathname })}
             className="px-4 py-2 rounded-xl border border-white/15 bg-white/[0.03] text-slate-100 text-sm hover:bg-white/[0.06]"
           >
-            Back to appointments
+            Back to schedule
           </Link>
         </div>
       </div>

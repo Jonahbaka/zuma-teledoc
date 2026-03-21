@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import {
   Mic, MicOff, Video as VideoIcon, VideoOff,
   PhoneOff, ShieldCheck, User, MonitorUp,
@@ -17,6 +17,7 @@ import { toast } from '@/components/ui/use-toast';
 import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import ClinicalCoPilot from '@/components/hive/ClinicalCoPilot';
+import { resolveProviderMarket, toProviderPortalPath } from '@/lib/providerPortal';
 
 /* ─────────────────── constants ─────────────────── */
 
@@ -41,10 +42,12 @@ const FILTER_OPTIONS = [
 
 export default function ProviderVideoCallPage() {
   const params = useParams();
+  const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
   const appointmentId = params.id;
   const isStandalone = appointmentId === 'standalone';
+  const isNigeriaPortal = resolveProviderMarket({ pathname, user }) === 'NG';
 
   const [appointment, setAppointment] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -90,10 +93,10 @@ export default function ProviderVideoCallPage() {
     if (isStandalone) {
       setAppointment({
         id: 'standalone', type: 'video', status: 'in_progress',
-        patientFirstName: 'Test', patientLastName: 'Patient',
+        patientFirstName: 'Awaiting', patientLastName: 'Patient',
         providerFirstName: user?.firstName || '', providerLastName: user?.lastName || '',
         scheduledAt: new Date().toISOString(), durationMinutes: 30,
-        reasonForVisit: 'Standalone provider video call'
+        reasonForVisit: 'On-demand provider video call'
       });
       if (user?.firstName) setUserName(`Dr. ${user.firstName}${user.lastName ? ` ${user.lastName}` : ''}`);
       setLoading(false);
@@ -109,10 +112,10 @@ export default function ProviderVideoCallPage() {
         }
       } catch {
         toast({ title: 'Error', description: 'Failed to load appointment', variant: 'destructive' });
-        router.push('/provider/appointments');
+        router.push(toProviderPortalPath('/schedule', { pathname, user }));
       } finally { setLoading(false); }
     })();
-  }, [appointmentId]);
+  }, [appointmentId, isStandalone, pathname, router, user]);
 
   const startCall = async () => {
     if (!userName.trim()) return;
@@ -127,7 +130,9 @@ export default function ProviderVideoCallPage() {
   };
   const endCall = () => {
     setIsInCall(false);
-    router.push(isStandalone ? '/provider/dashboard' : `/provider/appointments/${appointmentId}/visit`);
+    router.push(isStandalone
+      ? toProviderPortalPath('/dashboard', { pathname, user })
+      : toProviderPortalPath(`/appointments/${appointmentId}/visit`, { pathname, user }));
   };
 
   /* ── Track controls to stream ── */
@@ -148,7 +153,7 @@ export default function ProviderVideoCallPage() {
   if (!appointment) return (
     <div className="min-h-screen bg-[#121212] flex items-center justify-center">
       <p className="text-gray-400 mb-4">Appointment not found</p>
-      <Button onClick={() => router.push('/provider/appointments')}>Back</Button>
+      <Button onClick={() => router.push(toProviderPortalPath('/schedule', { pathname, user }))}>Back</Button>
     </div>
   );
 
@@ -158,7 +163,9 @@ export default function ProviderVideoCallPage() {
       <header className="h-16 px-6 flex items-center justify-between shrink-0 bg-[#121212] z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" className="text-gray-400 hover:text-white hover:bg-white/10"
-            onClick={() => router.push(isStandalone ? '/provider/dashboard' : `/provider/appointments/${appointmentId}/visit`)}>
+            onClick={() => router.push(isStandalone
+              ? toProviderPortalPath('/dashboard', { pathname, user })
+              : toProviderPortalPath(`/appointments/${appointmentId}/visit`, { pathname, user }))}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex items-center gap-2">
@@ -172,7 +179,7 @@ export default function ProviderVideoCallPage() {
               Consultation: {appointment.patientFirstName} {appointment.patientLastName}
             </h2>
             <span className="text-xs text-gray-500 flex items-center gap-1">
-              <ShieldCheck size={10} className="text-emerald-500" /> HIPAA Encrypted &middot; E2E Secure
+              <ShieldCheck size={10} className="text-emerald-500" /> {isNigeriaPortal ? 'NDPA aligned' : 'HIPAA encrypted'} &middot; E2E Secure
             </span>
           </div>
         </div>

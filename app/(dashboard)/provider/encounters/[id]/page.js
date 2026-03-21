@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, usePathname } from 'next/navigation';
 import {
   ArrowLeft,
   FileText,
@@ -24,9 +24,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/use-toast';
 import { formatDateTime } from '@/lib/utils';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 export default function ProviderEncounterChartPage() {
   const params = useParams();
+  const pathname = usePathname();
   const encounterId = params.id;
 
   const [loading, setLoading] = useState(true);
@@ -197,7 +199,7 @@ export default function ProviderEncounterChartPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Link href={`/provider/patients/${encounter?.patientId}/ehr`}>
+        <Link href={toProviderPortalPath(`/patients/${encounter?.patientId}/ehr`, { pathname })}>
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-5 h-5" />
           </Button>

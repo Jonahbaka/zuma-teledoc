@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { ExternalLink, Loader2, Pill, RefreshCw } from 'lucide-react';
 import { clinicalEhrAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/use-toast';
 import { format } from 'date-fns';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 const STATUS_COLORS = {
   draft: 'bg-gray-100 text-gray-800',
@@ -21,6 +23,7 @@ const STATUS_COLORS = {
 };
 
 export default function ProviderPrescriptionsPage() {
+  const pathname = usePathname();
   const [loading, setLoading] = useState(true);
   const [intents, setIntents] = useState([]);
   const [search, setSearch] = useState('');
@@ -78,7 +81,7 @@ export default function ProviderPrescriptionsPage() {
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Link href="/provider/patients">
+          <Link href={toProviderPortalPath('/patients', { pathname })}>
             <Button className="bg-purple-600 hover:bg-purple-700">Start from Patient Chart</Button>
           </Link>
         </div>
@@ -116,7 +119,7 @@ export default function ProviderPrescriptionsPage() {
                   Patient: {i.patientFirstName} {i.patientLastName}
                 </div>
                 <div className="text-muted-foreground">Created: {i.createdAt ? format(new Date(i.createdAt), 'MMM d, yyyy') : '—'}</div>
-                <Link href={`/provider/encounters/${i.encounterId}`}>
+                <Link href={toProviderPortalPath(`/encounters/${i.encounterId}`, { pathname })}>
                   <Button variant="outline" size="sm" className="w-full mt-2">
                     Open Encounter <ExternalLink className="w-4 h-4 ml-2" />
                   </Button>

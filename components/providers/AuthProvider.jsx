@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { getProviderLoginPath, toProviderPortalPath } from '@/lib/providerPortal';
 
 const AuthContext = createContext({});
 
@@ -142,10 +143,13 @@ export function AuthProvider({ children }) {
     } catch (err) {
       // Continue with logout even if API call fails
     } finally {
+      const logoutPath = user?.role === 'provider'
+        ? getProviderLoginPath({ user, pathname: typeof window !== 'undefined' ? window.location.pathname : '' })
+        : '/login';
       setUser(null);
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
-      router.push('/login');
+      router.push(logoutPath);
     }
   };
 
@@ -175,7 +179,10 @@ export function AuthProvider({ children }) {
       case 'super_admin':
         return '/admin/dashboard';
       case 'provider':
-        return '/provider/dashboard';
+        return toProviderPortalPath('/dashboard', {
+          user: u,
+          pathname: typeof window !== 'undefined' ? window.location.pathname : '',
+        });
       case 'patient':
       default:
         // If patient isn't paid up, route them to subscription first.
