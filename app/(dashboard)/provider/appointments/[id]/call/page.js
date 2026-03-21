@@ -42,7 +42,7 @@ const getPatientInitials = (appointment) => {
 
 const getWaitingRoomCopy = (appointment) =>
   getRawPatientName(appointment)
-    ? `${appointment.patientFirstName} can join the waiting room at any time`
+    ? `${getRawPatientName(appointment)} can join the waiting room at any time`
     : 'A patient can join the waiting room at any time';
 
 const FILTER_OPTIONS = [
