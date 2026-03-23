@@ -3,6 +3,7 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   compress: true,
+  outputFileTracingRoot: __dirname,
   
   // Security headers
   async headers() {

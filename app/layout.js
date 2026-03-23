@@ -9,6 +9,7 @@ import GoogleAnalytics from '@/components/analytics/GoogleAnalytics';
 import { THEME_STORAGE_KEY } from '@/lib/theme';
 
 export const metadata = {
+  metadataBase: new URL('https://doctarx.com'),
   title: {
     default: 'DoctaRx | Virtual Care, Prescriptions, and Pharmacy Coordination',
     template: '%s | DoctaRx'
@@ -39,20 +40,13 @@ export const metadata = {
     siteName: 'DoctaRx',
     title: 'DoctaRx | HIPAA-Compliant Telehealth & AI-Powered Healthcare',
     description: 'HIPAA-compliant telehealth with AI triage, video visits, encrypted messaging, and e-prescribing. Secure healthcare on any device.',
-    images: [
-      {
-        url: 'https://doctarx.com/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'DoctaRx - HIPAA-Compliant Telehealth & AI-Powered E-Prescribing Platform',
-      },
-    ],
+    images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'DoctaRx | HIPAA-Compliant Telehealth & AI-Powered Healthcare',
     description: 'HIPAA-compliant telehealth with AI triage, video visits, encrypted messaging, and e-prescribing.',
-    images: ['https://doctarx.com/og-image.png'],
+    images: ['/opengraph-image'],
   },
   icons: {
     icon: [

@@ -10,14 +10,64 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
+const packageJson = require('../package.json');
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 8080;
 const HOST = '0.0.0.0';
+const NEXT_READY_TIMEOUT_MS = parseInt(process.env.NEXT_READY_TIMEOUT_MS, 10) || 180000;
+const NEXT_WARMUP_GRACE_MS = parseInt(process.env.NEXT_WARMUP_GRACE_MS, 10) || 45000;
+const serverStartedAt = new Date();
 
 // Track startup status
 let nextReady = false;
 let handle = null;
 let initialized = false;
+let nextInitStatus = 'pending';
+let nextInitError = null;
+let nextInitStartedAt = null;
+
+function readNextBuildId() {
+  try {
+    const buildIdPath = path.join(process.cwd(), '.next', 'BUILD_ID');
+    if (!fs.existsSync(buildIdPath)) return null;
+    const buildId = fs.readFileSync(buildIdPath, 'utf8').trim();
+    return buildId || null;
+  } catch {
+    return null;
+  }
+}
+
+function readGitCommitId() {
+  try {
+    return execSync('git rev-parse --short=12 HEAD', {
+      cwd: process.cwd(),
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString().trim();
+  } catch {
+    return null;
+  }
+}
+
+function resolveBuildId() {
+  const candidates = [
+    process.env.APP_BUILD_ID,
+    process.env.GITHUB_SHA ? process.env.GITHUB_SHA.slice(0, 12) : null,
+    readGitCommitId(),
+    readNextBuildId(),
+    packageJson.version ? `app-${packageJson.version}` : null,
+  ];
+
+  return candidates.find((value) => typeof value === 'string' && value.trim()) || 'unknown';
+}
+
+function getFrontendState() {
+  if (nextReady) return 'ready';
+  if (!initialized) return 'initializing';
+  if (nextInitStatus === 'failed' || nextInitStatus === 'timeout') return 'degraded';
+  if (Date.now() - serverStartedAt.getTime() <= NEXT_WARMUP_GRACE_MS) return 'warming_up';
+  return 'warming_up';
+}
 
 // STEP 2: BIND PORT IMMEDIATELY - This MUST happen first for Cloud Run
 const server = app.listen(PORT, HOST, () => {
@@ -263,20 +313,34 @@ function renderWarmupLoaderHtml() {
 // Useful for monitoring and for debugging split traffic between revisions.
 app.get('/readyz', (req, res) => {
   if (initialized && nextReady) {
-    return res.status(200).json({ ready: true });
+    return res.status(200).json({ ready: true, buildId: resolveBuildId() });
   }
-  return res.status(503).json({ ready: false, initialized, nextReady });
+  return res.status(503).json({
+    ready: false,
+    initialized,
+    nextReady,
+    nextInitStatus,
+    nextInitError,
+    buildId: resolveBuildId()
+  });
 });
 
 app.get('/api/health', (req, res) => {
+  const frontendState = getFrontendState();
+  const buildId = resolveBuildId();
   const health = {
-    status: 'healthy',
+    status: frontendState === 'ready' ? 'healthy' : frontendState,
     uptime: Math.round(process.uptime()),
+    startedAt: serverStartedAt.toISOString(),
     timestamp: new Date().toISOString(),
     memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
     initialized,
     nextReady,
-    version: 'genesis-v3',
+    nextInitStatus,
+    nextInitError,
+    frontendState,
+    version: buildId,
+    buildId,
     // Cloud Run metadata (helps diagnose load balancer / revision split)
     service: process.env.K_SERVICE,
     revision: process.env.K_REVISION,
@@ -293,7 +357,8 @@ app.get('/api/health', (req, res) => {
         nextDirExists: fs.existsSync(nextPath),
         cwd: process.cwd(),
         nextPath: nextPath,
-        nodeVersion: process.version
+        nodeVersion: process.version,
+        nextInitStartedAt
       };
     } catch (e) {
       health.debug = { error: e.message };
@@ -306,7 +371,7 @@ app.get('/api/health', (req, res) => {
     health.heartbeat = orchestrator.getHeartbeatStatus?.() || {};
     health.operatingMode = orchestrator.operatingMode;
   } catch (e) { /* not ready yet */ }
-  res.json(health);
+  return res.status(frontendState === 'degraded' ? 503 : 200).json(health);
 });
 
 // Early warmup guard:
@@ -817,21 +882,48 @@ async function initializeApp() {
       const next = require('next');
       const dev = process.env.NODE_ENV !== 'production';
       const nextApp = next({ dev });
+      nextInitStatus = 'preparing';
+      nextInitStartedAt = new Date().toISOString();
+      const nextReadyTimeout = setTimeout(() => {
+        if (nextReady) return;
+
+        nextInitStatus = 'timeout';
+        nextInitError = `Next.js did not become ready within ${NEXT_READY_TIMEOUT_MS}ms`;
+        console.error(`[BOOT] ${nextInitError}`);
+
+        if (!dev) {
+          console.error('[BOOT] Exiting so the process manager can restart the app.');
+          process.exit(1);
+        }
+      }, NEXT_READY_TIMEOUT_MS);
       
       // Load in background, don't block startup
       nextApp.prepare()
         .then(() => {
           handle = nextApp.getRequestHandler();
+          clearTimeout(nextReadyTimeout);
           nextReady = true;
+          nextInitStatus = 'ready';
+          nextInitError = null;
           console.log('✅ Next.js ready');
         })
         .catch(err => {
+          clearTimeout(nextReadyTimeout);
+          nextInitStatus = 'failed';
+          nextInitError = err.message;
+          if (!dev) {
+            setTimeout(() => process.exit(1), 1000);
+          }
           console.error('❌ Next.js failed:', err.message);
         });
     } catch (err) {
+      nextInitStatus = 'failed';
+      nextInitError = err.message;
       console.error('⚠️  Next.js skipped:', err.message);
     }
   } else {
+    nextInitStatus = 'missing_build';
+    nextInitError = 'Next build output (.next) was not found';
     console.warn('⚠️  .next directory not found — API mode only');
   }
   

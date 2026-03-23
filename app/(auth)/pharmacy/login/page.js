@@ -23,11 +23,21 @@ export default function PharmacyLoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, role: 'pharmacy' })
+        body: JSON.stringify({ ...formData, role: 'pharmacy' }),
       });
       const data = await res.json();
-      if (data.success || data.token) {
-        localStorage.setItem('token', data.token || data.accessToken);
+      if (data.success || data.token || data.accessToken) {
+        const accessToken = data.accessToken || data.token;
+        if (accessToken) {
+          localStorage.setItem('accessToken', accessToken);
+        }
+        if (data.refreshToken) {
+          localStorage.setItem('refreshToken', data.refreshToken);
+        }
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
+        localStorage.removeItem('token');
         router.push('/pharmacy/dashboard');
       } else {
         toast({ title: 'Login Failed', description: data.error || 'Invalid credentials', variant: 'destructive' });
@@ -62,10 +72,13 @@ export default function PharmacyLoginPage() {
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  id="email" type="email" placeholder="pharmacy@example.com"
+                  id="email"
+                  type="email"
+                  placeholder="pharmacy@example.com"
                   value={formData.email}
-                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                  className="pl-9" required
+                  onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+                  className="pl-9"
+                  required
                 />
               </div>
             </div>
@@ -78,10 +91,13 @@ export default function PharmacyLoginPage() {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  id="password" type={showPassword ? "text" : "password"} placeholder="Enter your password"
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
                   value={formData.password}
-                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                  className="pl-9 pr-10" required
+                  onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+                  className="pl-9 pr-10"
+                  required
                 />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}

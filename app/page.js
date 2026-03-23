@@ -15,21 +15,14 @@ export const metadata = {
     siteName: 'DoctaRx',
     locale: 'en_US',
     type: 'website',
-    images: [
-      {
-        url: 'https://doctarx.com/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'DoctaRx United States telehealth experience',
-      },
-    ],
+    images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'DoctaRx United States',
     description:
       'Secure visits, messaging, e-prescribing, insurance-ready workflows, and pharmacy coordination for the US care experience.',
-    images: ['https://doctarx.com/og-image.png'],
+    images: ['/opengraph-image'],
   },
 };
 

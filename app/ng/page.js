@@ -15,21 +15,14 @@ export const metadata = {
     siteName: 'DoctaRx Nigeria',
     locale: 'en_NG',
     type: 'website',
-    images: [
-      {
-        url: 'https://doctarx.com/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'DoctaRx Nigeria prescription and pharmacy experience',
-      },
-    ],
+    images: ['/ng/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'DoctaRx Nigeria',
     description:
       'Medicine search, prescription upload, pharmacy confirmation, local payment rails, and fulfillment tracking in one premium Nigeria experience.',
-    images: ['https://doctarx.com/og-image.png'],
+    images: ['/ng/opengraph-image'],
   },
 };
 
