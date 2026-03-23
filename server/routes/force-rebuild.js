@@ -1,21 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const { exec } = require('child_process');
-const path = require('path');
+const { buildDeployCommand } = require('./deploy-command');
 
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
+let rebuilding = false;
 
 /**
- * Force Rebuild Endpoint
+ * Manual rebuild endpoint.
  * POST /api/force-rebuild
- * 
- * When Next.js files are changed, the normal webhook won't rebuild
- * because .next/ already exists. This endpoint force-deletes .next
- * and triggers a full rebuild.
- * 
- * Usage:
- * curl -X POST https://doctarx.com/api/force-rebuild \
- *   -H "x-deploy-token: doctarx-deploy-2026"
+ *
+ * Normal deploys now rebuild by default, but this remains available
+ * as an explicit recovery hook for stale runtime state.
  */
 
 router.post('/', (req, res) => {
@@ -24,26 +20,22 @@ router.post('/', (req, res) => {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 
+  if (rebuilding) {
+    return res.json({ success: false, message: 'Force rebuild already in progress - skipping' });
+  }
+
+  rebuilding = true;
   res.json({ success: true, message: 'Force rebuild initiated' });
 
-  const projectRoot = '/home/ec2-user/zuma-teledoc';
-  const cmd = [
-    `cd ${projectRoot}`,
-    'git pull origin main || true',
-    'rm -rf .next', // Force delete .next
-    'rm -rf .turbo', // Clear turbo cache
-    'npm run build',
-    'pm2 restart doctarx cronops',
-  ].join(' && ');
-
-  exec(cmd, { timeout: 1800000 /* 30 min */ }, (err, stdout, stderr) => {
+  exec(buildDeployCommand(), { timeout: 1800000 /* 30 min */ }, (err, stdout, stderr) => {
+    rebuilding = false;
     if (err) {
       console.error('[FORCE-REBUILD] Error:', err.message);
       if (stderr) console.error('[FORCE-REBUILD] stderr:', stderr);
     } else {
-      console.log('[FORCE-REBUILD] ✅ Complete');
+      console.log('[FORCE-REBUILD] Complete');
     }
-    if (stdout) console.log('[FORCE-REBUILD] stdout:', stdout.slice(-500)); // Last 500 chars
+    if (stdout) console.log('[FORCE-REBUILD] stdout:', stdout.slice(-500));
   });
 });
 

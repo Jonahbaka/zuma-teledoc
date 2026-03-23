@@ -74,7 +74,7 @@ export default function MembershipCard({ user, card, subscription }) {
         </div>
 
         <div className={cn('mt-6 flex items-center justify-between text-xs', textTone)}>
-          <p className="opacity-90">HIPAA-ready access controls • NemoClaw Secured • DoctaRx</p>
+          <p className="opacity-90">HIPAA-ready access controls | Privacy Protected | DoctaRx</p>
           <div className="h-8 w-12 rounded-lg bg-white/15 border border-white/20" />
         </div>
       </div>

@@ -53,7 +53,10 @@ try {
 // Minimal health check - available immediately
 app.get('/health', (req, res) => {
   let nemoClawStatus = 'not_loaded';
-  try { const nc = require('./services/nemoclaw'); nemoClawStatus = nc.initialized ? 'online' : 'initializing'; } catch {}
+  try {
+    const nc = require('./services/nemoclaw');
+    nemoClawStatus = nc.getOperationalStatus?.().state || (nc.initialized ? 'online' : 'initializing');
+  } catch {}
   res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady, nemoClaw: nemoClawStatus });
 });
 
@@ -711,7 +714,12 @@ async function initializeApp() {
       db,
       app
     }).then(() => {
-      console.log('🛡️ NemoClaw: ONLINE — OpenShell secure sandbox active');
+      const status = nemoClawService.getOperationalStatus?.();
+      if (status?.state === 'online') {
+        console.log('🛡️ NemoClaw: ONLINE - dedicated sandbox runtime active');
+      } else {
+        console.warn(`🛡️ NemoClaw: DEGRADED - ${status?.reason || 'compatibility mode active'}`);
+      }
     }).catch(err => {
       console.error('🛡️ NemoClaw: Init warning -', err.message);
     });

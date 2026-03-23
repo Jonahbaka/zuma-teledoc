@@ -187,7 +187,7 @@ export default function InsuranceCardUploader({ title = 'Insurance Card Verifica
         <div className="flex items-start gap-2 text-xs text-muted-foreground">
           <AlertTriangle className="h-4 w-4 mt-0.5" />
           <p>
-            Your insurance images are treated as PHI. We store them encrypted and audit access. AI processing runs in a NemoClaw OpenShell sandbox.
+            Your insurance images are treated as PHI. We store them encrypted, restrict access, and audit AI-assisted processing.
           </p>
         </div>
       </CardContent>

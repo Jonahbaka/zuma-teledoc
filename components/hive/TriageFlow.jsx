@@ -236,7 +236,7 @@ export default function TriageFlow() {
 
       <div className="px-4 pb-2 flex items-center gap-2">
         <Shield className="w-3 h-3 text-green-500" />
-        <p className="text-[10px] text-gray-600">HIPAA compliant. Encrypted and private. AI runs in NemoClaw OpenShell sandbox — your data never leaves the secure environment.</p>
+        <p className="text-[10px] text-gray-600">HIPAA aligned. Encrypted and private. AI responses pass through privacy filtering and audit logging.</p>
       </div>
     </div>
   );

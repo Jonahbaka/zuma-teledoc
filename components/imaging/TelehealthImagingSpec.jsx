@@ -73,7 +73,7 @@ const ExecutiveSummary = () => (
           <h3 className="font-bold text-lg">Secure & Compliant</h3>
         </div>
         <p className="text-slate-600 text-sm">
-          Zero-trust architecture powered by NVIDIA NemoClaw OpenShell. Automated PHI redaction (Pixel + Metadata). HIPAA, GDPR, and SOC2 ready. Audit logging for every pixel access.
+          Zero-trust imaging architecture with automated PHI redaction (pixel + metadata). HIPAA, GDPR, and SOC2-ready controls with audit logging for every pixel access.
         </p>
       </div>
     </div>

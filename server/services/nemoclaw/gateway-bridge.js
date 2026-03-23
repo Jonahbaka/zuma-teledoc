@@ -21,6 +21,7 @@ const PrivacyRouter = require('./privacy-router');
 const NEMOCLAW_GATEWAY_HOST = process.env.NEMOCLAW_GATEWAY_HOST || '127.0.0.1';
 const NEMOCLAW_GATEWAY_PORT = parseInt(process.env.NEMOCLAW_GATEWAY_PORT, 10) || 18789;
 const NEMOCLAW_API_KEY = process.env.NEMOCLAW_API_KEY || '';
+const NEMOCLAW_COMPAT_MODE = process.env.NEMOCLAW_COMPAT_MODE !== 'false';
 const RECONNECT_INTERVAL_MS = 5000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const HEARTBEAT_INTERVAL_MS = 30000;
@@ -37,6 +38,10 @@ class NemoClawGatewayBridge {
     this.eventHandlers = new Map();
     this.seqCounter = 0;
     this.bridgeId = `bridge_${crypto.randomUUID().slice(0, 8)}`;
+    this.connectionMode = 'disconnected';
+    this.sandboxActive = false;
+    this.lastError = null;
+    this.registeredAgents = new Map();
 
     // Privacy Router for PII scrubbing
     this.privacyRouter = options.privacyRouter || new PrivacyRouter({
@@ -51,6 +56,20 @@ class NemoClawGatewayBridge {
   // ── Connection Management ───────────────────────────────────
 
   async connect() {
+    try {
+      await this._connectWebSocket();
+      return { connected: true, mode: this.connectionMode };
+    } catch (err) {
+      this.lastError = err.message;
+      if (!NEMOCLAW_COMPAT_MODE) {
+        throw err;
+      }
+      this._enableCompatMode(err);
+      return { connected: true, mode: this.connectionMode };
+    }
+  }
+
+  async _connectWebSocket() {
     return new Promise((resolve, reject) => {
       try {
         const headers = {};
@@ -63,7 +82,10 @@ class NemoClawGatewayBridge {
 
         this.ws.on('open', () => {
           this.connected = true;
+          this.connectionMode = 'remote_gateway';
+          this.sandboxActive = true;
           this.reconnectAttempts = 0;
+          this.lastError = null;
           this._startHeartbeat();
           this._sendHandshake();
           this.auditLogger({
@@ -79,8 +101,15 @@ class NemoClawGatewayBridge {
         });
 
         this.ws.on('close', (code, reason) => {
+          if (this.connectionMode === 'compat_local') {
+            return;
+          }
           this.connected = false;
+          this.sandboxActive = false;
+          this.connectionMode = 'reconnecting';
+          this.lastError = reason?.toString() || `Connection closed (${code})`;
           this._stopHeartbeat();
+          this.ws = null;
           this.auditLogger({
             event: 'nemoclaw:disconnected',
             code,
@@ -90,6 +119,7 @@ class NemoClawGatewayBridge {
         });
 
         this.ws.on('error', (err) => {
+          this.lastError = err.message;
           this.auditLogger({
             event: 'nemoclaw:error',
             error: err.message
@@ -109,15 +139,39 @@ class NemoClawGatewayBridge {
       this.ws = null;
     }
     this.connected = false;
+    this.connectionMode = 'disconnected';
+    this.sandboxActive = false;
     this.pendingRequests.clear();
   }
 
+  _enableCompatMode(error) {
+    this._stopHeartbeat();
+    this.ws = null;
+    this.connected = true;
+    this.connectionMode = 'compat_local';
+    this.sandboxActive = false;
+    this.reconnectAttempts = 0;
+    this.lastError = error?.message || 'Dedicated gateway unavailable';
+
+    this.auditLogger({
+      event: 'nemoclaw:compat_mode_enabled',
+      gatewayUrl: this.gatewayUrl,
+      reason: this.lastError
+    });
+  }
+
   _scheduleReconnect() {
+    if (this.connectionMode === 'compat_local') {
+      return;
+    }
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       this.auditLogger({
         event: 'nemoclaw:reconnect_exhausted',
         attempts: this.reconnectAttempts
       });
+      if (NEMOCLAW_COMPAT_MODE) {
+        this._enableCompatMode(new Error('Dedicated gateway unavailable after reconnect attempts'));
+      }
       return;
     }
     this.reconnectAttempts++;
@@ -127,7 +181,9 @@ class NemoClawGatewayBridge {
         event: 'nemoclaw:reconnecting',
         attempt: this.reconnectAttempts
       });
-      this.connect().catch(() => {});
+      this._connectWebSocket().catch((err) => {
+        this.lastError = err.message;
+      });
     }, delay);
   }
 
@@ -312,6 +368,10 @@ class NemoClawGatewayBridge {
     // Scrub PII from outbound params
     const { scrubbed } = this.privacyRouter.scrubObject(params);
 
+    if (this.connectionMode === 'compat_local') {
+      return this._compatFallback(method, scrubbed);
+    }
+
     if (!this.connected) {
       return this._restFallback(method, scrubbed, timeoutMs);
     }
@@ -326,6 +386,52 @@ class NemoClawGatewayBridge {
       this.pendingRequests.set(id, { resolve, reject, timer });
       this._send({ type: 'req', id, method, params: scrubbed });
     });
+  }
+
+  async _compatFallback(method, params) {
+    switch (method) {
+      case 'sandbox.register_agent':
+        this.registeredAgents.set(params.agentType, {
+          ...params,
+          registeredAt: new Date().toISOString()
+        });
+        return {
+          ok: true,
+          mode: 'compat_local',
+          sandboxActive: false,
+          agentType: params.agentType
+        };
+      case 'sandbox.execute':
+        return {
+          ok: true,
+          mode: 'compat_local',
+          sandboxActive: false,
+          status: 'accepted',
+          note: 'Dedicated NemoClaw runtime is unavailable; request handled by the in-process compatibility layer.'
+        };
+      case 'sandbox.health':
+        return {
+          status: 'degraded',
+          mode: 'compat_local',
+          sandboxActive: false,
+          registeredAgents: this.registeredAgents.size,
+          privacyRouterStats: this.privacyRouter.getStats()
+        };
+      case 'agent.status':
+        return this._getAgentStatus(params.agentType);
+      case 'agent.query':
+        return this._queryAgent(params.agentType, params.message, params.context);
+      case 'compliance.check': {
+        const scrubResult = this.privacyRouter.scrubObject(params.payload || {});
+        return {
+          piiDetected: scrubResult.wasScrubbed,
+          detections: scrubResult.detections,
+          scrubbed: scrubResult.scrubbed
+        };
+      }
+      default:
+        throw new Error(`Unsupported compatibility method: ${method}`);
+    }
   }
 
   /**
@@ -393,7 +499,7 @@ class NemoClawGatewayBridge {
       agentType,
       displayName: agent.displayName || agentType,
       status: 'completed',
-      message: `Agent ${agentType} processed within NemoClaw sandbox`
+      message: `Agent ${agentType} processed by the DoctaRx agent bridge`
     };
   }
 
@@ -421,9 +527,14 @@ class NemoClawGatewayBridge {
     return {
       bridgeId: this.bridgeId,
       connected: this.connected,
+      connectionMode: this.connectionMode,
+      sandboxActive: this.sandboxActive,
       gatewayUrl: this.gatewayUrl,
+      activeEndpoint: this.connectionMode === 'compat_local' ? 'in-process compatibility layer' : this.gatewayUrl,
       reconnectAttempts: this.reconnectAttempts,
       pendingRequests: this.pendingRequests.size,
+      registeredAgents: this.registeredAgents.size,
+      lastError: this.lastError,
       privacyStats: this.privacyRouter.getStats()
     };
   }

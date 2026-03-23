@@ -227,7 +227,7 @@ export default function ClinicalCoPilot({ appointmentId, patientId, patientName,
 
       <div className="px-3 pb-1.5 flex items-center gap-1.5">
         <Shield className="w-2.5 h-2.5 text-green-500" />
-        <p className="text-[9px] text-gray-600">Provider-only. HIPAA sandbox. NemoClaw OpenShell isolated. Not a substitute for clinical judgment.</p>
+        <p className="text-[9px] text-gray-600">Provider-only. Access controlled. Audited. Not a substitute for clinical judgment.</p>
       </div>
     </div>
   );

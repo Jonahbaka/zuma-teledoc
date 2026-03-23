@@ -149,7 +149,7 @@ export default function PharmacyRegisterPage() {
 
                 <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs text-muted-foreground flex items-start gap-2">
                   <Shield className="w-4 h-4 mt-0.5" />
-                  <span>Your pharmacy data is encrypted. AI agents operate within NemoClaw OpenShell secure sandboxes.</span>
+                  <span>Your pharmacy data is encrypted. AI-assisted workflows pass through privacy filters and audit logging.</span>
                 </div>
 
                 <div className="flex gap-3">
@@ -170,7 +170,7 @@ export default function PharmacyRegisterPage() {
 
         <div className="flex items-center justify-center gap-2 mt-6 text-sm text-muted-foreground">
           <Shield className="w-4 h-4" />
-          <span>Secure Platform &bull; End-to-End Encrypted &bull; NemoClaw Protected</span>
+          <span>Secure Platform | End-to-End Encrypted | Privacy Protected</span>
         </div>
       </main>
     </div>

@@ -16,7 +16,7 @@ const faqs = [
   },
   {
     question: 'How do video consultations work?',
-    answer: 'Video consultations are conducted through our secure, HIPAA-compliant platform protected by NVIDIA NemoClaw OpenShell technology. At your appointment time, simply click "Join Visit" from your appointment details. Make sure you have a stable internet connection and a device with a camera and microphone.'
+    answer: 'Video consultations are conducted through our secure, HIPAA-compliant platform with encrypted sessions and access-controlled visit links. At your appointment time, simply click "Join Visit" from your appointment details. Make sure you have a stable internet connection and a device with a camera and microphone.'
   },
   {
     question: 'Can I get prescriptions through Docta?',
@@ -28,7 +28,7 @@ const faqs = [
   },
   {
     question: 'Is my health information secure?',
-    answer: 'Absolutely. We use 256-bit SSL encryption, HIPAA-compliant data storage, and strict access controls. All health information is encrypted both in transit and at rest. Our AI agents operate within NVIDIA NemoClaw OpenShell secure sandboxes with read-only patient data access, no unauthorized network egress, and automatic PII scrubbing. We maintain comprehensive audit logs and security measures to protect your data.'
+    answer: 'Absolutely. We use 256-bit SSL encryption, HIPAA-compliant data storage, and strict access controls. All health information is encrypted both in transit and at rest. We also apply privacy filtering, controlled AI routing, and comprehensive audit logging to reduce PHI exposure and protect your data.'
   },
   {
     question: 'What is Docta Gold?',

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Shield, Lock } from 'lucide-react';
+import { ArrowLeft, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function HIPAANoticePage() {
@@ -39,7 +39,7 @@ export default function HIPAANoticePage() {
               <ul className="list-disc pl-6 space-y-2">
                 <li><strong>Right to Access:</strong> You can request to see or get an electronic or paper copy of your medical record.</li>
                 <li><strong>Right to Amend:</strong> You can ask us to correct health information that you think is incorrect or incomplete.</li>
-                <li><strong>Right to an Accounting:</strong> You can ask for a list of the times we've shared your health information.</li>
+                <li><strong>Right to an Accounting:</strong> You can ask for a list of the times we&apos;ve shared your health information.</li>
                 <li><strong>Right to Request Restrictions:</strong> You can ask us not to use or share certain health information.</li>
                 <li><strong>Right to Request Confidential Communications:</strong> You can ask us to contact you in a specific way.</li>
                 <li><strong>Right to File a Complaint:</strong> You can file a complaint if you feel your rights are violated.</li>
@@ -80,20 +80,20 @@ export default function HIPAANoticePage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-semibold text-purple-800 mb-4">AI Agent Security — NVIDIA NemoClaw</h2>
+              <h2 className="text-2xl font-semibold text-purple-800 mb-4">AI Workflow Security</h2>
               <p>
-                DoctaRx uses AI-powered clinical decision support agents to assist providers and patients. To ensure the highest standard of data safety, all AI agents operate within the <strong>NVIDIA NemoClaw OpenShell</strong> secure sandbox environment:
+                DoctaRx uses AI-assisted clinical workflows to support providers and patients. These workflows are protected by permissioned access controls, privacy filtering, and audit logging designed to reduce PHI exposure:
               </p>
               <ul className="list-disc pl-6 space-y-2">
-                <li><strong>Sandboxed Execution:</strong> Every AI agent runs in a strictly isolated OpenShell container. Agents cannot access data outside their permitted scope.</li>
-                <li><strong>Read-Only Patient Data:</strong> AI agents have read-only access to clinical data — they cannot modify, copy, or exfiltrate patient records.</li>
-                <li><strong>No Unauthorized Egress:</strong> Network egress is denied by default. Only approved, allowlisted services (such as our encrypted database) can be reached from within the sandbox.</li>
-                <li><strong>Automatic PII Scrubbing:</strong> A Privacy Router middleware automatically detects and redacts personally identifiable information (SSN, phone, email, MRN, date of birth, addresses) before any data reaches external AI providers.</li>
-                <li><strong>Full Audit Trail:</strong> Every agent action, data access, and intent declaration is logged to a tamper-evident audit trail retained for the HIPAA-required minimum of 7 years.</li>
-                <li><strong>Compliance-First Governance:</strong> Agent actions pass through a governance pipeline — The Guardian (compliance agent) can veto any action that poses a risk to patient privacy.</li>
+                <li><strong>Role-Based Access:</strong> AI-assisted tools only run within the permissions granted to the signed-in user and the associated workflow.</li>
+                <li><strong>Privacy Filtering:</strong> Personally identifiable information is redacted before data is routed to external AI providers.</li>
+                <li><strong>Controlled Egress:</strong> Outbound connections are constrained to approved destinations when privacy middleware is active.</li>
+                <li><strong>Audit Logging:</strong> Sensitive AI-assisted actions and data access events are recorded for compliance review.</li>
+                <li><strong>Human Oversight:</strong> AI-assisted outputs support care teams and do not replace clinical judgment or required review.</li>
+                <li><strong>Operational Health Checks:</strong> Dedicated isolated runtimes are only considered active when the gateway health checks pass.</li>
               </ul>
               <p className="mt-4">
-                This architecture ensures that your health data is never exposed to uncontrolled AI processing. NemoClaw provides defense-in-depth security that exceeds industry standards for healthcare AI deployments.
+                These controls keep AI-assisted workflows inside auditable, permissioned boundaries while preserving encryption and access protections for patient data.
               </p>
             </section>
 
@@ -120,4 +120,3 @@ export default function HIPAANoticePage() {
     </div>
   );
 }
-

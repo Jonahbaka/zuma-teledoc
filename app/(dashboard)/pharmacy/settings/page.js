@@ -136,7 +136,7 @@ export default function PharmacySettingsPage() {
 
       <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs text-muted-foreground flex items-start gap-2">
         <Shield className="w-4 h-4 mt-0.5 shrink-0" />
-        <span>Your pharmacy data is encrypted and secured by NVIDIA NemoClaw OpenShell. All prescription data is audited for compliance.</span>
+        <span>Your pharmacy data is encrypted, access-controlled, and audited for compliance.</span>
       </div>
     </div>
   );

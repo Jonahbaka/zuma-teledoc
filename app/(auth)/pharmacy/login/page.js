@@ -102,7 +102,7 @@ export default function PharmacyLoginPage() {
 
         <div className="flex items-center justify-center gap-2 mt-6 text-sm text-muted-foreground">
           <Shield className="w-4 h-4" />
-          <span>Secure Platform &bull; End-to-End Encrypted &bull; NemoClaw Protected</span>
+          <span>Secure Platform | End-to-End Encrypted | Privacy Protected</span>
         </div>
       </main>
     </div>
