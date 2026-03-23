@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { exec } = require('child_process');
 const { buildDeployCommand } = require('./deploy-command');
+const { runDetachedCommand } = require('./run-detached-command');
 
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
 let rebuilding = false;
@@ -25,17 +25,15 @@ router.post('/', (req, res) => {
   }
 
   rebuilding = true;
-  res.json({ success: true, message: 'Force rebuild initiated' });
+  const job = runDetachedCommand(buildDeployCommand(), {
+    logFile: '/tmp/doctarx-force-rebuild.log',
+  });
 
-  exec(buildDeployCommand(), { timeout: 1800000 /* 30 min */ }, (err, stdout, stderr) => {
-    rebuilding = false;
-    if (err) {
-      console.error('[FORCE-REBUILD] Error:', err.message);
-      if (stderr) console.error('[FORCE-REBUILD] stderr:', stderr);
-    } else {
-      console.log('[FORCE-REBUILD] Complete');
-    }
-    if (stdout) console.log('[FORCE-REBUILD] stdout:', stdout.slice(-500));
+  res.json({
+    success: true,
+    message: 'Force rebuild initiated',
+    logFile: job.logFile,
+    pid: job.pid,
   });
 });
 

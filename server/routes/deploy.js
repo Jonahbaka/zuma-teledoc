@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { exec } = require('child_process');
 const { buildDeployCommand } = require('./deploy-command');
+const { runDetachedCommand } = require('./run-detached-command');
 
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
 let deploying = false;
@@ -17,14 +17,15 @@ router.post('/', (req, res) => {
   }
 
   deploying = true;
-  res.json({ success: true, message: 'Deploy triggered' });
+  const job = runDetachedCommand(buildDeployCommand(), {
+    logFile: '/tmp/doctarx-deploy.log',
+  });
 
-  exec(buildDeployCommand(), { timeout: 1800000 /* 30 min */ }, (err, stdout, stderr) => {
-    deploying = false;
-    if (err) console.error('[DEPLOY] Error:', err.message);
-    if (stdout) console.log('[DEPLOY] stdout:', stdout);
-    if (stderr) console.log('[DEPLOY] stderr:', stderr);
-    console.log('[DEPLOY] Complete');
+  res.json({
+    success: true,
+    message: 'Deploy triggered',
+    logFile: job.logFile,
+    pid: job.pid,
   });
 });
 
