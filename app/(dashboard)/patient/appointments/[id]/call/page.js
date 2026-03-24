@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import {
   Mic, MicOff, Video as VideoIcon, VideoOff,
   PhoneOff, Settings, ShieldCheck, User,
@@ -19,6 +19,26 @@ import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 // --- Assets & Constants ---
 const DOCTOR_VIDEO_URL = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+
+const getProviderName = (appointment) =>
+  `${appointment?.providerFirstName || ''} ${appointment?.providerLastName || ''}`.trim() || 'DoctaRx Care Team';
+
+const getProviderLabel = (appointment) =>
+  appointment?.isStandaloneTest ? 'DoctaRx Care Team' : `Dr. ${getProviderName(appointment)}`;
+
+const getLobbyHeading = (appointment) =>
+  appointment?.isStandaloneTest ? 'Your test call is ready' : 'Your appointment with';
+
+const getJoinButtonLabel = (appointment) =>
+  appointment?.isStandaloneTest ? 'Join Test Call' : 'Join Appointment';
+
+const getWaitingRoomCopy = (appointment) =>
+  appointment?.isStandaloneTest
+    ? 'The care team can join this testing room at any time'
+    : `${getProviderLabel(appointment)} can join the waiting room at any time`;
+
+const getChatSenderLabel = (appointment) =>
+  appointment?.isStandaloneTest ? 'Care Team' : `Dr. ${appointment?.providerLastName || appointment?.providerFirstName || 'Care Team'}`;
 
 const getBgPreviewStyle = (preset) => {
   if (preset.type === 'gradient') {
@@ -45,9 +65,16 @@ const getBgPreviewStyle = (preset) => {
 
 export default function PatientVideoCallPage() {
   const params = useParams();
+  const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
   const appointmentId = params.id;
+  const isStandalone = appointmentId === 'standalone';
+  const isNigeriaPortal = pathname.startsWith('/ng/patient');
+  const appointmentReturnPath = isStandalone
+    ? (isNigeriaPortal ? '/ng/patient/search' : '/patient/dashboard')
+    : (isNigeriaPortal ? '/ng/patient/search' : `/patient/appointments/${appointmentId}`);
+  const appointmentsHomePath = isNigeriaPortal ? '/ng/patient/search' : '/patient/appointments';
   
   const [appointment, setAppointment] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -67,11 +94,37 @@ export default function PatientVideoCallPage() {
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
+    if (isStandalone) {
+      setAppointment({
+        id: 'standalone',
+        type: 'video',
+        status: 'in_progress',
+        providerFirstName: 'Care',
+        providerLastName: 'Team',
+        providerSpecialty: 'Standalone video test session',
+        scheduledAt: new Date().toISOString(),
+        durationMinutes: 30,
+        reasonForVisit: 'Standalone patient video call for portal testing.',
+        isStandaloneTest: true,
+      });
+      if (user?.firstName) {
+        setUserName(`${user.firstName}${user.lastName ? ` ${user.lastName}` : ''}`);
+      }
+      setPaymentChecked(true);
+      setLoading(false);
+      return;
+    }
+
     fetchAppointment();
     checkPaymentAccess();
-  }, [appointmentId]);
+  }, [appointmentId, isStandalone, user?.firstName, user?.lastName]);
 
   const checkPaymentAccess = async () => {
+    if (isStandalone) {
+      setPaymentChecked(true);
+      return;
+    }
+
     try {
       const response = await paymentsAPI.getAppointmentPayment(appointmentId);
       if (response.data.success) {
@@ -81,7 +134,7 @@ export default function PatientVideoCallPage() {
             description: 'Please complete payment before joining the video call',
             variant: 'destructive'
           });
-          router.push(`/patient/appointments/${appointmentId}`);
+          router.push(appointmentReturnPath);
           return;
         }
         setPaymentChecked(true);
@@ -94,6 +147,10 @@ export default function PatientVideoCallPage() {
   };
 
   const fetchAppointment = async () => {
+    if (isStandalone) {
+      return;
+    }
+
     try {
       const response = await api.get(`/appointments/${appointmentId}`);
       if (response.data.success) {
@@ -109,7 +166,7 @@ export default function PatientVideoCallPage() {
         description: 'Failed to load appointment details',
         variant: 'destructive'
       });
-      router.push('/patient/appointments');
+      router.push(appointmentsHomePath);
     } finally {
       setLoading(false);
     }
@@ -122,7 +179,7 @@ export default function PatientVideoCallPage() {
   const endCall = () => {
     setIsInCall(false);
     setActiveEffect(null);
-    router.push(`/patient/appointments/${appointmentId}`);
+    router.push(appointmentReturnPath);
   };
 
   if (loading) {
@@ -130,7 +187,7 @@ export default function PatientVideoCallPage() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading appointment...</p>
+          <p className="text-slate-600">{isStandalone ? 'Preparing test call...' : 'Loading appointment...'}</p>
         </div>
       </div>
     );
@@ -141,7 +198,7 @@ export default function PatientVideoCallPage() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-slate-600 mb-4">Appointment not found</p>
-          <Button onClick={() => router.push('/patient/appointments')}>Back to Appointments</Button>
+          <Button onClick={() => router.push(appointmentsHomePath)}>Back</Button>
         </div>
       </div>
     );
@@ -152,7 +209,7 @@ export default function PatientVideoCallPage() {
       {/* Header / Nav */}
       <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 fixed top-0 w-full z-50">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push(`/patient/appointments/${appointmentId}`)}>
+          <Button variant="ghost" size="icon" onClick={() => router.push(appointmentReturnPath)}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex items-center gap-2">
@@ -217,8 +274,8 @@ const Lobby = ({ appointment, userName, setUserName, onJoin, micOn, setMicOn, ca
         <div className="space-y-6">
           <div>
             <h1 className="text-4xl font-bold text-slate-900 leading-tight mb-2">
-              Your appointment with <br/>
-              <span className="text-blue-600">Dr. {appointment.providerFirstName} {appointment.providerLastName}</span>
+              {getLobbyHeading(appointment)} <br/>
+              <span className="text-blue-600">{getProviderLabel(appointment)}</span>
             </h1>
             {appointment.providerSpecialty && (
               <p className="text-slate-600 text-lg">{appointment.providerSpecialty}</p>
@@ -256,9 +313,7 @@ const Lobby = ({ appointment, userName, setUserName, onJoin, micOn, setMicOn, ca
           {/* Provider Status Indicator */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-            <p className="text-sm text-blue-700">
-              <span className="font-semibold">Dr. {appointment.providerFirstName} {appointment.providerLastName}</span> can join the waiting room at any time
-            </p>
+            <p className="text-sm text-blue-700">{getWaitingRoomCopy(appointment)}</p>
           </div>
 
           <div className="space-y-4">
@@ -278,7 +333,7 @@ const Lobby = ({ appointment, userName, setUserName, onJoin, micOn, setMicOn, ca
               disabled={!userName.trim()}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-lg shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2"
             >
-              Join Appointment
+              {getJoinButtonLabel(appointment)}
             </button>
           </div>
         </div>
@@ -349,7 +404,7 @@ const ActiveCallRoom = ({
           />
 
           <div className="absolute top-4 left-4 bg-black/40 backdrop-blur px-4 py-2 rounded-lg text-white border border-white/10">
-            <h3 className="font-semibold text-sm">Dr. {appointment.providerFirstName} {appointment.providerLastName}</h3>
+            <h3 className="font-semibold text-sm">{getProviderLabel(appointment)}</h3>
             <p className="text-xs text-slate-300">{appointment.providerSpecialty || 'General Practice'}</p>
           </div>
 
@@ -486,7 +541,7 @@ const ActiveCallRoom = ({
           <div className="flex-1 p-4 overflow-y-auto space-y-4">
             <div className="bg-blue-50 p-3 rounded-lg rounded-tl-none max-w-[85%]">
               <p className="text-sm text-blue-900">Hello! I'm reviewing your latest lab results. I'll be with you in a moment.</p>
-              <span className="text-[10px] text-blue-700/60 block mt-1">Dr. {appointment.providerLastName} • {formatTime(new Date())}</span>
+              <span className="text-[10px] text-blue-700/60 block mt-1">{getChatSenderLabel(appointment)} • {formatTime(new Date())}</span>
             </div>
           </div>
           <div className="p-4 border-t border-slate-100">

@@ -95,10 +95,28 @@ function DrugSearchContent() {
               Search
             </button>
           </form>
+          <Link
+            href="/ng/patient/call"
+            className="hidden sm:inline-flex px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 whitespace-nowrap"
+          >
+            Test Video Call
+          </Link>
         </div>
       </header>
 
       <div className="max-w-6xl mx-auto px-4 py-6">
+        <div className="mb-6 bg-white border border-blue-100 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Need to test the patient video room?</p>
+            <p className="text-sm text-gray-500">Open the standalone call flow without booking an appointment.</p>
+          </div>
+          <Link
+            href="/ng/patient/call"
+            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 whitespace-nowrap"
+          >
+            Open Test Video Call
+          </Link>
+        </div>
         <div className="lg:flex lg:gap-6">
           <div className="lg:w-1/2">
             <h2 className="text-lg font-bold text-gray-900 mb-4">

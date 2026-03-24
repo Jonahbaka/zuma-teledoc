@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import api from '@/lib/api';
+import { authAPI } from '@/lib/api';
 
 export default function NigeriaLogin() {
   const router = useRouter();
@@ -21,22 +21,16 @@ export default function NigeriaLogin() {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
       }
 
-      const res = await api.post('/auth/login', { email, password });
+      const res = await authAPI.login({ email, password, role: 'patient' });
 
       if (res.data.success) {
         // Store tokens
         if (res.data.accessToken) localStorage.setItem('accessToken', res.data.accessToken);
         if (res.data.refreshToken) localStorage.setItem('refreshToken', res.data.refreshToken);
-
-        // Redirect based on role
-        const role = res.data.user?.role;
-        if (role === 'admin' || role === 'super_admin') {
-          router.push('/ng/admin');
-        } else {
-          router.push('/ng/patient/search');
-        }
+        router.push('/ng/patient/search');
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Please check your credentials.');

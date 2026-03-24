@@ -140,6 +140,11 @@ export default function PatientDashboard() {
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
+          <Link href="/patient/call">
+            <Button variant="outline" className="border-2 border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950 dark:text-blue-400 shadow-lg shadow-blue-500/10">
+              <Video className="w-4 h-4 mr-2" /> Test Video Call
+            </Button>
+          </Link>
           <Link href="/patient/triage">
             <Button variant="outline" className="border-2 border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950 dark:text-amber-400 shadow-lg shadow-amber-500/10">
               <Phone className="w-4 h-4 mr-2" /> Talk to a Doctor Now

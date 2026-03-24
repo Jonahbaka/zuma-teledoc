@@ -1,39 +1,41 @@
 /**
- * Seed Portal Users
- * Creates admin, patient, and provider accounts with direct DB insertion
- * Bypasses registration validation for seeding purposes
+ * Portal account reconciler.
+ *
+ * Safely aligns the production patient/provider/admin login accounts with the
+ * expected role -> email mapping without deleting unrelated users or data.
  */
 
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 
 const BCRYPT_ROUNDS = 12;
+const SHARED_PASSWORD = 'password1';
 
-const USERS = [
+const PORTAL_ACCOUNTS = [
   {
-    email: 'approversweb@gmail.com',
-    password: 'password1',
-    firstName: 'Admin',
-    lastName: 'Approver',
-    role: 'admin',
-    accessLevel: 'gold_monthly',
-  },
-  {
-    email: 'jonahbaka00@gmail.com',
-    password: 'password1',
+    key: 'patient',
+    role: 'patient',
+    targetEmail: 'joahbaka00@gmail.com',
+    legacyEmails: ['jonahbaka00@gmail.com'],
     firstName: 'Jonah',
     lastName: 'Baka',
-    role: 'patient',
     accessLevel: 'gold_monthly',
+    tier: 'gold',
+    country: 'Nigeria',
   },
   {
-    email: 'iamjonah.baka@gmail.com',
-    password: 'password1',
-    firstName: 'Dr. Jonah',
-    lastName: 'Baka',
+    key: 'provider',
     role: 'provider',
+    targetEmail: 'approversweb@gmail.com',
+    legacyEmails: ['iamjonah.baka@gmail.com'],
+    firstName: 'Jonah',
+    lastName: 'Baka',
     accessLevel: 'gold_monthly',
+    tier: 'gold',
+    country: 'Nigeria',
     providerStatus: 'approved',
     specialty: 'General Practice',
     credentials: 'MD',
@@ -42,171 +44,282 @@ const USERS = [
     licenseState: 'Lagos',
     bio: 'Board-certified general practitioner with expertise in telemedicine.',
   },
+  {
+    key: 'admin',
+    role: 'admin',
+    targetEmail: 'iamjonah.baka@gmail.com',
+    legacyEmails: ['approversweb@gmail.com'],
+    firstName: 'Jonah',
+    lastName: 'Baka',
+    accessLevel: 'gold_monthly',
+    tier: 'gold',
+    country: 'Nigeria',
+  },
 ];
 
-async function seed() {
-  console.log('Starting portal user seeding...\n');
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function unique(values) {
+  return [...new Set(values)];
+}
+
+function buildLookupEmails() {
+  return unique(
+    PORTAL_ACCOUNTS.flatMap((account) => [account.targetEmail, ...account.legacyEmails]).map(normalizeEmail)
+  );
+}
+
+function selectCandidate(rows, account) {
+  const targetEmail = normalizeEmail(account.targetEmail);
+  const legacyEmails = new Set(account.legacyEmails.map(normalizeEmail));
+
+  return (
+    rows.find((row) => row.role === account.role && normalizeEmail(row.email) === targetEmail) ||
+    rows.find((row) => row.role === account.role && legacyEmails.has(normalizeEmail(row.email))) ||
+    rows.find((row) => normalizeEmail(row.email) === targetEmail) ||
+    rows.find((row) => legacyEmails.has(normalizeEmail(row.email))) ||
+    null
+  );
+}
+
+async function ensureSubscription(client, userId, tier) {
+  const { rows } = await client.query(
+    `SELECT id
+       FROM subscriptions
+      WHERE user_id = $1
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC
+      LIMIT 1`,
+    [userId]
+  );
+
+  if (rows.length === 0) {
+    await client.query(
+      `INSERT INTO subscriptions (
+         user_id, tier, status, current_period_start, current_period_end
+       ) VALUES ($1, $2, 'active', NOW(), NOW() + INTERVAL '30 days')`,
+      [userId, tier]
+    );
+    return;
+  }
+
+  await client.query(
+    `UPDATE subscriptions
+        SET tier = $2,
+            status = 'active',
+            current_period_start = COALESCE(current_period_start, NOW()),
+            current_period_end = COALESCE(current_period_end, NOW() + INTERVAL '30 days'),
+            updated_at = NOW()
+      WHERE id = $1`,
+    [rows[0].id, tier]
+  );
+}
+
+async function stageEmailMove(client, rowId, accountKey) {
+  const placeholderEmail = `portal-reconcile+${accountKey}-${Date.now()}@doctarx.invalid`;
+  await client.query(
+    `UPDATE users
+        SET email = $1,
+            updated_at = NOW()
+      WHERE id = $2`,
+    [placeholderEmail, rowId]
+  );
+}
+
+async function updateExistingUser(client, rowId, account, passwordHash) {
+  await client.query(
+    `UPDATE users
+        SET email = $1,
+            password_hash = $2,
+            role = $3,
+            first_name = $4,
+            last_name = $5,
+            is_active = TRUE,
+            is_verified = TRUE,
+            email_verified_at = COALESCE(email_verified_at, NOW()),
+            failed_login_attempts = 0,
+            locked_until = NULL,
+            access_level = $6,
+            country = $7,
+            hipaa_consent_at = COALESCE(hipaa_consent_at, NOW()),
+            terms_accepted_at = COALESCE(terms_accepted_at, NOW()),
+            updated_at = NOW()
+      WHERE id = $8`,
+    [
+      normalizeEmail(account.targetEmail),
+      passwordHash,
+      account.role,
+      account.firstName,
+      account.lastName,
+      account.accessLevel,
+      account.country,
+      rowId,
+    ]
+  );
+
+  if (account.role === 'provider') {
+    await client.query(
+      `UPDATE users
+          SET provider_status = $2,
+              specialty = $3,
+              credentials = $4,
+              npi_number = $5,
+              license_number = $6,
+              license_state = $7,
+              bio = $8,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [
+        rowId,
+        account.providerStatus,
+        account.specialty,
+        account.credentials,
+        account.npiNumber,
+        account.licenseNumber,
+        account.licenseState,
+        account.bio,
+      ]
+    );
+    return;
+  }
+
+  await client.query(
+    `UPDATE users
+        SET provider_status = NULL,
+            updated_at = NOW()
+      WHERE id = $1`,
+    [rowId]
+  );
+}
+
+async function insertNewUser(client, account, passwordHash) {
+  const { rows } = await client.query(
+    `INSERT INTO users (
+       email, password_hash, role, first_name, last_name,
+       is_active, is_verified, email_verified_at,
+       hipaa_consent_at, terms_accepted_at,
+       access_level, provider_status, specialty, credentials,
+       npi_number, license_number, license_state, bio,
+       failed_login_attempts, country,
+       created_at, updated_at
+     ) VALUES (
+       $1, $2, $3, $4, $5,
+       TRUE, TRUE, NOW(),
+       NOW(), NOW(),
+       $6, $7, $8, $9,
+       $10, $11, $12, $13,
+       0, $14,
+       NOW(), NOW()
+     )
+     RETURNING id`,
+    [
+      normalizeEmail(account.targetEmail),
+      passwordHash,
+      account.role,
+      account.firstName,
+      account.lastName,
+      account.accessLevel,
+      account.role === 'provider' ? account.providerStatus : null,
+      account.role === 'provider' ? account.specialty : null,
+      account.role === 'provider' ? account.credentials : null,
+      account.role === 'provider' ? account.npiNumber : null,
+      account.role === 'provider' ? account.licenseNumber : null,
+      account.role === 'provider' ? account.licenseState : null,
+      account.role === 'provider' ? account.bio : null,
+      account.country,
+    ]
+  );
+
+  return rows[0].id;
+}
+
+async function reconcile() {
+  console.log('Reconciling portal accounts...\n');
+
+  const health = await db.healthCheck();
+  if (!health.healthy) {
+    throw new Error(`Database not reachable: ${health.error}`);
+  }
+
+  console.log(`Database connected: ${health.timestamp}\n`);
+
+  const client = await db.getClient();
 
   try {
-    // Test connection
-    const health = await db.healthCheck();
-    if (!health.healthy) {
-      console.error('Database not reachable:', health.error);
-      process.exit(1);
-    }
-    console.log('Database connected:', health.timestamp);
+    await client.query('BEGIN');
 
-    // Step 1: Find and remove existing test/dev users (excluding the new ones we're about to create)
-    // First, get all existing users to show what we're removing
-    const existing = await db.query(
-      `SELECT id, email, role, first_name, last_name, created_at FROM users ORDER BY created_at`
+    const lookupEmails = buildLookupEmails();
+    const { rows: existingRows } = await client.query(
+      `SELECT id, email, role, first_name, last_name
+         FROM users
+        WHERE email = ANY($1::text[])
+        ORDER BY created_at ASC`,
+      [lookupEmails]
     );
-    console.log(`\nFound ${existing.rows.length} existing user(s):`);
-    existing.rows.forEach(u => {
-      console.log(`  - ${u.email} (${u.role}) — ${u.first_name} ${u.last_name}`);
-    });
 
-    if (existing.rows.length > 0) {
-      const existingIds = existing.rows.map(u => u.id);
-
-      // Clean up foreign key references before deleting users
-      console.log('\nCleaning up related records...');
-
-      const cleanupTables = [
-        { table: 'refresh_tokens', column: 'user_id' },
-        { table: 'notifications', column: 'user_id' },
-        { table: 'messages', column: 'sender_id' },
-        { table: 'messages', column: 'receiver_id' },
-        { table: 'audit_logs', column: 'user_id' },
-        { table: 'appointments', column: 'patient_id' },
-        { table: 'appointments', column: 'provider_id' },
-        { table: 'medical_records', column: 'patient_id' },
-        { table: 'medical_records', column: 'provider_id' },
-        { table: 'visits', column: 'patient_id' },
-        { table: 'visits', column: 'provider_id' },
-        { table: 'subscriptions', column: 'user_id' },
-        { table: 'stripe_customers', column: 'user_id' },
-        { table: 'insurance_cards', column: 'user_id' },
-        { table: 'provider_schedules', column: 'provider_id' },
-        { table: 'provider_time_off', column: 'provider_id' },
-        { table: 'prescriptions', column: 'patient_id' },
-        { table: 'prescriptions', column: 'provider_id' },
-        { table: 'prior_authorizations', column: 'patient_id' },
-        { table: 'claims', column: 'patient_id' },
-        { table: 'triage_sessions', column: 'patient_id' },
-        { table: 'clinical_encounters', column: 'patient_id' },
-        { table: 'clinical_encounters', column: 'provider_id' },
-        { table: 'crm_contacts', column: 'user_id' },
-        // NG tables
-        { table: 'ng_pharmacies', column: 'owner_user_id' },
-        { table: 'ng_pharmacies', column: 'verified_by' },
-        { table: 'ng_prescriptions', column: 'patient_user_id' },
-        { table: 'ng_prescriptions', column: 'verified_by_pharmacist' },
-        { table: 'ng_orders', column: 'patient_user_id' },
-        { table: 'ng_compliance_audit_log', column: 'actor_user_id' },
-        { table: 'ng_pharmacy_reviews', column: 'patient_user_id' },
-      ];
-
-      for (const { table, column } of cleanupTables) {
-        try {
-          const result = await db.query(
-            `DELETE FROM ${table} WHERE ${column} = ANY($1::uuid[])`,
-            [existingIds]
-          );
-          if (result.rowCount > 0) {
-            console.log(`  Cleaned ${result.rowCount} row(s) from ${table}`);
-          }
-        } catch (err) {
-          // Table might not exist yet — that's fine
-          if (!err.message.includes('does not exist')) {
-            console.log(`  Skipped ${table}.${column}: ${err.message.substring(0, 60)}`);
-          }
-        }
+    const selectedRows = new Map();
+    for (const account of PORTAL_ACCOUNTS) {
+      const candidate = selectCandidate(existingRows, account);
+      if (candidate) {
+        selectedRows.set(account.key, candidate);
       }
-
-      // Delete all existing users
-      const deleted = await db.query('DELETE FROM users RETURNING email');
-      console.log(`\nRemoved ${deleted.rowCount} existing user(s)`);
     }
 
-    // Step 2: Create new users
-    console.log('\nCreating new portal users...\n');
+    for (const account of PORTAL_ACCOUNTS) {
+      const candidate = selectedRows.get(account.key);
+      if (candidate && normalizeEmail(candidate.email) !== normalizeEmail(account.targetEmail)) {
+        await stageEmailMove(client, candidate.id, account.key);
+      }
+    }
 
-    for (const user of USERS) {
-      const passwordHash = await bcrypt.hash(user.password, BCRYPT_ROUNDS);
+    for (const account of PORTAL_ACCOUNTS) {
+      const passwordHash = await bcrypt.hash(SHARED_PASSWORD, BCRYPT_ROUNDS);
+      const candidate = selectedRows.get(account.key);
+      let userId = candidate?.id || null;
 
-      const result = await db.query(
-        `INSERT INTO users (
-          email, password_hash, role, first_name, last_name,
-          is_active, is_verified, email_verified_at,
-          hipaa_consent_at, terms_accepted_at,
-          access_level, provider_status, specialty, credentials,
-          npi_number, license_number, license_state, bio,
-          failed_login_attempts, country,
-          created_at, updated_at
-        ) VALUES (
-          $1, $2, $3, $4, $5,
-          TRUE, TRUE, NOW(),
-          NOW(), NOW(),
-          $6, $7, $8, $9,
-          $10, $11, $12, $13,
-          0, 'Nigeria',
-          NOW(), NOW()
-        ) RETURNING id, email, role, access_level, provider_status`,
-        [
-          user.email,
-          passwordHash,
-          user.role,
-          user.firstName,
-          user.lastName,
-          user.accessLevel || 'gold_monthly',
-          user.providerStatus || null,
-          user.specialty || null,
-          user.credentials || null,
-          user.npiNumber || null,
-          user.licenseNumber || null,
-          user.licenseState || null,
-          user.bio || null,
-        ]
+      if (userId) {
+        await updateExistingUser(client, userId, account, passwordHash);
+      } else {
+        userId = await insertNewUser(client, account, passwordHash);
+      }
+
+      await ensureSubscription(client, userId, account.tier);
+    }
+
+    await client.query('COMMIT');
+
+    const { rows: finalRows } = await db.query(
+      `SELECT email, role, first_name, last_name, provider_status, access_level
+         FROM users
+        WHERE email = ANY($1::text[])
+        ORDER BY role ASC`,
+      [PORTAL_ACCOUNTS.map((account) => normalizeEmail(account.targetEmail))]
+    );
+
+    console.log('Portal accounts reconciled successfully.\n');
+    console.log(`Shared password: ${SHARED_PASSWORD}\n`);
+
+    for (const row of finalRows) {
+      const providerSuffix = row.provider_status ? ` | provider_status=${row.provider_status}` : '';
+      console.log(
+        `${String(row.role).toUpperCase().padEnd(9)} ${row.email} | ${row.first_name} ${row.last_name} | access=${row.access_level}${providerSuffix}`
       );
-
-      const created = result.rows[0];
-      console.log(`  ✓ ${created.role.toUpperCase().padEnd(10)} ${created.email}`);
-      console.log(`    ID: ${created.id}`);
-      console.log(`    Access: ${created.access_level}${created.provider_status ? ` | Provider: ${created.provider_status}` : ''}`);
-      console.log('');
-
-      // Create a free subscription record for each user
-      try {
-        await db.query(
-          `INSERT INTO subscriptions (user_id, tier, status, start_date)
-           VALUES ($1, 'gold', 'active', NOW())
-           ON CONFLICT DO NOTHING`,
-          [created.id]
-        );
-      } catch (err) {
-        // subscriptions table might have different schema
-      }
     }
-
-    console.log('========================================');
-    console.log('All portal users created successfully!');
-    console.log('========================================\n');
-    console.log('Login credentials (same password for all):');
-    console.log('  Password: password1\n');
-    console.log('Portals:');
-    console.log('  Admin:    approversweb@gmail.com');
-    console.log('  Patient:  jonahbaka00@gmail.com');
-    console.log('  Provider: iamjonah.baka@gmail.com');
-    console.log('');
-
-  } catch (err) {
-    console.error('\nSeed failed:', err.message);
-    console.error(err.stack);
-    process.exit(1);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
-    await db.close();
+    client.release();
   }
 }
 
-seed();
+reconcile()
+  .catch((error) => {
+    console.error('\nPortal reconciliation failed:', error.message);
+    console.error(error.stack);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await db.close();
+  });
