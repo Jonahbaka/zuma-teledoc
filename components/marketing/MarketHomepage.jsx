@@ -286,14 +286,19 @@ function HeroPreview({ content }) {
     <div className="relative">
       <div className={cn('absolute -left-10 top-10 h-44 w-44 rounded-full blur-3xl', content.code === 'US' ? 'bg-cyan-500/18' : 'bg-emerald-500/18')} />
       <div className={cn('absolute -right-8 bottom-4 h-44 w-44 rounded-full blur-3xl', content.code === 'US' ? 'bg-blue-500/16' : 'bg-amber-500/18')} />
-      <div className="relative rounded-[2rem] border border-white/60 bg-white/85 p-4 shadow-[0_30px_80px_rgba(15,23,42,0.16)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/78 sm:p-6">
-        <div className={cn('overflow-hidden rounded-[1.75rem] border bg-gradient-to-br p-4 sm:p-5', styles.panel, styles.gradient)}>
+      <div className={cn(
+        'relative rounded-[2rem] border p-4 shadow-[0_30px_80px_rgba(15,23,42,0.24)] backdrop-blur-2xl sm:p-6',
+        content.code === 'US'
+          ? 'border-slate-900 bg-[linear-gradient(155deg,rgba(2,6,23,0.96),rgba(15,23,42,0.94))]'
+          : 'border-emerald-950 bg-[linear-gradient(155deg,rgba(3,36,28,0.96),rgba(17,24,39,0.94))]'
+      )}>
+        <div className={cn('overflow-hidden rounded-[1.75rem] border bg-gradient-to-br p-4 sm:p-5', styles.panel, styles.gradient, 'border-white/10')}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">{content.hero.visual.title}</div>
-              <div className="mt-1 max-w-sm text-sm leading-6 text-foreground/90">{content.hero.visual.subtitle}</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-300">{content.hero.visual.title}</div>
+              <div className="mt-1 max-w-sm text-sm leading-6 text-slate-100">{content.hero.visual.subtitle}</div>
             </div>
-            <div className="flex items-center gap-2 rounded-full border border-white/70 bg-white/85 px-3 py-1.5 text-[11px] font-semibold text-slate-700 backdrop-blur-md dark:border-white/10 dark:bg-slate-950/75 dark:text-slate-200">
+            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/72 px-3 py-1.5 text-[11px] font-semibold text-slate-100 backdrop-blur-md">
               <span className={cn('inline-flex h-2.5 w-2.5 rounded-full', content.code === 'US' ? 'bg-cyan-500' : 'bg-emerald-500')} />
               Live orchestration
             </div>
@@ -336,11 +341,11 @@ function HeroPreview({ content }) {
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-[1.5rem] border border-white/70 bg-white/90 p-4 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/75">
+              <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.08] p-4 shadow-lg backdrop-blur-xl">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">{content.hero.visual.railTitle}</div>
-                    <div className="mt-2 text-sm leading-6 text-foreground/90">
+                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-300">{content.hero.visual.railTitle}</div>
+                    <div className="mt-2 text-sm leading-6 text-slate-100">
                       The same design language scales across desktop, tablet, and mobile without collapsing into a stretched phone layout.
                     </div>
                   </div>
@@ -354,16 +359,16 @@ function HeroPreview({ content }) {
                 <div
                   key={item}
                   className={cn(
-                    'rounded-[1.4rem] border border-white/70 bg-white/88 p-4 shadow-md backdrop-blur-xl transition-transform dark:border-white/10 dark:bg-slate-950/72',
+                    'rounded-[1.4rem] border border-white/10 bg-white/[0.08] p-4 shadow-md backdrop-blur-xl transition-transform',
                     index === 1 && 'sm:translate-x-4',
                     index === 2 && 'sm:translate-x-8'
                   )}
                 >
                   <div className="flex items-start gap-3">
                     <div className={cn('mt-0.5 flex h-8 w-8 items-center justify-center rounded-2xl border', styles.panel)}>
-                      <span className="text-xs font-bold text-foreground">{index + 1}</span>
+                      <span className="text-xs font-bold text-slate-100">{index + 1}</span>
                     </div>
-                    <p className="text-sm leading-6 text-foreground/90">{item}</p>
+                    <p className="text-sm leading-6 text-slate-100">{item}</p>
                   </div>
                 </div>
               ))}
@@ -378,14 +383,14 @@ function HeroPreview({ content }) {
             return (
               <div
                 key={stat.label}
-                className="flex min-w-[12rem] flex-1 items-center gap-3 rounded-[1.2rem] border border-white/60 bg-white/90 px-4 py-3 text-sm shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/75"
+                className="flex min-w-[12rem] flex-1 items-center gap-3 rounded-[1.2rem] border border-white/10 bg-white/[0.08] px-4 py-3 text-sm shadow-sm backdrop-blur-xl"
               >
                 <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', styles.panel)}>
                   <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
                 </div>
                 <div>
-                  <div className="font-semibold text-foreground">{stat.value}</div>
-                  <div className="text-xs text-muted-foreground">{stat.label}</div>
+                  <div className="font-semibold text-slate-100">{stat.value}</div>
+                  <div className="text-xs text-slate-300">{stat.label}</div>
                 </div>
               </div>
             );
