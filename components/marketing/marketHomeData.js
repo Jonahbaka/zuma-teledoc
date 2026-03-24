@@ -23,11 +23,8 @@ export const MARKET_HOME_DATA = {
   US: {
     code: 'US',
     name: 'United States',
-    showCountrySelector: true,
-    otherMarket: {
-      href: '/ng',
-      label: 'Nigeria Experience',
-    },
+    showCountrySelector: false,
+    otherMarket: null,
     banner: {
       emergencyNumber: '911',
       emergencyLabel: 'Medical emergency? Call',
@@ -60,13 +57,6 @@ export const MARKET_HOME_DATA = {
         href: '/pharmacy/login',
         icon: Pill,
         tone: 'violet',
-      },
-      {
-        label: 'Admin Access',
-        description: 'Protected operational workspace',
-        href: '/secure/admin',
-        icon: ShieldCheck,
-        tone: 'slate',
       },
     ],
     getStartedItems: [
@@ -160,7 +150,7 @@ export const MARKET_HOME_DATA = {
       badge: 'Care Platform',
       title: 'A premium US care experience without market leakage.',
       subtitle:
-        'The homepage stays focused on the US telehealth product: virtual care, billing readiness, and prescription coordination with no Nigeria messaging or pricing.',
+        'The homepage stays focused on the US telehealth product: virtual care, billing readiness, and prescription coordination with clean, market-specific copy.',
     },
     features: [
       {
@@ -317,7 +307,7 @@ export const MARKET_HOME_DATA = {
       badge: 'Clinical Trust Layer',
       title: 'Security, continuity, and clean operational boundaries stay visible.',
       description:
-        'The US homepage now speaks only to the US product: protected care delivery, secure communication, and e-prescribing without cross-market pricing or Nigeria-only fulfillment language.',
+        'The US homepage speaks only to protected care delivery, secure communication, and e-prescribing with clear operational boundaries across the product.',
       bullets: [
         'Encrypted messaging and data handling',
         'Protected visit and care coordination flows',
@@ -365,7 +355,6 @@ export const MARKET_HOME_DATA = {
           title: 'Operations',
           links: [
             { label: 'Pharmacy Portal', href: '/pharmacy/login' },
-            { label: 'Admin Access', href: '/secure/admin' },
             { label: 'Contact', href: '/contact' },
           ],
         },
@@ -427,13 +416,6 @@ export const MARKET_HOME_DATA = {
         href: '/ng/pharmacy/onboarding',
         icon: Pill,
         tone: 'violet',
-      },
-      {
-        label: 'Operations Admin',
-        description: 'Access Nigeria operations workspace',
-        href: '/ng/admin',
-        icon: ShieldCheck,
-        tone: 'slate',
       },
     ],
     getStartedItems: [
@@ -748,7 +730,6 @@ export const MARKET_HOME_DATA = {
           links: [
             { label: 'Provider Login', href: '/ng/provider/login' },
             { label: 'Provider Registration', href: '/ng/provider/register' },
-            { label: 'Admin Access', href: '/ng/admin' },
             { label: 'Contact', href: '/contact' },
             { label: 'US Experience', href: '/' },
           ],

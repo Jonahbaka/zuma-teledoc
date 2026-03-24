@@ -252,26 +252,28 @@ function MiniPreview({ variant, tone, labels }) {
 
 function MenuPanel({ title, items }) {
   return (
-    <div className="absolute right-0 top-full z-30 mt-3 w-72 rounded-[1.35rem] border border-white/60 bg-white/90 p-3 shadow-2xl backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/85">
-      <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground">{title}</div>
-      <div className="space-y-1">
-        {items.map((item) => {
-          const styles = toneStyles(item.tone);
-          const Icon = item.icon;
+    <div className="absolute right-0 top-full z-30 pt-3">
+      <div className="w-72 rounded-[1.35rem] border border-white/60 bg-white/90 p-3 shadow-2xl backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/85">
+        <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground">{title}</div>
+        <div className="space-y-1">
+          {items.map((item) => {
+            const styles = toneStyles(item.tone);
+            const Icon = item.icon;
 
-          return (
-            <Link key={item.label} href={item.href} className="group flex items-center gap-3 rounded-2xl px-3 py-3 transition-colors hover:bg-accent">
-              <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl border', styles.panel)}>
-                <Icon className={cn('h-5 w-5', styles.icon)} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-foreground">{item.label}</div>
-                <div className="text-xs leading-5 text-muted-foreground">{item.description}</div>
-              </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-            </Link>
-          );
-        })}
+            return (
+              <Link key={item.label} href={item.href} className="group flex items-center gap-3 rounded-2xl px-3 py-3 transition-colors hover:bg-accent">
+                <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl border', styles.panel)}>
+                  <Icon className={cn('h-5 w-5', styles.icon)} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-foreground">{item.label}</div>
+                  <div className="text-xs leading-5 text-muted-foreground">{item.description}</div>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -397,6 +399,7 @@ function HeroPreview({ content }) {
 export default function MarketHomepage({ market = 'US' }) {
   const content = MARKET_HOME_DATA[market] || MARKET_HOME_DATA.US;
   const primaryTone = toneStyles(content.hero.visualTone);
+  const hasAlternateMarket = Boolean(content.otherMarket?.href && content.otherMarket?.label);
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -464,9 +467,11 @@ export default function MarketHomepage({ market = 'US' }) {
 
           <div className="hidden md:flex lg:hidden items-center gap-2">
             <ThemeToggle />
-            <Link href={content.otherMarket.href} className="rounded-full border border-border bg-background/80 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent">
-              {content.otherMarket.label}
-            </Link>
+            {hasAlternateMarket ? (
+              <Link href={content.otherMarket.href} className="rounded-full border border-border bg-background/80 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent">
+                {content.otherMarket.label}
+              </Link>
+            ) : null}
             <div className="relative">
               <button
                 type="button"
@@ -498,9 +503,11 @@ export default function MarketHomepage({ market = 'US' }) {
           </div>
 
           <div className="hidden lg:flex items-center gap-3">
-            <Link href={content.otherMarket.href} className="rounded-full border border-border bg-background/80 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent">
-              {content.otherMarket.label}
-            </Link>
+            {hasAlternateMarket ? (
+              <Link href={content.otherMarket.href} className="rounded-full border border-border bg-background/80 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent">
+                {content.otherMarket.label}
+              </Link>
+            ) : null}
             <ThemeToggle />
 
             <div className="relative" onMouseEnter={() => setLoginOpen(true)} onMouseLeave={() => setLoginOpen(false)}>
@@ -594,9 +601,11 @@ export default function MarketHomepage({ market = 'US' }) {
                 </div>
               </div>
 
-              <Link href={content.otherMarket.href} onClick={() => setMobileMenuOpen(false)} className="block rounded-2xl border border-border bg-background/80 px-4 py-3 text-center text-sm font-medium text-foreground transition-colors hover:bg-accent">
-                {content.otherMarket.label}
-              </Link>
+              {hasAlternateMarket ? (
+                <Link href={content.otherMarket.href} onClick={() => setMobileMenuOpen(false)} className="block rounded-2xl border border-border bg-background/80 px-4 py-3 text-center text-sm font-medium text-foreground transition-colors hover:bg-accent">
+                  {content.otherMarket.label}
+                </Link>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -842,14 +851,31 @@ export default function MarketHomepage({ market = 'US' }) {
 
         <section className="px-4 pb-20 pt-4 sm:px-6 md:pb-24">
           <div className="mx-auto max-w-6xl">
-            <div className="rounded-[2.2rem] border border-white/70 bg-white/90 px-6 py-10 text-center shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/74 sm:px-8 md:px-10">
-              <SectionHeading title={content.cta.title} subtitle={content.cta.description} />
-              <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <div className={cn(
+              'relative overflow-hidden rounded-[2.35rem] border px-6 py-10 text-center shadow-[0_30px_80px_rgba(15,23,42,0.22)] sm:px-8 md:px-10',
+              content.code === 'US'
+                ? 'border-slate-800 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_30%),radial-gradient(circle_at_85%_10%,rgba(59,130,246,0.2),transparent_28%),linear-gradient(145deg,#020617,#0f172a_52%,#111827)]'
+                : 'border-emerald-950 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.2),transparent_30%),radial-gradient(circle_at_85%_10%,rgba(245,158,11,0.18),transparent_28%),linear-gradient(145deg,#03241c,#064e3b_50%,#111827)]'
+            )}>
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent_40%)]" />
+              <div className="relative">
+                <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/8 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-slate-200 backdrop-blur-xl">
+                  <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
+                  Ready For Care
+                </div>
+                <h2 className="mx-auto mt-5 max-w-4xl text-3xl leading-tight text-white md:text-5xl">
+                  {content.cta.title}
+                </h2>
+                <p className="mx-auto mt-4 max-w-3xl text-base leading-7 text-slate-300 md:text-lg">
+                  {content.cta.description}
+                </p>
+              </div>
+              <div className="relative mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <Link href={content.cta.primary.href} className={cn('inline-flex items-center justify-center rounded-full px-6 py-3.5 text-sm font-semibold transition-colors', primaryTone.button)}>
                   {content.cta.primary.label}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
-                <Link href={content.cta.secondary.href} className="inline-flex items-center justify-center rounded-full border border-border bg-background/80 px-6 py-3.5 text-sm font-semibold text-foreground transition-colors hover:bg-accent">
+                <Link href={content.cta.secondary.href} className="inline-flex items-center justify-center rounded-full border border-white/12 bg-white/8 px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-white/14">
                   {content.cta.secondary.label}
                 </Link>
               </div>

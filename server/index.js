@@ -328,6 +328,11 @@ app.get('/readyz', (req, res) => {
 app.get('/api/health', (req, res) => {
   const frontendState = getFrontendState();
   const buildId = resolveBuildId();
+  let nemoClaw = { state: 'not_loaded' };
+  try {
+    const nc = require('./services/nemoclaw');
+    nemoClaw = nc.getOperationalStatus?.() || { state: nc.initialized ? 'online' : 'initializing' };
+  } catch {}
   const health = {
     status: frontendState === 'ready' ? 'healthy' : frontendState,
     uptime: Math.round(process.uptime()),
@@ -341,6 +346,7 @@ app.get('/api/health', (req, res) => {
     frontendState,
     version: buildId,
     buildId,
+    nemoClaw,
     // Cloud Run metadata (helps diagnose load balancer / revision split)
     service: process.env.K_SERVICE,
     revision: process.env.K_REVISION,
