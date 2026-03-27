@@ -28,7 +28,7 @@ const MARKET_THEMES = {
     link: 'text-emerald-400 hover:text-emerald-300',
     focus: 'focus:border-emerald-500',
     badge: 'NDPA aligned • Encrypted clinical sessions',
-    subtitle: 'Access your Nigeria clinical operations portal',
+    subtitle: 'Access your Nigeria doctor, clinic, and hospital operations portal',
   },
 };
 
@@ -65,7 +65,7 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
       toast({
         title: 'Registration Successful',
         description: market === 'NG'
-          ? 'Sign in to continue credential review and activate your Nigeria provider workspace.'
+          ? 'Sign in to continue credential review and activate your Nigeria care workspace.'
           : 'Sign in to complete your credentialing and set up your practice.',
       });
     } else if (fromInvite) {
@@ -206,7 +206,7 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
                     <p className="text-sm text-emerald-200 font-medium">Registration Complete</p>
                     <p className="text-xs text-emerald-300/70 mt-1">
                       {market === 'NG'
-                        ? 'Sign in to continue credential review and configure your Nigeria provider workspace.'
+                        ? 'Sign in to continue credential review and configure your Nigeria care workspace.'
                         : 'Sign in to complete your credentialing. Credential review typically takes 1-2 business days.'}
                     </p>
                   </div>
@@ -222,7 +222,7 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="doctor@hospital.com"
+                    placeholder={market === 'NG' ? 'doctor@clinic.ng' : 'doctor@hospital.com'}
                     name="email"
                     value={formData.email}
                     onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}

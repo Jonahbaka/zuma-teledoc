@@ -4,7 +4,10 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
-import { getProviderNavigation } from '@/components/provider/providerNavigation';
+import {
+  getProviderNavigation,
+  getProviderPortalTheme,
+} from '@/components/provider/providerNavigation';
 
 const LOGIN_PATHS = {
   US: '/provider/login',
@@ -15,6 +18,7 @@ export default function ProviderPortalLayout({ children, market = 'US' }) {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
   const providerPrefix = market === 'NG' ? '/ng/provider' : '/provider';
+  const theme = getProviderPortalTheme(market);
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -46,9 +50,9 @@ export default function ProviderPortalLayout({ children, market = 'US' }) {
 
   return (
     <DashboardLayout
-      navigation={getProviderNavigation(providerPrefix)}
+      navigation={getProviderNavigation(providerPrefix, market)}
       portalName="Provider"
-      portalColor="from-purple-600 to-purple-800"
+      portalColor={theme.portalColor}
     >
       {children}
     </DashboardLayout>

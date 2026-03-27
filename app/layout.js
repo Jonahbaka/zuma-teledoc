@@ -6,6 +6,7 @@ import { I18nProvider } from '@/components/providers/I18nProvider';
 import { DeploymentVersionCheck } from '@/components/providers/DeploymentVersionCheck';
 import ConditionalSiteFooter from '@/components/layouts/ConditionalSiteFooter';
 import GoogleAnalytics from '@/components/analytics/GoogleAnalytics';
+import PwaBootstrap from '@/components/pwa/PwaBootstrap';
 import { THEME_STORAGE_KEY } from '@/lib/theme';
 
 export const metadata = {
@@ -19,6 +20,18 @@ export const metadata = {
   authors: [{ name: 'DoctaRx' }],
   creator: 'DoctaRx',
   publisher: 'DoctaRx',
+  applicationName: 'DoctaRx',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'DoctaRx',
+  },
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
+  },
   robots: {
     index: true,
     follow: true,
@@ -51,9 +64,20 @@ export const metadata = {
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
-      { url: '/icon.svg', type: 'image/svg+xml' }
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
-    apple: '/icon.svg'
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }
+    ],
+    other: [
+      {
+        rel: 'mask-icon',
+        url: '/icon.svg',
+        color: '#0f172a'
+      }
+    ]
   },
   verification: {
     // Add Google Search Console verification code after setup:
@@ -64,7 +88,13 @@ export const metadata = {
 
 export const viewport = {
   width: 'device-width',
-  initialScale: 1
+  initialScale: 1,
+  viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f8fafc' },
+    { media: '(prefers-color-scheme: dark)', color: '#020617' }
+  ]
 };
 
 // JSON-LD Structured Data for SEO
@@ -120,7 +150,12 @@ export default function RootLayout({ children }) {
         {/* Favicon and icons */}
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/icon.svg" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="DoctaRx" />
         
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -148,15 +183,18 @@ export default function RootLayout({ children }) {
           }}
         />
       </head>
-      <body className="min-h-screen bg-background font-sans antialiased" suppressHydrationWarning>
+      <body className="min-h-[100dvh] overflow-x-clip bg-background font-sans antialiased" suppressHydrationWarning>
         <GoogleAnalytics />
         <DeploymentVersionCheck />
+        <PwaBootstrap />
         <I18nProvider>
           <AuthProvider>
             <HiveProvider>
-              {children}
-              <ConditionalSiteFooter />
-              <Toaster />
+              <div className="app-shell-root">
+                {children}
+                <ConditionalSiteFooter />
+                <Toaster />
+              </div>
             </HiveProvider>
           </AuthProvider>
         </I18nProvider>

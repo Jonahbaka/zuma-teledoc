@@ -2,8 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Activity, ArrowRight, ChevronRight, Menu, Sparkles, X } from 'lucide-react';
+import {
+  Activity,
+  ArrowRight,
+  ChevronRight,
+  CreditCard,
+  Home,
+  LayoutGrid,
+  Menu,
+  ShieldCheck,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { cn } from '@/lib/utils';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
@@ -52,6 +64,22 @@ const TONE_STYLES = {
     shadow: 'shadow-[0_24px_60px_rgba(15,23,42,0.2)]',
   },
 };
+
+const COMPACT_TAB_BY_HASH = {
+  '#features': 'care',
+  '#workflow': 'care',
+  '#access': 'access',
+  '#pricing': 'plans',
+  '#security': 'trust',
+};
+
+const HOME_DOCK_ITEMS = [
+  { id: 'home', label: 'Home', icon: Home },
+  { id: 'care', label: 'Care', icon: Activity },
+  { id: 'access', label: 'Access', icon: LayoutGrid },
+  { id: 'plans', label: 'Plans', icon: CreditCard },
+  { id: 'trust', label: 'Trust', icon: ShieldCheck },
+];
 
 function toneStyles(tone) {
   return TONE_STYLES[tone] || TONE_STYLES.blue;
@@ -401,21 +429,510 @@ function HeroPreview({ content }) {
   );
 }
 
+function WorkspacePanel({ eyebrow, title, description, className, children }) {
+  return (
+    <div className={cn('rounded-[1.7rem] border border-white/70 bg-white/90 p-4 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72 sm:p-5', className)}>
+      <div className="space-y-2">
+        {eyebrow ? (
+          <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted-foreground">{eyebrow}</div>
+        ) : null}
+        <div className="text-xl leading-tight text-foreground sm:text-2xl">{title}</div>
+        {description ? <p className="text-sm leading-6 text-muted-foreground">{description}</p> : null}
+      </div>
+      <div className="mt-4">{children}</div>
+    </div>
+  );
+}
+
+function QuickEntryCard({ item, rail = false }) {
+  const Icon = item.icon;
+  const styles = toneStyles(item.tone);
+
+  return (
+    <Link
+      href={item.href}
+      className={cn(
+        'group flex items-start gap-3 rounded-[1.35rem] border border-border bg-background/92 px-4 py-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-accent',
+        rail && 'min-w-[15rem] snap-start'
+      )}
+    >
+      <div className={cn('flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border', styles.panel)}>
+        <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-foreground">{item.label}</div>
+        <div className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</div>
+      </div>
+      <ArrowRight className="mt-1 h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+    </Link>
+  );
+}
+
+function CompactHeroSurface({ content }) {
+  return (
+    <div className="grid gap-4 xl:hidden md:grid-cols-[1.04fr_0.96fr]">
+      <WorkspacePanel
+        eyebrow="Portal shortcuts"
+        title="Reach the right workspace without hunting through menus."
+        description="Patient, provider, and operations entry points stay visible above the fold on phone and tablet."
+      >
+        <div className="flex snap-x gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-3 md:overflow-visible md:pb-0">
+          {content.loginItems.map((item) => (
+            <QuickEntryCard key={item.label} item={item} rail />
+          ))}
+        </div>
+      </WorkspacePanel>
+
+      <WorkspacePanel
+        eyebrow={content.hero.visual.title}
+        title="App-style care shell"
+        description={content.hero.visual.subtitle}
+      >
+        <div className="flex flex-wrap gap-2">
+          {content.hero.visual.chips.map((chip) => (
+            <TonePill key={chip} tone={content.hero.visualTone}>
+              {chip}
+            </TonePill>
+          ))}
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          {content.stats.map((stat) => {
+            const Icon = stat.icon;
+            const styles = toneStyles(content.hero.visualTone);
+
+            return (
+              <div key={stat.label} className="rounded-[1.25rem] border border-border bg-background/92 px-3 py-3 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <div className={cn('flex h-9 w-9 items-center justify-center rounded-2xl border', styles.panel)}>
+                    <Icon className={cn('h-4 w-4', styles.icon)} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-foreground">{stat.value}</div>
+                    <div className="text-[11px] leading-5 text-muted-foreground">{stat.label}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </WorkspacePanel>
+    </div>
+  );
+}
+
+function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
+  return (
+    <section id="workspace" className="px-4 py-10 sm:px-6 xl:hidden">
+      <div className="mx-auto max-w-6xl">
+        <div className="rounded-[2rem] border border-white/70 bg-card/82 p-4 shadow-[0_26px_70px_rgba(15,23,42,0.12)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/76 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-2">
+              <TonePill tone={content.hero.visualTone} icon={Sparkles}>{content.featureSection.badge}</TonePill>
+              <div className="text-2xl leading-tight text-foreground sm:text-3xl">Compact care workspace</div>
+              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+                Key product meaning is grouped into app-like panels so phone and tablet users can switch context without scrolling through the full desktop landing stack.
+              </p>
+            </div>
+            <div className="rounded-full border border-border bg-background/78 px-3 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              Touch-first navigation
+            </div>
+          </div>
+
+          <Tabs value={activeTab} onValueChange={onTabChange} className="mt-6">
+            <TabsList className="grid h-auto w-full grid-cols-4 rounded-[1.25rem] bg-muted/70 p-1.5">
+              <TabsTrigger value="care" className="rounded-[0.95rem] px-2 py-2.5 text-xs font-semibold sm:text-sm">Care</TabsTrigger>
+              <TabsTrigger value="access" className="rounded-[0.95rem] px-2 py-2.5 text-xs font-semibold sm:text-sm">Access</TabsTrigger>
+              <TabsTrigger value="plans" className="rounded-[0.95rem] px-2 py-2.5 text-xs font-semibold sm:text-sm">Plans</TabsTrigger>
+              <TabsTrigger value="trust" className="rounded-[0.95rem] px-2 py-2.5 text-xs font-semibold sm:text-sm">Trust</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="care" className="mt-5">
+              <div className="grid gap-4 lg:grid-cols-[1.03fr_0.97fr]">
+                <WorkspacePanel
+                  eyebrow="Core capabilities"
+                  title="Swipe through the care surfaces"
+                  description="The product pillars stay readable as compact cards instead of becoming a tall brochure section."
+                >
+                  <div className="flex snap-x gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:overflow-visible md:pb-0">
+                    {content.features.map((feature) => {
+                      const Icon = feature.icon;
+                      const styles = toneStyles(feature.tone);
+
+                      return (
+                        <div key={feature.title} className="min-w-[16rem] snap-start rounded-[1.35rem] border border-border bg-background/92 p-4 shadow-sm md:min-w-0">
+                          <div className="flex items-center gap-3">
+                            <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl border', styles.panel)}>
+                              <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+                            </div>
+                            <div className="text-base font-semibold text-foreground">{feature.title}</div>
+                          </div>
+                          <p className="mt-3 text-sm leading-6 text-muted-foreground">{feature.description}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {feature.points.map((point) => (
+                              <span key={point} className="rounded-full border border-border bg-muted/55 px-2.5 py-1 text-[11px] font-medium text-foreground/80">
+                                {point}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </WorkspacePanel>
+
+                <WorkspacePanel
+                  eyebrow="Workflow"
+                  title="Tablet-friendly step map"
+                  description="On smaller devices, the workflow becomes a compact split pane instead of four separate page-height blocks."
+                >
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {content.workflowSteps.map((step, index) => {
+                      const Icon = step.icon;
+                      const tone = toneStyles(index === 1 ? 'emerald' : index === 2 ? 'violet' : index === 3 ? 'amber' : content.hero.visualTone);
+
+                      return (
+                        <div key={step.title} className="rounded-[1.3rem] border border-border bg-background/92 p-4 shadow-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', tone.panel)}>
+                              <Icon className={cn('h-4.5 w-4.5', tone.icon)} />
+                            </div>
+                            <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">0{index + 1}</div>
+                          </div>
+                          <div className="mt-3 text-base font-semibold text-foreground">{step.title}</div>
+                          <p className="mt-2 text-sm leading-6 text-muted-foreground">{step.description}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </WorkspacePanel>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="access" className="mt-5">
+              <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+                <WorkspacePanel
+                  eyebrow="Portal access"
+                  title="Sign in paths stay one tap away"
+                  description="The most important portal entry points stay visible without forcing users into a hamburger-first flow."
+                >
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {content.loginItems.map((item) => (
+                      <QuickEntryCard key={item.label} item={item} />
+                    ))}
+                  </div>
+                </WorkspacePanel>
+
+                <WorkspacePanel
+                  eyebrow="Get started"
+                  title="Primary actions surface sooner"
+                  description="Patients, providers, and operations teams can jump straight into the relevant workflow from one compact panel."
+                >
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {content.getStartedItems.map((item) => (
+                      <QuickEntryCard key={item.label} item={item} />
+                    ))}
+                  </div>
+                </WorkspacePanel>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                {content.audienceCards.map((card) => {
+                  const Icon = card.icon;
+                  const styles = toneStyles(card.tone);
+
+                  return (
+                    <div key={card.title} className="rounded-[1.45rem] border border-border bg-background/92 p-4 shadow-sm">
+                      <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl border', styles.panel)}>
+                        <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+                      </div>
+                      <div className="mt-3 text-lg font-semibold text-foreground">{card.title}</div>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{card.description}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {card.bullets.map((bullet) => (
+                          <span key={bullet} className="rounded-full border border-border bg-muted/55 px-2.5 py-1 text-[11px] font-medium text-foreground/80">
+                            {bullet}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="plans" className="mt-5">
+              <div className="grid gap-4 lg:grid-cols-[1.08fr_0.92fr]">
+                <WorkspacePanel
+                  eyebrow="Plans"
+                  title="Pricing in a denser mobile format"
+                  description="Plans are kept in a swipeable rail on phone and a compact multi-column layout on tablet."
+                >
+                  <div className="flex snap-x gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:overflow-visible md:pb-0">
+                    {content.plans.map((plan) => {
+                      const styles = toneStyles(plan.tone);
+
+                      return (
+                        <div key={`${plan.eyebrow}-${plan.title}`} className="min-w-[17rem] snap-start rounded-[1.45rem] border border-border bg-background/92 p-4 shadow-sm md:min-w-0">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">{plan.eyebrow}</div>
+                              <div className="mt-2 flex items-end gap-1.5">
+                                <div className="text-3xl leading-none text-foreground">{plan.title}</div>
+                                <div className="pb-1 text-xs text-muted-foreground">{plan.period}</div>
+                              </div>
+                            </div>
+                            {plan.featured ? (
+                              <div className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em]', styles.badge)}>
+                                Popular
+                              </div>
+                            ) : null}
+                          </div>
+                          <p className="mt-3 text-sm leading-6 text-muted-foreground">{plan.description}</p>
+                          <div className="mt-3 space-y-2">
+                            {plan.features.slice(0, 3).map((feature) => (
+                              <div key={feature} className="flex items-start gap-2 text-sm text-foreground/90">
+                                <Activity className={cn('mt-0.5 h-4 w-4 flex-shrink-0', styles.icon)} />
+                                <span>{feature}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <Link href={plan.ctaHref} className={cn('mt-4 inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-semibold transition-colors', plan.featured ? styles.button : 'border border-border bg-background text-foreground hover:bg-accent')}>
+                            {plan.ctaLabel}
+                          </Link>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </WorkspacePanel>
+
+                <WorkspacePanel
+                  eyebrow="Commercial note"
+                  title="Keep the pricing story readable"
+                  description={content.pricingSection.note}
+                >
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                    {content.stats.slice(0, 2).map((stat) => {
+                      const Icon = stat.icon;
+                      const styles = toneStyles(content.hero.visualTone);
+
+                      return (
+                        <div key={stat.label} className="rounded-[1.25rem] border border-border bg-background/92 p-4 shadow-sm">
+                          <div className="flex items-center gap-3">
+                            <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', styles.panel)}>
+                              <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+                            </div>
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">{stat.value}</div>
+                              <div className="text-xs leading-5 text-muted-foreground">{stat.label}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </WorkspacePanel>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="trust" className="mt-5">
+              <div className="grid gap-4 lg:grid-cols-[1.02fr_0.98fr]">
+                <WorkspacePanel
+                  eyebrow={content.securitySection.badge}
+                  title={content.securitySection.title}
+                  description={content.securitySection.description}
+                  className="bg-[linear-gradient(145deg,rgba(2,6,23,0.98),rgba(15,23,42,0.95))] text-white dark:border-white/10"
+                >
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {content.securitySection.bullets.map((bullet) => (
+                      <div key={bullet} className="rounded-[1.25rem] border border-white/10 bg-white/[0.06] p-4 text-sm leading-6 text-slate-200">
+                        {bullet}
+                      </div>
+                    ))}
+                  </div>
+                </WorkspacePanel>
+
+                <WorkspacePanel
+                  eyebrow="Trust layer"
+                  title="Compliance, contact, and product reassurance"
+                  description="Keep the premium healthcare tone while reducing the amount of footer-style scanning required on smaller screens."
+                >
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {content.footer.badges.map((badge) => {
+                      const Icon = badge.icon;
+                      const styles = toneStyles(content.hero.visualTone);
+
+                      return (
+                        <div key={badge.label} className="rounded-[1.2rem] border border-border bg-background/92 p-4 shadow-sm">
+                          <div className="flex items-center gap-3">
+                            <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', styles.panel)}>
+                              <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+                            </div>
+                            <div className="text-sm font-semibold text-foreground">{badge.label}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4 rounded-[1.2rem] border border-border bg-muted/55 px-4 py-3 text-sm text-muted-foreground">
+                    Contact: <a href={`mailto:${content.footer.email}`} className="font-semibold text-foreground underline-offset-4 hover:underline">{content.footer.email}</a>
+                  </div>
+                </WorkspacePanel>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function HomeQuickDock({ activeSection, onSelect }) {
+  return (
+    <nav className="app-mobile-dock xl:hidden" aria-label="Homepage quick navigation">
+      {HOME_DOCK_ITEMS.map((item) => (
+        <div key={item.id} className="app-mobile-dock__item">
+          <button
+            type="button"
+            className="app-mobile-dock__link"
+            data-active={activeSection === item.id}
+            onClick={() => onSelect(item.id)}
+          >
+            <span className="app-mobile-dock__icon">
+              <item.icon className="h-5 w-5" />
+            </span>
+            <span className="app-mobile-dock__label">{item.label}</span>
+          </button>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
 export default function MarketHomepage({ market = 'US' }) {
   const content = MARKET_HOME_DATA[market] || MARKET_HOME_DATA.US;
   const primaryTone = toneStyles(content.hero.visualTone);
   const hasAlternateMarket = Boolean(content.otherMarket?.href && content.otherMarket?.label);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [compactTab, setCompactTab] = useState('care');
+  const [compactDockSection, setCompactDockSection] = useState('home');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [getStartedOpen, setGetStartedOpen] = useState(false);
   const [emergencyBannerVisible, setEmergencyBannerVisible] = useState(true);
 
   useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 18);
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 18);
+      if (window.scrollY < 120) {
+        setCompactDockSection('home');
+      }
+    };
+
+    handleScroll();
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const syncHashToCompactTab = () => {
+      if (window.innerWidth >= 1280) {
+        return;
+      }
+
+      const nextTab = COMPACT_TAB_BY_HASH[window.location.hash];
+      if (!nextTab) {
+        if (!window.location.hash || window.location.hash === '#home') {
+          setCompactDockSection('home');
+        }
+        return;
+      }
+
+      setCompactTab(nextTab);
+      setCompactDockSection(nextTab);
+
+      window.requestAnimationFrame(() => {
+        document.getElementById('workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    };
+
+    syncHashToCompactTab();
+    window.addEventListener('hashchange', syncHashToCompactTab);
+
+    return () => window.removeEventListener('hashchange', syncHashToCompactTab);
+  }, []);
+
+  const openCompactSurface = (section) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (section === 'home') {
+      setCompactDockSection('home');
+      window.history.replaceState(null, '', '#home');
+      document.getElementById('home')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    const nextTab = section === 'care'
+      ? 'care'
+      : section === 'access'
+        ? 'access'
+        : section === 'plans'
+          ? 'plans'
+          : 'trust';
+
+    const nextHash = section === 'care'
+      ? '#features'
+      : section === 'access'
+        ? '#access'
+        : section === 'plans'
+          ? '#pricing'
+          : '#security';
+
+    setCompactTab(nextTab);
+    setCompactDockSection(section);
+    window.history.replaceState(null, '', nextHash);
+    document.getElementById('workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleNavSelection = (event, href) => {
+    if (!href.startsWith('#')) {
+      setMobileMenuOpen(false);
+      return;
+    }
+
+    if (typeof window === 'undefined' || window.innerWidth >= 1280) {
+      setMobileMenuOpen(false);
+      return;
+    }
+
+    event.preventDefault();
+    setMobileMenuOpen(false);
+    openCompactSurface(COMPACT_TAB_BY_HASH[href] || 'care');
+  };
+
+  const handleCompactTabChange = (value) => {
+    setCompactTab(value);
+    setCompactDockSection(value);
+
+    if (typeof window === 'undefined' || window.innerWidth >= 1280) {
+      return;
+    }
+
+    const nextHash = value === 'access'
+      ? '#access'
+      : value === 'plans'
+        ? '#pricing'
+        : value === 'trust'
+          ? '#security'
+          : '#features';
+
+    window.history.replaceState(null, '', nextHash);
+  };
 
   return (
     <div className="min-h-screen overflow-x-clip bg-background text-foreground selection:bg-cyan-500/20">
@@ -464,7 +981,12 @@ export default function MarketHomepage({ market = 'US' }) {
 
           <div className="hidden md:flex items-center gap-6 xl:gap-8">
             {content.navLinks.map((link) => (
-              <a key={link.href} href={link.href} className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+              <a
+                key={link.href}
+                href={link.href}
+                onClick={(event) => handleNavSelection(event, link.href)}
+                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
                 {link.label}
               </a>
             ))}
@@ -533,7 +1055,19 @@ export default function MarketHomepage({ market = 'US' }) {
           </div>
 
           <div className="flex md:hidden items-center gap-2">
-            <ThemeToggle />
+            <button
+              type="button"
+              onClick={() => openCompactSurface('access')}
+              className="rounded-full border border-border bg-background/82 px-3.5 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent"
+            >
+              Portals
+            </button>
+            <Link
+              href={content.hero.primaryCta.href}
+              className={cn('inline-flex items-center justify-center rounded-full px-3.5 py-2 text-sm font-semibold transition-colors', primaryTone.button)}
+            >
+              {content.code === 'US' ? 'Get Care' : 'Start'}
+            </Link>
             <button
               type="button"
               className="rounded-full border border-border bg-background/80 p-2.5 text-foreground transition-colors hover:bg-accent"
@@ -553,7 +1087,7 @@ export default function MarketHomepage({ market = 'US' }) {
                   <a
                     key={link.href}
                     href={link.href}
-                    onClick={() => setMobileMenuOpen(false)}
+                    onClick={(event) => handleNavSelection(event, link.href)}
                     className="rounded-2xl border border-border bg-background/80 px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
                   >
                     {link.label}
@@ -611,32 +1145,38 @@ export default function MarketHomepage({ market = 'US' }) {
                   {content.otherMarket.label}
                 </Link>
               ) : null}
+
+              <div className="flex items-center justify-between rounded-2xl border border-border bg-card/80 px-4 py-3">
+                <div className="text-sm font-medium text-foreground">Appearance</div>
+                <ThemeToggle />
+              </div>
             </div>
           </div>
         ) : null}
       </nav>
 
-      <main>
+      <main className="app-mobile-content-pad xl:pb-0">
         <section
+          id="home"
           className={cn(
-            'relative overflow-hidden px-4 pb-16 sm:px-6 md:pb-20 xl:pb-24',
-            emergencyBannerVisible ? 'pt-[10.5rem] sm:pt-[9.5rem] lg:pt-[10.5rem]' : 'pt-28 md:pt-32'
+            'relative overflow-hidden px-4 pb-12 sm:px-6 md:pb-16 xl:pb-24',
+            emergencyBannerVisible ? 'pt-[9.75rem] sm:pt-[8.75rem] lg:pt-[9.5rem] xl:pt-[10.5rem]' : 'pt-24 md:pt-28 xl:pt-32'
           )}
         >
           <div className={cn('absolute inset-0', content.code === 'US' ? 'bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_36%),radial-gradient(circle_at_85%_12%,rgba(59,130,246,0.10),transparent_30%),linear-gradient(180deg,rgba(248,250,252,1),rgba(255,255,255,0.88))] dark:bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_32%),radial-gradient(circle_at_85%_12%,rgba(59,130,246,0.10),transparent_26%),linear-gradient(180deg,rgba(2,6,23,0.92),rgba(2,6,23,0.75))]' : 'bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_36%),radial-gradient(circle_at_85%_12%,rgba(245,158,11,0.10),transparent_28%),linear-gradient(180deg,rgba(248,250,252,1),rgba(255,255,255,0.88))] dark:bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_30%),radial-gradient(circle_at_85%_12%,rgba(245,158,11,0.08),transparent_24%),linear-gradient(180deg,rgba(2,6,23,0.92),rgba(2,6,23,0.75))]')} />
           <div className="absolute inset-x-0 top-0 h-[32rem] bg-[linear-gradient(to_bottom,rgba(255,255,255,0.74),transparent)] dark:bg-[linear-gradient(to_bottom,rgba(2,6,23,0.6),transparent)]" />
           <div className="relative mx-auto max-w-7xl">
-            <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] xl:gap-16">
-              <div className="space-y-8">
+            <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] xl:items-center xl:gap-16">
+              <div className="space-y-6 sm:space-y-7">
                 <TonePill tone={content.hero.visualTone} icon={Sparkles}>{content.hero.badge}</TonePill>
-                <div className="space-y-5">
-                  <h1 className="max-w-4xl text-5xl leading-[1.02] tracking-tight text-foreground sm:text-6xl lg:text-[4.6rem] xl:text-[5.15rem]">
+                <div className="space-y-4 sm:space-y-5">
+                  <h1 className="max-w-4xl text-[2.8rem] leading-[0.98] tracking-tight text-foreground sm:text-5xl md:text-6xl xl:text-[5.15rem]">
                     {content.hero.title}
                     <span className={cn('mt-2 block bg-clip-text text-transparent', content.code === 'US' ? 'bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 dark:from-cyan-300 dark:via-blue-300 dark:to-indigo-300' : 'bg-gradient-to-r from-emerald-600 via-teal-500 to-amber-500 dark:from-emerald-300 dark:via-teal-300 dark:to-amber-300')}>
                       {content.hero.highlight}
                     </span>
                   </h1>
-                  <p className="max-w-2xl text-lg leading-8 text-muted-foreground md:text-xl">{content.hero.description}</p>
+                  <p className="max-w-2xl text-base leading-7 text-muted-foreground md:text-lg xl:text-xl">{content.hero.description}</p>
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                   <Link href={content.hero.primaryCta.href} className={cn('inline-flex items-center justify-center rounded-full px-6 py-3.5 text-base font-semibold transition-colors sm:px-7', primaryTone.button)}>
@@ -651,16 +1191,19 @@ export default function MarketHomepage({ market = 'US' }) {
                     <ChevronRight className="ml-1 h-4 w-4" />
                   </a>
                 </div>
-                <div className="flex flex-wrap gap-3">
+                <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible sm:pb-0">
                   {content.hero.trustItems.map((item) => (
                     <TonePill key={item.text} tone={content.hero.visualTone} icon={item.icon}>{item.text}</TonePill>
                   ))}
                 </div>
+                <CompactHeroSurface content={content} />
               </div>
-              <HeroPreview content={content} />
+              <div className="hidden xl:block">
+                <HeroPreview content={content} />
+              </div>
             </div>
 
-            <div className="mt-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-12 hidden gap-4 sm:grid-cols-2 xl:grid xl:grid-cols-4">
               {content.stats.map((stat) => {
                 const Icon = stat.icon;
                 return (
@@ -681,7 +1224,9 @@ export default function MarketHomepage({ market = 'US' }) {
           </div>
         </section>
 
-        <section id="features" className="px-4 py-16 sm:px-6 md:py-20">
+        <CompactMarketWorkspace content={content} activeTab={compactTab} onTabChange={handleCompactTabChange} />
+
+        <section id="features" className="hidden px-4 py-16 sm:px-6 md:py-20 xl:block">
           <div className="mx-auto max-w-7xl space-y-12">
             <SectionHeading badge={content.featureSection.badge} title={content.featureSection.title} subtitle={content.featureSection.subtitle} />
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
@@ -719,7 +1264,7 @@ export default function MarketHomepage({ market = 'US' }) {
           </div>
         </section>
 
-        <section id="workflow" className="border-y border-border/60 bg-card/40 px-4 py-16 sm:px-6 md:py-20">
+        <section id="workflow" className="hidden border-y border-border/60 bg-card/40 px-4 py-16 sm:px-6 md:py-20 xl:block">
           <div className="mx-auto max-w-7xl space-y-12">
             <SectionHeading title={content.workflowSection.title} subtitle={content.workflowSection.subtitle} />
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
@@ -742,7 +1287,7 @@ export default function MarketHomepage({ market = 'US' }) {
           </div>
         </section>
 
-        <section id={content.audienceSection.id} className="px-4 py-16 sm:px-6 md:py-20">
+        <section id={content.audienceSection.id} className="hidden px-4 py-16 sm:px-6 md:py-20 xl:block">
           <div className="mx-auto max-w-7xl space-y-12">
             <SectionHeading badge={content.audienceSection.badge} title={content.audienceSection.title} subtitle={content.audienceSection.subtitle} />
             <div className="grid gap-6 lg:grid-cols-3">
@@ -780,7 +1325,7 @@ export default function MarketHomepage({ market = 'US' }) {
           </div>
         </section>
 
-        <section id="pricing" className="border-y border-border/60 bg-card/40 px-4 py-16 sm:px-6 md:py-20">
+        <section id="pricing" className="hidden border-y border-border/60 bg-card/40 px-4 py-16 sm:px-6 md:py-20 xl:block">
           <div className="mx-auto max-w-7xl space-y-12">
             <SectionHeading title={content.pricingSection.title} subtitle={content.pricingSection.subtitle} />
             <div className="grid gap-6 lg:grid-cols-3">
@@ -830,7 +1375,7 @@ export default function MarketHomepage({ market = 'US' }) {
           </div>
         </section>
 
-        <section id="security" className="px-4 py-16 sm:px-6 md:py-20">
+        <section id="security" className="hidden px-4 py-16 sm:px-6 md:py-20 xl:block">
           <div className="mx-auto max-w-7xl">
             <div className="overflow-hidden rounded-[2.2rem] border border-slate-800 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_30%),radial-gradient(circle_at_85%_0%,rgba(16,185,129,0.18),transparent_26%),linear-gradient(145deg,#020617,#0f172a_55%,#111827)] px-6 py-8 shadow-[0_30px_80px_rgba(15,23,42,0.28)] sm:px-8 sm:py-10 md:px-10">
               <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] lg:items-center">
@@ -854,10 +1399,10 @@ export default function MarketHomepage({ market = 'US' }) {
           </div>
         </section>
 
-        <section className="px-4 pb-20 pt-4 sm:px-6 md:pb-24">
+        <section className="px-4 pb-16 pt-2 sm:px-6 md:pb-20 xl:pb-24">
           <div className="mx-auto max-w-6xl">
             <div className={cn(
-              'relative overflow-hidden rounded-[2.35rem] border px-6 py-10 text-center shadow-[0_30px_80px_rgba(15,23,42,0.22)] sm:px-8 md:px-10',
+              'relative overflow-hidden rounded-[2rem] border px-5 py-8 text-center shadow-[0_30px_80px_rgba(15,23,42,0.22)] sm:px-8 sm:py-9 md:px-10 md:py-10',
               content.code === 'US'
                 ? 'border-slate-800 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_30%),radial-gradient(circle_at_85%_10%,rgba(59,130,246,0.2),transparent_28%),linear-gradient(145deg,#020617,#0f172a_52%,#111827)]'
                 : 'border-emerald-950 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.2),transparent_30%),radial-gradient(circle_at_85%_10%,rgba(245,158,11,0.18),transparent_28%),linear-gradient(145deg,#03241c,#064e3b_50%,#111827)]'
@@ -868,10 +1413,10 @@ export default function MarketHomepage({ market = 'US' }) {
                   <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
                   Ready For Care
                 </div>
-                <h2 className="mx-auto mt-5 max-w-4xl text-3xl leading-tight text-white md:text-5xl">
+                <h2 className="mx-auto mt-4 max-w-4xl text-2xl leading-tight text-white sm:text-3xl md:text-5xl">
                   {content.cta.title}
                 </h2>
-                <p className="mx-auto mt-4 max-w-3xl text-base leading-7 text-slate-300 md:text-lg">
+                <p className="mx-auto mt-3 max-w-3xl text-sm leading-6 text-slate-300 sm:text-base md:text-lg">
                   {content.cta.description}
                 </p>
               </div>
@@ -888,6 +1433,8 @@ export default function MarketHomepage({ market = 'US' }) {
           </div>
         </section>
       </main>
+
+      <HomeQuickDock activeSection={compactDockSection} onSelect={openCompactSurface} />
     </div>
   );
 }

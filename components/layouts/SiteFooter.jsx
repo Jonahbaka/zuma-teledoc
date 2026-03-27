@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Mail } from 'lucide-react';
+import { ChevronRight, Mail } from 'lucide-react';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import { MARKET_HOME_DATA } from '@/components/marketing/marketHomeData';
 
@@ -49,8 +49,8 @@ export default function SiteFooter() {
       </div>
 
       <div className="relative mx-auto max-w-7xl px-6 pb-10 pt-16 lg:px-8">
-        <div className="mb-14 grid grid-cols-1 gap-12 md:grid-cols-2 lg:grid-cols-12 lg:gap-10">
-          <div className="space-y-6 lg:col-span-4">
+        <div className="mb-12 grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-12 lg:gap-10">
+          <div className="space-y-5 lg:col-span-4">
             <Link href={footer.homeHref} className="flex items-center space-x-3 group">
               <DoctaRxLogo className="h-9 w-auto" />
             </Link>
@@ -62,7 +62,7 @@ export default function SiteFooter() {
               {footer.email}
             </a>
 
-            <div className="flex flex-wrap gap-3 pt-1">
+            <div className="flex gap-3 overflow-x-auto pb-1 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible sm:pb-0">
               {footer.badges.map((badge) => {
                 const Icon = badge.icon;
                 return (
@@ -80,7 +80,25 @@ export default function SiteFooter() {
 
           <div className="hidden lg:block lg:col-span-1" />
 
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-4 lg:col-span-7">
+          <div className="grid gap-3 sm:grid-cols-2 lg:hidden">
+            {footer.columns.map((column) => (
+              <details key={column.title} className="group rounded-[1.25rem] border border-white/10 bg-white/[0.04] p-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-white">
+                  {column.title}
+                  <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-90" />
+                </summary>
+                <ul className="mt-4 space-y-3">
+                  {column.links.map((link) => (
+                    <li key={link.href}>
+                      <FooterLink href={link.href}>{link.label}</FooterLink>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ))}
+          </div>
+
+          <div className="hidden grid-cols-2 gap-8 sm:grid-cols-4 lg:col-span-7 lg:grid">
             {footer.columns.map((column) => (
               <div key={column.title}>
                 <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-white">{column.title}</h3>

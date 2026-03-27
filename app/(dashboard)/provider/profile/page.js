@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { User, Save, Loader2, Briefcase, GraduationCap, Award } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { User, Save, Loader2, Briefcase } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,9 +11,13 @@ import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/components/providers/AuthProvider';
 import PharmacyPreferencePicker from '@/components/pharmacy/PharmacyPreferencePicker';
+import { resolveProviderMarket } from '@/lib/providerPortal';
 
 export default function ProviderProfilePage() {
   const { user } = useAuth();
+  const pathname = usePathname();
+  const market = resolveProviderMarket({ pathname, user });
+  const isNigeriaMarket = market === 'NG';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
@@ -28,11 +33,7 @@ export default function ProviderProfilePage() {
     npiNumber: ''
   });
 
-  useEffect(() => {
-    fetchProfile();
-  }, []);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       const response = await api.get('/users/profile');
       if (response.data.success) {
@@ -59,7 +60,11 @@ export default function ProviderProfilePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -97,7 +102,11 @@ export default function ProviderProfilePage() {
           <User className="w-6 h-6 text-blue-500" />
           My Profile
         </h1>
-        <p className="text-slate-500 mt-1">Manage your professional profile</p>
+        <p className="text-slate-500 mt-1">
+          {isNigeriaMarket
+            ? 'Manage your professional profile and Nigeria practice details'
+            : 'Manage your professional profile'}
+        </p>
       </div>
 
       <Card>
@@ -175,7 +184,7 @@ export default function ProviderProfilePage() {
                 value={formData.credentials}
                 onChange={(e) => setFormData({ ...formData, credentials: e.target.value })}
                 className="mt-1"
-                placeholder="e.g., MD, DO"
+                placeholder={isNigeriaMarket ? 'e.g., MBBS, FWACP, RN' : 'e.g., MD, DO'}
               />
             </div>
           </div>
@@ -193,7 +202,9 @@ export default function ProviderProfilePage() {
 
           <div className="grid md:grid-cols-3 gap-4">
             <div>
-              <Label htmlFor="licenseNumber">License Number</Label>
+              <Label htmlFor="licenseNumber">
+                {isNigeriaMarket ? 'Practice License Number' : 'License Number'}
+              </Label>
               <Input
                 id="licenseNumber"
                 value={formData.licenseNumber}
@@ -202,7 +213,9 @@ export default function ProviderProfilePage() {
               />
             </div>
             <div>
-              <Label htmlFor="licenseState">License State</Label>
+              <Label htmlFor="licenseState">
+                {isNigeriaMarket ? 'Practice State / Region' : 'License State'}
+              </Label>
               <Input
                 id="licenseState"
                 value={formData.licenseState}
@@ -211,7 +224,9 @@ export default function ProviderProfilePage() {
               />
             </div>
             <div>
-              <Label htmlFor="npiNumber">NPI Number</Label>
+              <Label htmlFor="npiNumber">
+                {isNigeriaMarket ? 'Regulatory ID (Optional)' : 'NPI Number'}
+              </Label>
               <Input
                 id="npiNumber"
                 value={formData.npiNumber}
@@ -239,7 +254,9 @@ export default function ProviderProfilePage() {
         </CardContent>
       </Card>
 
-      <PharmacyPreferencePicker title="Default Pharmacy (Nearest to You)" />
+      <PharmacyPreferencePicker
+        title={isNigeriaMarket ? 'Preferred Pharmacy (Nearest to You)' : 'Default Pharmacy (Nearest to You)'}
+      />
     </div>
   );
 }

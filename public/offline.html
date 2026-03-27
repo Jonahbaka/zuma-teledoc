@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>DoctaRx Offline</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #020617;
+      --panel: rgba(15, 23, 42, 0.86);
+      --border: rgba(148, 163, 184, 0.18);
+      --text: #f8fafc;
+      --muted: #cbd5e1;
+      --accent: #22d3ee;
+      --accent-2: #3b82f6;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(34, 211, 238, 0.16), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.18), transparent 24%),
+        linear-gradient(180deg, #020617, #0f172a);
+    }
+
+    .card {
+      width: min(100%, 28rem);
+      padding: 28px;
+      border-radius: 28px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      backdrop-filter: blur(24px);
+      box-shadow: 0 24px 60px rgba(2, 6, 23, 0.45);
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(1.8rem, 4vw, 2.2rem);
+      line-height: 1.05;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 700;
+      background: rgba(15, 23, 42, 0.5);
+    }
+
+    .button.primary {
+      border-color: transparent;
+      background: linear-gradient(135deg, var(--accent-2), var(--accent));
+      color: #020617;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <p class="eyebrow">DoctaRx Offline</p>
+    <h1>Your secure shell is still available.</h1>
+    <p>
+      You are currently offline, so live visits, messaging, and account data cannot refresh yet.
+      Reconnect to continue working with the latest patient and provider information.
+    </p>
+    <div class="actions">
+      <a class="button primary" href="/">Retry connection</a>
+      <a class="button" href="/login">Open sign in</a>
+    </div>
+  </main>
+</body>
+</html>

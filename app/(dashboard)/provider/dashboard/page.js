@@ -12,6 +12,8 @@ import {
   FileText,
   Mail,
   Phone,
+  Pill,
+  Share2,
   ShieldCheck,
   UserPlus,
   Video,
@@ -24,7 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
-import { toProviderPortalPath } from '@/lib/providerPortal';
+import { resolveProviderMarket, toProviderPortalPath } from '@/lib/providerPortal';
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -47,6 +49,11 @@ export default function ProviderDashboard() {
     (target) => toProviderPortalPath(target, { pathname, user }),
     [pathname, user]
   );
+  const market = useMemo(
+    () => resolveProviderMarket({ pathname, user }),
+    [pathname, user]
+  );
+  const isNigeriaMarket = market === 'NG';
 
   useEffect(() => {
     const fetchData = async () => {
@@ -136,8 +143,10 @@ export default function ProviderDashboard() {
     if (user?.providerStatus && user.providerStatus !== 'approved') {
       items.push({
         id: 'credential-review',
-        title: 'Credential review in progress',
-        description: 'Your provider profile is pending operational approval.',
+        title: isNigeriaMarket ? 'Licensure review in progress' : 'Credential review in progress',
+        description: isNigeriaMarket
+          ? 'Your Nigeria provider profile is pending operational approval.'
+          : 'Your provider profile is pending operational approval.',
         actionLabel: 'Open profile',
         actionHref: providerPath('/profile'),
         tone: 'blue',
@@ -170,7 +179,9 @@ export default function ProviderDashboard() {
       items.push({
         id: 'all-clear',
         title: 'Operationally clear',
-        description: 'No provider-side blockers are currently flagged.',
+        description: isNigeriaMarket
+          ? 'No Nigeria provider-side blockers are currently flagged.'
+          : 'No provider-side blockers are currently flagged.',
         actionLabel: 'Open profile',
         actionHref: providerPath('/profile'),
         tone: 'emerald',
@@ -178,7 +189,17 @@ export default function ProviderDashboard() {
     }
 
     return items.slice(0, 4);
-  }, [handleResendVerification, providerPath, todayAppointments.length, unsignedNotes.length, user?.isVerified, user?.providerStatus]);
+  }, [handleResendVerification, isNigeriaMarket, providerPath, todayAppointments.length, unsignedNotes.length, user?.isVerified, user?.providerStatus]);
+
+  const providerDisplayName = useMemo(() => {
+    const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+
+    if (isNigeriaMarket) {
+      return fullName || user?.email || 'Provider';
+    }
+
+    return `Dr. ${user?.lastName || user?.firstName || 'Provider'}`;
+  }, [isNigeriaMarket, user?.email, user?.firstName, user?.lastName]);
 
   const providerStatusLabel = user?.providerStatus
     ? user.providerStatus.charAt(0).toUpperCase() + user.providerStatus.slice(1)
@@ -218,33 +239,60 @@ export default function ProviderDashboard() {
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold font-serif text-foreground">
-            {getGreeting()}, Dr. {user?.lastName || user?.firstName}
+            {getGreeting()}, {providerDisplayName}
           </h1>
           <p className="text-muted-foreground mt-1">
             {todayAppointments.length > 0
               ? `You have ${todayAppointments.length} appointment${todayAppointments.length === 1 ? '' : 's'} today`
-              : 'Your provider workspace is ready for the next consultation.'}
+              : isNigeriaMarket
+                ? 'Your Nigeria clinical workspace is ready for consultations, referrals, and prescription routing.'
+                : 'Your provider workspace is ready for the next consultation.'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href={providerPath('/call')}>
-            <Button className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-lg shadow-emerald-500/25">
-              <Phone className="w-4 h-4 mr-2" />
-              Instant Call
-            </Button>
-          </Link>
-          <Link href={providerPath('/schedule')}>
-            <Button variant="outline" className="border-purple-500 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950">
-              <Calendar className="w-4 h-4 mr-2" />
-              View Schedule
-            </Button>
-          </Link>
-          <Link href={providerPath('/patients?action=new')}>
-            <Button variant="outline">
-              <UserPlus className="w-4 h-4 mr-2" />
-              Add Patient
-            </Button>
-          </Link>
+          {isNigeriaMarket ? (
+            <>
+              <Link href={providerPath('/call')}>
+                <Button className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-lg shadow-emerald-500/25">
+                  <Phone className="w-4 h-4 mr-2" />
+                  Instant Call
+                </Button>
+              </Link>
+              <Link href={providerPath('/prescriptions')}>
+                <Button variant="outline" className="border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950">
+                  <Pill className="w-4 h-4 mr-2" />
+                  Prescription Activity
+                </Button>
+              </Link>
+              <Link href={providerPath('/referrals')}>
+                <Button variant="outline">
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Care Referrals
+                </Button>
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link href={providerPath('/call')}>
+                <Button className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-lg shadow-emerald-500/25">
+                  <Phone className="w-4 h-4 mr-2" />
+                  Instant Call
+                </Button>
+              </Link>
+              <Link href={providerPath('/schedule')}>
+                <Button variant="outline" className="border-purple-500 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950">
+                  <Calendar className="w-4 h-4 mr-2" />
+                  View Schedule
+                </Button>
+              </Link>
+              <Link href={providerPath('/patients?action=new')}>
+                <Button variant="outline">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Add Patient
+                </Button>
+              </Link>
+            </>
+          )}
         </div>
       </div>
 
@@ -415,7 +463,11 @@ export default function ProviderDashboard() {
               <ShieldCheck className="w-5 h-5 text-violet-500" />
               Provider Status
             </CardTitle>
-            <CardDescription>Production account readiness for clinical operations</CardDescription>
+            <CardDescription>
+              {isNigeriaMarket
+                ? 'Account readiness for Nigeria clinical operations'
+                : 'Production account readiness for clinical operations'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="p-4 rounded-xl border">

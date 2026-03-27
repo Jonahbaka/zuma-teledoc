@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ExternalLink, Loader2, Pill, RefreshCw } from 'lucide-react';
@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/use-toast';
 import { format } from 'date-fns';
-import { toProviderPortalPath } from '@/lib/providerPortal';
+import { resolveProviderMarket, toProviderPortalPath } from '@/lib/providerPortal';
 
 const STATUS_COLORS = {
   draft: 'bg-gray-100 text-gray-800',
@@ -24,25 +24,32 @@ const STATUS_COLORS = {
 
 export default function ProviderPrescriptionsPage() {
   const pathname = usePathname();
+  const market = resolveProviderMarket({ pathname });
   const [loading, setLoading] = useState(true);
   const [intents, setIntents] = useState([]);
   const [search, setSearch] = useState('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await clinicalEhrAPI.listPrescriptionIntents();
       if (res.data?.success) setIntents(res.data.prescriptionIntents || []);
     } catch (e) {
-      toast({ title: 'Error', description: 'Failed to load external eRx intents', variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: market === 'NG'
+          ? 'Failed to load prescription activity'
+          : 'Failed to load external eRx intents',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
-  };
+  }, [market]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -70,10 +77,12 @@ export default function ProviderPrescriptionsPage() {
             <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl">
               <Pill className="w-6 h-6 text-white" />
             </div>
-            External eRx (iPrescribe)
+            {market === 'NG' ? 'Prescription Activity' : 'External eRx (iPrescribe)'}
           </h1>
           <p className="text-muted-foreground mt-1">
-            This portal stores **prescription intents** only. Final prescribing happens in an external eRx system.
+            {market === 'NG'
+              ? 'Track prescription intents and follow through on pharmacy-bound medication orders from one Nigeria provider queue.'
+              : 'This portal stores prescription intents only. Final prescribing happens in an external eRx system.'}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -82,7 +91,9 @@ export default function ProviderPrescriptionsPage() {
             Refresh
           </Button>
           <Link href={toProviderPortalPath('/patients', { pathname })}>
-            <Button className="bg-purple-600 hover:bg-purple-700">Start from Patient Chart</Button>
+            <Button className="bg-purple-600 hover:bg-purple-700">
+              {market === 'NG' ? 'Open Patient Charts' : 'Start from Patient Chart'}
+            </Button>
           </Link>
         </div>
       </div>
@@ -92,11 +103,17 @@ export default function ProviderPrescriptionsPage() {
       </div>
 
       {filtered.length === 0 ? (
-        <Card>
+          <Card>
           <CardContent className="py-12 text-center">
             <Pill className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-60" />
-            <h3 className="text-lg font-semibold">No eRx Intents</h3>
-            <p className="text-muted-foreground mt-1">Create an encounter and add an intent from the patient chart.</p>
+            <h3 className="text-lg font-semibold">
+              {market === 'NG' ? 'No prescription activity yet' : 'No eRx Intents'}
+            </h3>
+            <p className="text-muted-foreground mt-1">
+              {market === 'NG'
+                ? 'Start from a patient chart to create the next prescription intent.'
+                : 'Create an encounter and add an intent from the patient chart.'}
+            </p>
           </CardContent>
         </Card>
       ) : (
