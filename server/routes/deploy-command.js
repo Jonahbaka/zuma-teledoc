@@ -1,4 +1,5 @@
 const PROJECT_ROOT = '/home/ec2-user/zuma-teledoc';
+const CRONOPS_ROOT = `${PROJECT_ROOT}/cronops`;
 const DEPLOY_BUILD_MEMORY_MB = process.env.DEPLOY_BUILD_MEMORY_MB || '1536';
 
 function buildDeployCommand() {
@@ -17,7 +18,7 @@ function buildDeployCommand() {
     'pm2 delete doctarx cronops 2>/dev/null || true',
     'sleep 1',
     'pm2 start npm --name doctarx -- start',
-    'pm2 start npm --name cronops -- run cronops',
+    `pm2 start npm --name cronops --cwd ${CRONOPS_ROOT} -- run start:prod`,
   ].join(' && ');
 }
 

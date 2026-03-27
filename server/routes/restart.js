@@ -3,6 +3,7 @@ const router = express.Router();
 const { runDetachedCommand } = require('./run-detached-command');
 
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
+const CRONOPS_ROOT = '/home/ec2-user/zuma-teledoc/cronops';
 
 /**
  * Emergency restart endpoint
@@ -28,7 +29,7 @@ router.post('/', (req, res) => {
     'pm2 delete all 2>/dev/null || true',
     'sleep 1',
     'pm2 start npm --name doctarx -- start',
-    'pm2 start npm --name cronops -- run cronops',
+    `pm2 start npm --name cronops --cwd ${CRONOPS_ROOT} -- run start:prod`,
   ].join(' && ');
 
   const job = runDetachedCommand(cmd, {
