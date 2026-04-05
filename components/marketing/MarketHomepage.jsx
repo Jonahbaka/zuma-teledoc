@@ -20,6 +20,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { cn } from '@/lib/utils';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import CountrySelector from '@/components/CountrySelector';
+import HolographicAvatar from '@/components/agents/HolographicAvatar';
 import { MARKET_HOME_DATA } from '@/components/marketing/marketHomeData';
 
 const TONE_STYLES = {
@@ -80,6 +81,55 @@ const HOME_DOCK_ITEMS = [
   { id: 'plans', label: 'Plans', icon: CreditCard },
   { id: 'trust', label: 'Trust', icon: ShieldCheck },
 ];
+
+const MARKET_STORY_ARCS = {
+  US: [
+    {
+      eyebrow: 'Patient Signal',
+      title: 'Patient intake goes live first',
+      body: 'Symptoms, coverage, and device readiness are captured before the visit window opens.',
+      tone: 'blue',
+      mood: 'calm',
+    },
+    {
+      eyebrow: 'Provider Focus',
+      title: 'Clinicians see the next move instantly',
+      body: 'Schedules, chart notes, and visit context stay visible in one futuristic clinical shell.',
+      tone: 'emerald',
+      mood: 'focused',
+    },
+    {
+      eyebrow: 'Fulfillment Layer',
+      title: 'Prescriptions hand off without dead ends',
+      body: 'The care story finishes with routed medication, follow-up prompts, and pharmacy visibility.',
+      tone: 'violet',
+      mood: 'upbeat',
+    },
+  ],
+  NG: [
+    {
+      eyebrow: 'Search Layer',
+      title: 'Patients start with medicine discovery',
+      body: 'Prescription search, upload, and local details surface immediately without a desktop-only layout.',
+      tone: 'blue',
+      mood: 'calm',
+    },
+    {
+      eyebrow: 'Provider Layer',
+      title: 'Clinical teams validate the next action',
+      body: 'Doctors and care operators review the case in a compact workflow tuned for Nigeria operations.',
+      tone: 'emerald',
+      mood: 'focused',
+    },
+    {
+      eyebrow: 'Pharmacy Layer',
+      title: 'Fulfillment stays visible to the finish',
+      body: 'Stock confirmation, pricing, and handoff status remain readable on phone, tablet, and desktop.',
+      tone: 'amber',
+      mood: 'upbeat',
+    },
+  ],
+};
 
 function toneStyles(tone) {
   return TONE_STYLES[tone] || TONE_STYLES.blue;
@@ -453,7 +503,7 @@ function QuickEntryCard({ item, rail = false }) {
       href={item.href}
       className={cn(
         'group flex items-start gap-3 rounded-[1.35rem] border border-border bg-background/92 px-4 py-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-accent',
-        rail && 'min-w-[15rem] snap-start'
+        rail && 'sm:min-h-full'
       )}
     >
       <div className={cn('flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border', styles.panel)}>
@@ -468,6 +518,43 @@ function QuickEntryCard({ item, rail = false }) {
   );
 }
 
+function StoryArc({ content }) {
+  const storySteps = MARKET_STORY_ARCS[content.code] || MARKET_STORY_ARCS.US;
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {storySteps.map((step, index) => {
+        const styles = toneStyles(step.tone);
+
+        return (
+          <div
+            key={step.title}
+            className={cn(
+              'relative overflow-hidden rounded-[1.45rem] border border-white/60 bg-white/82 p-4 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72',
+              index === 1 && 'sm:-translate-y-1',
+              index === 2 && 'sm:translate-y-1'
+            )}
+          >
+            <div className={cn('absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-50', styles.icon)} />
+            <div className="flex items-start gap-3">
+              <HolographicAvatar
+                persona={{ name: step.title, colorKey: step.tone, mood: step.mood }}
+                size="md"
+                className="shrink-0"
+              />
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground">{step.eyebrow}</div>
+                <div className="mt-1 text-sm font-semibold leading-5 text-foreground">{step.title}</div>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">{step.body}</p>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CompactHeroSurface({ content }) {
   return (
     <div className="grid gap-4 xl:hidden md:grid-cols-[1.04fr_0.96fr]">
@@ -476,9 +563,9 @@ function CompactHeroSurface({ content }) {
         title="Reach the right workspace without hunting through menus."
         description="Patient, provider, and operations entry points stay visible above the fold on phone and tablet."
       >
-        <div className="flex snap-x gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-3 md:overflow-visible md:pb-0">
+        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
           {content.loginItems.map((item) => (
-            <QuickEntryCard key={item.label} item={item} rail />
+            <QuickEntryCard key={item.label} item={item} />
           ))}
         </div>
       </WorkspacePanel>
@@ -539,7 +626,7 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
           </div>
 
           <Tabs value={activeTab} onValueChange={onTabChange} className="mt-6">
-            <TabsList className="grid h-auto w-full grid-cols-4 rounded-[1.25rem] bg-muted/70 p-1.5">
+            <TabsList className="grid h-auto w-full grid-cols-2 rounded-[1.25rem] bg-muted/70 p-1.5 sm:grid-cols-4">
               <TabsTrigger value="care" className="rounded-[0.95rem] px-2 py-2.5 text-xs font-semibold sm:text-sm">Care</TabsTrigger>
               <TabsTrigger value="access" className="rounded-[0.95rem] px-2 py-2.5 text-xs font-semibold sm:text-sm">Access</TabsTrigger>
               <TabsTrigger value="plans" className="rounded-[0.95rem] px-2 py-2.5 text-xs font-semibold sm:text-sm">Plans</TabsTrigger>
@@ -553,13 +640,13 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
                   title="Swipe through the care surfaces"
                   description="The product pillars stay readable as compact cards instead of becoming a tall brochure section."
                 >
-                  <div className="flex snap-x gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:overflow-visible md:pb-0">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     {content.features.map((feature) => {
                       const Icon = feature.icon;
                       const styles = toneStyles(feature.tone);
 
                       return (
-                        <div key={feature.title} className="min-w-[16rem] snap-start rounded-[1.35rem] border border-border bg-background/92 p-4 shadow-sm md:min-w-0">
+                        <div key={feature.title} className="rounded-[1.35rem] border border-border bg-background/92 p-4 shadow-sm">
                           <div className="flex items-center gap-3">
                             <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl border', styles.panel)}>
                               <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
@@ -665,14 +752,14 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
                 <WorkspacePanel
                   eyebrow="Plans"
                   title="Pricing in a denser mobile format"
-                  description="Plans are kept in a swipeable rail on phone and a compact multi-column layout on tablet."
+                  description="Plans stay dense and readable without forcing horizontal swipes on phone or tablet."
                 >
-                  <div className="flex snap-x gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:overflow-visible md:pb-0">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     {content.plans.map((plan) => {
                       const styles = toneStyles(plan.tone);
 
                       return (
-                        <div key={`${plan.eyebrow}-${plan.title}`} className="min-w-[17rem] snap-start rounded-[1.45rem] border border-border bg-background/92 p-4 shadow-sm md:min-w-0">
+                        <div key={`${plan.eyebrow}-${plan.title}`} className="rounded-[1.45rem] border border-border bg-background/92 p-4 shadow-sm">
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">{plan.eyebrow}</div>
@@ -1191,7 +1278,8 @@ export default function MarketHomepage({ market = 'US' }) {
                     <ChevronRight className="ml-1 h-4 w-4" />
                   </a>
                 </div>
-                <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible sm:pb-0">
+                <StoryArc content={content} />
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                   {content.hero.trustItems.map((item) => (
                     <TonePill key={item.text} tone={content.hero.visualTone} icon={item.icon}>{item.text}</TonePill>
                   ))}

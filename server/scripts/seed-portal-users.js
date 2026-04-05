@@ -18,8 +18,8 @@ const PORTAL_ACCOUNTS = [
   {
     key: 'patient',
     role: 'patient',
-    targetEmail: 'joahbaka00@gmail.com',
-    legacyEmails: ['jonahbaka00@gmail.com'],
+    targetEmail: 'jonahbaka00@gmail.com',
+    legacyEmails: ['joahbaka00@gmail.com'],
     firstName: 'Jonah',
     lastName: 'Baka',
     accessLevel: 'gold_monthly',
@@ -54,6 +54,17 @@ const PORTAL_ACCOUNTS = [
     accessLevel: 'gold_monthly',
     tier: 'gold',
     country: 'Nigeria',
+  },
+  {
+    key: 'pharmacy',
+    role: 'pharmacy',
+    targetEmail: 'evolvedu@outlook.com',
+    legacyEmails: [],
+    firstName: 'DoctaRx',
+    lastName: 'Pharmacy',
+    accessLevel: 'gold_monthly',
+    tier: 'gold',
+    country: 'United States',
   },
 ];
 

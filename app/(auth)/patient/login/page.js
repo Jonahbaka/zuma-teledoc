@@ -100,7 +100,7 @@ function PatientLoginContent() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-purple-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950">
       {/* Header */}
-      <header className="p-6">
+      <header className="px-4 py-5 sm:p-6">
         <Link href="/" className="flex items-center gap-2">
           <span className="rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-800">
             <DoctaRxLogo className="h-8 w-auto" />
@@ -109,9 +109,9 @@ function PatientLoginContent() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex items-center justify-center p-6">
+      <main className="flex-1 flex items-center justify-center px-4 py-6 sm:p-6">
         <div className="w-full max-w-md">
-          <div className="bg-card border border-border rounded-2xl shadow-xl p-8">
+          <div className="bg-card border border-border rounded-2xl shadow-xl p-5 sm:p-8">
             {/* Testing Mode Banner */}
             {testingMode && (
               <div className="mb-6 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg">

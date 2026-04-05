@@ -69,7 +69,7 @@ export default function PharmacyRegisterPage() {
           <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${step >= 2 ? 'bg-purple-600 text-white' : 'bg-muted text-muted-foreground'}`}>2</div>
         </div>
 
-        <div className="bg-card rounded-2xl shadow-xl border border-border p-8">
+        <div className="bg-card rounded-2xl shadow-xl border border-border p-5 sm:p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             {step === 1 && (
               <>
@@ -91,7 +91,7 @@ export default function PharmacyRegisterPage() {
                     <Input placeholder="Full name" value={formData.ownerName} onChange={(e) => update('ownerName', e.target.value)} className="pl-9" required />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Email *</Label>
                     <div className="relative">
@@ -122,7 +122,7 @@ export default function PharmacyRegisterPage() {
                     <Input placeholder="Street address" value={formData.address} onChange={(e) => update('address', e.target.value)} className="pl-9" required />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>City *</Label>
                     <Input placeholder="e.g. Lagos" value={formData.city} onChange={(e) => update('city', e.target.value)} required />
@@ -152,7 +152,7 @@ export default function PharmacyRegisterPage() {
                   <span>Your pharmacy data is encrypted. AI-assisted workflows pass through privacy filters and audit logging.</span>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex flex-col-reverse gap-3 sm:flex-row">
                   <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1">Back</Button>
                   <Button type="submit" disabled={isLoading} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white">
                     {isLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Registering...</> : 'Register Pharmacy'}

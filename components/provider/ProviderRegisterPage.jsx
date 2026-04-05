@@ -244,15 +244,15 @@ function ProviderRegisterContent({ market = 'US' }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <header className="p-6">
+      <header className="px-4 py-5 sm:p-6">
         <Link href={homeHref} className="flex items-center gap-2">
           <DoctaRxLogo className="h-9 w-auto" />
         </Link>
       </header>
 
-      <main className="flex-1 flex items-center justify-center p-6">
+      <main className="flex-1 flex items-center justify-center px-4 py-6 sm:p-6">
         <div className="w-full max-w-lg">
-          <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl p-8">
+          <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl p-5 sm:p-8">
             <div className="text-center mb-8">
               <div className={`w-16 h-16 bg-gradient-to-br ${copy.icon} rounded-2xl flex items-center justify-center mx-auto mb-4`}>
                 <Stethoscope className="w-8 h-8 text-white" />
@@ -288,7 +288,7 @@ function ProviderRegisterContent({ market = 'US' }) {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="firstName" className="text-slate-300">First Name *</Label>
                   <div className="relative">

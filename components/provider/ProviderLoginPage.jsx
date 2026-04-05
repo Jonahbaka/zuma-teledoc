@@ -167,15 +167,15 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <header className="p-6">
+      <header className="px-4 py-5 sm:p-6">
         <Link href={homeHref} className="flex items-center gap-2">
           <DoctaRxLogo className="h-9 w-auto" />
         </Link>
       </header>
 
-      <main className="flex-1 flex items-center justify-center p-6">
+      <main className="flex-1 flex items-center justify-center px-4 py-6 sm:p-6">
         <div className="w-full max-w-md">
-          <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl p-8">
+          <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl p-5 sm:p-8">
             {testingMode && (
               <div className="mb-6 p-3 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-lg">
                 <div className="flex items-center gap-2">

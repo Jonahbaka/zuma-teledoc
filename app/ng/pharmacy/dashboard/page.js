@@ -18,11 +18,8 @@ export default function PharmacyDashboard() {
 
   async function loadDashboard() {
     try {
-      // Get pharmacy ID from user profile
-      const profileRes = await api.get('/api/auth/me');
-      const user = profileRes.data;
+      await api.get('/api/auth/me').catch(() => ({ data: null }));
 
-      // Get pharmacy for this user
       const pharmaciesRes = await api.get('/api/ng/admin/pharmacies?status=approved&limit=1');
       const pharmacy = pharmaciesRes.data?.[0];
       if (!pharmacy) {
@@ -49,7 +46,7 @@ export default function PharmacyDashboard() {
     }
   }
 
-  const formatNaira = (amount) => `₦${Number(amount || 0).toLocaleString()}`;
+  const formatNaira = (amount) => `N${Number(amount || 0).toLocaleString()}`;
 
   if (loading) {
     return (
@@ -62,10 +59,10 @@ export default function PharmacyDashboard() {
   if (!pharmacyId) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="text-center">
+        <div className="text-center rounded-[1.8rem] border border-gray-200 bg-white p-8 shadow-sm">
           <h2 className="text-xl font-bold text-gray-900 mb-2">No Pharmacy Found</h2>
           <p className="text-gray-600 mb-4">Register your pharmacy to get started.</p>
-          <Link href="/ng/pharmacy/onboarding" className="bg-green-600 text-white px-6 py-3 rounded-lg">
+          <Link href="/ng/pharmacy/onboarding" className="inline-flex rounded-lg bg-green-600 px-6 py-3 font-medium text-white">
             Register Pharmacy
           </Link>
         </div>
@@ -74,10 +71,8 @@ export default function PharmacyDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Sidebar + Main */}
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_30%),linear-gradient(180deg,#f8fafc,#ecfeff)]">
       <div className="flex">
-        {/* Sidebar */}
         <aside className="hidden lg:block w-64 bg-white border-r min-h-screen p-4">
           <div className="flex items-center space-x-2 mb-8">
             <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
@@ -92,21 +87,50 @@ export default function PharmacyDashboard() {
               { name: 'Inventory', href: '/ng/pharmacy/inventory' },
               { name: 'Wallet', href: '/ng/pharmacy/wallet' },
               { name: 'Settings', href: '/ng/pharmacy/settings' },
-            ].map(item => (
-              <Link key={item.name} href={item.href}
-                className={`block px-3 py-2 rounded-lg text-sm ${item.active ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>
+            ].map((item) => (
+              <Link
+                key={item.name}
+                href={item.href}
+                className={`block px-3 py-2 rounded-lg text-sm ${
+                  item.active ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
                 {item.name}
               </Link>
             ))}
           </nav>
         </aside>
 
-        {/* Main Content */}
-        <main className="flex-1 p-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h1>
+        <main className="flex-1 p-4 sm:p-6">
+          <section className="mb-6 rounded-[1.8rem] border border-emerald-200/70 bg-white/82 p-5 shadow-sm backdrop-blur-xl">
+            <div className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-700">Pharmacy Operations</div>
+            <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Dashboard</h1>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600">
+                  Inventory, routed orders, and settlement visibility now fit naturally on mobile and tablet without pushing key actions off-screen.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                {[
+                  { name: 'Orders', href: '/ng/pharmacy/orders' },
+                  { name: 'Inventory', href: '/ng/pharmacy/inventory' },
+                  { name: 'Wallet', href: '/ng/pharmacy/wallet' },
+                  { name: 'Settings', href: '/ng/pharmacy/settings' },
+                ].map((item) => (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className="rounded-full border border-gray-200 bg-white px-4 py-2 text-center text-sm font-medium text-gray-700 transition-colors hover:border-green-200 hover:text-green-600"
+                  >
+                    {item.name}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <section className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <div className="bg-white rounded-xl p-4 shadow-sm">
               <p className="text-sm text-gray-500">Wallet Balance</p>
               <p className="text-2xl font-bold text-green-600">{formatNaira(wallet?.balance)}</p>
@@ -119,33 +143,31 @@ export default function PharmacyDashboard() {
             <div className="bg-white rounded-xl p-4 shadow-sm">
               <p className="text-sm text-gray-500">Total Products</p>
               <p className="text-2xl font-bold text-gray-900">{stats?.totalItems || 0}</p>
-              {stats?.lowStockItems > 0 && (
+              {stats?.lowStockItems > 0 ? (
                 <p className="text-xs text-red-500">{stats.lowStockItems} low stock</p>
-              )}
+              ) : null}
             </div>
             <div className="bg-white rounded-xl p-4 shadow-sm">
               <p className="text-sm text-gray-500">Stock Value</p>
               <p className="text-2xl font-bold text-gray-900">{formatNaira(stats?.totalStockValue)}</p>
             </div>
-          </div>
+          </section>
 
-          {/* Low Stock Alerts */}
-          {alerts.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+          {alerts.length > 0 ? (
+            <section className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
               <h3 className="font-medium text-red-800 mb-2">Low Stock Alerts ({alerts.length})</h3>
               <div className="space-y-1">
-                {alerts.slice(0, 5).map(alert => (
+                {alerts.slice(0, 5).map((alert) => (
                   <p key={alert.id} className="text-sm text-red-700">
-                    {alert.drug_name} — {alert.quantity_available} left (reorder at {alert.reorder_level})
+                    {alert.drug_name} | {alert.quantity_available} left (reorder at {alert.reorder_level})
                   </p>
                 ))}
               </div>
-            </div>
-          )}
+            </section>
+          ) : null}
 
-          {/* Recent Orders */}
-          <div className="bg-white rounded-xl shadow-sm">
-            <div className="px-4 py-3 border-b flex justify-between items-center">
+          <section className="bg-white rounded-xl shadow-sm">
+            <div className="px-4 py-3 border-b flex justify-between items-center gap-3">
               <h3 className="font-medium text-gray-900">Recent Orders</h3>
               <Link href="/ng/pharmacy/orders" className="text-sm text-green-600 hover:underline">View All</Link>
             </div>
@@ -153,21 +175,24 @@ export default function PharmacyDashboard() {
               <div className="p-8 text-center text-gray-500">No orders yet</div>
             ) : (
               <div className="divide-y">
-                {orders.map(order => (
-                  <div key={order.id} className="px-4 py-3 flex items-center justify-between">
-                    <div>
+                {orders.map((order) => (
+                  <div key={order.id} className="px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900">{order.order_number}</p>
                       <p className="text-xs text-gray-500">
-                        {order.first_name} {order.last_name} — {new Date(order.created_at).toLocaleDateString()}
+                        {order.first_name} {order.last_name} | {new Date(order.created_at).toLocaleDateString()}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="sm:text-right">
                       <p className="text-sm font-medium">{formatNaira(order.total_amount)}</p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        order.status === 'delivered' ? 'bg-green-100 text-green-700' :
-                        order.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
-                        order.status === 'cancelled' ? 'bg-red-100 text-red-700' :
-                        'bg-yellow-100 text-yellow-700'
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs ${
+                        order.status === 'delivered'
+                          ? 'bg-green-100 text-green-700'
+                          : order.status === 'confirmed'
+                            ? 'bg-blue-100 text-blue-700'
+                            : order.status === 'cancelled'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-yellow-100 text-yellow-700'
                       }`}>
                         {order.status}
                       </span>
@@ -176,7 +201,7 @@ export default function PharmacyDashboard() {
                 ))}
               </div>
             )}
-          </div>
+          </section>
         </main>
       </div>
     </div>

@@ -120,7 +120,7 @@ export default function PatientRegisterPage({
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-purple-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950">
-      <header className="p-6">
+      <header className="px-4 py-5 sm:p-6">
         <Link href={homeHref} className="flex items-center gap-2">
           <span className="rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-800">
             <DoctaRxLogo className="h-8 w-auto" />
@@ -128,9 +128,9 @@ export default function PatientRegisterPage({
         </Link>
       </header>
 
-      <main className="flex-1 flex items-center justify-center p-6">
+      <main className="flex-1 flex items-center justify-center px-4 py-6 sm:p-6">
         <div className="w-full max-w-md">
-          <div className="bg-card border border-border rounded-2xl shadow-xl p-8">
+          <div className="bg-card border border-border rounded-2xl shadow-xl p-5 sm:p-8">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <Heart className="w-8 h-8 text-white" />
@@ -155,7 +155,7 @@ export default function PatientRegisterPage({
             <form onSubmit={handleSubmit} className="space-y-5">
               {step === 1 && (
                 <>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="firstName">First Name</Label>
                       <div className="relative">
@@ -310,7 +310,7 @@ export default function PatientRegisterPage({
                     <span>HIPAA-compliant onboarding. Your account data is encrypted in transit and at rest. AI-assisted workflows pass through privacy filters and audit logging.</span>
                   </div>
 
-                  <div className="flex gap-3">
+                  <div className="flex flex-col-reverse gap-3 sm:flex-row">
                     <Button
                       type="button"
                       variant="outline"
