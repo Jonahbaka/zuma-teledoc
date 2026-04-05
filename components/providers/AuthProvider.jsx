@@ -183,6 +183,8 @@ export function AuthProvider({ children }) {
           user: u,
           pathname: typeof window !== 'undefined' ? window.location.pathname : '',
         });
+      case 'pharmacy':
+        return '/pharmacy/dashboard';
       case 'patient':
       default:
         // If patient isn't paid up, route them to subscription first.
