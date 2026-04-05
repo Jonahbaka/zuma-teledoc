@@ -30,7 +30,7 @@ export default function PatientLayout({ children }) {
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
-      router.push('/login');
+      router.push('/patient/login');
     }
     
     if (!loading && isAuthenticated && user?.role !== 'patient') {
@@ -55,6 +55,7 @@ export default function PatientLayout({ children }) {
       navigation={navigation}
       portalName="Patient"
       portalColor="from-purple-600 to-purple-800"
+      portalHomeHref="/patient"
     >
       {children}
     </DashboardLayout>

@@ -1,211 +1,187 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Loader2, Pill, UploadCloud } from 'lucide-react';
 import api from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function PrescriptionsPage() {
+function formatDate(value) {
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return 'Date unavailable';
+  }
+}
+
+export default function NigeriaPatientPrescriptionsPage() {
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [uploadMode, setUploadMode] = useState(null); // 'image' | 'text'
+  const [uploadMode, setUploadMode] = useState('');
   const [prescriptionText, setPrescriptionText] = useState('');
   const [uploadResult, setUploadResult] = useState(null);
+
+  const loadPrescriptions = async () => {
+    try {
+      const response = await api.get('/api/ng/patient/prescriptions');
+      setPrescriptions(Array.isArray(response.data) ? response.data : []);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadPrescriptions();
   }, []);
 
-  async function loadPrescriptions() {
-    try {
-      const res = await api.get('/api/ng/patient/prescriptions');
-      setPrescriptions(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleImageUpload(e) {
-    const file = e.target.files[0];
+  const handleImageUpload = async (event) => {
+    const file = event.target.files?.[0];
     if (!file) return;
 
     setUploading(true);
     try {
-      // Upload image first
-      const formData = new FormData();
-      formData.append('file', file);
-      const uploadRes = await api.post('/api/ng/patient/prescriptions/upload', {
-        imageUrl: URL.createObjectURL(file), // In production, upload to S3/GCS first
+      const response = await api.post('/api/ng/patient/prescriptions/upload', {
+        imageUrl: URL.createObjectURL(file),
       });
-      setUploadResult(uploadRes.data);
-      loadPrescriptions();
-    } catch (err) {
-      console.error(err);
+      setUploadResult(response.data);
+      await loadPrescriptions();
     } finally {
       setUploading(false);
     }
-  }
+  };
 
-  async function handleTextSubmit() {
+  const handleTextSubmit = async () => {
     if (!prescriptionText.trim()) return;
+
     setUploading(true);
     try {
-      const res = await api.post('/api/ng/patient/prescriptions/text', {
+      const response = await api.post('/api/ng/patient/prescriptions/text', {
         text: prescriptionText,
       });
-      setUploadResult(res.data);
+      setUploadResult(response.data);
       setPrescriptionText('');
-      setUploadMode(null);
-      loadPrescriptions();
-    } catch (err) {
-      console.error(err);
+      setUploadMode('');
+      await loadPrescriptions();
     } finally {
       setUploading(false);
     }
-  }
-
-  const statusColors = {
-    uploaded: 'bg-yellow-100 text-yellow-700',
-    parsing: 'bg-blue-100 text-blue-700',
-    parsed: 'bg-green-100 text-green-700',
-    verified: 'bg-green-200 text-green-800',
-    rejected: 'bg-red-100 text-red-700',
-    expired: 'bg-gray-100 text-gray-600',
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/ng" className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">Rx</span>
+    <div className="space-y-6">
+      <section className="rounded-[2rem] border border-emerald-200/70 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_35%),linear-gradient(145deg,rgba(255,255,255,0.96),rgba(236,253,245,0.92))] px-5 py-6 shadow-sm sm:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Prescription Workflow</p>
+            <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Upload, review, and route prescriptions</h1>
+            <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
+              Add prescription images or typed medication instructions, then continue to medication search and pharmacy routing from the patient portal.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/ng/patient/search">
+              <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Open Medication Search</Button>
             </Link>
-            <h1 className="font-bold text-gray-900">My Prescriptions</h1>
+            <Link href="/ng/patient/orders">
+              <Button variant="outline">Review Orders</Button>
+            </Link>
           </div>
-          <Link href="/ng/patient/search" className="text-sm text-green-600">Search Drugs</Link>
         </div>
-      </header>
+      </section>
 
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Upload Section */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <h2 className="font-bold text-gray-900 mb-4">Upload Prescription</h2>
-
-          {!uploadMode && (
-            <div className="grid md:grid-cols-2 gap-4">
-              <button onClick={() => setUploadMode('image')}
-                className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-green-500 transition-colors">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <p className="font-medium text-gray-900">Upload Image</p>
-                <p className="text-sm text-gray-500 mt-1">Take a photo or upload a scan</p>
+      <Card className="border-border/70">
+        <CardHeader>
+          <CardTitle>Upload a prescription</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!uploadMode ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <button type="button" onClick={() => setUploadMode('image')} className="rounded-2xl border border-dashed border-border px-4 py-8 text-center transition-colors hover:border-emerald-300 hover:bg-emerald-50/60">
+                <UploadCloud className="mx-auto h-8 w-8 text-emerald-600" />
+                <p className="mt-4 font-semibold text-foreground">Upload image</p>
+                <p className="mt-2 text-sm text-muted-foreground">Take a photo or upload a scan.</p>
               </button>
-
-              <button onClick={() => setUploadMode('text')}
-                className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-green-500 transition-colors">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <p className="font-medium text-gray-900">Type Prescription</p>
-                <p className="text-sm text-gray-500 mt-1">Enter drug names and dosages</p>
+              <button type="button" onClick={() => setUploadMode('text')} className="rounded-2xl border border-dashed border-border px-4 py-8 text-center transition-colors hover:border-emerald-300 hover:bg-emerald-50/60">
+                <Pill className="mx-auto h-8 w-8 text-emerald-600" />
+                <p className="mt-4 font-semibold text-foreground">Type medication details</p>
+                <p className="mt-2 text-sm text-muted-foreground">Enter drug names, dosage, and directions manually.</p>
               </button>
             </div>
-          )}
+          ) : null}
 
-          {uploadMode === 'image' && (
-            <div>
-              <input type="file" accept="image/*" capture="environment" onChange={handleImageUpload}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-green-50 file:text-green-700 file:font-medium hover:file:bg-green-100" />
-              <button onClick={() => setUploadMode(null)} className="text-sm text-gray-500 mt-2">Cancel</button>
-              {uploading && <p className="text-sm text-green-600 mt-2">Parsing prescription...</p>}
+          {uploadMode === 'image' ? (
+            <div className="space-y-3">
+              <input type="file" accept="image/*" onChange={handleImageUpload} className="block w-full text-sm" />
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => setUploadMode('')}>Cancel</Button>
+              </div>
             </div>
-          )}
+          ) : null}
 
-          {uploadMode === 'text' && (
-            <div>
-              <textarea value={prescriptionText} onChange={e => setPrescriptionText(e.target.value)}
-                placeholder={`Enter your prescription details, e.g.:\n\nAmoxicillin 500mg - 1 capsule 3 times daily for 7 days\nParacetamol 500mg - 2 tablets as needed\nOmeprazole 20mg - 1 capsule daily`}
+          {uploadMode === 'text' ? (
+            <div className="space-y-3">
+              <textarea
+                value={prescriptionText}
+                onChange={(event) => setPrescriptionText(event.target.value)}
                 rows={6}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-green-500 focus:border-green-500 text-sm" />
-              <div className="flex gap-2 mt-2">
-                <button onClick={handleTextSubmit} disabled={uploading || !prescriptionText.trim()}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm disabled:opacity-50">
-                  {uploading ? 'Parsing...' : 'Submit'}
-                </button>
-                <button onClick={() => { setUploadMode(null); setPrescriptionText(''); }}
-                  className="px-4 py-2 border rounded-lg text-sm text-gray-600">Cancel</button>
+                className="w-full rounded-xl border border-border bg-background px-3 py-3 text-sm"
+                placeholder="Enter medication instructions, dosage, and duration."
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setUploadMode('')}>Cancel</Button>
+                <Button onClick={handleTextSubmit} disabled={uploading || !prescriptionText.trim()} className="bg-emerald-600 text-white hover:bg-emerald-500">
+                  {uploading ? 'Submitting...' : 'Submit Prescription'}
+                </Button>
               </div>
             </div>
-          )}
+          ) : null}
 
-          {/* Upload Result */}
-          {uploadResult && (
-            <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4">
-              <h3 className="font-medium text-green-800 mb-2">Prescription Parsed!</h3>
-              <p className="text-sm text-green-700 mb-2">
-                Confidence: {(uploadResult.confidence * 100).toFixed(0)}%
-                {uploadResult.requiresVerification && ' — Requires pharmacist verification'}
-              </p>
-              <div className="space-y-1">
-                {uploadResult.items?.map((item, i) => (
-                  <p key={i} className="text-sm text-green-700">
-                    {item.drug_name} {item.dosage || ''} — {item.frequency || ''} {item.duration || ''}
-                    {item.catalogMatch && <span className="text-green-600"> (matched)</span>}
-                  </p>
-                ))}
+          {uploadResult ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
+              <p className="font-semibold">Prescription parsed successfully.</p>
+              <p className="mt-1">Confidence: {Math.round(Number(uploadResult.confidence || 0) * 100)}%</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link href="/ng/patient/search">
+                  <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-500">Compare Pharmacies</Button>
+                </Link>
               </div>
-              <Link href={`/ng/patient/search`}
-                className="inline-block mt-3 text-sm bg-green-600 text-white px-4 py-2 rounded-lg">
-                Find Pharmacies
-              </Link>
             </div>
-          )}
-        </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
-        {/* Prescription History */}
-        <h2 className="font-bold text-gray-900 mb-4">Prescription History</h2>
-        {loading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full" />
-          </div>
-        ) : prescriptions.length === 0 ? (
-          <div className="bg-white rounded-xl p-8 text-center text-gray-500">
-            No prescriptions uploaded yet
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {prescriptions.map(rx => (
-              <div key={rx.id} className="bg-white rounded-xl shadow-sm p-4">
-                <div className="flex justify-between items-start">
+      <Card className="border-border/70">
+        <CardHeader>
+          <CardTitle>Prescription history</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {loading ? (
+            <div className="py-8 text-center">
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
+            </div>
+          ) : prescriptions.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+              No prescriptions uploaded yet.
+            </div>
+          ) : (
+            prescriptions.map((prescription) => (
+              <div key={prescription.id} className="rounded-2xl border border-border px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {rx.prescriber_name || 'Prescription'}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(rx.created_at).toLocaleDateString()}
-                      {rx.items?.length > 0 && ` — ${rx.items.length} item(s)`}
-                    </p>
+                    <p className="font-semibold text-foreground">{prescription.prescriber_name || 'Prescription'}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(prescription.created_at)}</p>
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[rx.status] || 'bg-gray-100'}`}>
-                    {rx.status}
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                    {String(prescription.status || '').replace(/_/g, ' ')}
                   </span>
                 </div>
-                {rx.is_controlled_substance && (
-                  <p className="text-xs text-red-500 mt-1">Contains controlled substance</p>
-                )}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

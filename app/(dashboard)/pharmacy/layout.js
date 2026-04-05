@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, Pill, Package, ClipboardList,
   Settings, LogOut, Menu, X, Bell
 } from 'lucide-react';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/pharmacy/dashboard', icon: LayoutDashboard },
@@ -20,8 +21,38 @@ const NAV_ITEMS = [
 
 export default function PharmacyLayout({ children }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, loading, isAuthenticated } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const activeItem = NAV_ITEMS.find((item) => pathname === item.href || pathname?.startsWith(item.href + '/')) || NAV_ITEMS[0];
+
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      router.push('/pharmacy/login');
+      return;
+    }
+
+    if (!loading && isAuthenticated && user?.role !== 'pharmacy') {
+      if (user?.role === 'admin' || user?.role === 'super_admin') {
+        router.push('/admin/dashboard');
+        return;
+      }
+
+      router.push(`/${user?.role || 'patient'}/dashboard`);
+    }
+  }, [isAuthenticated, loading, router, user]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || user?.role !== 'pharmacy') {
+    return null;
+  }
 
   return (
     <div className="app-shell-root flex min-h-[100dvh] overflow-x-clip bg-background">

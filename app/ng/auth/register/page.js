@@ -7,9 +7,9 @@ export default function NigeriaPatientRegisterPage() {
       homeHref="/ng"
       loginHref="/ng/auth/login"
       successDescription="Your Nigeria patient account is ready."
-      successRedirectPath="/ng/patient/search"
+      successRedirectPath="/ng/patient"
       submitLabel="Create Nigeria Account"
-      activationNotice="After account creation, you can continue to the Nigeria patient portal to search pharmacies, upload prescriptions, and manage medication orders."
+      activationNotice="After account creation, you can continue to the Nigeria patient portal to review appointments, manage prescriptions, compare pharmacies, and track medication orders."
     />
   );
 }

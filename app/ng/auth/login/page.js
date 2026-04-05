@@ -49,7 +49,7 @@ export default function NigeriaLogin() {
       if (res.data.success) {
         if (res.data.accessToken) localStorage.setItem('accessToken', res.data.accessToken);
         if (res.data.refreshToken) localStorage.setItem('refreshToken', res.data.refreshToken);
-        router.push('/ng/patient/search');
+        router.push('/ng/patient');
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
@@ -185,10 +185,10 @@ export default function NigeriaLogin() {
                 Create account
               </Link>
               <Link
-                href="/ng/pharmacy/onboarding"
+                href="/ng/pharmacy/login"
                 className="inline-flex items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/16"
               >
-                Register pharmacy
+                Pharmacy login
               </Link>
             </div>
 

@@ -1,14 +1,18 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Search } from 'lucide-react';
 import api from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-function DrugSearchContent() {
-  const searchParams = useSearchParams();
-  const initialQuery = searchParams.get('q') || '';
-  const [query, setQuery] = useState(initialQuery);
+function formatNaira(amount) {
+  return `NGN ${Number(amount || 0).toLocaleString()}`;
+}
+
+export default function NigeriaPatientMedicationSearchPage() {
+  const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedDrugs, setSelectedDrugs] = useState([]);
@@ -18,49 +22,42 @@ function DrugSearchContent() {
   const [strategy, setStrategy] = useState('best_match');
 
   useEffect(() => {
-    if (initialQuery) handleSearch(initialQuery);
-    requestLocation();
-  }, []);
-
-  function requestLocation() {
     if (typeof window !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        pos => setLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+        (position) => setLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
         () => setLocation({ latitude: 6.5244, longitude: 3.3792 })
       );
     }
-  }
+  }, []);
 
-  async function handleSearch(q = query) {
-    if (!q.trim()) return;
+  const handleSearch = async () => {
+    if (!query.trim()) return;
     setLoading(true);
     try {
-      const res = await api.get(`/api/ng/patient/drugs/search?q=${encodeURIComponent(q)}`);
-      setResults(res.data.results || []);
-    } catch (err) {
-      console.error('Search error:', err);
+      const response = await api.get('/api/ng/patient/drugs/search', { params: { q: query } });
+      setResults(response.data?.results || []);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  function toggleDrugSelection(drug) {
-    setSelectedDrugs(prev => {
-      const exists = prev.find(d => d.id === drug.id);
-      if (exists) return prev.filter(d => d.id !== drug.id);
-      return [...prev, drug];
+  const toggleDrugSelection = (drug) => {
+    setSelectedDrugs((current) => {
+      const exists = current.some((item) => item.id === drug.id);
+      return exists ? current.filter((item) => item.id !== drug.id) : [...current, drug];
     });
-  }
+  };
 
-  async function comparePharmacies() {
+  const comparePharmacies = async () => {
     if (!selectedDrugs.length || !location) return;
+
     setComparing(true);
     setPharmacyResults(null);
     try {
-      const res = await api.post('/api/ng/patient/drugs/compare', {
-        items: selectedDrugs.map(d => ({
-          drug_name: d.name,
-          generic_name: d.generic_name,
+      const response = await api.post('/api/ng/patient/drugs/compare', {
+        items: selectedDrugs.map((drug) => ({
+          drug_name: drug.name,
+          generic_name: drug.generic_name,
           quantity: 1,
         })),
         latitude: location.latitude,
@@ -68,230 +65,171 @@ function DrugSearchContent() {
         strategy,
         allowSubstitution: true,
       });
-      setPharmacyResults(res.data);
-    } catch (err) {
-      console.error('Compare error:', err);
+
+      setPharmacyResults(response.data);
     } finally {
       setComparing(false);
     }
-  }
-
-  const formatNaira = (amount) => `₦${Number(amount || 0).toLocaleString()}`;
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4">
-          <Link href="/ng" className="flex items-center space-x-2 flex-shrink-0">
-            <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">Rx</span>
-            </div>
-          </Link>
-          <form onSubmit={e => { e.preventDefault(); handleSearch(); }} className="flex-1 flex gap-2">
-            <input type="text" value={query} onChange={e => setQuery(e.target.value)}
-              placeholder="Search medications..."
-              className="flex-1 px-4 py-2 border rounded-lg focus:ring-green-500 focus:border-green-500" />
-            <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">
-              Search
-            </button>
-          </form>
-          <Link
-            href="/ng/patient/call"
-            className="hidden sm:inline-flex px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 whitespace-nowrap"
-          >
-            Test Video Call
-          </Link>
-        </div>
-      </header>
-
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        <div className="mb-6 bg-white border border-blue-100 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
-          <div>
-            <p className="text-sm font-semibold text-gray-900">Need to test the patient video room?</p>
-            <p className="text-sm text-gray-500">Open the standalone call flow without booking an appointment.</p>
+    <div className="space-y-6">
+      <section className="rounded-[2rem] border border-emerald-200/70 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_35%),linear-gradient(145deg,rgba(255,255,255,0.96),rgba(236,253,245,0.92))] px-5 py-6 shadow-sm sm:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Patient Medication Search</p>
+            <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Search drugs and compare nearby pharmacies</h1>
+            <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
+              This is one feature inside the Nigeria patient portal. Use it to compare availability and pricing after reviewing prescriptions or when making a self-pay medication request.
+            </p>
           </div>
-          <Link
-            href="/ng/patient/call"
-            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 whitespace-nowrap"
-          >
-            Open Test Video Call
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/ng/patient/prescriptions">
+              <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Open Prescriptions</Button>
+            </Link>
+            <Link href="/ng/patient/orders">
+              <Button variant="outline">Track Orders</Button>
+            </Link>
+          </div>
         </div>
-        <div className="lg:flex lg:gap-6">
-          <div className="lg:w-1/2">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">
-              {results.length > 0 ? `${results.length} drugs found` : 'Search for medications'}
-            </h2>
+      </section>
 
-            {loading && (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full" />
+      <Card className="border-border/70">
+        <CardContent className="flex flex-col gap-3 p-5 sm:flex-row">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search medications..."
+              className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm outline-none focus:border-emerald-500"
+            />
+          </div>
+          <Button onClick={handleSearch} disabled={loading} className="bg-emerald-600 text-white hover:bg-emerald-500">
+            {loading ? 'Searching...' : 'Search'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <Card className="border-border/70">
+          <CardHeader className="pb-2">
+            <CardTitle>{results.length > 0 ? `${results.length} medication matches` : 'Search results'}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {results.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+                Search for a medication to compare pharmacy options.
               </div>
+            ) : (
+              results.map((drug) => {
+                const isSelected = selectedDrugs.some((item) => item.id === drug.id);
+
+                return (
+                  <button
+                    key={drug.id}
+                    type="button"
+                    onClick={() => toggleDrugSelection(drug)}
+                    className={`w-full rounded-2xl border px-4 py-4 text-left transition-colors ${
+                      isSelected ? 'border-emerald-300 bg-emerald-50' : 'border-border hover:border-emerald-200 hover:bg-emerald-50/40'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-foreground">{drug.name}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{drug.generic_name || 'Generic details not available'}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {drug.dosage_form ? <span className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{drug.dosage_form}</span> : null}
+                          {drug.strength ? <span className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{drug.strength}</span> : null}
+                          {drug.requires_prescription ? <span className="rounded-full bg-rose-100 px-2 py-1 text-xs text-rose-700">Prescription required</span> : null}
+                        </div>
+                      </div>
+                      {drug.reference_price ? <span className="text-sm font-semibold text-emerald-700">{formatNaira(drug.reference_price)}</span> : null}
+                    </div>
+                  </button>
+                );
+              })
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/70">
+          <CardHeader className="pb-2">
+            <CardTitle>Compare Pharmacies</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              {selectedDrugs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Select one or more medications from the search results.</p>
+              ) : (
+                selectedDrugs.map((drug) => (
+                  <div key={drug.id} className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+                    <span className="font-medium text-emerald-800">{drug.name}</span>
+                    <button type="button" onClick={() => toggleDrugSelection(drug)} className="text-emerald-700">
+                      Remove
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
 
             <div className="space-y-2">
-              {results.map(drug => {
-                const isSelected = selectedDrugs.some(d => d.id === drug.id);
-                return (
-                  <div key={drug.id}
-                    onClick={() => toggleDrugSelection(drug)}
-                    className={`bg-white rounded-lg p-4 cursor-pointer border-2 transition-colors
-                      ${isSelected ? 'border-green-500 bg-green-50' : 'border-transparent hover:border-gray-200'} shadow-sm`}>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-medium text-gray-900">{drug.name}</p>
-                        {drug.generic_name && (
-                          <p className="text-sm text-gray-500">Generic: {drug.generic_name}</p>
-                        )}
-                        <div className="flex gap-2 mt-1">
-                          {drug.dosage_form && (
-                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{drug.dosage_form}</span>
-                          )}
-                          {drug.strength && (
-                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{drug.strength}</span>
-                          )}
-                          {drug.requires_prescription && (
-                            <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">Rx Required</span>
-                          )}
-                          {drug.is_generic && (
-                            <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded">Generic</span>
-                          )}
-                        </div>
-                      </div>
-                      {drug.reference_price && (
-                        <span className="text-sm font-medium text-gray-500">~{formatNaira(drug.reference_price)}</span>
-                      )}
-                    </div>
-                    {drug.manufacturer && (
-                      <p className="text-xs text-gray-400 mt-1">by {drug.manufacturer}</p>
-                    )}
-                  </div>
-                );
-              })}
+              <label className="text-sm font-medium text-foreground">Sort by</label>
+              <select value={strategy} onChange={(event) => setStrategy(event.target.value)} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                <option value="best_match">Best match</option>
+                <option value="cheapest">Cheapest</option>
+                <option value="nearest">Nearest</option>
+                <option value="fastest">Fastest delivery</option>
+              </select>
             </div>
-          </div>
 
-          <div className="lg:w-1/2 mt-6 lg:mt-0">
-            <div className="bg-white rounded-xl shadow-sm p-4 sticky top-20">
-              <h3 className="font-bold text-gray-900 mb-3">
-                Compare Pharmacies ({selectedDrugs.length} selected)
-              </h3>
+            <Button onClick={comparePharmacies} disabled={!selectedDrugs.length || comparing || !location} className="w-full bg-emerald-600 text-white hover:bg-emerald-500">
+              {comparing ? 'Comparing...' : 'Find Best Pharmacies'}
+            </Button>
 
-              {selectedDrugs.length > 0 && (
-                <div className="mb-4 space-y-1">
-                  {selectedDrugs.map(d => (
-                    <div key={d.id} className="flex justify-between items-center text-sm bg-green-50 px-3 py-1.5 rounded">
-                      <span className="text-green-800">{d.name}</span>
-                      <button onClick={() => toggleDrugSelection(d)} className="text-green-600 hover:text-red-500">
-                        &times;
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+            {!location ? <p className="text-xs text-amber-700">Location access improves nearby pharmacy matching. Lagos is used as a fallback.</p> : null}
 
-              <div className="mb-4">
-                <label className="text-xs text-gray-500">Sort by</label>
-                <select value={strategy} onChange={e => setStrategy(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 border rounded-lg text-sm">
-                  <option value="best_match">Best Match</option>
-                  <option value="cheapest">Cheapest</option>
-                  <option value="nearest">Nearest</option>
-                  <option value="fastest">Fastest Delivery</option>
-                </select>
-              </div>
-
-              <button onClick={comparePharmacies}
-                disabled={!selectedDrugs.length || comparing}
-                className="w-full py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50">
-                {comparing ? 'Searching pharmacies...' : 'Find Best Pharmacies'}
-              </button>
-
-              {!location && (
-                <p className="text-xs text-yellow-600 mt-2">
-                  Enable location to find pharmacies near you
-                </p>
-              )}
-
-              {pharmacyResults && (
-                <div className="mt-4 border-t pt-4">
-                  {pharmacyResults.success ? (
-                    <>
-                      <p className="text-sm text-gray-600 mb-3">
-                        {pharmacyResults.totalFound} pharmacies found
-                      </p>
-                      <div className="space-y-3 max-h-96 overflow-y-auto">
-                        {pharmacyResults.results?.map((result, i) => (
-                          <div key={i} className="border rounded-lg p-3">
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
-                                <p className="font-medium text-gray-900 text-sm">{result.pharmacy.name}</p>
-                                <p className="text-xs text-gray-500">
-                                  {result.pharmacy.city}, {result.pharmacy.state} — {result.distance}km
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-bold text-green-600">{formatNaira(result.subtotal)}</p>
-                                {result.pharmacy.rating > 0 && (
-                                  <p className="text-xs text-yellow-600">{result.pharmacy.rating}/5</p>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-xs space-y-1">
-                              {result.items.map((item, j) => (
-                                <div key={j} className="flex justify-between text-gray-600">
-                                  <span>
-                                    {item.fulfilledBy.drugName}
-                                    {item.isSubstitution && <span className="text-blue-500 ml-1">(substitute)</span>}
-                                  </span>
-                                  <span>{formatNaira(item.totalPrice)}</span>
-                                </div>
-                              ))}
-                            </div>
-                            <div className="flex gap-2 mt-2">
-                              {result.canDeliver && (
-                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Delivers to you</span>
-                              )}
-                              <Link href={`/ng/patient/orders?pharmacyId=${result.pharmacy.id}`}
-                                className="text-xs bg-green-600 text-white px-3 py-1 rounded ml-auto hover:bg-green-700">
-                                Order
-                              </Link>
-                            </div>
-                          </div>
+            {pharmacyResults ? (
+              pharmacyResults.success ? (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">
+                    {pharmacyResults.totalFound} pharmacy match{pharmacyResults.totalFound === 1 ? '' : 'es'} found for your selected medication list.
+                  </div>
+                  {(pharmacyResults.results || []).map((result, index) => (
+                    <div key={`${result.pharmacy?.id || 'pharmacy'}-${index}`} className="rounded-2xl border border-border px-4 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-foreground">{result.pharmacy?.name}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {result.pharmacy?.city}, {result.pharmacy?.state} • {result.distance} km away
+                          </p>
+                        </div>
+                        <span className="text-sm font-semibold text-emerald-700">{formatNaira(result.subtotal)}</span>
+                      </div>
+                      <div className="mt-3 space-y-1 text-sm text-slate-600">
+                        {(result.items || []).map((item, itemIndex) => (
+                          <p key={`${item.fulfilledBy?.drugName || 'item'}-${itemIndex}`}>
+                            {item.fulfilledBy?.drugName}
+                            {item.isSubstitution ? ' (substitute)' : ''} • {formatNaira(item.totalPrice)}
+                          </p>
                         ))}
                       </div>
-                    </>
-                  ) : (
-                    <div className="text-center py-4">
-                      <p className="text-sm text-gray-600">{pharmacyResults.message}</p>
-                      {pharmacyResults.partialMatches?.length > 0 && (
-                        <div className="mt-3 text-xs text-gray-500">
-                          <p className="font-medium">Partial matches:</p>
-                          {pharmacyResults.partialMatches.map((m, i) => (
-                            <p key={i}>{m.name} — {m.itemsAvailable}/{m.totalRequested} items ({m.distance}km)</p>
-                          ))}
-                        </div>
-                      )}
                     </div>
-                  )}
+                  ))}
+                  <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4 text-sm text-muted-foreground">
+                    To complete fulfillment, continue to the prescription or order workspace with your care team.
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
+              ) : (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                  {pharmacyResults.message || 'No pharmacy could fully fulfill the selected medications right now.'}
+                </div>
+              )
+            ) : null}
+          </CardContent>
+        </Card>
       </div>
     </div>
-  );
-}
-
-export default function DrugSearch() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full" />
-      </div>
-    }>
-      <DrugSearchContent />
-    </Suspense>
   );
 }

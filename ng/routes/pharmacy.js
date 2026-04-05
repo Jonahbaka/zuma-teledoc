@@ -10,8 +10,29 @@ const inventoryService = require('../services/pharmacy/inventoryService');
 const orderService = require('../services/pharmacy/orderService');
 const walletService = require('../services/pharmacy/walletService');
 const complianceService = require('../services/compliance/complianceService');
+const { getPool } = require('../../server/db');
 
 // --- ONBOARDING ---
+
+// Get the authenticated pharmacy workspace
+router.get('/me', async (req, res) => {
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT p.*, u.email AS owner_email
+       FROM ng_pharmacies p
+       LEFT JOIN users u ON u.id = p.owner_user_id
+       WHERE p.owner_user_id = $1
+       ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    res.json(result.rows[0] || null);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
 // Register a new pharmacy
 router.post('/register', async (req, res) => {

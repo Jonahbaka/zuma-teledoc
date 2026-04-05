@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import PatientVideoCallPage from '@/app/(dashboard)/patient/appointments/[id]/call/page';
+import { getPortalBasePath } from '@/lib/portalPaths';
 
 export default function NigeriaPatientVideoCallPage() {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (loading) {
@@ -20,19 +22,9 @@ export default function NigeriaPatientVideoCallPage() {
     }
 
     if (user?.role !== 'patient') {
-      if (user?.role === 'provider') {
-        router.replace('/ng/provider/dashboard');
-        return;
-      }
-
-      if (user?.role === 'admin' || user?.role === 'super_admin') {
-        router.replace('/admin/dashboard');
-        return;
-      }
-
-      router.replace('/ng/auth/login');
+      router.replace(getPortalBasePath({ pathname, user }));
     }
-  }, [isAuthenticated, loading, router, user]);
+  }, [isAuthenticated, loading, pathname, router, user]);
 
   if (loading || !isAuthenticated || user?.role !== 'patient') {
     return (

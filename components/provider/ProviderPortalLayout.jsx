@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
 import {
   getProviderNavigation,
   getProviderPortalTheme,
 } from '@/components/provider/providerNavigation';
+import { getPortalBasePath } from '@/lib/portalPaths';
 
 const LOGIN_PATHS = {
   US: '/provider/login',
@@ -17,6 +18,7 @@ const LOGIN_PATHS = {
 export default function ProviderPortalLayout({ children, market = 'US' }) {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const providerPrefix = market === 'NG' ? '/ng/provider' : '/provider';
   const theme = getProviderPortalTheme(market);
 
@@ -27,14 +29,9 @@ export default function ProviderPortalLayout({ children, market = 'US' }) {
     }
 
     if (!loading && isAuthenticated && user?.role !== 'provider') {
-      if (user?.role === 'admin' || user?.role === 'super_admin') {
-        router.push('/admin/dashboard');
-        return;
-      }
-
-      router.push(`/${user?.role || 'patient'}/dashboard`);
+      router.push(getPortalBasePath({ pathname, user }));
     }
-  }, [loading, isAuthenticated, user, router, market]);
+  }, [loading, isAuthenticated, user, router, market, pathname]);
 
   if (loading) {
     return (
@@ -53,6 +50,7 @@ export default function ProviderPortalLayout({ children, market = 'US' }) {
       navigation={getProviderNavigation(providerPrefix, market)}
       portalName="Provider"
       portalColor={theme.portalColor}
+      portalHomeHref={providerPrefix}
     >
       {children}
     </DashboardLayout>

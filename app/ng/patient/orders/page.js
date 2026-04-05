@@ -1,141 +1,189 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Loader2, Package, RefreshCw, Truck } from 'lucide-react';
 import api from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function PatientOrders() {
+function formatNaira(amount) {
+  return `NGN ${Number(amount || 0).toLocaleString()}`;
+}
+
+function getStatusTone(status) {
+  const normalized = String(status || '').toLowerCase();
+
+  if (['delivered'].includes(normalized)) return 'bg-emerald-100 text-emerald-700';
+  if (['confirmed', 'preparing', 'ready_for_pickup'].includes(normalized)) return 'bg-sky-100 text-sky-700';
+  if (['pending'].includes(normalized)) return 'bg-amber-100 text-amber-700';
+  if (['cancelled'].includes(normalized)) return 'bg-rose-100 text-rose-700';
+  return 'bg-slate-100 text-slate-700';
+}
+
+export default function NigeriaPatientOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [notice, setNotice] = useState('');
 
-  useEffect(() => { loadOrders(); }, [filter]);
-
-  async function loadOrders() {
+  const loadOrders = async () => {
     try {
-      const params = filter !== 'all' ? `?status=${filter}` : '';
-      const res = await api.get(`/api/ng/patient/orders${params}`);
-      setOrders(res.data);
-    } catch (err) {
-      console.error(err);
+      const params = filter === 'all' ? undefined : { status: filter };
+      const response = await api.get('/api/ng/patient/orders', { params });
+      setOrders(Array.isArray(response.data) ? response.data : []);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function cancelOrder(orderId) {
-    if (!confirm('Cancel this order?')) return;
+  useEffect(() => {
+    loadOrders();
+  }, [filter]);
+
+  const payForOrder = async (orderId) => {
+    setNotice('');
     try {
-      await api.post(`/api/ng/patient/orders/${orderId}/cancel`, { reason: 'Changed mind' });
-      loadOrders();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Cancel failed');
-    }
-  }
+      const response = await api.post(`/api/ng/patient/orders/${orderId}/pay`);
+      const authorizationUrl = response.data?.authorizationUrl || response.data?.checkoutUrl || response.data?.paymentUrl;
 
-  const formatNaira = (amt) => `₦${Number(amt || 0).toLocaleString()}`;
-  const statusColor = {
-    pending: 'bg-yellow-100 text-yellow-700',
-    confirmed: 'bg-blue-100 text-blue-700',
-    preparing: 'bg-indigo-100 text-indigo-700',
-    dispatched: 'bg-purple-100 text-purple-700',
-    in_transit: 'bg-purple-100 text-purple-700',
-    delivered: 'bg-green-100 text-green-700',
-    cancelled: 'bg-red-100 text-red-700',
+      if (authorizationUrl && typeof window !== 'undefined') {
+        window.location.href = authorizationUrl;
+        return;
+      }
+
+      setNotice('Payment was initiated, but no redirect URL was returned.');
+    } catch (error) {
+      setNotice(error.response?.data?.error || 'Unable to start payment for this order.');
+    }
+  };
+
+  const cancelOrder = async (orderId) => {
+    setNotice('');
+    try {
+      await api.post(`/api/ng/patient/orders/${orderId}/cancel`, { reason: 'Patient cancelled from portal' });
+      setNotice('Order cancelled.');
+      await loadOrders();
+    } catch (error) {
+      setNotice(error.response?.data?.error || 'Unable to cancel this order.');
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/ng" className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">Rx</span>
+    <div className="space-y-6">
+      <section className="rounded-[2rem] border border-emerald-200/70 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_35%),linear-gradient(145deg,rgba(255,255,255,0.96),rgba(236,253,245,0.92))] px-5 py-6 shadow-sm sm:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Pharmacy Orders</p>
+            <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Track medication fulfillment and payment</h1>
+            <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
+              Review routed pharmacy orders, open delivery tracking, and complete payment using the actual Nigeria order APIs already connected in the platform.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/ng/patient/search">
+              <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Search Medication</Button>
             </Link>
-            <h1 className="font-bold text-gray-900">My Orders</h1>
+            <Link href="/ng/patient/prescriptions">
+              <Button variant="outline">Open Prescriptions</Button>
+            </Link>
           </div>
-          <Link href="/ng/patient/search" className="text-sm bg-green-600 text-white px-4 py-2 rounded-lg">
-            New Order
-          </Link>
         </div>
-      </header>
+      </section>
 
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Filter */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-          {['all', 'pending', 'confirmed', 'preparing', 'dispatched', 'delivered', 'cancelled'].map(f => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={`px-3 py-1 rounded-full text-sm whitespace-nowrap ${
-                filter === f ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border'
-              }`}>
-              {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
-            </button>
-          ))}
-        </div>
+      {notice ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div>
+      ) : null}
 
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full" />
-          </div>
-        ) : orders.length === 0 ? (
-          <div className="bg-white rounded-xl p-8 text-center">
-            <p className="text-gray-500 mb-4">No orders found</p>
-            <Link href="/ng/patient/search" className="text-green-600 underline">Search for medications</Link>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {orders.map(order => {
-              const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      <section className="flex flex-wrap gap-2">
+        {['all', 'pending', 'confirmed', 'preparing', 'dispatched', 'delivered', 'cancelled'].map((value) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setFilter(value)}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+              filter === value ? 'bg-emerald-600 text-white' : 'border border-border bg-card text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {value === 'all' ? 'All' : value.replace(/_/g, ' ')}
+          </button>
+        ))}
+      </section>
+
+      <Card className="border-border/70">
+        <CardHeader>
+          <CardTitle>Order tracker</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {loading ? (
+            <div className="py-8 text-center">
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center">
+              <Package className="mx-auto h-10 w-10 text-emerald-500/60" />
+              <p className="mt-4 font-semibold text-foreground">No orders found.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Once a pharmacy order has been created, it will appear here with payment and tracking status.</p>
+            </div>
+          ) : (
+            orders.map((order) => {
+              const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
+
               return (
-                <div key={order.id} className="bg-white rounded-xl shadow-sm p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <p className="font-medium text-gray-900">{order.order_number}</p>
-                      <p className="text-xs text-gray-500">
-                        {order.pharmacy_name} — {new Date(order.created_at).toLocaleDateString()}
-                      </p>
+                <div key={order.id} className="rounded-2xl border border-border px-4 py-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-foreground">{order.order_number}</p>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusTone(order.status)}`}>
+                          {String(order.status || '').replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{order.pharmacy_name}</p>
+                      <div className="space-y-1 text-sm text-slate-600">
+                        {items.slice(0, 3).map((item, index) => (
+                          <p key={`${item.drug_name || 'item'}-${index}`}>
+                            {item.drug_name} × {item.quantity} • {formatNaira(item.total_price)}
+                          </p>
+                        ))}
+                        {items.length > 3 ? <p className="text-muted-foreground">+{items.length - 3} more item(s)</p> : null}
+                      </div>
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${statusColor[order.status] || 'bg-gray-100'}`}>
-                      {order.status?.replace(/_/g, ' ')}
-                    </span>
-                  </div>
 
-                  <div className="text-sm text-gray-600 space-y-0.5 mb-2">
-                    {items?.slice(0, 3).map((item, i) => (
-                      <p key={i}>{item.drug_name} x{item.quantity} — {formatNaira(item.total_price)}</p>
-                    ))}
-                    {items?.length > 3 && <p className="text-gray-400">+{items.length - 3} more items</p>}
-                  </div>
-
-                  <div className="flex justify-between items-center pt-2 border-t">
-                    <span className="font-bold text-gray-900">{formatNaira(order.total_amount)}</span>
-                    <div className="flex gap-2">
-                      {order.status === 'pending' && order.payment_status !== 'completed' && (
-                        <Link href={`/ng/patient/orders/${order.id}/pay`}
-                          className="text-xs bg-green-600 text-white px-3 py-1 rounded">
-                          Pay Now
-                        </Link>
-                      )}
-                      {order.delivery_tracking_id && (
-                        <Link href={`/ng/patient/track/${order.delivery_tracking_id}`}
-                          className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded">
-                          Track
-                        </Link>
-                      )}
-                      {['pending', 'confirmed'].includes(order.status) && (
-                        <button onClick={() => cancelOrder(order.id)}
-                          className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded">
-                          Cancel
-                        </button>
-                      )}
+                    <div className="flex min-w-[220px] flex-col gap-3">
+                      <div className="text-right">
+                        <p className="text-sm text-muted-foreground">Total</p>
+                        <p className="text-xl font-bold text-foreground">{formatNaira(order.total_amount)}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 lg:justify-end">
+                        {order.payment_status !== 'completed' && order.status === 'pending' ? (
+                          <Button onClick={() => payForOrder(order.id)} className="bg-emerald-600 text-white hover:bg-emerald-500">
+                            Pay Now
+                          </Button>
+                        ) : null}
+                        {order.delivery_tracking_id ? (
+                          <Link href={`/ng/patient/track/${order.delivery_tracking_id}`}>
+                            <Button variant="outline">
+                              <Truck className="mr-2 h-4 w-4" />
+                              Track
+                            </Button>
+                          </Link>
+                        ) : null}
+                        {['pending', 'confirmed'].includes(String(order.status || '').toLowerCase()) ? (
+                          <Button variant="outline" onClick={() => cancelOrder(order.id)}>
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Cancel
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>
               );
-            })}
-          </div>
-        )}
-      </div>
+            })
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

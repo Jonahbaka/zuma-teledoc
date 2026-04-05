@@ -16,10 +16,10 @@ import { notificationsAPI } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import {
-  getProviderHomePath,
   getProviderInvitePatientPath,
   toProviderPortalPath,
 } from '@/lib/providerPortal';
+import { getPortalPath } from '@/lib/portalPaths';
 
 const MOBILE_NAV_PRIORITIES = {
   Provider: ['Dashboard', 'Triage Queue', 'Schedule', 'Patients'],
@@ -74,6 +74,7 @@ export default function DashboardLayout({
   navigationGroups, // NEW: Support for grouped navigation
   portalName, 
   portalColor, 
+  portalHomeHref,
   showQuickActions = false 
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -125,13 +126,6 @@ export default function DashboardLayout({
     await logout();
   };
 
-  const getRoleRoute = (role) => {
-    if (role === 'admin' || role === 'super_admin') {
-      return 'admin';
-    }
-    return role;
-  };
-
   const handleCopyInviteLink = async () => {
     const baseUrl = window.location.origin;
     const invitePath = getProviderInvitePatientPath({ pathname, user });
@@ -172,6 +166,11 @@ export default function DashboardLayout({
   const activeNavigationItem = allNavigationItems.find((item) => isActivePath(pathname, item.href)) || allNavigationItems[0];
   const mobileNavigation = pickMobileNavigation(portalName, allNavigationItems);
   const userInitials = `${user?.firstName?.[0] || ''}${user?.lastName?.[0] || ''}` || user?.email?.[0]?.toUpperCase() || 'U';
+  const resolvedPortalHomeHref =
+    portalHomeHref ||
+    visibleNavigation[0]?.href ||
+    allNavigationItems[0]?.href ||
+    '/';
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -292,11 +291,7 @@ export default function DashboardLayout({
   };
 
   const getPortalHref = (suffix) => {
-    if (user?.role === 'provider') {
-      return toProviderPortalPath(suffix, { pathname, user });
-    }
-
-    return `/${getRoleRoute(user?.role)}${suffix}`;
+    return getPortalPath(suffix, { pathname, user });
   };
 
   return (
@@ -316,7 +311,7 @@ export default function DashboardLayout({
       )}>
         {/* Logo */}
         <div className="flex min-h-[4.75rem] items-center justify-between border-b border-border/70 px-4">
-          <Link href={isProviderPortal ? getProviderHomePath({ pathname, user }) : '/'} className="flex items-center gap-2">
+          <Link href={resolvedPortalHomeHref} className="flex items-center gap-2">
             <div>
               <span className="inline-flex rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-800">
                 <DoctaRxLogo className="h-7 w-auto" />

@@ -151,6 +151,7 @@ export default function AdminLayout({ children }) {
       navigationGroups={dynamicGroups}
       portalName="Admin"
       portalColor="from-purple-600 to-purple-800"
+      portalHomeHref="/admin"
     >
       {children}
     </DashboardLayout>
