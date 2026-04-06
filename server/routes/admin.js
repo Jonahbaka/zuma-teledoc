@@ -7,7 +7,7 @@ const express = require('express');
 const db = require('../db');
 const logger = require('../middleware/logger');
 const { authenticate, requireRole, requireSuperAdmin, requireMfa } = require('../middleware/auth');
-const { auditMiddleware } = require('../middleware/audit');
+const { auditMiddleware, createAuditLog } = require('../middleware/audit');
 const { validate, searchUsersSchema, updateUserStatusSchema, paginationSchema } = require('../../lib/validation');
 const { keysToCamel, parseQueryParams, getPaginationMeta } = require('../../lib/utils');
 const notificationService = require('../services/notifications');
@@ -396,6 +396,79 @@ router.put('/users/:id/status',
     }
   }
 );
+
+/**
+ * POST /api/admin/users/:id/unlock
+ * Clear login lock state for a user
+ */
+router.post('/users/:id/unlock', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { rows: currentRows } = await db.query(
+      `SELECT id, email, role, failed_login_attempts, locked_until, is_active, provider_status
+       FROM users
+       WHERE id = $1`,
+      [id]
+    );
+
+    if (currentRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    const currentUser = currentRows[0];
+
+    if (['admin', 'super_admin'].includes(currentUser.role) && req.user.role !== 'super_admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Only Super Admins can unlock admin accounts'
+      });
+    }
+
+    const { rows } = await db.query(
+      `UPDATE users
+          SET failed_login_attempts = 0,
+              locked_until = NULL,
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, email, role, is_active, provider_status, failed_login_attempts, locked_until`,
+      [id]
+    );
+
+    await createAuditLog(req, 'unlock_login', 'user', id, {
+      description: 'Cleared account login lock',
+      oldValues: {
+        failedLoginAttempts: currentUser.failed_login_attempts,
+        lockedUntil: currentUser.locked_until
+      },
+      newValues: {
+        failedLoginAttempts: rows[0].failed_login_attempts,
+        lockedUntil: rows[0].locked_until
+      }
+    });
+
+    logger.info('User login lock cleared', {
+      userId: id,
+      unlockedBy: req.user.id,
+      email: currentUser.email
+    });
+
+    res.json({
+      success: true,
+      message: 'User login lock cleared',
+      user: keysToCamel(rows[0])
+    });
+  } catch (error) {
+    logger.error('Unlock user login error', { error: error.message, userId: req.params.id });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to clear user login lock'
+    });
+  }
+});
 
 /**
  * GET /api/admin/providers/pending
