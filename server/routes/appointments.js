@@ -19,6 +19,11 @@ const {
 const { keysToCamel, parseQueryParams, getPaginationMeta, generateRoomId } = require('../../lib/utils');
 const notificationService = require('../services/notifications');
 const { getUserTestingAccess } = require('../services/testingAccessService');
+const {
+  ensureAppointmentRoomId,
+  getAuthorizedVideoAppointment,
+  getTelehealthIceServers
+} = require('../services/telehealthSessionService');
 
 const router = express.Router();
 const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
@@ -1083,65 +1088,25 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
 router.post('/:id/join', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const { rows } = await db.query(
-      'SELECT * FROM appointments WHERE id = $1',
-      [id]
-    );
-    
-    if (rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Appointment not found'
-      });
-    }
-    
-    const appointment = rows[0];
-    
-    // Check access
-    if (appointment.patient_id !== req.user.id && appointment.provider_id !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      });
-    }
-    
-    // Check if appointment can be joined
-    if (appointment.type !== 'video') {
-      return res.status(400).json({
-        success: false,
-        error: 'This is not a video appointment'
-      });
-    }
-    
-    if (!['scheduled', 'confirmed', 'in_progress'].includes(appointment.status)) {
-      return res.status(400).json({
-        success: false,
-        error: 'This appointment cannot be joined'
-      });
-    }
-    
-    // No time restrictions - allow immediate access for setup
-    // Both patients and providers can access the video portal immediately after appointment is created
-    // This allows them to set up their devices, test connections, and prepare ahead of time
-    
-    // Generate room ID if not exists
-    let roomId = appointment.room_id;
-    if (!roomId) {
-      roomId = generateRoomId();
-      await db.query(
-        'UPDATE appointments SET room_id = $1 WHERE id = $2',
-        [roomId, id]
-      );
-    }
-    
+
+    const appointment = await getAuthorizedVideoAppointment(id, req.user);
+    const roomId = await ensureAppointmentRoomId(appointment.id, appointment.roomId);
+
     res.json({
       success: true,
       roomId,
       joinUrl: `/video/${roomId}`,
-      appointmentId: id
+      appointmentId: id,
+      iceServers: getTelehealthIceServers()
     });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({
+        success: false,
+        error: error.message
+      });
+    }
+
     logger.error('Join appointment error', { error: error.message });
     res.status(500).json({
       success: false,

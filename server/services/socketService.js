@@ -7,10 +7,18 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const logger = require('../middleware/logger');
+const {
+  buildParticipantPayload,
+  ensureAppointmentRoomId,
+  getAuthorizedVideoAppointment,
+  getTelehealthIceServers
+} = require('./telehealthSessionService');
 
 // Store for online users and their socket IDs
 const onlineUsers = new Map(); // userId -> { socketId, role, name, lastSeen }
 const userSockets = new Map(); // socketId -> userId
+const telehealthRooms = new Map(); // roomId -> Map(socketId, participant)
+const telehealthSocketMeta = new Map(); // socketId -> { appointmentId, roomId, roomKey, participant }
 
 let io = null;
 
@@ -31,6 +39,71 @@ const deriveStableJwtSecret = (purpose) => {
     process.env.DATABASE_URL;
   if (!seed) return null;
   return crypto.createHmac('sha256', String(seed)).update(String(purpose)).digest('hex');
+};
+
+const getTelehealthRoomKey = (roomId) => `telehealth:${roomId}`;
+
+const emitSocketAck = (ack, payload) => {
+  if (typeof ack === 'function') {
+    ack(payload);
+  }
+};
+
+const removeTelehealthMembership = (socket, { emitLeft = true } = {}) => {
+  const session = telehealthSocketMeta.get(socket.id);
+  if (!session) {
+    return;
+  }
+
+  const roomParticipants = telehealthRooms.get(session.roomId);
+  if (roomParticipants) {
+    roomParticipants.delete(socket.id);
+    if (roomParticipants.size === 0) {
+      telehealthRooms.delete(session.roomId);
+    }
+  }
+
+  socket.leave(session.roomKey);
+  telehealthSocketMeta.delete(socket.id);
+
+  if (emitLeft && io) {
+    socket.to(session.roomKey).emit('telehealth:participant-left', {
+      appointmentId: session.appointmentId,
+      roomId: session.roomId,
+      participant: session.participant
+    });
+  }
+};
+
+const disconnectDuplicateTelehealthParticipant = (roomId, currentSocketId, userId) => {
+  const roomParticipants = telehealthRooms.get(roomId);
+  if (!roomParticipants) {
+    return;
+  }
+
+  for (const [socketId] of roomParticipants.entries()) {
+    if (socketId === currentSocketId) {
+      continue;
+    }
+
+    const existingSession = telehealthSocketMeta.get(socketId);
+    if (existingSession?.participant?.userId !== userId) {
+      continue;
+    }
+
+    const existingSocket = io?.sockets?.sockets?.get(socketId);
+    if (existingSocket) {
+      existingSocket.emit('telehealth:replaced', {
+        appointmentId: existingSession.appointmentId,
+        roomId: existingSession.roomId
+      });
+      removeTelehealthMembership(existingSocket, { emitLeft: true });
+      existingSocket.disconnect(true);
+    } else {
+      roomParticipants.delete(socketId);
+      telehealthSocketMeta.delete(socketId);
+    }
+  }
 };
 
 /**
@@ -210,6 +283,108 @@ const initializeSocket = (httpServer) => {
       });
     });
 
+    socket.on('telehealth:join', async (payload = {}, ack) => {
+      try {
+        const appointment = await getAuthorizedVideoAppointment(payload.appointmentId, {
+          id: socket.userId,
+          role: socket.userRole,
+          name: socket.userName
+        });
+        const roomId = await ensureAppointmentRoomId(appointment.id, appointment.roomId);
+        const roomKey = getTelehealthRoomKey(roomId);
+
+        removeTelehealthMembership(socket, { emitLeft: true });
+        disconnectDuplicateTelehealthParticipant(roomId, socket.id, socket.userId);
+
+        const roomParticipants = telehealthRooms.get(roomId) || new Map();
+        const participant = buildParticipantPayload({
+          appointment,
+          user: {
+            id: socket.userId,
+            role: socket.userRole,
+            name: socket.userName
+          },
+          socketId: socket.id,
+          displayName: payload.displayName
+        });
+        const participants = Array.from(roomParticipants.values());
+
+        roomParticipants.set(socket.id, participant);
+        telehealthRooms.set(roomId, roomParticipants);
+        telehealthSocketMeta.set(socket.id, {
+          appointmentId: appointment.id,
+          roomId,
+          roomKey,
+          participant
+        });
+
+        socket.join(roomKey);
+
+        const response = {
+          ok: true,
+          appointmentId: appointment.id,
+          roomId,
+          participant,
+          participants,
+          iceServers: getTelehealthIceServers()
+        };
+
+        socket.emit('telehealth:joined', response);
+        socket.to(roomKey).emit('telehealth:participant-joined', {
+          appointmentId: appointment.id,
+          roomId,
+          participant
+        });
+        emitSocketAck(ack, response);
+      } catch (error) {
+        logger.warn('Telehealth join failed', {
+          userId: socket.userId,
+          appointmentId: payload?.appointmentId,
+          error: error.message
+        });
+        emitSocketAck(ack, { ok: false, error: error.message || 'Failed to join video room' });
+      }
+    });
+
+    socket.on('telehealth:signal', (payload = {}, ack) => {
+      const session = telehealthSocketMeta.get(socket.id);
+
+      if (!session) {
+        emitSocketAck(ack, { ok: false, error: 'Video session not initialized' });
+        return;
+      }
+
+      const targetSocketId = payload.toSocketId;
+      const signalType = String(payload.signalType || '').trim();
+      const roomParticipants = telehealthRooms.get(session.roomId);
+
+      if (!targetSocketId || !roomParticipants?.has(targetSocketId)) {
+        emitSocketAck(ack, { ok: false, error: 'Participant unavailable' });
+        return;
+      }
+
+      if (!['offer', 'answer', 'ice-candidate'].includes(signalType)) {
+        emitSocketAck(ack, { ok: false, error: 'Unsupported signal type' });
+        return;
+      }
+
+      io.to(targetSocketId).emit('telehealth:signal', {
+        appointmentId: session.appointmentId,
+        roomId: session.roomId,
+        fromSocketId: socket.id,
+        participant: session.participant,
+        signalType,
+        signal: payload.signal || null
+      });
+
+      emitSocketAck(ack, { ok: true });
+    });
+
+    socket.on('telehealth:leave', (_, ack) => {
+      removeTelehealthMembership(socket, { emitLeft: true });
+      emitSocketAck(ack, { ok: true });
+    });
+
     /**
      * Agent Ops live stream subscription (admin only)
      */
@@ -226,6 +401,7 @@ const initializeSocket = (httpServer) => {
      * Handle disconnect
      */
     socket.on('disconnect', (reason) => {
+      removeTelehealthMembership(socket, { emitLeft: true });
       console.log(`🔌 Socket disconnected: ${userName} - ${reason}`);
       
       // Update last seen

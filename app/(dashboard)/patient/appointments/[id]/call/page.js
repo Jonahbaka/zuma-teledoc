@@ -16,6 +16,7 @@ import { toast } from '@/components/ui/use-toast';
 import { VIDEO_BG_PRESETS } from '@/lib/videoBackgrounds';
 import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
+import useTelehealthSession from '@/lib/useTelehealthSession';
 
 // --- Assets & Constants ---
 const DOCTOR_VIDEO_URL = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
@@ -72,9 +73,9 @@ export default function PatientVideoCallPage() {
   const isStandalone = appointmentId === 'standalone';
   const isNigeriaPortal = pathname.startsWith('/ng/patient');
   const appointmentReturnPath = isStandalone
-    ? (isNigeriaPortal ? '/ng/patient/search' : '/patient/dashboard')
-    : (isNigeriaPortal ? '/ng/patient/search' : `/patient/appointments/${appointmentId}`);
-  const appointmentsHomePath = isNigeriaPortal ? '/ng/patient/search' : '/patient/appointments';
+    ? (isNigeriaPortal ? '/ng/patient' : '/patient/dashboard')
+    : (isNigeriaPortal ? '/ng/patient/appointments' : `/patient/appointments/${appointmentId}`);
+  const appointmentsHomePath = isNigeriaPortal ? '/ng/patient/appointments' : '/patient/appointments';
   
   const [appointment, setAppointment] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -92,6 +93,18 @@ export default function PatientVideoCallPage() {
   // App State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const {
+    callError,
+    connectionStatus,
+    ensureLocalStream,
+    joinCall,
+    leaveCall,
+    localStream,
+    mediaError,
+    mediaWarning,
+    remoteParticipant,
+    remoteStream
+  } = useTelehealthSession({ appointmentId: isStandalone ? null : appointmentId });
 
   useEffect(() => {
     if (isStandalone) {
@@ -172,15 +185,65 @@ export default function PatientVideoCallPage() {
     }
   };
 
-  const startCall = () => {
-    if (userName.trim()) setIsInCall(true);
+  const startCall = async () => {
+    if (!userName.trim()) return;
+    setIsInCall(true);
+
+    try {
+      if (isStandalone) {
+        if (camOn || micOn) {
+          await ensureLocalStream();
+        }
+      } else {
+        await joinCall({ displayName: userName });
+      }
+    } catch (error) {
+      setIsInCall(false);
+      toast({
+        title: 'Unable to start call',
+        description: error.message || 'Please allow camera and microphone access, then try again.',
+        variant: 'destructive'
+      });
+    }
   };
 
-  const endCall = () => {
+  const endCall = async () => {
+    await leaveCall();
     setIsInCall(false);
     setActiveEffect(null);
     router.push(appointmentReturnPath);
   };
+
+  useEffect(() => {
+    if (!localStream) return;
+    localStream.getVideoTracks().forEach((track) => {
+      track.enabled = camOn;
+    });
+  }, [camOn, localStream]);
+
+  useEffect(() => {
+    if (!localStream) return;
+    localStream.getAudioTracks().forEach((track) => {
+      track.enabled = micOn;
+    });
+  }, [localStream, micOn]);
+
+  useEffect(() => {
+    if (!mediaWarning) return;
+    toast({ title: 'Device fallback', description: mediaWarning });
+  }, [mediaWarning]);
+
+  useEffect(() => {
+    if (isStandalone || !appointment?.id || connectionStatus !== 'connected' || appointment.status === 'in_progress') {
+      return;
+    }
+
+    api.put(`/appointments/${appointment.id}`, { status: 'in_progress' })
+      .then(() => {
+        setAppointment((current) => current ? { ...current, status: 'in_progress' } : current);
+      })
+      .catch(() => {});
+  }, [appointment?.id, appointment?.status, connectionStatus, isStandalone]);
 
   if (loading) {
     return (
@@ -241,6 +304,9 @@ export default function PatientVideoCallPage() {
             setMicOn={setMicOn}
             camOn={camOn}
             setCamOn={setCamOn}
+            localStream={localStream}
+            ensureLocalStream={ensureLocalStream}
+            mediaError={mediaError}
           />
         ) : (
           <ActiveCallRoom
@@ -258,6 +324,13 @@ export default function PatientVideoCallPage() {
             setProcessingEnabled={setProcessingEnabled}
             showCaptions={showCaptions}
             setShowCaptions={setShowCaptions}
+            localStream={localStream}
+            ensureLocalStream={ensureLocalStream}
+            mediaError={mediaError}
+            remoteStream={remoteStream}
+            remoteParticipant={remoteParticipant}
+            connectionStatus={connectionStatus}
+            callError={callError}
           />
         )}
       </main>
@@ -266,7 +339,19 @@ export default function PatientVideoCallPage() {
 }
 
 // --- PRE-CALL LOBBY COMPONENT ---
-const Lobby = ({ appointment, userName, setUserName, onJoin, micOn, setMicOn, camOn, setCamOn }) => {
+const Lobby = ({
+  appointment,
+  userName,
+  setUserName,
+  onJoin,
+  micOn,
+  setMicOn,
+  camOn,
+  setCamOn,
+  localStream,
+  ensureLocalStream,
+  mediaError
+}) => {
   return (
     <div className="flex-1 flex items-center justify-center p-4 bg-slate-50">
       <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
@@ -342,7 +427,11 @@ const Lobby = ({ appointment, userName, setUserName, onJoin, micOn, setMicOn, ca
         <div className="bg-white p-4 rounded-2xl shadow-xl border border-slate-100">
           <div className="aspect-video bg-slate-900 rounded-xl overflow-hidden relative mb-4 flex items-center justify-center">
             {camOn ? (
-              <CameraPreview />
+              <CameraPreview
+                stream={localStream}
+                ensureLocalStream={ensureLocalStream}
+                mediaError={mediaError}
+              />
             ) : (
               <div className="text-slate-400 flex flex-col items-center">
                 <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-2">
@@ -389,23 +478,30 @@ const ActiveCallRoom = ({
   showSettings, setShowSettings,
   activeEffect, setActiveEffect,
   processingEnabled, setProcessingEnabled,
-  showCaptions, setShowCaptions
+  showCaptions, setShowCaptions,
+  localStream, ensureLocalStream, mediaError,
+  remoteStream, remoteParticipant, connectionStatus, callError
 }) => {
   return (
     <div className="flex-1 flex bg-slate-900 relative overflow-hidden">
       {/* Main Stage (Remote Doctor) */}
       <div className="flex-1 relative flex items-center justify-center p-4">
         <div className="w-full h-full max-w-6xl relative bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10">
-          {/* Simulated Doctor Video */}
-          <video
-            src={DOCTOR_VIDEO_URL}
-            className="w-full h-full object-cover opacity-80"
-            autoPlay loop muted playsInline
+          <RemoteProviderStage
+            appointment={appointment}
+            stream={appointment.isStandaloneTest ? null : remoteStream}
+            participant={remoteParticipant}
+            connectionStatus={connectionStatus}
+            callError={callError}
           />
 
           <div className="absolute top-4 left-4 bg-black/40 backdrop-blur px-4 py-2 rounded-lg text-white border border-white/10">
-            <h3 className="font-semibold text-sm">{getProviderLabel(appointment)}</h3>
-            <p className="text-xs text-slate-300">{appointment.providerSpecialty || 'General Practice'}</p>
+            <h3 className="font-semibold text-sm">{remoteParticipant?.name || getProviderLabel(appointment)}</h3>
+            <p className="text-xs text-slate-300">
+              {callError
+                ? callError
+                : appointment.providerSpecialty || 'General Practice'}
+            </p>
           </div>
 
           {/* Self View (PiP) */}
@@ -416,6 +512,9 @@ const ActiveCallRoom = ({
                 activeEffect={activeEffect}
                 processingEnabled={processingEnabled}
                 setProcessingEnabled={setProcessingEnabled}
+                stream={localStream}
+                ensureLocalStream={ensureLocalStream}
+                mediaError={mediaError}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-slate-500 bg-slate-800">
@@ -553,8 +652,82 @@ const ActiveCallRoom = ({
   );
 };
 
+const RemoteProviderStage = ({ appointment, stream, participant, connectionStatus, callError }) => {
+  const videoRef = useRef(null);
+  const providerLabel = participant?.name || getProviderLabel(appointment);
+  const waitingCopy = callError
+    ? callError
+    : connectionStatus === 'connected'
+      ? 'Connected'
+      : connectionStatus === 'connecting' || connectionStatus === 'reconnecting'
+        ? 'Connecting to provider...'
+        : getWaitingRoomCopy(appointment);
+
+  useEffect(() => {
+    if (!videoRef.current) {
+      return;
+    }
+
+    if (stream) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+      return;
+    }
+
+    videoRef.current.srcObject = null;
+  }, [stream]);
+
+  if (stream) {
+    return (
+      <video
+        ref={videoRef}
+        className="w-full h-full object-cover"
+        autoPlay
+        playsInline
+      />
+    );
+  }
+
+  if (appointment.isStandaloneTest) {
+    return (
+      <video
+        src={DOCTOR_VIDEO_URL}
+        className="w-full h-full object-cover opacity-80"
+        autoPlay
+        loop
+        muted
+        playsInline
+      />
+    );
+  }
+
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 text-center">
+      <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-white/10 text-2xl font-semibold text-white">
+        {providerLabel
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part[0])
+          .join('')
+          .toUpperCase() || 'DR'}
+      </div>
+      <p className="text-xl font-semibold text-white">{providerLabel}</p>
+      <p className="mt-2 max-w-md text-sm text-slate-300">{waitingCopy}</p>
+    </div>
+  );
+};
+
 // --- CORE CAMERA LOGIC (MediaPipe Integration) ---
-const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEnabled }) => {
+const SelfieCamera = ({
+  micOn,
+  activeEffect,
+  processingEnabled,
+  setProcessingEnabled,
+  stream,
+  ensureLocalStream,
+  mediaError
+}) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const bgImageRef = useRef(null);
@@ -563,10 +736,10 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
   const segmentationRef = useRef(null);
   const requestRef = useRef(null);
   const streamRef = useRef(null);
+  const ownsStreamRef = useRef(false);
   const [modelLoaded, setModelLoaded] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [cameraLoading, setCameraLoading] = useState(true);
-  const errorShownRef = useRef(false);
   const errorHandlerRef = useRef(null);
   const activeEffectRef = useRef(activeEffect);
 
@@ -779,142 +952,101 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
   useEffect(() => {
     const errorShownRef = { current: false };
     let mounted = true;
-    
-    const startCamera = async () => {
-      // Wrap in Promise to ensure all errors are caught
-      return new Promise(async (resolve, reject) => {
-        try {
-          if (!mounted) return;
-          
-          setCameraLoading(true);
-          setCameraError(null);
-          errorShownRef.current = false;
-          
-          // Check if mediaDevices is available
-          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            const err = new Error('Camera access is not supported in this browser');
-            if (mounted) {
-              setCameraLoading(false);
-              setCameraError(err.message);
-            }
-            reject(err);
-            return;
-          }
 
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-              video: { 
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                facingMode: 'user'
-              },
-              audio: false
-            });
-
-            if (!mounted) {
-              stream.getTracks().forEach(track => track.stop());
-              return;
-            }
-
-            streamRef.current = stream;
-            setCameraLoading(false);
-            setCameraError(null);
-            errorShownRef.current = false;
-
-            // Set video stream and ensure it plays
-            if (videoRef.current) {
-              videoRef.current.srcObject = stream;
-              // Ensure video plays
-              const playVideo = () => {
-                if (videoRef.current && videoRef.current.readyState >= 2) {
-                  videoRef.current.play().catch(() => {
-                    // Silently handle play errors
-                  });
-                  if (processingEnabled && segmentationRef.current && modelLoaded) {
-                    startProcessing();
-                  }
-                }
-              };
-              
-              if (videoRef.current.readyState >= 2) {
-                playVideo();
-              } else {
-                videoRef.current.onloadedmetadata = playVideo;
-                videoRef.current.oncanplay = playVideo;
-              }
-            }
-            resolve(stream);
-          } catch (mediaError) {
-            // Handle getUserMedia errors
-            const errorObj = mediaError instanceof Error ? mediaError : new Error(String(mediaError));
-            
-            if (!mounted) return;
-            
-            setCameraLoading(false);
-            
-            let errorMessage = 'Camera access denied';
-            let toastTitle = 'Camera Permission Denied';
-            
-            if (errorObj.name === 'NotAllowedError' || errorObj.name === 'PermissionDeniedError') {
-              errorMessage = 'Camera permission denied';
-              toastTitle = 'Camera Permission Denied';
-            } else if (errorObj.name === 'NotFoundError' || errorObj.name === 'DevicesNotFoundError') {
-              errorMessage = 'No camera found';
-              toastTitle = 'No Camera Found';
-            } else if (errorObj.name === 'NotReadableError' || errorObj.name === 'TrackStartError') {
-              errorMessage = 'Camera is in use';
-              toastTitle = 'Camera In Use';
-            }
-            
-            setCameraError(errorMessage);
-            
-            // Show toast notification only once
-            if (!errorShownRef.current) {
-              errorShownRef.current = true;
-              setTimeout(() => {
-                try {
-                  toast({
-                    title: toastTitle,
-                    description: errorMessage,
-                    variant: 'destructive',
-                    duration: 5000
-                  });
-                } catch (toastError) {
-                  // Silently handle toast errors
-                }
-              }, 100);
-            }
-            
-            reject(errorObj);
-          }
-        } catch (err) {
-          // Catch any other errors
-          if (!mounted) return;
-          
-          const errorObj = err instanceof Error ? err : new Error(String(err));
-          setCameraLoading(false);
-          setCameraError(errorObj.message);
-          reject(errorObj);
+    const attachResolvedStream = (nextStream, owned = false) => {
+      if (!mounted) {
+        if (owned) {
+          nextStream?.getTracks().forEach((track) => track.stop());
         }
-      }).catch(() => {
-        // Silently handle - errors already displayed
-      });
+        return;
+      }
+
+      if (ownsStreamRef.current && streamRef.current && streamRef.current !== nextStream) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+
+      ownsStreamRef.current = owned;
+      streamRef.current = nextStream;
+      setCameraLoading(false);
+      setCameraError(null);
+      errorShownRef.current = false;
     };
 
-    // Start camera
+    const handleCameraFailure = (errorObj) => {
+      if (!mounted) return;
+
+      const nextError = mediaError || errorObj?.message || 'Camera access denied';
+      setCameraLoading(false);
+      setCameraError(nextError);
+
+      if (!errorShownRef.current) {
+        errorShownRef.current = true;
+        setTimeout(() => {
+          try {
+            toast({
+              title: 'Camera unavailable',
+              description: nextError,
+              variant: 'destructive',
+              duration: 5000
+            });
+          } catch {
+            // Ignore toast errors
+          }
+        }, 100);
+      }
+    };
+
+    const startCamera = async () => {
+      try {
+        setCameraLoading(true);
+        setCameraError(null);
+        errorShownRef.current = false;
+
+        if (stream) {
+          attachResolvedStream(stream, false);
+          return;
+        }
+
+        if (ensureLocalStream) {
+          const sharedStream = await ensureLocalStream();
+          attachResolvedStream(sharedStream, false);
+          return;
+        }
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('Camera access is not supported in this browser');
+        }
+
+        const ownedStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user'
+          },
+          audio: false
+        });
+
+        attachResolvedStream(ownedStream, true);
+      } catch (error) {
+        const errorObj = error instanceof Error ? error : new Error(String(error));
+        handleCameraFailure(errorObj);
+      }
+    };
+
     startCamera();
 
     return () => {
       mounted = false;
-      if (streamRef.current) {
+      if (ownsStreamRef.current && streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
       }
+      streamRef.current = null;
+      ownsStreamRef.current = false;
       if (requestRef.current) {
         cancelAnimationFrame(requestRef.current);
       }
     };
-  }, []); // Camera stream should not depend on processingEnabled - keep it running
+  }, [ensureLocalStream, mediaError, stream]);
 
   // Effect to ensure video plays when stream is available
   useEffect(() => {
@@ -1190,18 +1322,20 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
             setCameraError(null);
             setCameraLoading(true);
             try {
-              const stream = await navigator.mediaDevices.getUserMedia({
-                video: { 
-                  width: { ideal: 1280 },
-                  height: { ideal: 720 },
-                  facingMode: 'user'
-                },
-                audio: false
-              });
-              streamRef.current = stream;
+              const nextStream = ensureLocalStream
+                ? await ensureLocalStream()
+                : await navigator.mediaDevices.getUserMedia({
+                    video: {
+                      width: { ideal: 1280 },
+                      height: { ideal: 720 },
+                      facingMode: 'user'
+                    },
+                    audio: false
+                  });
+              streamRef.current = nextStream;
               setCameraLoading(false);
               if (videoRef.current) {
-                videoRef.current.srcObject = stream;
+                videoRef.current.srcObject = nextStream;
                 videoRef.current.onloadedmetadata = () => {
                   videoRef.current.play();
                   if (processingEnabled && segmentationRef.current && modelLoaded) {
@@ -1211,11 +1345,13 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
               }
             } catch (err) {
               setCameraLoading(false);
-              let errorMessage = 'Failed to access camera.';
-              if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                errorMessage = 'Camera permission denied. Please allow camera access in your browser settings.';
-              } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-                errorMessage = 'No camera found. Please connect a camera device.';
+              let errorMessage = mediaError || 'Failed to access camera.';
+              if (!ensureLocalStream) {
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                  errorMessage = 'Camera permission denied. Please allow camera access in your browser settings.';
+                } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                  errorMessage = 'No camera found. Please connect a camera device.';
+                }
               }
               setCameraError(errorMessage);
             }
@@ -1277,12 +1413,13 @@ const SelfieCamera = ({ micOn, activeEffect, processingEnabled, setProcessingEna
 };
 
 // Simple Camera Preview for Lobby (No Effects)
-const CameraPreview = () => {
+const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
   const videoRef = useRef(null);
   const [error, setError] = useState(null);
   const [hasPermission, setHasPermission] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const streamRef = useRef(null);
+  const ownsStreamRef = useRef(false);
   const errorShownRef = useRef(false);
 
   const startCamera = async () => {
@@ -1292,6 +1429,25 @@ const CameraPreview = () => {
         setIsLoading(true);
         setError(null);
         errorShownRef.current = false;
+
+        if (stream) {
+          ownsStreamRef.current = false;
+          streamRef.current = stream;
+          setHasPermission(true);
+          setIsLoading(false);
+          resolve(stream);
+          return;
+        }
+
+        if (ensureLocalStream) {
+          const sharedStream = await ensureLocalStream();
+          ownsStreamRef.current = false;
+          streamRef.current = sharedStream;
+          setHasPermission(true);
+          setIsLoading(false);
+          resolve(sharedStream);
+          return;
+        }
         
         // Check if mediaDevices is available
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -1313,6 +1469,7 @@ const CameraPreview = () => {
             audio: false 
           });
 
+          ownsStreamRef.current = true;
           streamRef.current = stream;
           setHasPermission(true);
           setError(null);
@@ -1345,16 +1502,16 @@ const CameraPreview = () => {
           setIsLoading(false);
           setHasPermission(false);
           
-          let errorMessage = 'Camera access denied';
+          let errorMessage = mediaError || 'Camera access denied';
           let toastTitle = 'Camera Permission Denied';
           
-          if (errorObj.name === 'NotAllowedError' || errorObj.name === 'PermissionDeniedError') {
+          if (!ensureLocalStream && (errorObj.name === 'NotAllowedError' || errorObj.name === 'PermissionDeniedError')) {
             errorMessage = 'Camera permission denied';
             toastTitle = 'Camera Permission Denied';
-          } else if (errorObj.name === 'NotFoundError' || errorObj.name === 'DevicesNotFoundError') {
+          } else if (!ensureLocalStream && (errorObj.name === 'NotFoundError' || errorObj.name === 'DevicesNotFoundError')) {
             errorMessage = 'No camera found';
             toastTitle = 'No Camera Found';
-          } else if (errorObj.name === 'NotReadableError' || errorObj.name === 'TrackStartError') {
+          } else if (!ensureLocalStream && (errorObj.name === 'NotReadableError' || errorObj.name === 'TrackStartError')) {
             errorMessage = 'Camera is in use';
             toastTitle = 'Camera In Use';
           }
@@ -1392,6 +1549,18 @@ const CameraPreview = () => {
       // Silently handle - errors already displayed
     });
   };
+
+  useEffect(() => {
+    if (!stream) {
+      return;
+    }
+
+    ownsStreamRef.current = false;
+    streamRef.current = stream;
+    setHasPermission(true);
+    setError(null);
+    setIsLoading(false);
+  }, [stream]);
 
   // Effect to ensure video plays when stream is available
   useEffect(() => {
@@ -1437,10 +1606,11 @@ const CameraPreview = () => {
   useEffect(() => {
     // Cleanup on unmount
     return () => {
-      if (streamRef.current) {
+      if (ownsStreamRef.current && streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
       }
+      streamRef.current = null;
+      ownsStreamRef.current = false;
     };
   }, []);
 

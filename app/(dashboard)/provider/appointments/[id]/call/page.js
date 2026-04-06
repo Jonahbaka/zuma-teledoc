@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import {
   Mic, MicOff, Video as VideoIcon, VideoOff,
@@ -18,6 +18,7 @@ import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import ClinicalCoPilot from '@/components/hive/ClinicalCoPilot';
 import { resolveProviderMarket, toProviderPortalPath } from '@/lib/providerPortal';
+import useTelehealthSession from '@/lib/useTelehealthSession';
 
 /* ─────────────────── constants ─────────────────── */
 
@@ -73,38 +74,18 @@ export default function ProviderVideoCallPage() {
   const [userName, setUserName] = useState('');
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
-  const [localStream, setLocalStream] = useState(null);
-  const [mediaError, setMediaError] = useState(null);
-
-  const ensureLocalStream = useCallback(async () => {
-    if (localStream) return localStream;
-    try {
-      let stream = null;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-          audio: true,
-        });
-      } catch {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-          audio: false,
-        });
-        toast({ title: 'Microphone unavailable', description: 'Camera active; mic permission not granted.', variant: 'destructive' });
-      }
-      setLocalStream(stream);
-      setMediaError(null);
-      return stream;
-    } catch (err) {
-      const msg = err?.name === 'NotFoundError'
-        ? 'No camera/microphone found'
-        : err?.name === 'NotReadableError'
-          ? 'Camera is busy in another app'
-          : 'Camera/microphone permission denied';
-      setMediaError(msg);
-      throw err;
-    }
-  }, [localStream]);
+  const {
+    callError,
+    connectionStatus,
+    ensureLocalStream,
+    joinCall,
+    leaveCall,
+    localStream,
+    mediaError,
+    mediaWarning,
+    remoteParticipant,
+    remoteStream
+  } = useTelehealthSession({ appointmentId: isStandalone ? null : appointmentId });
 
   /* ── Load appointment ── */
   useEffect(() => {
@@ -137,16 +118,27 @@ export default function ProviderVideoCallPage() {
 
   const startCall = async () => {
     if (!userName.trim()) return;
-    if (camOn || micOn) {
-      try { await ensureLocalStream(); }
-      catch {
-        toast({ title: 'Device access failed', description: 'Please allow camera/microphone and try again.', variant: 'destructive' });
-        return;
-      }
-    }
     setIsInCall(true);
+
+    try {
+      if (isStandalone) {
+        if (camOn || micOn) {
+          await ensureLocalStream();
+        }
+      } else {
+        await joinCall({ displayName: userName });
+      }
+    } catch (error) {
+      setIsInCall(false);
+      toast({
+        title: 'Unable to start call',
+        description: error.message || 'Please allow camera and microphone access, then try again.',
+        variant: 'destructive'
+      });
+    }
   };
-  const endCall = () => {
+  const endCall = async () => {
+    await leaveCall();
     setIsInCall(false);
     router.push(isStandalone
       ? toProviderPortalPath('/dashboard', { pathname, user })
@@ -154,9 +146,23 @@ export default function ProviderVideoCallPage() {
   };
 
   /* ── Track controls to stream ── */
-  useEffect(() => { return () => { if (localStream) localStream.getTracks().forEach(t => t.stop()); }; }, [localStream]);
   useEffect(() => { if (localStream) localStream.getVideoTracks().forEach(t => { t.enabled = camOn; }); }, [localStream, camOn]);
   useEffect(() => { if (localStream) localStream.getAudioTracks().forEach(t => { t.enabled = micOn; }); }, [localStream, micOn]);
+  useEffect(() => {
+    if (!mediaWarning) return;
+    toast({ title: 'Device fallback', description: mediaWarning });
+  }, [mediaWarning]);
+  useEffect(() => {
+    if (isStandalone || !appointment?.id || connectionStatus !== 'connected' || appointment.status === 'in_progress') {
+      return;
+    }
+
+    api.put(`/appointments/${appointment.id}`, { status: 'in_progress' })
+      .then(() => {
+        setAppointment((current) => current ? { ...current, status: 'in_progress' } : current);
+      })
+      .catch(() => {});
+  }, [appointment?.id, appointment?.status, connectionStatus, isStandalone]);
 
   /* ── Loading / Not found ── */
   if (loading) return (
@@ -230,7 +236,9 @@ export default function ProviderVideoCallPage() {
             micOn={micOn} toggleMic={() => setMicOn(v => !v)}
             camOn={camOn} toggleCam={() => setCamOn(v => !v)}
             onEndCall={endCall}
-            localStream={localStream} ensureLocalStream={ensureLocalStream} />
+            localStream={localStream} ensureLocalStream={ensureLocalStream}
+            remoteStream={remoteStream} remoteParticipant={remoteParticipant}
+            connectionStatus={connectionStatus} callError={callError} />
         )}
       </div>
     </div>
@@ -375,7 +383,7 @@ const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
 
 const ActiveCall = ({
   appointment, micOn, toggleMic, camOn, toggleCam, onEndCall,
-  localStream, ensureLocalStream
+  localStream, ensureLocalStream, remoteStream, remoteParticipant, connectionStatus, callError
 }) => {
   const [showAI, setShowAI] = useState(false);
   const [sidebarTab, setSidebarTab] = useState('notes');
@@ -405,7 +413,13 @@ const ActiveCall = ({
 
           {/* Patient Feed (main, large) */}
           <div className="md:col-span-2 relative h-full">
-            <PatientVideoArea appointment={appointment} />
+            <PatientVideoArea
+              appointment={appointment}
+              stream={remoteStream}
+              participant={remoteParticipant}
+              connectionStatus={connectionStatus}
+              callError={callError}
+            />
 
             <LiveCaptionsOverlay
               enabled={showCaptions}
@@ -532,27 +546,57 @@ const ActiveCall = ({
 /*                   PATIENT VIDEO AREA                               */
 /* ═══════════════════════════════════════════════════════════════════ */
 
-const PatientVideoArea = ({ appointment }) => {
+const PatientVideoArea = ({ appointment, stream, participant, connectionStatus, callError }) => {
   const patientDisplayName = getPatientDisplayName(appointment);
   const patientInitials = getPatientInitials(appointment);
+  const videoRef = useRef(null);
+  const remoteLabel = participant?.name || patientDisplayName;
+  const statusCopy = callError
+    ? callError
+    : connectionStatus === 'connected'
+      ? 'Connected'
+      : connectionStatus === 'connecting' || connectionStatus === 'reconnecting'
+        ? 'Connecting to patient...'
+        : 'Waiting for patient to join...';
+
+  useEffect(() => {
+    if (!videoRef.current) {
+      return;
+    }
+
+    videoRef.current.srcObject = stream || null;
+
+    if (stream) {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream]);
 
   return (
     <div className="relative w-full h-full bg-gray-800 rounded-2xl overflow-hidden shadow-2xl border border-gray-700 group">
     {/* Patient placeholder — when WebRTC connects, replace with real stream */}
-    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
-      <div className="text-center">
-        <div className="w-28 h-28 mx-auto rounded-full bg-[#5f6368] flex items-center justify-center mb-5 shadow-xl">
-          <span className="text-4xl font-medium text-white">{patientInitials}</span>
-        </div>
-        <h2 className="text-xl font-medium mb-2 text-white">
-          {patientDisplayName}
-        </h2>
-        <div className="flex items-center justify-center gap-2 text-gray-400 text-sm">
-          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          Waiting for patient to join...
+    {stream ? (
+      <video
+        ref={videoRef}
+        className="w-full h-full object-cover bg-black"
+        autoPlay
+        playsInline
+      />
+    ) : (
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+        <div className="text-center px-6">
+          <div className="w-28 h-28 mx-auto rounded-full bg-[#5f6368] flex items-center justify-center mb-5 shadow-xl">
+            <span className="text-4xl font-medium text-white">{patientInitials}</span>
+          </div>
+          <h2 className="text-xl font-medium mb-2 text-white">
+            {patientDisplayName}
+          </h2>
+          <div className="flex items-center justify-center gap-2 text-gray-400 text-sm">
+            <div className={`w-2 h-2 rounded-full ${callError ? 'bg-red-400' : 'bg-amber-400 animate-pulse'}`} />
+            {statusCopy}
+          </div>
         </div>
       </div>
-    </div>
+    )}
 
     {/* AI Vitals Overlay (for when patient joins — decorative for now) */}
     <div className="absolute top-4 left-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
@@ -565,7 +609,7 @@ const PatientVideoArea = ({ appointment }) => {
     {/* Name Tag */}
     <div className="absolute bottom-4 left-4 flex items-center gap-2">
       <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2 border border-white/5">
-        <span className="text-white text-sm font-medium">{patientDisplayName}</span>
+        <span className="text-white text-sm font-medium">{remoteLabel}</span>
         <span className="text-xs text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">Patient</span>
       </div>
     </div>
@@ -574,7 +618,7 @@ const PatientVideoArea = ({ appointment }) => {
     <div className="absolute top-4 right-4">
       <div className="bg-black/40 backdrop-blur-md px-2 py-1 rounded-full flex items-center gap-1 border border-white/10">
         <ShieldCheck size={10} className="text-emerald-500" />
-        <span className="text-[10px] text-gray-400">Secure</span>
+        <span className="text-[10px] text-gray-400">{connectionStatus === 'connected' ? 'Live' : 'Secure'}</span>
       </div>
       </div>
     </div>
