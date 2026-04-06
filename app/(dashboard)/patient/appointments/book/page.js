@@ -132,20 +132,6 @@ export default function BookAppointmentPage() {
     }
   });
 
-  // Auto-run AI triage when symptoms are entered and user moves to step 3
-  useEffect(() => {
-    if (currentStep === 3 && symptoms.trim() && !triageResult && !isAnalyzing) {
-      runAITriage();
-    }
-  }, [currentStep, symptoms, triageResult, isAnalyzing, runAITriage]);
-
-  // Auto-match provider when category is selected
-  useEffect(() => {
-    if (selectedCategory && selectedDate) {
-      matchProvider();
-    }
-  }, [selectedCategory, selectedDate, matchProvider]);
-  
   const runAITriage = useCallback(async () => {
     if (!symptoms.trim()) return;
     
@@ -194,6 +180,20 @@ export default function BookAppointmentPage() {
       setAvailableSlots(TIME_SLOTS);
     }
   }, [selectedCategory, selectedDate]);
+
+  // Auto-run AI triage when symptoms are entered and user moves to step 3
+  useEffect(() => {
+    if (currentStep === 3 && symptoms.trim() && !triageResult && !isAnalyzing) {
+      runAITriage();
+    }
+  }, [currentStep, symptoms, triageResult, isAnalyzing, runAITriage]);
+
+  // Auto-match provider when category is selected
+  useEffect(() => {
+    if (selectedCategory && selectedDate) {
+      matchProvider();
+    }
+  }, [selectedCategory, selectedDate, matchProvider]);
 
   // Fetch existing insurance
   useEffect(() => {
