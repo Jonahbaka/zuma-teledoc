@@ -71,6 +71,8 @@ const TIME_SLOTS = [
   { time: '18:00', period: 'Evening' },
 ];
 
+const SAME_MINUTE_BUFFER_MINUTES = 5;
+
 const insuranceSchema = z.object({
   insuranceProvider: z.string().optional(),
   policyNumber: z.string().optional(),
@@ -101,6 +103,8 @@ function buildAvailableDates() {
   const dates = [];
   const today = new Date();
 
+  dates.push(formatLocalDateKey(today));
+
   for (let i = 1; i <= 21; i++) {
     const date = new Date(today);
     date.setDate(today.getDate() + i);
@@ -115,6 +119,81 @@ function buildAvailableDates() {
   }
 
   return dates;
+}
+
+function formatLocalTimeKey(date) {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+function getTimePeriod(hour) {
+  if (hour < 12) return 'Morning';
+  if (hour < 17) return 'Afternoon';
+  return 'Evening';
+}
+
+function buildSlotsForDate(selectedDate) {
+  if (!selectedDate) {
+    return [];
+  }
+
+  const today = new Date();
+  const todayKey = formatLocalDateKey(today);
+  const slots = TIME_SLOTS.map((slot) => ({ ...slot, isImmediate: false }));
+
+  if (selectedDate !== todayKey) {
+    return slots;
+  }
+
+  const cutoff = new Date(today);
+  cutoff.setMinutes(cutoff.getMinutes() - SAME_MINUTE_BUFFER_MINUTES);
+
+  const filteredSlots = slots.filter((slot) => {
+    const [hours, minutes] = slot.time.split(':').map(Number);
+    const slotDate = new Date(today);
+    slotDate.setHours(hours, minutes, 0, 0);
+    return slotDate >= cutoff;
+  });
+
+  const immediateTime = formatLocalTimeKey(today);
+  const immediateSlot = {
+    time: immediateTime,
+    period: getTimePeriod(today.getHours()),
+    isImmediate: true,
+    label: 'Now'
+  };
+
+  if (filteredSlots.some((slot) => slot.time === immediateTime)) {
+    return filteredSlots;
+  }
+
+  return [immediateSlot, ...filteredSlots];
+}
+
+function providerMatchesCategory(provider, category) {
+  if (!provider || !category) {
+    return false;
+  }
+
+  const providerText = `${provider.specialty || ''} ${provider.credentials || ''}`.toLowerCase();
+  const categoryTerms = [
+    category.name,
+    category.id,
+    ...(Array.isArray(category.specialties) ? category.specialties : [])
+  ]
+    .filter(Boolean)
+    .map((value) => value.toLowerCase());
+
+  return categoryTerms.some((term) => providerText.includes(term));
+}
+
+function getProviderLabel(provider) {
+  if (!provider) {
+    return 'Provider';
+  }
+
+  return `Dr. ${provider.firstName} ${provider.lastName}`;
 }
 
 export default function BookAppointmentPage() {
@@ -142,7 +221,11 @@ export default function BookAppointmentPage() {
   const [selectedTime, setSelectedTime] = useState(null);
   const [availableSlots, setAvailableSlots] = useState([]);
   const [availableDates, setAvailableDates] = useState([]);
+  const [providers, setProviders] = useState([]);
+  const [selectedProviderId, setSelectedProviderId] = useState(null);
   const [matchedProvider, setMatchedProvider] = useState(null);
+  const [isLoadingProviders, setIsLoadingProviders] = useState(false);
+  const [providersError, setProvidersError] = useState('');
   
   // Step 4: Insurance
   const [insuranceFront, setInsuranceFront] = useState(null);
@@ -186,30 +269,30 @@ export default function BookAppointmentPage() {
     }
   }, [symptoms]);
 
-  const matchProvider = useCallback(async () => {
+  const loadProviders = useCallback(async () => {
+    setIsLoadingProviders(true);
+    setProvidersError('');
+
     try {
-      const response = await api.get('/providers/match', {
+      const response = await api.get('/providers', {
         params: {
-          category: selectedCategory.id,
-          specialties: selectedCategory.specialties.join(','),
-          date: selectedDate
+          limit: 100
         }
       });
-      
-      if (response.data.success && response.data.provider) {
-        setMatchedProvider(response.data.provider);
-        setAvailableSlots(response.data.availableSlots || TIME_SLOTS);
+
+      if (response.data?.success) {
+        setProviders(response.data.providers || []);
       } else {
-        setMatchedProvider(null);
-        // Use default slots if no provider matched yet
-        setAvailableSlots(TIME_SLOTS);
+        setProviders([]);
+        setProvidersError('Unable to load providers right now.');
       }
     } catch (error) {
-      setMatchedProvider(null);
-      // Fallback to default time slots
-      setAvailableSlots(TIME_SLOTS);
+      setProviders([]);
+      setProvidersError('Unable to load providers right now.');
+    } finally {
+      setIsLoadingProviders(false);
     }
-  }, [selectedCategory, selectedDate]);
+  }, []);
 
   // Auto-run AI triage when symptoms are entered and user moves to step 3
   useEffect(() => {
@@ -218,12 +301,41 @@ export default function BookAppointmentPage() {
     }
   }, [currentStep, symptoms, triageResult, isAnalyzing, runAITriage]);
 
-  // Auto-match provider when category is selected
   useEffect(() => {
-    if (selectedCategory && selectedDate) {
-      matchProvider();
+    loadProviders();
+  }, [loadProviders]);
+
+  useEffect(() => {
+    setAvailableSlots(buildSlotsForDate(selectedDate));
+  }, [selectedDate]);
+
+  useEffect(() => {
+    if (selectedTime && !availableSlots.some((slot) => slot.time === selectedTime)) {
+      setSelectedTime(null);
     }
-  }, [selectedCategory, selectedDate, matchProvider]);
+  }, [availableSlots, selectedTime]);
+
+  useEffect(() => {
+    if (!selectedCategory || providers.length === 0) {
+      setMatchedProvider(null);
+      if (providers.length === 0) {
+        setSelectedProviderId(null);
+      }
+      return;
+    }
+
+    const recommendedProvider =
+      providers.find((provider) => providerMatchesCategory(provider, selectedCategory)) || providers[0];
+
+    setMatchedProvider(recommendedProvider || null);
+    setSelectedProviderId((currentProviderId) => {
+      if (currentProviderId && providers.some((provider) => provider.id === currentProviderId)) {
+        return currentProviderId;
+      }
+
+      return recommendedProvider?.id || null;
+    });
+  }, [providers, selectedCategory]);
 
   useEffect(() => {
     setAvailableDates(buildAvailableDates());
@@ -250,6 +362,14 @@ export default function BookAppointmentPage() {
     };
     fetchInsurance();
   }, [insuranceForm]);
+
+  const selectedProvider = providers.find((provider) => provider.id === selectedProviderId) || matchedProvider;
+  const displayProviders = matchedProvider
+    ? [
+        matchedProvider,
+        ...providers.filter((provider) => provider.id !== matchedProvider.id)
+      ]
+    : providers;
 
   const handleFileUpload = (e, type) => {
     const file = e.target.files[0];
@@ -286,9 +406,16 @@ export default function BookAppointmentPage() {
       // Continue even if triage failed
     }
     
-    if (currentStep === 4 && (!selectedDate || !selectedTime)) {
-      toast({ title: 'Select date and time', description: 'Please select your preferred appointment slot', variant: 'destructive' });
-      return;
+    if (currentStep === 4) {
+      if (!selectedDate || !selectedTime) {
+        toast({ title: 'Select date and time', description: 'Please select your preferred appointment slot', variant: 'destructive' });
+        return;
+      }
+
+      if (providers.length > 0 && !selectedProviderId) {
+        toast({ title: 'Choose a provider', description: 'Select the doctor you want to book with before continuing.', variant: 'destructive' });
+        return;
+      }
     }
     
     if (currentStep === 5) {
@@ -320,6 +447,12 @@ export default function BookAppointmentPage() {
       
       if (!selectedDate || !selectedTime) {
         toast({ title: 'Error', description: 'Please select a date and time', variant: 'destructive' });
+        setIsLoading(false);
+        return;
+      }
+
+      if (providers.length > 0 && !selectedProviderId) {
+        toast({ title: 'Error', description: 'Please choose a provider for this appointment', variant: 'destructive' });
         setIsLoading(false);
         return;
       }
@@ -377,11 +510,12 @@ export default function BookAppointmentPage() {
         category: selectedCategory.id,
         specialties: selectedCategory.specialties,
         scheduledAt: scheduledDate.toISOString(), // Use ISO string for proper timezone handling
+        providerId: selectedProviderId,
         type: visitType,
         reasonForVisit: `${selectedCategory.name}: ${symptoms}`,
         patientNotes: `Severity: ${severity}\nDuration: ${duration}\nMedications: ${medications || 'None'}\nAllergies: ${allergies || 'None'}`,
         durationMinutes: 30,
-        autoMatch: true, // Flag to auto-match provider on backend
+        autoMatch: !selectedProviderId,
         triageResult: triageResult || null // Include AI triage data
       };
       
@@ -439,7 +573,7 @@ export default function BookAppointmentPage() {
         
         toast({ 
           title: 'Appointment Booked!', 
-          description: `Your appointment has been scheduled with ${appointmentResponse.data.provider?.name || 'a provider'}` 
+          description: `Your appointment has been scheduled with ${appointmentResponse.data.provider?.name || getProviderLabel(selectedProvider)}` 
         });
         
         // Small delay to ensure database is updated, then redirect
@@ -791,25 +925,84 @@ export default function BookAppointmentPage() {
           {currentStep === 4 && (
             <div className="p-6">
               <h2 className="text-2xl font-bold text-foreground mb-2">Choose your appointment time</h2>
-              <p className="text-muted-foreground mb-6">Select a date and time that works best for you.</p>
-              
-              {/* Matched Provider Info */}
-              {matchedProvider && (
-                <div className="mb-6 p-4 bg-purple-500/10 rounded-xl border border-purple-500/30">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white font-bold">
-                      {matchedProvider.first_name?.[0]}{matchedProvider.last_name?.[0]}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-purple-700 dark:text-purple-400">
-                        Matched: Dr. {matchedProvider.first_name} {matchedProvider.last_name}
-                      </p>
-                      <p className="text-sm text-purple-600 dark:text-purple-300">{matchedProvider.specialty}</p>
-                    </div>
-                    <CheckCircle2 className="w-5 h-5 text-purple-500 ml-auto" />
-                  </div>
+              <p className="text-muted-foreground mb-6">Choose your doctor, then pick a slot. For testing, you can also book the current minute on today&apos;s date.</p>
+
+              <div className="mb-6 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <Label className="text-sm font-medium text-foreground">Choose Doctor</Label>
+                  {matchedProvider && (
+                    <p className="text-xs text-purple-700 dark:text-purple-300">
+                      Recommended: {getProviderLabel(matchedProvider)}
+                    </p>
+                  )}
                 </div>
-              )}
+
+                {isLoadingProviders ? (
+                  <div className="flex h-28 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted">
+                    <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading available providers...
+                    </p>
+                  </div>
+                ) : displayProviders.length > 0 ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {displayProviders.map((provider) => {
+                      const isSelected = selectedProviderId === provider.id;
+                      const isRecommended = matchedProvider?.id === provider.id;
+
+                      return (
+                        <button
+                          key={provider.id}
+                          type="button"
+                          onClick={() => setSelectedProviderId(provider.id)}
+                          className={`rounded-xl border-2 p-4 text-left transition-all ${
+                            isSelected
+                              ? 'border-purple-500 bg-purple-500/10 shadow-sm'
+                              : 'border-border hover:border-purple-400 hover:bg-purple-500/5'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-purple-700 text-sm font-semibold text-white">
+                              {provider.firstName?.[0]}{provider.lastName?.[0]}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold text-foreground">{getProviderLabel(provider)}</p>
+                                {isRecommended && (
+                                  <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-[11px] font-medium text-purple-700 dark:text-purple-300">
+                                    Recommended
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground">{provider.specialty || 'General Practice'}</p>
+                              {(provider.city || provider.state) && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {[provider.city, provider.state].filter(Boolean).join(', ')}
+                                </p>
+                              )}
+                            </div>
+                            {isSelected && <CheckCircle2 className="mt-1 h-5 w-5 text-purple-500" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-amber-700 dark:text-amber-300">We could not load the provider list.</p>
+                        <p className="mt-1 text-sm text-amber-700/90 dark:text-amber-300/90">
+                          {providersError || 'You can continue and we will assign the next available approved provider.'}
+                        </p>
+                      </div>
+                      <Button type="button" variant="outline" onClick={loadProviders}>
+                        Retry
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
               
               <div className="grid md:grid-cols-2 gap-6">
                 {/* Date Selection */}
@@ -867,12 +1060,13 @@ export default function BookAppointmentPage() {
                         const periodSlots = availableSlots.filter(s => s.period === period);
                         if (periodSlots.length === 0) return null;
                         return (
-                          <div key={period}>
+                            <div key={period}>
                             <p className="text-xs font-medium text-muted-foreground mb-2">{period}</p>
                             <div className="grid grid-cols-3 gap-2">
                               {periodSlots.map((slot) => (
                                 <button
                                   key={slot.time}
+                                  type="button"
                                   onClick={() => setSelectedTime(slot.time)}
                                   className={`p-2 rounded-lg border-2 text-sm transition-all ${
                                     selectedTime === slot.time
@@ -880,7 +1074,12 @@ export default function BookAppointmentPage() {
                                       : 'border-border hover:border-purple-400 text-foreground'
                                   }`}
                                 >
-                                  {formatTime(slot.time)}
+                                  <span className="block">{formatTime(slot.time)}</span>
+                                  {slot.isImmediate && (
+                                    <span className="mt-1 block text-[11px] uppercase tracking-wide text-purple-700/80 dark:text-purple-300/80">
+                                      Start now
+                                    </span>
+                                  )}
                                 </button>
                               ))}
                             </div>
@@ -911,6 +1110,9 @@ export default function BookAppointmentPage() {
                         <div>
                           <p className="font-medium text-purple-700 dark:text-purple-400">{formattedDate} at {formattedTime}</p>
                           <p className="text-sm text-purple-600 dark:text-purple-300">30 minute {visitType} consultation</p>
+                          <p className="text-sm text-purple-700/90 dark:text-purple-300/90 mt-1">
+                            Provider: {selectedProvider ? getProviderLabel(selectedProvider) : 'Next available approved provider'}
+                          </p>
                           <p className="text-xs text-purple-700/70 dark:text-purple-300/70 mt-1">Timezone: {timeZone}</p>
                           {isOddHour && (
                             <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 flex items-center gap-1">
@@ -1055,6 +1257,7 @@ export default function BookAppointmentPage() {
                     <div><span className="text-muted-foreground">Time:</span><p className="font-medium text-foreground">{selectedTime ? formatTime(selectedTime) : 'Not selected'}</p></div>
                     <div><span className="text-muted-foreground">Type:</span><p className="font-medium text-foreground capitalize">{visitType || 'video'}</p></div>
                     <div><span className="text-muted-foreground">Duration:</span><p className="font-medium text-foreground">30 minutes</p></div>
+                    <div className="col-span-2"><span className="text-muted-foreground">Doctor:</span><p className="font-medium text-foreground">{selectedProvider ? getProviderLabel(selectedProvider) : 'Next available approved provider'}</p></div>
                   </div>
                 </div>
                 
@@ -1086,7 +1289,7 @@ export default function BookAppointmentPage() {
                   <div className="flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-amber-700 dark:text-amber-300">
-                      <strong>Note:</strong> We'll automatically match you with the best available provider for your needs. You'll receive a confirmation with provider details shortly.
+                      <strong>Note:</strong> {selectedProvider ? `${getProviderLabel(selectedProvider)} will receive this request immediately.` : 'If the provider list is unavailable, we will assign the next approved provider so your booking can still go through.'}
                     </p>
                   </div>
                 </div>

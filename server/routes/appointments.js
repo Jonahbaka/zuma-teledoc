@@ -20,6 +20,7 @@ const { keysToCamel, parseQueryParams, getPaginationMeta, generateRoomId } = req
 const notificationService = require('../services/notifications');
 
 const router = express.Router();
+const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
 
 /**
  * POST /api/appointments
@@ -431,6 +432,7 @@ router.post('/smart-book',
       const {
         category,
         specialties,
+        providerId: requestedProviderId,
         scheduledAt,
         type,
         reasonForVisit,
@@ -470,11 +472,11 @@ router.post('/smart-book',
         });
       }
       
-      // Validate date is in the future
-      if (scheduledDate < new Date()) {
+      // Allow same-minute bookings with a short tolerance for client/server clock drift.
+      if (scheduledDate.getTime() < Date.now() - SAME_MINUTE_BUFFER_MS) {
         return res.status(400).json({
           success: false,
-          error: 'Appointment must be scheduled for a future date and time'
+          error: 'Appointment must be scheduled for now or a future date and time'
         });
       }
       
@@ -487,29 +489,57 @@ router.post('/smart-book',
       }
       
       // Find available provider matching specialties
-      let providerId = null;
+      let providerId = requestedProviderId || null;
       let provider = null;
-      
-      // Try to find a provider with matching specialty
-      const specialtyList = Array.isArray(specialties) ? specialties : (specialties || '').split(',');
-      
-      for (const specialty of specialtyList) {
-        const { rows: providers } = await db.query(
+
+      if (providerId) {
+        const { rows: requestedProviders } = await db.query(
           `SELECT id, first_name, last_name, specialty, credentials
            FROM users
-           WHERE role = 'provider'
+           WHERE id = $1
+           AND role = 'provider'
            AND provider_status = 'approved'
            AND is_active = true
-           AND (specialty ILIKE $1 OR specialty ILIKE $2)
-           ORDER BY RANDOM()
            LIMIT 1`,
-          [`%${specialty.trim()}%`, `%${category}%`]
+          [providerId]
         );
-        
-        if (providers.length > 0) {
-          providerId = providers[0].id;
-          provider = providers[0];
-          break;
+
+        if (requestedProviders.length === 0) {
+          return res.status(404).json({
+            success: false,
+            error: 'Selected provider is not available'
+          });
+        }
+
+        provider = requestedProviders[0];
+      }
+      
+      // Try to find a provider with matching specialty
+      const specialtyList = Array.isArray(specialties)
+        ? specialties
+        : String(specialties || '')
+            .split(',')
+            .filter(Boolean);
+      
+      if (!providerId) {
+        for (const specialty of specialtyList) {
+          const { rows: providers } = await db.query(
+            `SELECT id, first_name, last_name, specialty, credentials
+             FROM users
+             WHERE role = 'provider'
+             AND provider_status = 'approved'
+             AND is_active = true
+             AND (specialty ILIKE $1 OR specialty ILIKE $2)
+             ORDER BY RANDOM()
+             LIMIT 1`,
+            [`%${specialty.trim()}%`, `%${category}%`]
+          );
+          
+          if (providers.length > 0) {
+            providerId = providers[0].id;
+            provider = providers[0];
+            break;
+          }
         }
       }
       
@@ -660,7 +690,8 @@ router.post('/smart-book',
         appointmentId: rows[0].id,
         patientId,
         providerId,
-        category
+        category,
+        requestedProviderId: requestedProviderId || null
       });
       
       res.status(201).json({
