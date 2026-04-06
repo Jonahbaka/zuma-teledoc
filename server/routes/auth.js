@@ -16,6 +16,10 @@ const { authenticate, requireMfa } = require('../middleware/auth');
 const { auditLogin, auditLogout, logAuditEvent } = require('../middleware/audit');
 const { hash, generateToken } = require('../../lib/encryption');
 const {
+  getEffectiveAccessLevel,
+  getTestingBypassPayload
+} = require('../services/testingAccessService');
+const {
   validate,
   registerSchema,
   loginSchema,
@@ -351,7 +355,8 @@ router.post('/login', async (req, res) => {
     const { rows } = await db.query(
       `SELECT id, email, password_hash, role, first_name, last_name,
               is_active, mfa_enabled, mfa_secret, failed_login_attempts,
-              locked_until, provider_status
+              locked_until, provider_status, access_level,
+              testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
        FROM users ${whereClause}`,
       params
     );
@@ -514,7 +519,9 @@ router.post('/login', async (req, res) => {
         role: user.role,
         firstName: user.first_name,
         lastName: user.last_name,
-        mfaEnabled: user.mfa_enabled
+        mfaEnabled: user.mfa_enabled,
+        accessLevel: getEffectiveAccessLevel(user),
+        ...getTestingBypassPayload(user)
       },
       accessToken,
       refreshToken
@@ -686,10 +693,11 @@ router.get('/me', authenticate, async (req, res) => {
               u.city, u.state, u.zip_code, u.country,
               u.mfa_enabled, u.is_verified, u.provider_status,
               u.license_number, u.license_state, u.specialty,
-              u.credentials, u.bio, u.created_at,
+              u.credentials, u.bio, u.created_at, u.access_level,
+              u.testing_bypass_active, u.testing_bypass_expires_at, u.testing_bypass_tier,
               s.tier as subscription_tier, s.status as subscription_status
        FROM users u
-       LEFT JOIN subscriptions s ON s.user_id = u.id
+      LEFT JOIN subscriptions s ON s.user_id = u.id
        WHERE u.id = $1`,
       [req.user.id]
     );
@@ -731,6 +739,8 @@ router.get('/me', authenticate, async (req, res) => {
           credentials: user.credentials,
           bio: user.bio
         } : null,
+        accessLevel: getEffectiveAccessLevel(user),
+        ...getTestingBypassPayload(user),
         subscription: {
           tier: user.subscription_tier,
           status: user.subscription_status

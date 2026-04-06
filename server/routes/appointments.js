@@ -18,6 +18,7 @@ const {
 } = require('../../lib/validation');
 const { keysToCamel, parseQueryParams, getPaginationMeta, generateRoomId } = require('../../lib/utils');
 const notificationService = require('../services/notifications');
+const { getUserTestingAccess } = require('../services/testingAccessService');
 
 const router = express.Router();
 const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
@@ -76,6 +77,14 @@ router.post('/',
       
       // Create appointment
       const patientId = req.user.role === 'patient' ? req.user.id : req.body.patientId;
+      const patientTestingAccess =
+        req.user.role === 'patient' && patientId === req.user.id
+          ? {
+              testingBypassActive: Boolean(req.user.testingBypassActive)
+            }
+          : await getUserTestingAccess(patientId);
+      const paymentRequired = !patientTestingAccess.testingBypassActive;
+      const paymentCompleted = Boolean(patientTestingAccess.testingBypassActive);
       
       const { rows } = await db.query(
         `INSERT INTO appointments (
@@ -93,8 +102,8 @@ router.post('/',
           data.reasonForVisit,
           data.patientNotes,
           roomId,
-          true, // Payment required
-          false // Not completed yet (will be completed before waiting room access)
+          paymentRequired,
+          paymentCompleted
         ]
       );
       
@@ -461,6 +470,10 @@ router.post('/smart-book',
           error: 'Patient ID is required'
         });
       }
+
+      const patientTestingAccess = await getUserTestingAccess(patientId);
+      const paymentRequired = !patientTestingAccess.testingBypassActive;
+      const paymentCompleted = Boolean(patientTestingAccess.testingBypassActive);
       
       const scheduledDate = new Date(scheduledAt);
       
@@ -613,14 +626,17 @@ router.post('/smart-book',
         reasonForVisit, // $6
         patientNotes || null, // $7
         roomId,         // $8
-        metadata ? JSON.stringify(metadata) : '{}' // $9
+        metadata ? JSON.stringify(metadata) : '{}', // $9
+        paymentRequired, // $10
+        paymentCompleted // $11
       ];
       
       const { rows } = await db.query(
         `INSERT INTO appointments (
           patient_id, provider_id, scheduled_at, duration_minutes,
-          type, reason_for_visit, patient_notes, room_id, status, metadata
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'scheduled', $9::jsonb)
+          type, reason_for_visit, patient_notes, room_id, status, metadata,
+          payment_required, payment_completed
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'scheduled', $9::jsonb, $10, $11)
         RETURNING *`,
         insertValues
       );

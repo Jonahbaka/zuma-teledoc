@@ -6,6 +6,7 @@ const { validate } = require('../../lib/validation');
 const z = require('zod');
 const { keysToCamel } = require('../../lib/utils');
 const logger = require('../middleware/logger');
+const { getUserTestingAccess } = require('../services/testingAccessService');
 
 // Payment pricing constants (hidden from frontend)
 const PAYMENT_PRICES = {
@@ -45,6 +46,11 @@ router.get('/appointment/:appointmentId', authenticate, async (req, res) => {
     }
 
     const appointment = keysToCamel(appointmentRows[0]);
+    const patientTestingAccess =
+      appointment.patientId === req.user.id ? await getUserTestingAccess(req.user.id) : null;
+    const paymentBypassed = Boolean(patientTestingAccess?.testingBypassActive);
+    const effectivePaymentRequired = paymentBypassed ? false : appointment.paymentRequired || false;
+    const effectivePaymentCompleted = paymentBypassed ? true : appointment.paymentCompleted || false;
 
     // Get payment if exists
     if (appointment.paymentId) {
@@ -57,8 +63,9 @@ router.get('/appointment/:appointmentId', authenticate, async (req, res) => {
         return res.json({
           success: true,
           payment: keysToCamel(paymentRows[0]),
-          paymentRequired: !appointment.paymentCompleted,
-          paymentCompleted: appointment.paymentCompleted
+          paymentRequired: effectivePaymentRequired,
+          paymentCompleted: effectivePaymentCompleted,
+          testingBypassActive: paymentBypassed
         });
       }
     }
@@ -66,8 +73,9 @@ router.get('/appointment/:appointmentId', authenticate, async (req, res) => {
     res.json({
       success: true,
       payment: null,
-      paymentRequired: appointment.paymentRequired || false,
-      paymentCompleted: appointment.paymentCompleted || false
+      paymentRequired: effectivePaymentRequired,
+      paymentCompleted: effectivePaymentCompleted,
+      testingBypassActive: paymentBypassed
     });
   } catch (error) {
     logger.error('Get payment error', {

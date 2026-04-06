@@ -6,6 +6,7 @@ const { validate } = require('../../lib/validation');
 const z = require('zod');
 const { keysToCamel } = require('../../lib/utils');
 const logger = require('../middleware/logger');
+const { getEffectiveAccessLevel, getTestingBypassPayload } = require('../services/testingAccessService');
 
 // Subscription pricing constants (hidden from frontend, only used internally)
 const SUBSCRIPTION_PRICES = {
@@ -31,7 +32,7 @@ const updateSubscriptionSchema = z.object({
 router.get('/me', authenticate, async (req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT s.*, u.access_level
+      `SELECT s.*, u.access_level, u.testing_bypass_active, u.testing_bypass_expires_at, u.testing_bypass_tier
        FROM subscriptions s
        RIGHT JOIN users u ON u.id = s.user_id
        WHERE u.id = $1
@@ -56,7 +57,8 @@ router.get('/me', authenticate, async (req, res) => {
     res.json({
       success: true,
       subscription: isActive ? subscription : null,
-      accessLevel: rows[0].access_level || 'read_only'
+      accessLevel: getEffectiveAccessLevel(rows[0]),
+      ...getTestingBypassPayload(rows[0])
     });
   } catch (error) {
     logger.error('Get subscription error', { error: error.message, userId: req.user.id });
