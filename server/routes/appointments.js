@@ -303,13 +303,10 @@ router.get('/', authenticate, async (req, res) => {
       SELECT a.*,
              p.first_name as patient_first_name, p.last_name as patient_last_name,
              pr.first_name as provider_first_name, pr.last_name as provider_last_name,
-             pr.specialty as provider_specialty,
-             v.subjective as triage_subjective,
-             v.assessment as triage_assessment
+             pr.specialty as provider_specialty
       FROM appointments a
       LEFT JOIN users p ON p.id = a.patient_id
       LEFT JOIN users pr ON pr.id = a.provider_id
-      LEFT JOIN visits v ON v.appointment_id = a.id
       ${whereClause}
       ORDER BY a.scheduled_at ${sortOrder}
       LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}
@@ -324,45 +321,6 @@ router.get('/', authenticate, async (req, res) => {
       // Extract triage data from metadata if it exists
       if (apt.metadata && apt.metadata.triage) {
         apt.triageData = apt.metadata.triage;
-      }
-      // Also check if triage data is in triageSubjective (from visits)
-      else if (apt.triageSubjective) {
-        // Try to extract triage info from visit subjective
-        const subj = apt.triageSubjective.toLowerCase();
-        let severity = 2;
-        let specialty = 'Primary Care';
-        let flags = [];
-        let suggestedMeds = [];
-        
-        if (subj.includes('severity: 5') || subj.includes('urgent')) {
-          severity = 5;
-        } else if (subj.includes('severity: 4')) {
-          severity = 4;
-        } else if (subj.includes('severity: 3')) {
-          severity = 3;
-        }
-        
-        if (subj.includes('cardiology')) specialty = 'Cardiology';
-        else if (subj.includes('nephrology')) specialty = 'Nephrology';
-        else if (subj.includes('urgent care')) specialty = 'Urgent Care';
-        
-        if (subj.includes('critical cardiac')) flags.push('CRITICAL CARDIAC');
-        if (subj.includes('renal failure')) flags.push('RENAL FAILURE RISK');
-        
-        // Extract suggested meds
-        const medMatches = subj.match(/(?:lisinopril|prednisone|amoxicillin|azithromycin|aspirin|nitroglycerin)/gi);
-        if (medMatches) {
-          suggestedMeds = [...new Set(medMatches.map(m => m.charAt(0).toUpperCase() + m.slice(1)))];
-        }
-        
-        apt.triageData = {
-          severity,
-          soapDraft: apt.triageSubjective,
-          triageLevel: severity >= 4 ? 'URGENT' : 'ROUTINE',
-          suggestedSpecialty: specialty,
-          flags,
-          suggestedMeds
-        };
       }
       return apt;
     });
