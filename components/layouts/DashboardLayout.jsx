@@ -415,23 +415,23 @@ export default function DashboardLayout({
             {isProviderPortal && (
               <div className="relative">
                 <div className="hidden sm:flex items-center gap-2 mr-2">
-                  <Link href={toProviderPortalPath('/patients?action=new', { pathname, user })}>
+                  <Link href={toProviderPortalPath('/patients', { pathname, user })}>
                     <Button 
                       size="sm" 
                       className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25"
                     >
                       <UserPlus className="w-4 h-4 mr-1.5" />
-                      New Patient
+                      Open Patients
                     </Button>
                   </Link>
-                  <Link href={toProviderPortalPath('/visits?action=new', { pathname, user })}>
+                  <Link href={toProviderPortalPath('/visits', { pathname, user })}>
                     <Button 
                       size="sm" 
                       variant="outline"
                       className="border-purple-500 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950"
                     >
                       <FileText className="w-4 h-4 mr-1.5" />
-                      Quick Note
+                      Visit Notes
                     </Button>
                   </Link>
                   <Button 
@@ -473,20 +473,20 @@ export default function DashboardLayout({
                       />
                       <div className="absolute right-0 mt-2 w-48 bg-popover rounded-xl shadow-lg border border-border py-2 z-50">
                         <Link
-                          href={toProviderPortalPath('/patients?action=new', { pathname, user })}
+                          href={toProviderPortalPath('/patients', { pathname, user })}
                           className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent"
                           onClick={() => setQuickActionsOpen(false)}
                         >
                           <UserPlus className="w-4 h-4 text-emerald-500" />
-                          New Patient
+                          Open Patients
                         </Link>
                         <Link
-                          href={toProviderPortalPath('/visits?action=new', { pathname, user })}
+                          href={toProviderPortalPath('/visits', { pathname, user })}
                           className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent"
                           onClick={() => setQuickActionsOpen(false)}
                         >
                           <FileText className="w-4 h-4 text-purple-500" />
-                          Quick Note
+                          Visit Notes
                         </Link>
                         <button
                           onClick={() => {

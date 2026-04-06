@@ -22,9 +22,13 @@ const NAV_ITEMS = [
 export default function PharmacyLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading, isAuthenticated } = useAuth();
+  const { user, loading, isAuthenticated, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const activeItem = NAV_ITEMS.find((item) => pathname === item.href || pathname?.startsWith(item.href + '/')) || NAV_ITEMS[0];
+
+  const handleLogout = async () => {
+    await logout();
+  };
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -85,10 +89,14 @@ export default function PharmacyLayout({ children }) {
         </nav>
 
         <div className="p-4 border-t border-border">
-          <Link href="/" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+          >
             <LogOut size={18} />
             Sign Out
-          </Link>
+          </button>
         </div>
       </aside>
 
@@ -117,6 +125,19 @@ export default function PharmacyLayout({ children }) {
                 </Link>
               ))}
             </nav>
+            <div className="border-t border-border p-4">
+              <button
+                type="button"
+                onClick={async () => {
+                  setSidebarOpen(false);
+                  await handleLogout();
+                }}
+                className="flex w-full items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+              >
+                <LogOut size={18} />
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
       )}

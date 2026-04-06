@@ -13,7 +13,7 @@ export default function ProviderCallEntryPage() {
   return (
     <div className="space-y-6">
       <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-purple-700">Provider Instant Call</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-purple-700">Provider Visit Hub</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Launch live visits from the correct provider workflow</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Broken standalone-call redirects have been removed. Providers should open active video visits from schedule, triage, or patient appointment routes so charting and call context stay aligned.

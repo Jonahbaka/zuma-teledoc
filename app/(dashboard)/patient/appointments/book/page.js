@@ -90,6 +90,33 @@ const insuranceSchema = z.object({
   path: ['insuranceProvider']
 });
 
+function formatLocalDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function buildAvailableDates() {
+  const dates = [];
+  const today = new Date();
+
+  for (let i = 1; i <= 21; i++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i);
+
+    if (date.getDay() !== 0 && date.getDay() !== 6) {
+      dates.push(formatLocalDateKey(date));
+    }
+
+    if (dates.length >= 14) {
+      break;
+    }
+  }
+
+  return dates;
+}
+
 export default function BookAppointmentPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
@@ -114,6 +141,7 @@ export default function BookAppointmentPage() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [availableSlots, setAvailableSlots] = useState([]);
+  const [availableDates, setAvailableDates] = useState([]);
   const [matchedProvider, setMatchedProvider] = useState(null);
   
   // Step 4: Insurance
@@ -172,10 +200,12 @@ export default function BookAppointmentPage() {
         setMatchedProvider(response.data.provider);
         setAvailableSlots(response.data.availableSlots || TIME_SLOTS);
       } else {
+        setMatchedProvider(null);
         // Use default slots if no provider matched yet
         setAvailableSlots(TIME_SLOTS);
       }
     } catch (error) {
+      setMatchedProvider(null);
       // Fallback to default time slots
       setAvailableSlots(TIME_SLOTS);
     }
@@ -194,6 +224,10 @@ export default function BookAppointmentPage() {
       matchProvider();
     }
   }, [selectedCategory, selectedDate, matchProvider]);
+
+  useEffect(() => {
+    setAvailableDates(buildAvailableDates());
+  }, []);
 
   // Fetch existing insurance
   useEffect(() => {
@@ -441,21 +475,6 @@ export default function BookAppointmentPage() {
     }
   };
 
-  // Generate dates for next 14 days (excluding weekends)
-  const getAvailableDates = () => {
-    const dates = [];
-    const today = new Date();
-    for (let i = 1; i <= 21; i++) {
-      const date = new Date(today);
-      date.setDate(today.getDate() + i);
-      if (date.getDay() !== 0 && date.getDay() !== 6) {
-        dates.push(date.toISOString().split('T')[0]);
-      }
-      if (dates.length >= 14) break;
-    }
-    return dates;
-  };
-
   const formatDate = (dateStr) => {
     if (!dateStr) return 'Invalid Date';
     try {
@@ -498,7 +517,7 @@ export default function BookAppointmentPage() {
                 <p className="text-sm text-muted-foreground">We'll match you with the right provider</p>
               </div>
             </div>
-            <Button variant="ghost" onClick={() => router.back()}>Cancel</Button>
+            <Button variant="ghost" onClick={() => router.push('/patient/appointments')}>Cancel</Button>
           </div>
         </div>
       </div>
@@ -796,8 +815,13 @@ export default function BookAppointmentPage() {
                 {/* Date Selection */}
                 <div>
                   <Label className="text-sm font-medium text-foreground mb-3 block">Select Date</Label>
-                  <div className="grid grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-2">
-                    {getAvailableDates().map((date) => (
+                  {availableDates.length === 0 ? (
+                    <div className="flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted">
+                      <p className="text-sm text-muted-foreground">Loading available dates...</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-2">
+                      {availableDates.map((date) => (
                       <button
                         key={date}
                         onClick={() => { setSelectedDate(date); setSelectedTime(null); }}
@@ -829,8 +853,9 @@ export default function BookAppointmentPage() {
                           }
                         })()}
                       </button>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 
                 {/* Time Slots */}

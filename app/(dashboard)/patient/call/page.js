@@ -9,8 +9,8 @@ export default function PatientCallEntryPage() {
   return (
     <div className="space-y-6">
       <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-purple-700">Patient Instant Call</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Join active video visits from your appointment flow</h1>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-purple-700">Patient Video Visits</p>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Access scheduled video visits from your appointment flow</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Standalone test-call redirects have been removed. Use your appointment list to join a live visit, or message the care team if you need help accessing a scheduled session.
         </p>

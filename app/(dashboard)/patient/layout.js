@@ -12,7 +12,7 @@ import DashboardLayout from '@/components/layouts/DashboardLayout';
 const navigation = [
   { name: 'Dashboard', href: '/patient/dashboard', icon: LayoutDashboard },
   { name: 'Appointments', href: '/patient/appointments', icon: Calendar },
-  { name: 'Instant Call', href: '/patient/call', icon: Video },
+  { name: 'Video Visits', href: '/patient/call', icon: Video },
   { name: 'AI Triage', href: '/patient/triage', icon: BrainCircuit },
   { name: 'Prescription Activity', href: '/patient/prescriptions', icon: Pill },
   { name: 'Insurance Wallet', href: '/patient/wallet', icon: Shield },

@@ -255,7 +255,7 @@ export default function ProviderDashboard() {
               <Link href={providerPath('/call')}>
                 <Button className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-lg shadow-emerald-500/25">
                   <Phone className="w-4 h-4 mr-2" />
-                  Instant Call
+                  Visit Hub
                 </Button>
               </Link>
               <Link href={providerPath('/prescriptions')}>
@@ -276,7 +276,7 @@ export default function ProviderDashboard() {
               <Link href={providerPath('/call')}>
                 <Button className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-lg shadow-emerald-500/25">
                   <Phone className="w-4 h-4 mr-2" />
-                  Instant Call
+                  Visit Hub
                 </Button>
               </Link>
               <Link href={providerPath('/schedule')}>
@@ -285,10 +285,10 @@ export default function ProviderDashboard() {
                   View Schedule
                 </Button>
               </Link>
-              <Link href={providerPath('/patients?action=new')}>
+              <Link href={providerPath('/patients')}>
                 <Button variant="outline">
                   <UserPlus className="w-4 h-4 mr-2" />
-                  Add Patient
+                  Open Patients
                 </Button>
               </Link>
             </>
@@ -339,7 +339,7 @@ export default function ProviderDashboard() {
               <div className="text-center py-10">
                 <Video className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
                 <p className="text-muted-foreground">No video consultations queued</p>
-                <p className="text-sm text-muted-foreground/70 mt-1">Instant call remains available from this portal when needed.</p>
+                <p className="text-sm text-muted-foreground/70 mt-1">The visit hub remains available from this portal when needed.</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -509,8 +509,8 @@ export default function ProviderDashboard() {
                 <Link href={providerPath('/schedule')}>
                   <Button>Open Availability</Button>
                 </Link>
-                <Link href={providerPath('/patients?action=new')}>
-                  <Button variant="outline">Add Patient</Button>
+                <Link href={providerPath('/patients')}>
+                  <Button variant="outline">Open Patients</Button>
                 </Link>
               </div>
             </div>
