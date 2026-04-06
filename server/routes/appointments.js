@@ -22,6 +22,8 @@ const { getUserTestingAccess } = require('../services/testingAccessService');
 
 const router = express.Router();
 const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
+const PROVIDER_UPCOMING_LOOKBACK_MS = 2 * 60 * 60 * 1000;
+const MAX_UPCOMING_LIMIT = 50;
 
 /**
  * POST /api/appointments
@@ -232,6 +234,11 @@ router.get('/', authenticate, async (req, res) => {
     } else if (userRole === 'provider') {
       whereConditions.push(`a.provider_id = $${paramIndex++}`);
       values.push(userId);
+
+      if (filters.patientId) {
+        whereConditions.push(`a.patient_id = $${paramIndex++}`);
+        values.push(filters.patientId);
+      }
     } else if (userRole === 'admin' || userRole === 'super_admin') {
       // Admins can see all, or filter by specific user if provided in query
       if (filters.patientId) {
@@ -380,22 +387,50 @@ router.get('/', authenticate, async (req, res) => {
  */
 router.get('/upcoming', authenticate, async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 5;
-    
+    const parsedLimit = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), MAX_UPCOMING_LIMIT)
+      : 5;
+    const referenceTime = new Date();
     const whereConditions = [];
-    const values = [new Date()];
+    const values = [referenceTime];
     let paramIndex = 2;
-    
-    whereConditions.push(`a.scheduled_at > $1`);
-    whereConditions.push(`a.status IN ('scheduled', 'confirmed')`);
-    
+
     const userRole = String(req.user.role || '').toLowerCase().trim();
-    if (userRole === 'patient') {
-      whereConditions.push(`a.patient_id = $${paramIndex++}`);
-      values.push(req.user.id);
-    } else if (userRole === 'provider') {
+    let orderByClause = 'ORDER BY a.scheduled_at ASC';
+
+    if (!['patient', 'provider', 'admin', 'super_admin'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied'
+      });
+    }
+
+    if (userRole === 'provider') {
+      const providerVisibilityStart = new Date(referenceTime.getTime() - PROVIDER_UPCOMING_LOOKBACK_MS);
+      whereConditions.push(`a.scheduled_at >= $${paramIndex++}`);
+      values.push(providerVisibilityStart);
+      whereConditions.push(`a.status IN ('scheduled', 'confirmed', 'in_progress')`);
       whereConditions.push(`a.provider_id = $${paramIndex++}`);
       values.push(req.user.id);
+      orderByClause = `
+        ORDER BY
+          CASE
+            WHEN a.status = 'in_progress' THEN 0
+            WHEN a.scheduled_at <= $1 THEN 1
+            ELSE 2
+          END,
+          ABS(EXTRACT(EPOCH FROM (a.scheduled_at - $1))),
+          a.scheduled_at ASC
+      `;
+    } else {
+      whereConditions.push(`a.scheduled_at > $1`);
+      whereConditions.push(`a.status IN ('scheduled', 'confirmed')`);
+
+      if (userRole === 'patient') {
+        whereConditions.push(`a.patient_id = $${paramIndex++}`);
+        values.push(req.user.id);
+      }
     }
     
     const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
@@ -410,7 +445,7 @@ router.get('/upcoming', authenticate, async (req, res) => {
        LEFT JOIN users p ON p.id = a.patient_id
        LEFT JOIN users pr ON pr.id = a.provider_id
        ${whereClause}
-       ORDER BY a.scheduled_at ASC
+       ${orderByClause}
        LIMIT $${paramIndex}`,
       values
     );

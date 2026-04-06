@@ -28,11 +28,30 @@ import { formatDateTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import { resolveProviderMarket, toProviderPortalPath } from '@/lib/providerPortal';
 
+const DASHBOARD_REFRESH_INTERVAL_MS = 30000;
+
 function getGreeting() {
   const hour = new Date().getHours();
   if (hour < 12) return 'Good morning';
   if (hour < 18) return 'Good afternoon';
   return 'Good evening';
+}
+
+function getAppointmentStatusBadge(status) {
+  switch (status) {
+    case 'confirmed':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300';
+    case 'in_progress':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300';
+    default:
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300';
+  }
+}
+
+function formatAppointmentStatus(status) {
+  return String(status || 'scheduled')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 export default function ProviderDashboard() {
@@ -56,28 +75,70 @@ export default function ProviderDashboard() {
   const isNigeriaMarket = market === 'NG';
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [appointmentsRes, visitsRes] = await Promise.all([
-          appointmentsAPI.getUpcoming(8),
-          visitsAPI.getRecent(8),
-        ]);
+    let active = true;
 
-        if (appointmentsRes.data.success) {
-          setUpcomingAppointments(appointmentsRes.data.appointments || []);
-        }
+    const fetchData = async (showLoader = false) => {
+      if (showLoader && active) {
+        setLoading(true);
+      }
 
-        if (visitsRes.data.success) {
-          setRecentVisits(visitsRes.data.visits || []);
+      const [appointmentsResult, visitsResult] = await Promise.allSettled([
+        appointmentsAPI.getUpcoming(8),
+        visitsAPI.getRecent(8),
+      ]);
+
+      if (!active) {
+        return;
+      }
+
+      if (appointmentsResult.status === 'fulfilled') {
+        if (appointmentsResult.value.data.success) {
+          setUpcomingAppointments(appointmentsResult.value.data.appointments || []);
         }
-      } catch (error) {
-        console.error('Error fetching provider dashboard data:', error);
-      } finally {
+      } else {
+        console.error('Error fetching provider appointments:', appointmentsResult.reason);
+      }
+
+      if (visitsResult.status === 'fulfilled') {
+        if (visitsResult.value.data.success) {
+          setRecentVisits(visitsResult.value.data.visits || []);
+        }
+      } else {
+        console.error('Error fetching provider visits:', visitsResult.reason);
+      }
+
+      if (showLoader && active) {
         setLoading(false);
       }
     };
 
-    fetchData();
+    fetchData(true);
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    }, DASHBOARD_REFRESH_INTERVAL_MS);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      fetchData();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
   }, []);
 
   const handleResendVerification = useCallback(async () => {
@@ -326,7 +387,7 @@ export default function ProviderDashboard() {
               <Video className="w-5 h-5 text-emerald-500" />
               Video Visit Readiness
             </CardTitle>
-            <CardDescription>Upcoming telemedicine sessions using the live provider call flow</CardDescription>
+            <CardDescription>Current and upcoming telemedicine sessions using the live provider call flow</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -347,9 +408,14 @@ export default function ProviderDashboard() {
                   <div key={appointment.id} className="p-4 rounded-xl border hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div>
-                        <p className="font-semibold text-foreground">
-                          {appointment.patientFirstName} {appointment.patientLastName}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-foreground">
+                            {appointment.patientFirstName} {appointment.patientLastName}
+                          </p>
+                          <span className={`inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold ${getAppointmentStatusBadge(appointment.status)}`}>
+                            {formatAppointmentStatus(appointment.status)}
+                          </span>
+                        </div>
                         <p className="text-sm text-muted-foreground">{appointment.reasonForVisit || 'General consultation'}</p>
                         <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                           <Clock className="w-3 h-3" />
@@ -493,9 +559,9 @@ export default function ProviderDashboard() {
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
             <Calendar className="w-5 h-5 text-purple-500" />
-            Upcoming Schedule
+            Current & Upcoming Schedule
           </CardTitle>
-          <CardDescription>Your next provider appointments</CardDescription>
+          <CardDescription>Assigned appointments that are active now or coming up next</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -503,7 +569,7 @@ export default function ProviderDashboard() {
           ) : upcomingAppointments.length === 0 ? (
             <div className="text-center py-12 px-4">
               <Calendar className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-muted-foreground font-medium">No upcoming appointments</p>
+              <p className="text-muted-foreground font-medium">No current or upcoming appointments</p>
               <p className="text-sm text-muted-foreground/70 mt-1 mb-6">Set your availability or prepare for new patient intake.</p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <Link href={providerPath('/schedule')}>
@@ -521,14 +587,19 @@ export default function ProviderDashboard() {
                   key={appointment.id}
                   onClick={() => router.push(providerPath(`/appointments/${appointment.id}/visit`))}
                   className="p-4 rounded-xl border hover:border-purple-300 dark:hover:border-purple-700 hover:bg-accent/50 transition-all cursor-pointer"
-                >
-                  <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-foreground">
-                        {appointment.patientFirstName} {appointment.patientLastName}
-                      </h3>
-                      <p className="text-sm text-muted-foreground">{appointment.reasonForVisit || 'General consultation'}</p>
-                    </div>
+                  >
+                    <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-foreground">
+                            {appointment.patientFirstName} {appointment.patientLastName}
+                          </h3>
+                          <span className={`inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold ${getAppointmentStatusBadge(appointment.status)}`}>
+                            {formatAppointmentStatus(appointment.status)}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{appointment.reasonForVisit || 'General consultation'}</p>
+                      </div>
                     <div className="text-sm text-muted-foreground">{formatDateTime(appointment.scheduledAt)}</div>
                     <div className="flex gap-2" onClick={(event) => event.stopPropagation()}>
                       <Link href={providerPath(`/appointments/${appointment.id}/visit`)}>
