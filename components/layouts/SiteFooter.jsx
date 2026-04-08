@@ -9,12 +9,10 @@ import { MARKET_HOME_DATA } from '@/components/marketing/marketHomeData';
 const FOOTER_THEMES = {
   US: {
     border: 'via-cyan-500/50',
-    dot: 'bg-cyan-500',
     badgeBorder: 'border-cyan-500/20',
   },
   NG: {
     border: 'via-emerald-500/50',
-    dot: 'bg-emerald-500',
     badgeBorder: 'border-emerald-500/20',
   },
 };
@@ -119,13 +117,9 @@ export default function SiteFooter() {
             &copy; {year} {footer.copyright}. All rights reserved.
           </p>
 
-          <div className="order-1 flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 md:order-2">
-            <span className="relative flex h-2 w-2">
-              <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${theme.dot} opacity-60`} />
-              <span className={`relative inline-flex h-2 w-2 rounded-full ${theme.dot}`} />
-            </span>
-            <span className="text-xs font-semibold tracking-wide text-slate-100">System Operational</span>
-          </div>
+          <p className="order-1 text-center text-xs text-slate-400 md:order-2 md:text-right">
+            Secure access across patient, provider, and pharmacy workflows.
+          </p>
         </div>
       </div>
     </footer>

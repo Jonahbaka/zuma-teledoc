@@ -20,7 +20,6 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { cn } from '@/lib/utils';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import CountrySelector from '@/components/CountrySelector';
-import HolographicAvatar from '@/components/agents/HolographicAvatar';
 import { MARKET_HOME_DATA } from '@/components/marketing/marketHomeData';
 import NigeriaCareMontage, {
   NigeriaStoryCards,
@@ -98,7 +97,7 @@ const MARKET_STORY_ARCS = {
     {
       eyebrow: 'Provider Focus',
       title: 'Clinicians see the next move instantly',
-      body: 'Schedules, chart notes, and visit context stay visible in one futuristic clinical shell.',
+      body: 'Schedules, chart notes, and visit context stay visible in one clear clinical workspace.',
       tone: 'emerald',
       mood: 'focused',
     },
@@ -382,7 +381,7 @@ function HeroPreview({ content }) {
             </div>
             <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/72 px-3 py-1.5 text-[11px] font-semibold text-slate-100 backdrop-blur-md">
               <span className={cn('inline-flex h-2.5 w-2.5 rounded-full', content.code === 'US' ? 'bg-cyan-500' : 'bg-emerald-500')} />
-              Live orchestration
+              Secure care workspace
             </div>
           </div>
 
@@ -397,7 +396,7 @@ function HeroPreview({ content }) {
           <div className="mt-5 grid gap-4 xl:grid-cols-[1.02fr_0.98fr]">
             <div className="rounded-[1.6rem] bg-slate-950 p-5 text-white shadow-xl">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Workflow Signal</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Care snapshot</div>
                 <div className="flex gap-1.5">
                   <div className="h-2 w-2 rounded-full bg-rose-400/65" />
                   <div className="h-2 w-2 rounded-full bg-amber-400/65" />
@@ -541,11 +540,9 @@ function StoryArc({ content }) {
           >
             <div className={cn('absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-50', styles.icon)} />
             <div className="flex items-start gap-3">
-              <HolographicAvatar
-                persona={{ name: step.title, colorKey: step.tone, mood: step.mood }}
-                size="md"
-                className="shrink-0"
-              />
+              <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-[1rem] border font-semibold', styles.panel)}>
+                <span className={cn('text-sm', styles.icon)}>0{index + 1}</span>
+              </div>
               <div className="min-w-0">
                 <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-muted-foreground">{step.eyebrow}</div>
                 <div className="mt-1 text-sm font-semibold leading-5 text-foreground">{step.title}</div>
@@ -806,11 +803,6 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
                                 </div>
                               )}
                             </div>
-                            {pricingMode !== 'access' && plan.featured ? (
-                              <div className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em]', styles.badge)}>
-                                Popular
-                              </div>
-                            ) : null}
                           </div>
                           <p className="mt-3 text-sm leading-6 text-muted-foreground">{plan.description}</p>
                           <div className="mt-3 space-y-2">
@@ -1519,11 +1511,6 @@ export default function MarketHomepage({ market = 'US' }) {
                         : 'border-white/70 bg-white/88 dark:border-white/10'
                     )}
                   >
-                    {pricingMode !== 'access' && plan.featured ? (
-                      <div className={cn('absolute right-5 top-5 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.24em]', styles.badge)}>
-                        Most used
-                      </div>
-                    ) : null}
                     <div className="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">{plan.eyebrow}</div>
                     {pricingMode === 'access' ? (
                       <div className="mt-4 text-3xl leading-tight text-foreground">{plan.title}</div>
