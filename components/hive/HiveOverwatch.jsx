@@ -89,7 +89,7 @@ export default function HiveOverwatch() {
   const agents = status?.agents || [];
 
   return (
-    <div className="space-y-6">
+    <div className="contrast-dark space-y-6">
       {/* Header with controls */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">

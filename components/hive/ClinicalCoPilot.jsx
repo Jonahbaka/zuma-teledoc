@@ -98,7 +98,7 @@ export default function ClinicalCoPilot({ appointmentId, patientId, patientName,
   }
 
   return (
-    <div className="bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden flex flex-col h-full max-h-[600px]">
+    <div className="contrast-dark bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden flex flex-col h-full max-h-[600px]">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-emerald-900/40 to-teal-900/30 border-b border-gray-800">
         <div className="flex items-center gap-2.5">

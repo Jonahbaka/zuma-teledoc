@@ -199,7 +199,7 @@ export default function InboxPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="min-h-screen contrast-dark bg-gray-950 flex items-center justify-center">
         <div className="text-center">
           <Inbox className="w-16 h-16 text-purple-400 animate-pulse mx-auto mb-4" />
           <p className="text-gray-400 text-lg">Loading agent inbox...</p>
@@ -209,7 +209,7 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen contrast-dark bg-gray-950 text-gray-100">
       {/* Header */}
       <div className="bg-gray-900 border-b border-gray-800 px-6 py-5">
         <div className="flex items-center justify-between">

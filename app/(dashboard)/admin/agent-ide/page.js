@@ -369,7 +369,7 @@ export default function AgentIdePage() {
   const fileExt = activeFile ? activeFile.split('.').pop() : '';
 
   return (
-    <div className={`bg-[#0d1117] text-gray-300 flex flex-col ${isFullscreen ? 'fixed inset-0 z-50' : 'min-h-screen'}`}>
+    <div className={`contrast-dark bg-[#0d1117] text-gray-300 flex flex-col ${isFullscreen ? 'fixed inset-0 z-50' : 'min-h-screen'}`}>
       
       {/* ═══ TOP BAR ═══ */}
       <div className="h-10 bg-[#161b22] border-b border-gray-800 flex items-center justify-between px-3 flex-shrink-0">

@@ -252,7 +252,7 @@ function ProviderRegisterContent({ market = 'US' }) {
 
       <main className="flex-1 flex items-center justify-center px-4 py-6 sm:p-6">
         <div className="w-full max-w-lg">
-          <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl p-5 sm:p-8">
+          <div className="contrast-dark bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl p-5 sm:p-8">
             <div className="text-center mb-8">
               <div className={`w-16 h-16 bg-gradient-to-br ${copy.icon} rounded-2xl flex items-center justify-center mx-auto mb-4`}>
                 <Stethoscope className="w-8 h-8 text-white" />

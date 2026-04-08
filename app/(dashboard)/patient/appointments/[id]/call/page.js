@@ -269,7 +269,7 @@ export default function PatientVideoCallPage() {
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_28%),radial-gradient(circle_at_85%_0%,rgba(15,23,42,0.42),transparent_34%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)] text-slate-100 font-sans selection:bg-cyan-500/20">
+    <div className="flex contrast-dark min-h-[100dvh] flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_28%),radial-gradient(circle_at_85%_0%,rgba(15,23,42,0.42),transparent_34%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)] text-slate-100 font-sans selection:bg-cyan-500/20">
       <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/72 px-4 pb-3 pt-[calc(0.7rem+env(safe-area-inset-top,0px))] backdrop-blur-xl sm:px-6">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">

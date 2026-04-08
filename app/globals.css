@@ -21,7 +21,7 @@
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215 20.2% 38.4%;
     /* Subtle purple-tinted accent surfaces */
     --accent: 270 100% 98%;
     --accent-foreground: 222.2 47.4% 11.2%;
@@ -47,7 +47,7 @@
     --secondary: 217.2 32.6% 14%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 14%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted-foreground: 215 20.2% 72%;
     --accent: 217.2 32.6% 14%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
@@ -133,11 +133,36 @@
   }
 
   .glass {
-    @apply bg-white/70 backdrop-blur-xl border border-slate-200/60;
+    @apply bg-white/70 text-slate-900 backdrop-blur-xl border border-slate-200/60;
   }
 
   .glass-dark {
-    @apply bg-slate-950/60 backdrop-blur-xl border border-white/10;
+    @apply bg-slate-950/60 text-slate-100 backdrop-blur-xl border border-white/10;
+  }
+
+  .contrast-dark {
+    color: rgb(241 245 249);
+  }
+
+  .contrast-dark .text-muted-foreground,
+  .contrast-dark :is(.text-slate-600, .text-gray-600, .text-slate-500, .text-gray-500) {
+    color: rgb(203 213 225);
+  }
+
+  .contrast-dark :is(.text-slate-400, .text-gray-400) {
+    color: rgb(226 232 240);
+  }
+
+  .contrast-dark :is(.text-slate-300, .text-gray-300) {
+    color: rgb(241 245 249);
+  }
+
+  .contrast-dark :is(.placeholder\:text-slate-600, .placeholder\:text-gray-600, .placeholder\:text-slate-500, .placeholder\:text-gray-500)::placeholder {
+    color: rgb(148 163 184);
+  }
+
+  .contrast-dark :is(.placeholder\:text-slate-400, .placeholder\:text-gray-400)::placeholder {
+    color: rgb(203 213 225);
   }
 
   .gradient-text {

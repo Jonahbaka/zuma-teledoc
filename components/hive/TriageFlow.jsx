@@ -122,7 +122,7 @@ export default function TriageFlow() {
   const urgencyConfig = urgency ? URGENCY_CONFIG[urgency] : null;
 
   return (
-    <div className="bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden">
+    <div className="contrast-dark bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden">
       {/* Header */}
       <div className="px-5 py-4 bg-gradient-to-r from-purple-900/40 to-blue-900/30 border-b border-gray-800">
         <div className="flex items-center justify-between">

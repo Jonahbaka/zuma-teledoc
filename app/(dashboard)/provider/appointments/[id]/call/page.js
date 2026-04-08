@@ -167,7 +167,7 @@ export default function ProviderVideoCallPage() {
 
   /* ── Loading / Not found ── */
   if (loading) return (
-    <div className="min-h-screen bg-[#121212] flex items-center justify-center">
+    <div className="min-h-screen contrast-dark bg-[#121212] flex items-center justify-center">
       <div className="text-center">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-400 mx-auto mb-4" />
         <p className="text-gray-400">{isStandalone ? 'Preparing...' : 'Loading appointment...'}</p>
@@ -176,7 +176,7 @@ export default function ProviderVideoCallPage() {
   );
 
   if (!appointment) return (
-    <div className="min-h-screen bg-[#121212] flex items-center justify-center">
+    <div className="min-h-screen contrast-dark bg-[#121212] flex items-center justify-center">
       <p className="text-gray-400 mb-4">Appointment not found</p>
       <Button onClick={() => router.push(toProviderPortalPath('/schedule', { pathname, user }))}>Back</Button>
     </div>
@@ -186,7 +186,7 @@ export default function ProviderVideoCallPage() {
   const patientInitials = getPatientInitials(appointment);
 
   return (
-    <div className="flex min-h-[100dvh] flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_20%),radial-gradient(circle_at_85%_0%,rgba(15,23,42,0.42),transparent_34%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)] text-white font-sans selection:bg-blue-500/20">
+    <div className="flex contrast-dark min-h-[100dvh] flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_20%),radial-gradient(circle_at_85%_0%,rgba(15,23,42,0.42),transparent_34%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)] text-white font-sans selection:bg-blue-500/20">
       {/* ── Top Bar ── */}
       <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/72 px-4 pb-3 pt-[calc(0.7rem+env(safe-area-inset-top,0px))] backdrop-blur-xl sm:px-6">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">

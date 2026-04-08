@@ -368,7 +368,7 @@ export default function OpenClawOpsPortal() {
   }
 
   return (
-    <div className="w-full">
+    <div className="contrast-dark w-full">
       {error && (
         <div className="mb-4 bg-rose-500/10 border border-rose-500/20 text-rose-200 text-sm px-4 py-3 rounded-xl">
           {error}

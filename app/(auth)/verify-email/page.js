@@ -209,7 +209,7 @@ function VerifyEmailContent() {
 
 function VerifyEmailFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900">
+    <div className="min-h-screen contrast-dark flex items-center justify-center bg-slate-900">
       <div className="flex items-center gap-3">
         <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
         <span className="text-slate-400">Verifying…</span>

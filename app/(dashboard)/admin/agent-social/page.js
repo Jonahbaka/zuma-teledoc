@@ -345,7 +345,7 @@ export default function AgentSocialPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen contrast-dark bg-gray-950 text-white">
       
       {/* ═══ HEADER ═══ */}
       <div className="border-b border-gray-800 bg-gray-950/80 backdrop-blur sticky top-0 z-20">
