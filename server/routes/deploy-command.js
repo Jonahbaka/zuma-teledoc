@@ -8,7 +8,11 @@ function buildDeployCommand() {
     // Stop stale processes before rebuilding so Next can replace .next safely.
     'pkill -9 -f "node server" || true',
     'sleep 2',
-    'git pull --ff-only origin main',
+    // Production checkout should match origin/main exactly; clear local drift before building.
+    'rm -f .git/index.lock',
+    'git fetch --prune origin main',
+    'git reset --hard origin/main',
+    'git clean -fd',
     'npm install --prefer-offline --no-audit --no-fund',
     'rm -rf .next .turbo',
     `NODE_OPTIONS="--max-old-space-size=${DEPLOY_BUILD_MEMORY_MB}" npm run build`,
