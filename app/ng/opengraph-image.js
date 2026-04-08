@@ -63,18 +63,18 @@ export default function NigeriaOpengraphImage() {
                   border: '1px solid rgba(16,185,129,0.12)',
                 }}
               >
-                Nigeria Experience
+                Nigeria Telehealth
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ fontSize: '78px', fontWeight: 800, lineHeight: 1, letterSpacing: '-0.05em', color: '#052e16' }}>DoctaRx Nigeria</div>
                 <div style={{ fontSize: '54px', fontWeight: 700, lineHeight: 1.05, letterSpacing: '-0.04em', color: '#14532d' }}>
-                  Prescription access built around pharmacy fulfillment.
+                  Online doctor care, prescriptions, and pharmacy access built for Nigeria.
                 </div>
               </div>
 
               <div style={{ fontSize: '30px', lineHeight: 1.45, color: '#365314', maxWidth: '760px' }}>
-                Search medicines, upload prescriptions, verify availability, and complete checkout with transfer, card, and USSD rails.
+                Book consultations, upload prescriptions, compare pharmacy availability, and pay with trusted local rails.
               </div>
             </div>
 
@@ -92,13 +92,13 @@ export default function NigeriaOpengraphImage() {
               }}
             >
               <div style={{ fontSize: '22px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#bbf7d0' }}>
-                Regional Flow
+                Care Journey
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {[
-                  'Search or upload at entry',
-                  'Partner pharmacy confirmation',
-                  'Delivery tracking after checkout',
+                  'Online doctor consultation',
+                  'Prescription review and upload',
+                  'Pharmacy confirmation and fulfillment',
                 ].map((item) => (
                   <div
                     key={item}
@@ -121,7 +121,7 @@ export default function NigeriaOpengraphImage() {
           </div>
 
           <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-            {['Search', 'Prescription Upload', 'Transfer, Card, USSD', 'Fulfillment Tracking'].map((item) => (
+            {['Online doctor', 'Prescription upload', 'Transfer, card, USSD', 'Fulfillment tracking'].map((item) => (
               <div
                 key={item}
                 style={{

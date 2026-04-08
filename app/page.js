@@ -6,6 +6,10 @@ export const metadata = {
     'DoctaRx delivers a premium US telehealth experience with secure visits, messaging, e-prescribing, insurance-ready workflows, and connected pharmacy coordination.',
   alternates: {
     canonical: 'https://doctarx.com/',
+    languages: {
+      'en-US': 'https://doctarx.com/',
+      'en-NG': 'https://doctarx.com/ng',
+    },
   },
   openGraph: {
     title: 'DoctaRx United States',
@@ -14,6 +18,7 @@ export const metadata = {
     url: 'https://doctarx.com/',
     siteName: 'DoctaRx',
     locale: 'en_US',
+    alternateLocale: ['en_NG'],
     type: 'website',
     images: ['/opengraph-image'],
   },

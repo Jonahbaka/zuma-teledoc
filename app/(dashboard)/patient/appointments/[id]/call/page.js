@@ -4,8 +4,8 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import {
   Mic, MicOff, Video as VideoIcon, VideoOff,
-  PhoneOff, Settings, ShieldCheck, User,
-  MessageSquare, Sparkles, Image as ImageIcon,
+  PhoneOff, ShieldCheck, User,
+  MessageSquare, Sparkles,
   X, Calendar, Clock, ArrowLeft, FileText
 } from 'lucide-react';
 import api, { paymentsAPI } from '@/lib/api';
@@ -76,6 +76,7 @@ export default function PatientVideoCallPage() {
     ? (isNigeriaPortal ? '/ng/patient' : '/patient/dashboard')
     : (isNigeriaPortal ? '/ng/patient/appointments' : `/patient/appointments/${appointmentId}`);
   const appointmentsHomePath = isNigeriaPortal ? '/ng/patient/appointments' : '/patient/appointments';
+  const complianceLabel = isNigeriaPortal ? 'NDPA Secure' : 'HIPAA Secure';
   
   const [appointment, setAppointment] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -268,32 +269,45 @@ export default function PatientVideoCallPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-blue-100">
-      {/* Header / Nav */}
-      <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 fixed top-0 w-full z-50">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push(appointmentReturnPath)}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <span className="rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-200">
-              <DoctaRxLogo className="h-7 w-auto" />
-            </span>
+    <div className="flex min-h-[100dvh] flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_28%),radial-gradient(circle_at_85%_0%,rgba(15,23,42,0.42),transparent_34%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)] text-slate-100 font-sans selection:bg-cyan-500/20">
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/72 px-4 pb-3 pt-[calc(0.7rem+env(safe-area-inset-top,0px))] backdrop-blur-xl sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 rounded-2xl border border-white/10 bg-white/5 text-slate-100 hover:bg-white/10 hover:text-white"
+              onClick={() => router.push(appointmentReturnPath)}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="rounded-2xl border border-white/10 bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.14)]">
+                <DoctaRxLogo className="h-7 w-auto" />
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-white">
+                  {appointment?.isStandaloneTest ? 'Test Call' : `Appointment with ${getProviderLabel(appointment)}`}
+                </div>
+                <div className="text-xs text-slate-400">
+                  {appointment?.providerSpecialty || 'Secure telehealth visit'}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-4 text-sm font-medium text-slate-500">
-          <div className="flex items-center gap-1.5 text-purple-600 bg-purple-50 px-3 py-1 rounded-full border border-purple-100">
-            <ShieldCheck size={14} />
-            <span>HIPAA Secure</span>
-          </div>
-          <div className="hidden md:block">
-            {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+          <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
+              <ShieldCheck size={12} />
+              <span>{complianceLabel}</span>
+            </div>
+            <div className="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 sm:block">
+              {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="pt-16 h-screen flex flex-col">
+      <main className="flex-1 min-h-0 flex flex-col">
         {!isInCall ? (
           <Lobby
             appointment={appointment}
@@ -353,79 +367,88 @@ const Lobby = ({
   mediaError
 }) => {
   return (
-    <div className="flex-1 flex items-center justify-center p-4 bg-slate-50">
-      <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-        {/* Left: Introduction */}
-        <div className="space-y-6">
+    <div className="flex-1 overflow-y-auto px-4 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-6 sm:pt-6">
+      <div className="mx-auto grid max-w-6xl gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(22rem,0.9fr)] xl:items-center">
+        <div className="order-2 space-y-5 xl:order-1">
+          <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-200">
+            <Sparkles className="h-4 w-4" />
+            Visit check-in
+          </div>
           <div>
-            <h1 className="text-4xl font-bold text-slate-900 leading-tight mb-2">
-              {getLobbyHeading(appointment)} <br/>
-              <span className="text-blue-600">{getProviderLabel(appointment)}</span>
+            <h1 className="text-3xl font-semibold leading-tight text-white sm:text-4xl">
+              {getLobbyHeading(appointment)} <br />
+              <span className="text-cyan-300">{getProviderLabel(appointment)}</span>
             </h1>
             {appointment.providerSpecialty && (
-              <p className="text-slate-600 text-lg">{appointment.providerSpecialty}</p>
+              <p className="mt-3 text-base text-slate-300">{appointment.providerSpecialty}</p>
             )}
           </div>
 
-          {/* Appointment Details */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-            <div className="flex items-center gap-3 text-slate-700">
-              <Calendar className="w-5 h-5 text-blue-600" />
-              <div>
-                <p className="text-sm text-slate-500">Appointment Date</p>
-                <p className="font-semibold">{formatDateTime(appointment.scheduledAt)}</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[1.35rem] border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
+              <div className="flex items-center gap-3 text-slate-200">
+                <Calendar className="h-5 w-5 text-cyan-300" />
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Appointment Date</p>
+                  <p className="mt-1 font-semibold text-white">{formatDateTime(appointment.scheduledAt)}</p>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-3 text-slate-700">
-              <Clock className="w-5 h-5 text-blue-600" />
-              <div>
-                <p className="text-sm text-slate-500">Duration</p>
-                <p className="font-semibold">{appointment.durationMinutes || 30} minutes</p>
+            <div className="rounded-[1.35rem] border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
+              <div className="flex items-center gap-3 text-slate-200">
+                <Clock className="h-5 w-5 text-cyan-300" />
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Duration</p>
+                  <p className="mt-1 font-semibold text-white">{appointment.durationMinutes || 30} minutes</p>
+                </div>
               </div>
             </div>
-            {appointment.reasonForVisit && (
-              <div className="pt-2 border-t border-slate-100">
-                <p className="text-sm text-slate-500 mb-1">Reason for Visit</p>
-                <p className="text-slate-700">{appointment.reasonForVisit}</p>
-              </div>
-            )}
           </div>
 
-          <p className="text-slate-600 text-lg">
-            Please enter your name and check your devices before joining.
+          {appointment.reasonForVisit ? (
+            <div className="rounded-[1.45rem] border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Reason for Visit</p>
+              <p className="mt-2 text-sm leading-6 text-slate-200">{appointment.reasonForVisit}</p>
+            </div>
+          ) : null}
+
+          <p className="max-w-2xl text-base leading-7 text-slate-300">
+            Check your camera and microphone, confirm the name that should appear in the call, and join when you are ready.
           </p>
 
-          {/* Provider Status Indicator */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-            <p className="text-sm text-blue-700">{getWaitingRoomCopy(appointment)}</p>
+          <div className="rounded-[1.25rem] border border-cyan-400/20 bg-cyan-400/10 p-3 text-sm text-cyan-100">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-cyan-300 animate-pulse" />
+              <span>{getWaitingRoomCopy(appointment)}</span>
+            </div>
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Display Name</label>
-              <input
-                type="text"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                placeholder="e.g. John Doe"
-                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-              />
-            </div>
+          <div className="rounded-[1.6rem] border border-white/10 bg-slate-950/40 p-4 shadow-[0_18px_44px_rgba(2,6,23,0.22)] backdrop-blur-xl">
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-200">Display Name</label>
+                <input
+                  type="text"
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  placeholder="e.g. John Doe"
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition-all placeholder:text-slate-500 focus:border-cyan-400/70 focus:bg-white/10"
+                />
+              </div>
 
-            <button
-              onClick={onJoin}
-              disabled={!userName.trim()}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-lg shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2"
-            >
-              {getJoinButtonLabel(appointment)}
-            </button>
+              <button
+                onClick={onJoin}
+                disabled={!userName.trim()}
+                className="w-full rounded-2xl bg-cyan-500 px-5 py-3.5 text-base font-semibold text-slate-950 shadow-[0_16px_40px_rgba(34,211,238,0.24)] transition-all hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {getJoinButtonLabel(appointment)}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Right: Device Preview */}
-        <div className="bg-white p-4 rounded-2xl shadow-xl border border-slate-100">
-          <div className="aspect-video bg-slate-900 rounded-xl overflow-hidden relative mb-4 flex items-center justify-center">
+        <div className="order-1 rounded-[1.8rem] border border-white/10 bg-slate-950/45 p-4 shadow-[0_28px_70px_rgba(2,6,23,0.26)] backdrop-blur-2xl xl:order-2">
+          <div className="relative mb-4 aspect-[4/3] overflow-hidden rounded-[1.45rem] bg-slate-950 ring-1 ring-white/10">
             {camOn ? (
               <CameraPreview
                 stream={localStream}
@@ -433,20 +456,23 @@ const Lobby = ({
                 mediaError={mediaError}
               />
             ) : (
-              <div className="text-slate-400 flex flex-col items-center">
-                <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-2">
-                  <VideoOff size={32} />
+              <div className="flex h-full flex-col items-center justify-center text-slate-400">
+                <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-slate-800">
+                  <VideoOff size={28} />
                 </div>
-                <span>Camera Off</span>
+                <span className="text-sm font-medium">Camera Off</span>
               </div>
             )}
 
-            <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-white text-xs font-medium flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${micOn ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-              {micOn ? 'Mic Active' : 'Mic Muted'}
+            <div className="absolute bottom-3 left-3 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-md">
+              <div className="flex items-center gap-2">
+                <div className={`h-2 w-2 rounded-full ${micOn ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                {micOn ? 'Mic Active' : 'Mic Muted'}
+              </div>
             </div>
           </div>
-          <div className="flex justify-center gap-4">
+
+          <div className="flex flex-wrap justify-center gap-3">
             <DeviceToggle
               active={micOn}
               onClick={() => setMicOn(!micOn)}
@@ -482,11 +508,35 @@ const ActiveCallRoom = ({
   localStream, ensureLocalStream, mediaError,
   remoteStream, remoteParticipant, connectionStatus, callError
 }) => {
+  const waitingCopy = callError
+    ? 'Action needed'
+    : connectionStatus === 'connected'
+      ? 'Live now'
+      : connectionStatus === 'connecting' || connectionStatus === 'reconnecting'
+        ? 'Connecting'
+        : 'Waiting room';
+
   return (
-    <div className="flex-1 flex bg-slate-900 relative overflow-hidden">
-      {/* Main Stage (Remote Doctor) */}
-      <div className="flex-1 relative flex items-center justify-center p-4">
-        <div className="w-full h-full max-w-6xl relative bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10">
+    <div className="relative flex-1 min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_20%),radial-gradient(circle_at_bottom_right,rgba(14,116,144,0.22),transparent_28%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)]">
+      {(showSettings || isSidebarOpen) && (
+        <button
+          type="button"
+          aria-label="Close panel"
+          onClick={() => {
+            if (showSettings) {
+              setShowSettings(false);
+            }
+            if (isSidebarOpen) {
+              toggleSidebar();
+            }
+          }}
+          className="absolute inset-0 z-20 bg-slate-950/55 backdrop-blur-[2px] lg:hidden"
+        />
+      )}
+
+      <div className={`flex h-full min-h-0 transition-all duration-300 ${isSidebarOpen ? 'lg:pr-[22rem]' : ''}`}>
+        <div className="relative flex-1 min-h-0 px-3 pb-[calc(7.8rem+env(safe-area-inset-bottom,0px))] pt-3 sm:px-4 sm:pt-4">
+          <div className="relative h-full overflow-hidden rounded-[1.9rem] border border-white/10 bg-black shadow-[0_34px_90px_rgba(2,6,23,0.5)]">
           <RemoteProviderStage
             appointment={appointment}
             stream={appointment.isStandaloneTest ? null : remoteStream}
@@ -495,156 +545,194 @@ const ActiveCallRoom = ({
             callError={callError}
           />
 
-          <div className="absolute top-4 left-4 bg-black/40 backdrop-blur px-4 py-2 rounded-lg text-white border border-white/10">
-            <h3 className="font-semibold text-sm">{remoteParticipant?.name || getProviderLabel(appointment)}</h3>
-            <p className="text-xs text-slate-300">
-              {callError
-                ? callError
-                : appointment.providerSpecialty || 'General Practice'}
-            </p>
-          </div>
-
-          {/* Self View (PiP) */}
-          <div className="absolute bottom-4 right-4 w-48 md:w-64 aspect-video bg-slate-800 rounded-xl overflow-hidden shadow-2xl border-2 border-slate-700/50 transition-all hover:scale-105 z-20">
-            {camOn ? (
-              <SelfieCamera
-                micOn={micOn}
-                activeEffect={activeEffect}
-                processingEnabled={processingEnabled}
-                setProcessingEnabled={setProcessingEnabled}
-                stream={localStream}
-                ensureLocalStream={ensureLocalStream}
-                mediaError={mediaError}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-slate-500 bg-slate-800">
-                <User size={32} />
+            <div className="absolute inset-x-3 top-3 z-10 flex items-start justify-between gap-3 sm:inset-x-5 sm:top-5">
+              <div className="max-w-[16rem] rounded-2xl border border-white/10 bg-black/45 px-4 py-3 text-white shadow-lg backdrop-blur-xl">
+                <h3 className="text-sm font-semibold">{remoteParticipant?.name || getProviderLabel(appointment)}</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-300">
+                  {callError
+                    ? callError
+                    : appointment.providerSpecialty || 'General Practice'}
+                </p>
               </div>
-            )}
-            <div className="absolute bottom-2 left-2 text-[10px] font-bold text-white bg-black/50 px-2 py-0.5 rounded">
-              YOU
-            </div>
-          </div>
 
-          <LiveCaptionsOverlay
-            enabled={showCaptions}
-            speakerLabel="You"
-            defaultTargetLang={(typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en-US'}
-          />
+              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200 backdrop-blur-xl">
+                <span className={`h-2 w-2 rounded-full ${connectionStatus === 'connected' ? 'bg-emerald-400' : callError ? 'bg-rose-400' : 'bg-amber-300 animate-pulse'}`} />
+                {waitingCopy}
+              </div>
+            </div>
+
+            <div className="absolute right-3 top-3 z-10 w-[7.4rem] overflow-hidden rounded-[1.35rem] border border-white/10 bg-slate-900 shadow-[0_18px_50px_rgba(2,6,23,0.38)] sm:w-40 md:right-5 md:top-5 md:w-48 lg:bottom-6 lg:right-6 lg:top-auto">
+              <div className="relative aspect-[4/5] sm:aspect-video">
+                {camOn ? (
+                  <SelfieCamera
+                    micOn={micOn}
+                    activeEffect={activeEffect}
+                    processingEnabled={processingEnabled}
+                    setProcessingEnabled={setProcessingEnabled}
+                    stream={localStream}
+                    ensureLocalStream={ensureLocalStream}
+                    mediaError={mediaError}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-slate-800 text-slate-500">
+                    <User size={30} />
+                  </div>
+                )}
+
+                <div className="absolute inset-x-2 bottom-2 flex items-center justify-between rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white backdrop-blur-md">
+                  <span>You</span>
+                  <span className={`h-2 w-2 rounded-full ${micOn ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                </div>
+              </div>
+            </div>
+
+            <LiveCaptionsOverlay
+              enabled={showCaptions}
+              speakerLabel="You"
+              defaultTargetLang={(typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en-US'}
+            />
+          </div>
         </div>
       </div>
 
-      {/* Settings Modal / Popover */}
       {showSettings && (
-        <div className="absolute bottom-24 right-6 w-80 bg-white rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-bottom-4">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold text-slate-800">Video Effects</h3>
-            <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600">
-              <X size={18} />
+        <div className="fixed inset-x-4 bottom-[calc(6.4rem+env(safe-area-inset-bottom,0px))] z-50 max-h-[min(68vh,34rem)] overflow-y-auto rounded-[1.6rem] border border-white/10 bg-slate-950/96 p-4 text-white shadow-[0_30px_80px_rgba(2,6,23,0.6)] backdrop-blur-2xl lg:absolute lg:inset-x-auto lg:bottom-[calc(7.6rem+env(safe-area-inset-bottom,0px))] lg:right-6 lg:w-[22rem]">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Video Effects</h3>
+              <p className="mt-1 text-xs text-slate-400">Adjust how your camera feed looks before or during the call.</p>
+            </div>
+            <button
+              onClick={() => setShowSettings(false)}
+              className="rounded-full border border-white/10 bg-white/5 p-2 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <X size={16} />
             </button>
           </div>
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-600">Enable AI Processing</span>
-              <button
-                onClick={() => setProcessingEnabled(!processingEnabled)}
-                className={`w-11 h-6 flex items-center rounded-full transition-colors ${processingEnabled ? 'bg-blue-600' : 'bg-slate-300'}`}
-              >
-                <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${processingEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
-              </button>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-white">AI camera cleanup</p>
+                  <p className="mt-1 text-xs text-slate-400">Enable background processing and choose a cleaner backdrop.</p>
+                </div>
+                <button
+                  onClick={() => setProcessingEnabled(!processingEnabled)}
+                  className={`flex h-7 w-12 items-center rounded-full border transition-colors ${processingEnabled ? 'border-cyan-400/40 bg-cyan-500/30' : 'border-white/10 bg-white/10'}`}
+                >
+                  <div className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${processingEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
             </div>
-             {processingEnabled && (
-               <div className="grid grid-cols-3 gap-2">
-                 {VIDEO_BG_PRESETS.map((preset) => (
-                   <button
-                     key={preset.id}
-                     onClick={() => setActiveEffect(preset.value)}
-                     className={`p-2 rounded-lg border text-[11px] flex flex-col items-center gap-2 transition-colors ${
-                       activeEffect === preset.value
-                         ? 'border-blue-500 bg-blue-50 text-blue-700'
-                         : 'border-slate-200 hover:bg-slate-50'
-                     }`}
-                   >
-                     {preset.type === 'blur' ? (
-                       <div className="w-7 h-7 rounded bg-slate-300 blur-sm" />
-                     ) : preset.type === 'image' ? (
-                       <img src={preset.value} className="w-7 h-7 rounded object-cover" alt="" />
-                     ) : preset.type === 'gradient' || preset.type === 'color' ? (
-                       <div className="w-7 h-7 rounded" style={getBgPreviewStyle(preset)} />
-                     ) : (
-                       <div className="w-7 h-7 rounded bg-slate-200" />
-                     )}
-                     {preset.name}
-                   </button>
-                 ))}
-               </div>
-             )}
+
+            {processingEnabled && (
+              <div className="grid grid-cols-3 gap-2">
+                {VIDEO_BG_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => setActiveEffect(preset.value)}
+                    className={`rounded-2xl border p-2 text-[11px] transition-all ${
+                      activeEffect === preset.value
+                        ? 'border-cyan-400/50 bg-cyan-500/12 text-cyan-100 shadow-[0_14px_30px_rgba(34,211,238,0.12)]'
+                        : 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'
+                    }`}
+                  >
+                    <div className="mb-2 flex justify-center">
+                      {preset.type === 'blur' ? (
+                        <div className="h-8 w-8 rounded-2xl bg-slate-300 blur-sm" />
+                      ) : preset.type === 'image' ? (
+                        <img src={preset.value} className="h-8 w-8 rounded-2xl object-cover" alt="" />
+                      ) : preset.type === 'gradient' || preset.type === 'color' ? (
+                        <div className="h-8 w-8 rounded-2xl" style={getBgPreviewStyle(preset)} />
+                      ) : (
+                        <div className="h-8 w-8 rounded-2xl bg-slate-200" />
+                      )}
+                    </div>
+                    <span className="block truncate text-center">{preset.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {/* Control Bar */}
-      <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center gap-3 bg-slate-800/90 backdrop-blur-md px-6 py-3 rounded-full shadow-2xl border border-white/10 z-40">
-        <ControlBtn
-          active={micOn}
-          onClick={toggleMic}
-          onIcon={Mic}
-          offIcon={MicOff}
-        />
-        <ControlBtn
-          active={camOn}
-          onClick={toggleCam}
-          onIcon={VideoIcon}
-          offIcon={VideoOff}
-        />
-        <div className="w-px h-8 bg-slate-600 mx-2" />
-
-        <ControlBtn
-          active={showCaptions}
-          onClick={() => setShowCaptions((v) => !v)}
-          onIcon={FileText}
-          offIcon={FileText}
-          tooltip="Captions"
-        />
-        <ControlBtn
-          active={showSettings}
-          onClick={() => setShowSettings(!showSettings)}
-          onIcon={Sparkles}
-          offIcon={Sparkles}
-          tooltip="Effects"
-        />
-
-        <ControlBtn
-          active={isSidebarOpen}
-          onClick={toggleSidebar}
-          onIcon={MessageSquare}
-          offIcon={MessageSquare}
-          tooltip="Chat"
-        />
-        <button
-          onClick={onEndCall}
-          className="ml-4 bg-red-500 hover:bg-red-600 text-white p-4 rounded-full transition-all shadow-lg shadow-red-500/30"
-        >
-          <PhoneOff size={20} fill="currentColor" />
-        </button>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.9rem+env(safe-area-inset-bottom,0px))] pt-6 sm:px-4">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-[30rem] items-center justify-center gap-2 rounded-[1.9rem] border border-white/10 bg-slate-950/82 px-3 py-3 shadow-[0_26px_60px_rgba(2,6,23,0.54)] backdrop-blur-2xl sm:gap-3 sm:px-4">
+          <ControlBtn
+            active={micOn}
+            onClick={toggleMic}
+            onIcon={Mic}
+            offIcon={MicOff}
+            tooltip="Microphone"
+            destructiveWhenInactive
+          />
+          <ControlBtn
+            active={camOn}
+            onClick={toggleCam}
+            onIcon={VideoIcon}
+            offIcon={VideoOff}
+            tooltip="Camera"
+            destructiveWhenInactive
+          />
+          <div className="h-10 w-px bg-white/10" />
+          <ControlBtn
+            active={showCaptions}
+            onClick={() => setShowCaptions((v) => !v)}
+            onIcon={FileText}
+            offIcon={FileText}
+            tooltip="Captions"
+          />
+          <ControlBtn
+            active={showSettings}
+            onClick={() => setShowSettings(!showSettings)}
+            onIcon={Sparkles}
+            offIcon={Sparkles}
+            tooltip="Effects"
+          />
+          <ControlBtn
+            active={isSidebarOpen}
+            onClick={toggleSidebar}
+            onIcon={MessageSquare}
+            offIcon={MessageSquare}
+            tooltip="Chat"
+          />
+          <button
+            onClick={onEndCall}
+            className="ml-1 flex h-14 w-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-[0_18px_42px_rgba(244,63,94,0.42)] transition-all hover:bg-rose-400"
+            title="Leave call"
+          >
+            <PhoneOff size={20} fill="currentColor" />
+          </button>
+        </div>
       </div>
 
       {/* Sidebar */}
       {isSidebarOpen && (
-        <div className="w-80 bg-white h-full border-l border-slate-200 animate-in slide-in-from-right absolute right-0 top-0 z-30 flex flex-col">
-          <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-            <h3 className="font-bold text-slate-800">Secure Chat</h3>
-            <button onClick={toggleSidebar}><X size={18} className="text-slate-400" /></button>
+        <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[74vh] flex-col overflow-hidden rounded-t-[1.8rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_26px_60px_rgba(2,6,23,0.58)] backdrop-blur-2xl lg:absolute lg:inset-y-0 lg:right-0 lg:left-auto lg:max-h-none lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l">
+          <div className="mx-auto mt-3 h-1.5 w-14 rounded-full bg-white/15 lg:hidden" />
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Secure Chat</h3>
+              <p className="mt-1 text-xs text-slate-400">Messages stay linked to this consultation.</p>
+            </div>
+            <button
+              onClick={toggleSidebar}
+              className="rounded-full border border-white/10 bg-white/5 p-2 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <X size={16} />
+            </button>
           </div>
-          <div className="flex-1 p-4 overflow-y-auto space-y-4">
-            <div className="bg-blue-50 p-3 rounded-lg rounded-tl-none max-w-[85%]">
-              <p className="text-sm text-blue-900">Hello! I'm reviewing your latest lab results. I'll be with you in a moment.</p>
+          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+            <div className="max-w-[88%] rounded-2xl rounded-tl-sm border border-cyan-400/15 bg-cyan-500/10 p-3">
+              <p className="text-sm leading-6 text-cyan-50">Hello! I&apos;m reviewing your latest lab results. I&apos;ll be with you in a moment.</p>
               <span className="text-[10px] text-blue-700/60 block mt-1">{getChatSenderLabel(appointment)} • {formatTime(new Date())}</span>
             </div>
           </div>
-          <div className="p-4 border-t border-slate-100">
-            <input type="text" placeholder="Type a secure message..." className="w-full px-3 py-2 bg-slate-100 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+          <div className="border-t border-white/10 px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-4">
+            <input type="text" placeholder="Type a secure message..." className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-400/60 focus:bg-white/10" />
           </div>
         </div>
       )}
@@ -1681,10 +1769,10 @@ const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
 const DeviceToggle = ({ active, onClick, iconOn: IconOn, iconOff: IconOff, label }) => (
   <button
     onClick={onClick}
-    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+    className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-medium transition-all ${
       active
-        ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-        : 'bg-red-50 text-red-600 hover:bg-red-100'
+        ? 'border-white/10 bg-white/10 text-white hover:bg-white/15'
+        : 'border-rose-500/20 bg-rose-500/12 text-rose-200 hover:bg-rose-500/16'
     }`}
   >
     {active ? <IconOn size={18} /> : <IconOff size={18} />}
@@ -1692,17 +1780,22 @@ const DeviceToggle = ({ active, onClick, iconOn: IconOn, iconOff: IconOff, label
   </button>
 );
 
-const ControlBtn = ({ active, onClick, onIcon: OnIcon, offIcon: OffIcon, tooltip }) => (
-  <button
-    onClick={onClick}
-    title={tooltip}
-    className={`p-3.5 rounded-full transition-all duration-200 ${
-      active
-        ? 'bg-slate-700 text-white hover:bg-slate-600'
-        : 'bg-white text-slate-900 hover:bg-slate-200'
-    }`}
-  >
-    {active ? <OnIcon size={20} /> : <OffIcon size={20} />}
-  </button>
-);
+const ControlBtn = ({ active, onClick, onIcon: OnIcon, offIcon: OffIcon, tooltip, destructiveWhenInactive = false }) => {
+  const Icon = active ? OnIcon : OffIcon;
+  const stateClasses = active
+    ? 'border-cyan-400/30 bg-cyan-500/20 text-cyan-100 shadow-[0_12px_28px_rgba(34,211,238,0.16)]'
+    : destructiveWhenInactive
+      ? 'border-rose-500/20 bg-rose-500/15 text-rose-100'
+      : 'border-white/10 bg-white/10 text-slate-100 hover:bg-white/15';
+
+  return (
+    <button
+      onClick={onClick}
+      title={tooltip}
+      className={`flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-200 sm:h-[3.25rem] sm:w-[3.25rem] ${stateClasses}`}
+    >
+      <Icon size={19} />
+    </button>
+  );
+};
 

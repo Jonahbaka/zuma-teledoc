@@ -22,6 +22,7 @@ import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import CountrySelector from '@/components/CountrySelector';
 import HolographicAvatar from '@/components/agents/HolographicAvatar';
 import { MARKET_HOME_DATA } from '@/components/marketing/marketHomeData';
+import NigeriaCareMontage from '@/components/marketing/NigeriaCareMontage';
 
 const TONE_STYLES = {
   blue: {
@@ -424,7 +425,7 @@ function HeroPreview({ content }) {
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-300">{content.hero.visual.railTitle}</div>
                     <div className="mt-2 text-sm leading-6 text-slate-100">
-                      The same design language scales across desktop, tablet, and mobile without collapsing into a stretched phone layout.
+                      {content.hero.visual.railSummary || 'The same design language scales across desktop, tablet, and mobile without collapsing into a stretched phone layout.'}
                     </div>
                   </div>
                   <div className={cn('hidden h-11 w-11 items-center justify-center rounded-2xl border sm:flex', styles.panel)}>
@@ -560,8 +561,10 @@ function CompactHeroSurface({ content }) {
     <div className="grid gap-4 xl:hidden md:grid-cols-[1.04fr_0.96fr]">
       <WorkspacePanel
         eyebrow="Portal shortcuts"
-        title="Reach the right workspace without hunting through menus."
-        description="Patient, provider, and operations entry points stay visible above the fold on phone and tablet."
+        title={content.code === 'NG' ? 'Start from the right Nigeria entry point.' : 'Reach the right workspace without hunting through menus.'}
+        description={content.code === 'NG'
+          ? 'Patient, provider, and pharmacy paths stay visible above the fold so people can act with fewer taps.'
+          : 'Patient, provider, and operations entry points stay visible above the fold on phone and tablet.'}
       >
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
           {content.loginItems.map((item) => (
@@ -615,13 +618,17 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-2">
               <TonePill tone={content.hero.visualTone} icon={Sparkles}>{content.featureSection.badge}</TonePill>
-              <div className="text-2xl leading-tight text-foreground sm:text-3xl">Compact care workspace</div>
+              <div className="text-2xl leading-tight text-foreground sm:text-3xl">
+                {content.code === 'NG' ? 'Start care faster on mobile' : 'Compact care workspace'}
+              </div>
               <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                Key product meaning is grouped into app-like panels so phone and tablet users can switch context without scrolling through the full desktop landing stack.
+                {content.code === 'NG'
+                  ? 'Consultations, medicines, payment, and pharmacy updates stay readable in app-like panels instead of long brochure blocks.'
+                  : 'Key product meaning is grouped into app-like panels so phone and tablet users can switch context without scrolling through the full desktop landing stack.'}
               </p>
             </div>
             <div className="rounded-full border border-border bg-background/78 px-3 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-              Touch-first navigation
+              {content.code === 'NG' ? 'Nigeria touch-first' : 'Touch-first navigation'}
             </div>
           </div>
 
@@ -637,8 +644,10 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
               <div className="grid gap-4 lg:grid-cols-[1.03fr_0.97fr]">
                 <WorkspacePanel
                   eyebrow="Core capabilities"
-                  title="Swipe through the care surfaces"
-                  description="The product pillars stay readable as compact cards instead of becoming a tall brochure section."
+                  title={content.code === 'NG' ? 'Core Nigeria services' : 'Swipe through the care surfaces'}
+                  description={content.code === 'NG'
+                    ? 'Read the essentials in cards, not paragraphs.'
+                    : 'The product pillars stay readable as compact cards instead of becoming a tall brochure section.'}
                 >
                   <div className="grid gap-3 sm:grid-cols-2">
                     {content.features.map((feature) => {
@@ -669,8 +678,10 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
 
                 <WorkspacePanel
                   eyebrow="Workflow"
-                  title="Tablet-friendly step map"
-                  description="On smaller devices, the workflow becomes a compact split pane instead of four separate page-height blocks."
+                  title={content.code === 'NG' ? 'Clear four-step journey' : 'Tablet-friendly step map'}
+                  description={content.code === 'NG'
+                    ? 'Consult, confirm, pay, and keep fulfillment visible without losing the care context.'
+                    : 'On smaller devices, the workflow becomes a compact split pane instead of four separate page-height blocks.'}
                 >
                   <div className="grid gap-3 sm:grid-cols-2">
                     {content.workflowSteps.map((step, index) => {
@@ -897,6 +908,7 @@ function HomeQuickDock({ activeSection, onSelect }) {
 
 export default function MarketHomepage({ market = 'US' }) {
   const content = MARKET_HOME_DATA[market] || MARKET_HOME_DATA.US;
+  const isNigeriaExperience = content.code === 'NG';
   const primaryTone = toneStyles(content.hero.visualTone);
   const hasAlternateMarket = Boolean(content.otherMarket?.href && content.otherMarket?.label);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -1278,7 +1290,13 @@ export default function MarketHomepage({ market = 'US' }) {
                     <ChevronRight className="ml-1 h-4 w-4" />
                   </a>
                 </div>
-                <StoryArc content={content} />
+                {isNigeriaExperience ? (
+                  <div className="xl:hidden">
+                    <NigeriaCareMontage compact />
+                  </div>
+                ) : (
+                  <StoryArc content={content} />
+                )}
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                   {content.hero.trustItems.map((item) => (
                     <TonePill key={item.text} tone={content.hero.visualTone} icon={item.icon}>{item.text}</TonePill>
@@ -1287,11 +1305,12 @@ export default function MarketHomepage({ market = 'US' }) {
                 <CompactHeroSurface content={content} />
               </div>
               <div className="hidden xl:block">
-                <HeroPreview content={content} />
+                {isNigeriaExperience ? <NigeriaCareMontage /> : <HeroPreview content={content} />}
               </div>
             </div>
 
-            <div className="mt-12 hidden gap-4 sm:grid-cols-2 xl:grid xl:grid-cols-4">
+            {!isNigeriaExperience ? (
+              <div className="mt-12 hidden gap-4 sm:grid-cols-2 xl:grid xl:grid-cols-4">
               {content.stats.map((stat) => {
                 const Icon = stat.icon;
                 return (
@@ -1308,7 +1327,8 @@ export default function MarketHomepage({ market = 'US' }) {
                   </div>
                 );
               })}
-            </div>
+              </div>
+            ) : null}
           </div>
         </section>
 
