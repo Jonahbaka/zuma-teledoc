@@ -22,7 +22,10 @@ import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import CountrySelector from '@/components/CountrySelector';
 import HolographicAvatar from '@/components/agents/HolographicAvatar';
 import { MARKET_HOME_DATA } from '@/components/marketing/marketHomeData';
-import NigeriaCareMontage from '@/components/marketing/NigeriaCareMontage';
+import NigeriaCareMontage, {
+  NigeriaStoryCards,
+  NigeriaSupportSpotlight,
+} from '@/components/marketing/NigeriaCareMontage';
 
 const TONE_STYLES = {
   blue: {
@@ -557,6 +560,20 @@ function StoryArc({ content }) {
 }
 
 function CompactHeroSurface({ content }) {
+  const compactItems = content.code === 'NG'
+    ? content.hero.trustItems.map((item, index) => ({
+        icon: item.icon,
+        value: item.text,
+        label: index === 0
+          ? 'Start care online from the same homepage'
+          : index === 1
+            ? 'Share prescriptions once and keep the review visible'
+            : index === 2
+              ? 'Pay with transfer, card, or USSD'
+              : 'Keep privacy and trust cues in view',
+      }))
+    : content.stats;
+
   return (
     <div className="grid gap-4 xl:hidden md:grid-cols-[1.04fr_0.96fr]">
       <WorkspacePanel
@@ -575,8 +592,10 @@ function CompactHeroSurface({ content }) {
 
       <WorkspacePanel
         eyebrow={content.hero.visual.title}
-        title="App-style care shell"
-        description={content.hero.visual.subtitle}
+        title={content.code === 'NG' ? 'Care and pharmacy details stay visible' : 'App-style care shell'}
+        description={content.code === 'NG'
+          ? 'The homepage keeps the consultation, prescription, and payment story readable without leaning on fake platform metrics.'
+          : content.hero.visual.subtitle}
       >
         <div className="flex flex-wrap gap-2">
           {content.hero.visual.chips.map((chip) => (
@@ -585,20 +604,20 @@ function CompactHeroSurface({ content }) {
             </TonePill>
           ))}
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          {content.stats.map((stat) => {
-            const Icon = stat.icon;
+        <div className={cn('mt-4 grid gap-3', content.code === 'NG' ? 'sm:grid-cols-2' : 'grid-cols-2')}>
+          {compactItems.map((item) => {
+            const Icon = item.icon;
             const styles = toneStyles(content.hero.visualTone);
 
             return (
-              <div key={stat.label} className="rounded-[1.25rem] border border-border bg-background/92 px-3 py-3 shadow-sm">
+              <div key={item.value} className="rounded-[1.25rem] border border-border bg-background/92 px-3 py-3 shadow-sm">
                 <div className="flex items-center gap-2">
                   <div className={cn('flex h-9 w-9 items-center justify-center rounded-2xl border', styles.panel)}>
                     <Icon className={cn('h-4 w-4', styles.icon)} />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-foreground">{stat.value}</div>
-                    <div className="text-[11px] leading-5 text-muted-foreground">{stat.label}</div>
+                    <div className="text-sm font-semibold text-foreground">{item.value}</div>
+                    <div className="text-[11px] leading-5 text-muted-foreground">{item.label}</div>
                   </div>
                 </div>
               </div>
@@ -611,6 +630,10 @@ function CompactHeroSurface({ content }) {
 }
 
 function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
+  const pricingMode = content.pricingSection.mode || 'plans';
+  const pricingCards = pricingMode === 'access' ? (content.pricingSection.cards || []) : content.plans;
+  const pricingTabLabel = content.pricingSection.tabLabel || 'Plans';
+
   return (
     <section id="workspace" className="px-4 py-10 sm:px-6 xl:hidden">
       <div className="mx-auto max-w-6xl">
@@ -636,7 +659,7 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
             <TabsList className="grid h-auto w-full grid-cols-2 rounded-[1.25rem] bg-muted/70 p-1.5 sm:grid-cols-4">
               <TabsTrigger value="care" className="rounded-[0.95rem] px-2 py-2.5 text-xs font-semibold sm:text-sm">Care</TabsTrigger>
               <TabsTrigger value="access" className="rounded-[0.95rem] px-2 py-2.5 text-xs font-semibold sm:text-sm">Access</TabsTrigger>
-              <TabsTrigger value="plans" className="rounded-[0.95rem] px-2 py-2.5 text-xs font-semibold sm:text-sm">Plans</TabsTrigger>
+              <TabsTrigger value="plans" className="rounded-[0.95rem] px-2 py-2.5 text-xs font-semibold sm:text-sm">{pricingTabLabel}</TabsTrigger>
               <TabsTrigger value="trust" className="rounded-[0.95rem] px-2 py-2.5 text-xs font-semibold sm:text-sm">Trust</TabsTrigger>
             </TabsList>
 
@@ -761,12 +784,12 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
             <TabsContent value="plans" className="mt-5">
               <div className="grid gap-4 lg:grid-cols-[1.08fr_0.92fr]">
                 <WorkspacePanel
-                  eyebrow="Plans"
-                  title="Pricing in a denser mobile format"
-                  description="Plans stay dense and readable without forcing horizontal swipes on phone or tablet."
+                  eyebrow={pricingMode === 'access' ? 'Access and payment' : 'Plans'}
+                  title={pricingMode === 'access' ? 'Understand the commercial flow at a glance' : 'Pricing in a denser mobile format'}
+                  description={pricingMode === 'access' ? content.pricingSection.subtitle : 'Plans stay dense and readable without forcing horizontal swipes on phone or tablet.'}
                 >
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {content.plans.map((plan) => {
+                    {pricingCards.map((plan) => {
                       const styles = toneStyles(plan.tone);
 
                       return (
@@ -774,12 +797,16 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">{plan.eyebrow}</div>
-                              <div className="mt-2 flex items-end gap-1.5">
-                                <div className="text-3xl leading-none text-foreground">{plan.title}</div>
-                                <div className="pb-1 text-xs text-muted-foreground">{plan.period}</div>
-                              </div>
+                              {pricingMode === 'access' ? (
+                                <div className="mt-2 text-xl leading-tight text-foreground">{plan.title}</div>
+                              ) : (
+                                <div className="mt-2 flex items-end gap-1.5">
+                                  <div className="text-3xl leading-none text-foreground">{plan.title}</div>
+                                  <div className="pb-1 text-xs text-muted-foreground">{plan.period}</div>
+                                </div>
+                              )}
                             </div>
-                            {plan.featured ? (
+                            {pricingMode !== 'access' && plan.featured ? (
                               <div className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em]', styles.badge)}>
                                 Popular
                               </div>
@@ -794,7 +821,13 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
                               </div>
                             ))}
                           </div>
-                          <Link href={plan.ctaHref} className={cn('mt-4 inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-semibold transition-colors', plan.featured ? styles.button : 'border border-border bg-background text-foreground hover:bg-accent')}>
+                          <Link
+                            href={plan.ctaHref}
+                            className={cn(
+                              'mt-4 inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-semibold transition-colors',
+                              pricingMode === 'access' || plan.featured ? styles.button : 'border border-border bg-background text-foreground hover:bg-accent'
+                            )}
+                          >
                             {plan.ctaLabel}
                           </Link>
                         </div>
@@ -804,11 +837,34 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
                 </WorkspacePanel>
 
                 <WorkspacePanel
-                  eyebrow="Commercial note"
-                  title="Keep the pricing story readable"
-                  description={content.pricingSection.note}
+                  eyebrow={pricingMode === 'access' ? 'Commercial clarity' : 'Commercial note'}
+                  title={pricingMode === 'access' ? content.pricingSection.sideTitle : 'Keep the pricing story readable'}
+                  description={pricingMode === 'access' ? content.pricingSection.sideDescription : content.pricingSection.note}
                 >
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                  {pricingMode === 'access' ? (
+                    <>
+                      <div className="grid gap-3">
+                        {(content.pricingSection.sideNotes || []).map((note, index) => {
+                          const styles = toneStyles(index === 1 ? 'blue' : index === 2 ? 'violet' : content.hero.visualTone);
+
+                          return (
+                            <div key={note} className="rounded-[1.25rem] border border-border bg-background/92 p-4 shadow-sm">
+                              <div className="flex items-start gap-3">
+                                <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', styles.panel)}>
+                                  <span className={cn('text-sm font-bold', styles.icon)}>{index + 1}</span>
+                                </div>
+                                <div className="text-sm leading-6 text-foreground/90">{note}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-4 rounded-[1.2rem] border border-border bg-muted/55 px-4 py-3 text-sm leading-6 text-muted-foreground">
+                        {content.pricingSection.note}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
                     {content.stats.slice(0, 2).map((stat) => {
                       const Icon = stat.icon;
                       const styles = toneStyles(content.hero.visualTone);
@@ -827,7 +883,8 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
                         </div>
                       );
                     })}
-                  </div>
+                    </div>
+                  )}
                 </WorkspacePanel>
               </div>
             </TabsContent>
@@ -909,6 +966,8 @@ function HomeQuickDock({ activeSection, onSelect }) {
 export default function MarketHomepage({ market = 'US' }) {
   const content = MARKET_HOME_DATA[market] || MARKET_HOME_DATA.US;
   const isNigeriaExperience = content.code === 'NG';
+  const pricingMode = content.pricingSection.mode || 'plans';
+  const pricingCards = pricingMode === 'access' ? (content.pricingSection.cards || []) : content.plans;
   const primaryTone = toneStyles(content.hero.visualTone);
   const hasAlternateMarket = Boolean(content.otherMarket?.href && content.otherMarket?.label);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -1309,7 +1368,17 @@ export default function MarketHomepage({ market = 'US' }) {
               </div>
             </div>
 
-            {!isNigeriaExperience ? (
+            {isNigeriaExperience ? (
+              <div className="mt-12 hidden xl:block">
+                <div className="mb-5 max-w-2xl">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted-foreground">Care journey</div>
+                  <div className="mt-2 text-2xl leading-tight text-foreground">
+                    See the consultation, prescription, and pharmacy story before you ever open a portal.
+                  </div>
+                </div>
+                <NigeriaStoryCards />
+              </div>
+            ) : (
               <div className="mt-12 hidden gap-4 sm:grid-cols-2 xl:grid xl:grid-cols-4">
               {content.stats.map((stat) => {
                 const Icon = stat.icon;
@@ -1328,7 +1397,7 @@ export default function MarketHomepage({ market = 'US' }) {
                 );
               })}
               </div>
-            ) : null}
+            )}
           </div>
         </section>
 
@@ -1437,7 +1506,7 @@ export default function MarketHomepage({ market = 'US' }) {
           <div className="mx-auto max-w-7xl space-y-12">
             <SectionHeading title={content.pricingSection.title} subtitle={content.pricingSection.subtitle} />
             <div className="grid gap-6 lg:grid-cols-3">
-              {content.plans.map((plan) => {
+              {pricingCards.map((plan) => {
                 const styles = toneStyles(plan.tone);
 
                 return (
@@ -1445,19 +1514,25 @@ export default function MarketHomepage({ market = 'US' }) {
                     key={`${plan.eyebrow}-${plan.title}`}
                     className={cn(
                       'relative flex h-full flex-col rounded-[2rem] border p-6 shadow-sm backdrop-blur-xl transition-transform hover:-translate-y-1 dark:bg-slate-950/75',
-                      plan.featured ? cn('bg-white/96 dark:border-white/10', styles.panel, styles.shadow) : 'border-white/70 bg-white/88 dark:border-white/10'
+                      pricingMode !== 'access' && plan.featured
+                        ? cn('bg-white/96 dark:border-white/10', styles.panel, styles.shadow)
+                        : 'border-white/70 bg-white/88 dark:border-white/10'
                     )}
                   >
-                    {plan.featured ? (
+                    {pricingMode !== 'access' && plan.featured ? (
                       <div className={cn('absolute right-5 top-5 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.24em]', styles.badge)}>
                         Most used
                       </div>
                     ) : null}
                     <div className="text-sm font-semibold uppercase tracking-[0.22em] text-muted-foreground">{plan.eyebrow}</div>
-                    <div className="mt-4 flex items-end gap-2">
-                      <div className="text-5xl leading-none text-foreground">{plan.title}</div>
-                      <div className="pb-1 text-sm text-muted-foreground">{plan.period}</div>
-                    </div>
+                    {pricingMode === 'access' ? (
+                      <div className="mt-4 text-3xl leading-tight text-foreground">{plan.title}</div>
+                    ) : (
+                      <div className="mt-4 flex items-end gap-2">
+                        <div className="text-5xl leading-none text-foreground">{plan.title}</div>
+                        <div className="pb-1 text-sm text-muted-foreground">{plan.period}</div>
+                      </div>
+                    )}
                     <p className="mt-4 text-sm leading-7 text-muted-foreground">{plan.description}</p>
                     <div className="mt-6 space-y-3">
                       {plan.features.map((feature) => (
@@ -1468,7 +1543,13 @@ export default function MarketHomepage({ market = 'US' }) {
                       ))}
                     </div>
                     <div className="mt-auto pt-6">
-                      <Link href={plan.ctaHref} className={cn('inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-semibold transition-colors', plan.featured ? styles.button : 'border border-border bg-background/80 text-foreground hover:bg-accent')}>
+                      <Link
+                        href={plan.ctaHref}
+                        className={cn(
+                          'inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-semibold transition-colors',
+                          pricingMode === 'access' || plan.featured ? styles.button : 'border border-border bg-background/80 text-foreground hover:bg-accent'
+                        )}
+                      >
                         {plan.ctaLabel}
                       </Link>
                     </div>
@@ -1492,16 +1573,32 @@ export default function MarketHomepage({ market = 'US' }) {
                   <h2 className="max-w-3xl text-3xl leading-tight text-white md:text-4xl">{content.securitySection.title}</h2>
                   <p className="max-w-2xl text-base leading-7 text-slate-300 md:text-lg">{content.securitySection.description}</p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {content.securitySection.bullets.map((bullet) => (
-                    <div key={bullet} className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] px-4 py-4 text-sm leading-6 text-slate-200 backdrop-blur-xl">
-                      <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
-                        <Activity className="h-4.5 w-4.5 text-emerald-300" />
-                      </div>
-                      {bullet}
+                {isNigeriaExperience ? (
+                  <div className="grid gap-4">
+                    <NigeriaSupportSpotlight />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {content.securitySection.bullets.map((bullet) => (
+                        <div key={bullet} className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] px-4 py-4 text-sm leading-6 text-slate-200 backdrop-blur-xl">
+                          <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
+                            <Activity className="h-4.5 w-4.5 text-emerald-300" />
+                          </div>
+                          {bullet}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {content.securitySection.bullets.map((bullet) => (
+                      <div key={bullet} className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] px-4 py-4 text-sm leading-6 text-slate-200 backdrop-blur-xl">
+                        <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
+                          <Activity className="h-4.5 w-4.5 text-emerald-300" />
+                        </div>
+                        {bullet}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

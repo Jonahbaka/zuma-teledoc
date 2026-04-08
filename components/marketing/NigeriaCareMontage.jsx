@@ -5,6 +5,10 @@ const CARD_COPY = {
     eyebrow: 'Online consultation',
     title: 'Speak with a doctor who understands the local care flow',
   },
+  prescription: {
+    eyebrow: 'Digital prescription',
+    title: 'Keep medication review, pricing, and pharmacy confirmation visible on your phone',
+  },
   family: {
     eyebrow: 'Patient journey',
     title: 'Move from prescription upload to medicine access without losing context',
@@ -82,6 +86,42 @@ function FamilyScene() {
   );
 }
 
+function PrescriptionScene() {
+  return (
+    <svg viewBox="0 0 340 230" className="h-full w-full" aria-hidden="true">
+      <defs>
+        <linearGradient id="ng-prescription-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#115e59" />
+          <stop offset="55%" stopColor="#164e63" />
+          <stop offset="100%" stopColor="#0f172a" />
+        </linearGradient>
+      </defs>
+      <rect width="340" height="230" rx="32" fill="url(#ng-prescription-bg)" />
+      <circle cx="62" cy="46" r="28" fill="#fbbf24" opacity="0.16" />
+      <circle cx="292" cy="180" r="44" fill="#34d399" opacity="0.12" />
+      <rect x="72" y="30" width="116" height="172" rx="28" fill="#020617" opacity="0.28" />
+      <rect x="82" y="40" width="96" height="152" rx="24" fill="#f8fafc" />
+      <rect x="112" y="52" width="36" height="6" rx="3" fill="#cbd5e1" />
+      <rect x="96" y="68" width="68" height="30" rx="14" fill="#ecfeff" />
+      <circle cx="114" cy="83" r="10" fill="#8d5a3b" />
+      <path d="M106 80c2-8 9-13 18-13 6 0 12 3 15 9-9 0-16 3-24 8-5 3-10 1-9-4Z" fill="#111827" />
+      <path d="M98 102c4-11 10-16 17-16 8 0 14 5 19 16l-6 12h-25Z" fill="#0f766e" />
+      <rect x="98" y="122" width="64" height="12" rx="6" fill="#0f766e" opacity="0.16" />
+      <rect x="98" y="141" width="46" height="8" rx="4" fill="#14b8a6" />
+      <rect x="98" y="155" width="53" height="8" rx="4" fill="#cbd5e1" />
+      <rect x="152" y="141" width="10" height="8" rx="4" fill="#f59e0b" />
+      <rect x="205" y="58" width="90" height="118" rx="24" fill="#f8fafc" opacity="0.12" />
+      <rect x="222" y="77" width="58" height="18" rx="9" fill="#f8fafc" opacity="0.88" />
+      <rect x="222" y="104" width="44" height="10" rx="5" fill="#14b8a6" />
+      <rect x="222" y="123" width="62" height="10" rx="5" fill="#cbd5e1" />
+      <rect x="222" y="142" width="36" height="10" rx="5" fill="#f59e0b" />
+      <path d="M265 155l12 12 24-28" stroke="#34d399" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="202" y="184" width="96" height="14" rx="7" fill="#020617" opacity="0.28" />
+      <rect x="40" y="182" width="112" height="14" rx="7" fill="#020617" opacity="0.22" />
+    </svg>
+  );
+}
+
 function PharmacyScene() {
   return (
     <svg viewBox="0 0 340 230" className="h-full w-full" aria-hidden="true">
@@ -115,6 +155,10 @@ function PharmacyScene() {
 }
 
 function SceneArtwork({ variant }) {
+  if (variant === 'prescription') {
+    return <PrescriptionScene />;
+  }
+
   if (variant === 'family') {
     return <FamilyScene />;
   }
@@ -163,9 +207,38 @@ export default function NigeriaCareMontage({ compact = false }) {
         className={cn(compact ? 'sm:col-span-2 min-h-[17.5rem]' : 'min-h-[20rem] md:min-h-[27rem]')}
       />
       <div className="grid gap-4">
-        <SceneCard variant="family" className="min-h-[15rem]" />
+        <SceneCard variant="prescription" className="min-h-[15rem]" />
         <SceneCard variant="pharmacy" className="min-h-[15rem]" />
       </div>
     </div>
+  );
+}
+
+export function NigeriaStoryCards({ compact = false }) {
+  const cards = ['consultation', 'prescription', 'pharmacy'];
+
+  return (
+    <div className={cn('grid gap-4', compact ? 'grid-cols-1' : 'md:grid-cols-3')}>
+      {cards.map((variant, index) => (
+        <SceneCard
+          key={variant}
+          variant={variant}
+          className={cn(
+            'min-h-[18rem] border-white/12 bg-[linear-gradient(160deg,rgba(3,36,28,0.98),rgba(15,23,42,0.96))]',
+            !compact && index === 1 && 'md:-translate-y-2',
+            !compact && index === 2 && 'md:translate-y-2'
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
+export function NigeriaSupportSpotlight() {
+  return (
+    <SceneCard
+      variant="family"
+      className="min-h-[22rem] border-white/12 bg-[linear-gradient(160deg,rgba(6,78,59,0.98),rgba(15,23,42,0.96))]"
+    />
   );
 }
