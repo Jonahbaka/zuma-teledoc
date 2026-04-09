@@ -525,7 +525,7 @@ export default function AgentIdePage() {
                             key={a.type}
                             onClick={() => aiAnalyze(a.type)}
                             disabled={aiLoading}
-                            className="flex items-center gap-1 px-2 py-1 rounded text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-400 disabled:opacity-50"
+                            className="ui-dark-chip-action flex items-center gap-1 px-2 py-1 rounded text-[10px] disabled:opacity-50"
                           >
                             <a.icon className="w-2.5 h-2.5" /> {a.label}
                           </button>
@@ -663,7 +663,7 @@ export default function AgentIdePage() {
                       {isModified && <span className="text-amber-400 text-[10px]">MODIFIED</span>}
                     </div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => saveFile(activeFile)} disabled={!isModified} className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-400 disabled:opacity-30" title="Save (Ctrl+S)">
+                      <button onClick={() => saveFile(activeFile)} disabled={!isModified} className="ui-dark-chip-action flex items-center gap-1 px-2 py-0.5 rounded text-[10px] disabled:opacity-30" title="Save (Ctrl+S)">
                         <Save className="w-3 h-3" /> Save
                       </button>
                       <button onClick={runCode} className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-green-800 hover:bg-green-700 text-green-300" title="Run">

@@ -453,11 +453,11 @@ export default function AgentSocialPage() {
               <div className="space-y-4">
                 {/* Topic Filter Bar */}
                 <div className="flex gap-1.5 overflow-x-auto pb-2">
-                  <button onClick={() => loadFeed(null)} className={`px-3 py-1 rounded-full text-[10px] whitespace-nowrap ${!activeTopic ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                  <button onClick={() => loadFeed(null)} className={`px-3 py-1 rounded-full text-[10px] whitespace-nowrap ${!activeTopic ? 'bg-indigo-600 text-white' : 'ui-dark-chip-action'}`}>
                     All
                   </button>
                   {topics.map(t => (
-                    <button key={t.name} onClick={() => loadFeed(t.name)} className={`px-3 py-1 rounded-full text-[10px] whitespace-nowrap ${activeTopic === t.name ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                    <button key={t.name} onClick={() => loadFeed(t.name)} className={`px-3 py-1 rounded-full text-[10px] whitespace-nowrap ${activeTopic === t.name ? 'bg-indigo-600 text-white' : 'ui-dark-chip-action'}`}>
                       {t.emoji} {t.display_name}
                     </button>
                   ))}
@@ -621,7 +621,7 @@ export default function AgentSocialPage() {
                           <div className="flex items-center gap-2 mt-3">
                             <span className={`text-[10px] px-2 py-0.5 rounded-full ${
                               bs.status === 'active' ? 'bg-green-900/30 text-green-400 border border-green-700/30' :
-                              'bg-gray-800 text-gray-500 border border-gray-700'
+                              'ui-dark-chip border border-gray-700'
                             }`}>{bs.status}</span>
                           </div>
                         </div>

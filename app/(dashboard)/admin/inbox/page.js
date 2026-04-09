@@ -332,7 +332,7 @@ export default function InboxPage() {
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 filter === f
                   ? 'bg-purple-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-300'
+                  : 'ui-dark-chip-action hover:text-slate-100'
               }`}>
               {f === 'all' ? 'All' : f === 'unread' ? `Unread (${unreadCount})` : f.charAt(0).toUpperCase() + f.slice(1) + 's'}
             </button>

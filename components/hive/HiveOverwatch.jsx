@@ -102,7 +102,7 @@ export default function HiveOverwatch() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchData} className="p-2 rounded-lg bg-gray-800 text-gray-400 hover:text-white transition-colors" title="Refresh">
+          <button onClick={fetchData} className="ui-dark-chip-action p-2 rounded-lg" title="Refresh">
             <RefreshCw className="w-4 h-4" />
           </button>
           <button
@@ -125,7 +125,7 @@ export default function HiveOverwatch() {
               <button onClick={killAll} className="px-3 py-2 rounded-lg text-sm font-bold bg-red-600 text-white hover:bg-red-500 transition-colors">
                 CONFIRM KILL ALL
               </button>
-              <button onClick={() => setKillConfirm(false)} className="px-2 py-2 rounded-lg text-sm bg-gray-800 text-gray-400 hover:text-white">
+              <button onClick={() => setKillConfirm(false)} className="ui-dark-chip-action px-2 py-2 rounded-lg text-sm">
                 Cancel
               </button>
             </div>
@@ -225,7 +225,7 @@ export default function HiveOverwatch() {
                 </div>
                 <button
                   onClick={() => killSession(s.id)}
-                  className="px-2 py-1 rounded bg-gray-800 text-gray-400 text-xs hover:bg-red-800/50 hover:text-red-300 transition-colors"
+                  className="ui-dark-chip-action px-2 py-1 rounded text-xs hover:bg-red-800/50 hover:text-red-300"
                 >
                   Kill
                 </button>

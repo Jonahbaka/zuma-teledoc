@@ -249,7 +249,7 @@ export default function PredictiveEnginePage() {
                         <span className={`px-2 py-0.5 rounded text-xs ${
                           model.status === 'production' ? 'bg-green-900/50 text-green-300' :
                           model.status === 'staging' ? 'bg-yellow-900/50 text-yellow-300' :
-                          'bg-gray-800 text-gray-400'}`}>{model.status}</span>
+                          'ui-dark-chip'}`}>{model.status}</span>
                         {expandedModel === model.id ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
                       </div>
                     </div>

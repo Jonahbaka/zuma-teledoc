@@ -113,7 +113,7 @@ export default function ClinicalCoPilot({ appointmentId, patientId, patientName,
         <div className="flex items-center gap-2">
           <button
             onClick={() => setListening(!listening)}
-            className={cn('p-1.5 rounded-lg transition-colors', listening ? 'bg-red-500/20 text-red-400' : 'bg-gray-800 text-gray-400 hover:text-white')}
+            className={cn('p-1.5 rounded-lg transition-colors', listening ? 'bg-red-500/20 text-red-400' : 'ui-dark-chip-action')}
             title={listening ? 'Stop listening' : 'Start live scribing'}
           >
             {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
@@ -198,7 +198,7 @@ export default function ClinicalCoPilot({ appointmentId, patientId, patientName,
               >
                 Copy
               </button>
-              <button onClick={() => setSoapDraft(null)} className="text-[10px] px-2 py-1 rounded bg-gray-800 text-gray-400 hover:bg-gray-700">
+              <button onClick={() => setSoapDraft(null)} className="ui-dark-chip-action text-[10px] px-2 py-1 rounded">
                 Dismiss
               </button>
             </div>

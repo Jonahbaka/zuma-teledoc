@@ -170,6 +170,149 @@ function TonePill({ tone, icon: Icon, children }) {
   );
 }
 
+function getNigeriaSpotlightFeatures(content) {
+  return [content.features[0], content.features[1], content.features[3]].filter(Boolean);
+}
+
+function NigeriaHeroJourney({ content }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {content.workflowSteps.slice(0, 3).map((step, index) => {
+        const Icon = step.icon;
+        const styles = toneStyles(index === 1 ? 'blue' : index === 2 ? 'amber' : 'emerald');
+
+        return (
+          <div
+            key={step.title}
+            className="rounded-[1.45rem] border border-white/70 bg-white/88 p-4 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl border', styles.panel)}>
+                <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+              </div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">0{index + 1}</div>
+            </div>
+            <div className="mt-3 text-base font-semibold text-foreground">{step.title}</div>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{step.description}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function NigeriaHeroVisual({ content, compact = false }) {
+  return (
+    <div className={cn('relative', !compact && 'pb-12')}>
+      <NigeriaCareMontage compact={compact} />
+      {!compact ? (
+        <div className="absolute -bottom-1 left-6 right-6 md:right-auto md:max-w-sm">
+          <div className="rounded-[1.55rem] border border-white/10 bg-slate-950/88 p-4 shadow-[0_28px_80px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
+                <Activity className="h-4.5 w-4.5 text-emerald-300" />
+              </div>
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Connected care journey</div>
+                <div className="mt-1 text-sm font-semibold leading-6 text-white">
+                  Consult, confirm the prescription, and keep pharmacy support visible without leaving the same patient flow.
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {content.hero.trustItems.slice(0, 3).map((item) => (
+                <span
+                  key={item.text}
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-slate-200"
+                >
+                  {item.text}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function NigeriaDesktopCareSection() {
+  return (
+    <section id="features" className="hidden px-4 py-16 sm:px-6 md:py-20 xl:block">
+      <div className="mx-auto max-w-7xl space-y-12">
+        <SectionHeading
+          badge="Care journey"
+          title="Complete care, from consultation to pharmacy support."
+          subtitle="The Nigeria homepage now shows consultations, prescription review, and pharmacy handoff as one connected story instead of disconnected promo tiles."
+        />
+        <NigeriaStoryCards />
+      </div>
+    </section>
+  );
+}
+
+function NigeriaDesktopWorkflowSection({ content }) {
+  const spotlightFeatures = getNigeriaSpotlightFeatures(content);
+  const primaryTone = toneStyles(content.hero.visualTone);
+
+  return (
+    <section id="workflow" className="hidden border-y border-border/60 bg-card/40 px-4 py-16 sm:px-6 md:py-20 xl:block">
+      <div className="mx-auto max-w-7xl">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:items-center">
+          <NigeriaSupportSpotlight />
+
+          <div className="space-y-6">
+            <SectionHeading
+              align="left"
+              badge={content.featureSection.badge}
+              title="Healthcare built for real Nigeria care access."
+              subtitle={content.featureSection.subtitle}
+            />
+
+            <div className="space-y-4">
+              {spotlightFeatures.map((feature) => {
+                const Icon = feature.icon;
+                const styles = toneStyles(feature.tone);
+
+                return (
+                  <div
+                    key={feature.title}
+                    className="rounded-[1.6rem] border border-white/70 bg-white/88 p-5 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className={cn('flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[1rem] border', styles.panel)}>
+                        <Icon className={cn('h-5 w-5', styles.icon)} />
+                      </div>
+                      <div>
+                        <div className="text-xl leading-tight text-foreground">{feature.title}</div>
+                        <p className="mt-2 text-sm leading-7 text-muted-foreground">{feature.description}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {content.securitySection.bullets.map((bullet) => (
+                <TonePill key={bullet} tone="emerald" icon={ShieldCheck}>{bullet}</TonePill>
+              ))}
+            </div>
+
+            <Link
+              href={content.hero.primaryCta.href}
+              className={cn('inline-flex items-center rounded-full px-6 py-3.5 text-sm font-semibold transition-colors', primaryTone.button)}
+            >
+              {content.hero.primaryCta.label}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function MiniPreview({ variant, tone, labels }) {
   const styles = toneStyles(tone);
 
@@ -482,15 +625,15 @@ function HeroPreview({ content }) {
   );
 }
 
-function WorkspacePanel({ eyebrow, title, description, className, children }) {
+function WorkspacePanel({ eyebrow, title, description, className, children, dark = false }) {
   return (
     <div className={cn('rounded-[1.7rem] border border-white/70 bg-white/90 p-4 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72 sm:p-5', className)}>
       <div className="space-y-2">
         {eyebrow ? (
-          <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted-foreground">{eyebrow}</div>
+          <div className={cn('text-[11px] font-bold uppercase tracking-[0.24em]', dark ? 'text-slate-300' : 'text-muted-foreground')}>{eyebrow}</div>
         ) : null}
-        <div className="text-xl leading-tight text-foreground sm:text-2xl">{title}</div>
-        {description ? <p className="text-sm leading-6 text-muted-foreground">{description}</p> : null}
+        <div className={cn('text-xl leading-tight sm:text-2xl', dark ? 'text-white' : 'text-foreground')}>{title}</div>
+        {description ? <p className={cn('text-sm leading-6', dark ? 'text-slate-300' : 'text-muted-foreground')}>{description}</p> : null}
       </div>
       <div className="mt-4">{children}</div>
     </div>
@@ -626,6 +769,129 @@ function CompactHeroSurface({ content }) {
   );
 }
 
+function NigeriaCompactCareTab({ content }) {
+  const spotlightFeatures = getNigeriaSpotlightFeatures(content);
+
+  return (
+    <div className="grid gap-4">
+      <WorkspacePanel
+        eyebrow="Care journey"
+        title="See the Nigeria care story before you enter a portal."
+        description="The compact layout keeps the same local-image consultation, prescription, and pharmacy story visible on smaller screens."
+      >
+        <NigeriaStoryCards compact />
+      </WorkspacePanel>
+
+      <div className="grid gap-4 lg:grid-cols-[1.03fr_0.97fr]">
+        <WorkspacePanel
+          eyebrow="Workflow"
+          title="Clear four-step journey"
+          description={content.workflowSection.subtitle}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            {content.workflowSteps.map((step, index) => {
+              const Icon = step.icon;
+              const tone = toneStyles(index === 1 ? 'emerald' : index === 2 ? 'violet' : index === 3 ? 'amber' : content.hero.visualTone);
+
+              return (
+                <div key={step.title} className="rounded-[1.3rem] border border-border bg-background/92 p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', tone.panel)}>
+                      <Icon className={cn('h-4.5 w-4.5', tone.icon)} />
+                    </div>
+                    <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">0{index + 1}</div>
+                  </div>
+                  <div className="mt-3 text-base font-semibold text-foreground">{step.title}</div>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{step.description}</p>
+                </div>
+              );
+            })}
+          </div>
+        </WorkspacePanel>
+
+        <WorkspacePanel
+          eyebrow={content.featureSection.badge}
+          title="Built for real Nigeria access"
+          description={content.featureSection.subtitle}
+        >
+          <div className="space-y-3">
+            {spotlightFeatures.map((feature) => {
+              const Icon = feature.icon;
+              const styles = toneStyles(feature.tone);
+
+              return (
+                <div key={feature.title} className="rounded-[1.25rem] border border-border bg-background/92 p-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className={cn('flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border', styles.panel)}>
+                      <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">{feature.title}</div>
+                      <p className="mt-1 text-sm leading-6 text-muted-foreground">{feature.description}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </WorkspacePanel>
+      </div>
+    </div>
+  );
+}
+
+function NigeriaCompactTrustTab({ content }) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1.02fr_0.98fr]">
+      <WorkspacePanel
+        eyebrow={content.securitySection.badge}
+        title={content.securitySection.title}
+        description={content.securitySection.description}
+        className="bg-[linear-gradient(145deg,rgba(2,6,23,0.98),rgba(15,23,42,0.95))] dark:border-white/10"
+        dark
+      >
+        <div className="grid gap-4">
+          <NigeriaSupportSpotlight />
+          <div className="grid gap-3 sm:grid-cols-2">
+            {content.securitySection.bullets.map((bullet) => (
+              <div key={bullet} className="rounded-[1.25rem] border border-white/10 bg-white/[0.06] p-4 text-sm leading-6 text-slate-200">
+                {bullet}
+              </div>
+            ))}
+          </div>
+        </div>
+      </WorkspacePanel>
+
+      <WorkspacePanel
+        eyebrow="Trust layer"
+        title="Compliance, contact, and product reassurance"
+        description="Keep the premium healthcare tone while making the trust story readable on smaller screens."
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          {content.footer.badges.map((badge) => {
+            const Icon = badge.icon;
+            const styles = toneStyles(content.hero.visualTone);
+
+            return (
+              <div key={badge.label} className="rounded-[1.2rem] border border-border bg-background/92 p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', styles.panel)}>
+                    <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+                  </div>
+                  <div className="text-sm font-semibold text-foreground">{badge.label}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-4 rounded-[1.2rem] border border-border bg-muted/55 px-4 py-3 text-sm text-muted-foreground">
+          Contact: <a href={`mailto:${content.footer.email}`} className="font-semibold text-foreground underline-offset-4 hover:underline">{content.footer.email}</a>
+        </div>
+      </WorkspacePanel>
+    </div>
+  );
+}
+
 function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
   const pricingMode = content.pricingSection.mode || 'plans';
   const pricingCards = pricingMode === 'access' ? (content.pricingSection.cards || []) : content.plans;
@@ -661,69 +927,69 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
             </TabsList>
 
             <TabsContent value="care" className="mt-5">
-              <div className="grid gap-4 lg:grid-cols-[1.03fr_0.97fr]">
-                <WorkspacePanel
-                  eyebrow="Core capabilities"
-                  title={content.code === 'NG' ? 'Core Nigeria services' : 'Swipe through the care surfaces'}
-                  description={content.code === 'NG'
-                    ? 'Read the essentials in cards, not paragraphs.'
-                    : 'The product pillars stay readable as compact cards instead of becoming a tall brochure section.'}
-                >
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {content.features.map((feature) => {
-                      const Icon = feature.icon;
-                      const styles = toneStyles(feature.tone);
+              {content.code === 'NG' ? (
+                <NigeriaCompactCareTab content={content} />
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-[1.03fr_0.97fr]">
+                  <WorkspacePanel
+                    eyebrow="Core capabilities"
+                    title="Swipe through the care surfaces"
+                    description="The product pillars stay readable as compact cards instead of becoming a tall brochure section."
+                  >
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {content.features.map((feature) => {
+                        const Icon = feature.icon;
+                        const styles = toneStyles(feature.tone);
 
-                      return (
-                        <div key={feature.title} className="rounded-[1.35rem] border border-border bg-background/92 p-4 shadow-sm">
-                          <div className="flex items-center gap-3">
-                            <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl border', styles.panel)}>
-                              <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+                        return (
+                          <div key={feature.title} className="rounded-[1.35rem] border border-border bg-background/92 p-4 shadow-sm">
+                            <div className="flex items-center gap-3">
+                              <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl border', styles.panel)}>
+                                <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+                              </div>
+                              <div className="text-base font-semibold text-foreground">{feature.title}</div>
                             </div>
-                            <div className="text-base font-semibold text-foreground">{feature.title}</div>
-                          </div>
-                          <p className="mt-3 text-sm leading-6 text-muted-foreground">{feature.description}</p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {feature.points.map((point) => (
-                              <span key={point} className="rounded-full border border-border bg-muted/55 px-2.5 py-1 text-[11px] font-medium text-foreground/80">
-                                {point}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </WorkspacePanel>
-
-                <WorkspacePanel
-                  eyebrow="Workflow"
-                  title={content.code === 'NG' ? 'Clear four-step journey' : 'Tablet-friendly step map'}
-                  description={content.code === 'NG'
-                    ? 'Consult, confirm, pay, and keep fulfillment visible without losing the care context.'
-                    : 'On smaller devices, the workflow becomes a compact split pane instead of four separate page-height blocks.'}
-                >
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {content.workflowSteps.map((step, index) => {
-                      const Icon = step.icon;
-                      const tone = toneStyles(index === 1 ? 'emerald' : index === 2 ? 'violet' : index === 3 ? 'amber' : content.hero.visualTone);
-
-                      return (
-                        <div key={step.title} className="rounded-[1.3rem] border border-border bg-background/92 p-4 shadow-sm">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', tone.panel)}>
-                              <Icon className={cn('h-4.5 w-4.5', tone.icon)} />
+                            <p className="mt-3 text-sm leading-6 text-muted-foreground">{feature.description}</p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {feature.points.map((point) => (
+                                <span key={point} className="rounded-full border border-border bg-muted/55 px-2.5 py-1 text-[11px] font-medium text-foreground/80">
+                                  {point}
+                                </span>
+                              ))}
                             </div>
-                            <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">0{index + 1}</div>
                           </div>
-                          <div className="mt-3 text-base font-semibold text-foreground">{step.title}</div>
-                          <p className="mt-2 text-sm leading-6 text-muted-foreground">{step.description}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </WorkspacePanel>
-              </div>
+                        );
+                      })}
+                    </div>
+                  </WorkspacePanel>
+
+                  <WorkspacePanel
+                    eyebrow="Workflow"
+                    title="Tablet-friendly step map"
+                    description="On smaller devices, the workflow becomes a compact split pane instead of four separate page-height blocks."
+                  >
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {content.workflowSteps.map((step, index) => {
+                        const Icon = step.icon;
+                        const tone = toneStyles(index === 1 ? 'emerald' : index === 2 ? 'violet' : index === 3 ? 'amber' : content.hero.visualTone);
+
+                        return (
+                          <div key={step.title} className="rounded-[1.3rem] border border-border bg-background/92 p-4 shadow-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', tone.panel)}>
+                                <Icon className={cn('h-4.5 w-4.5', tone.icon)} />
+                              </div>
+                              <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">0{index + 1}</div>
+                            </div>
+                            <div className="mt-3 text-base font-semibold text-foreground">{step.title}</div>
+                            <p className="mt-2 text-sm leading-6 text-muted-foreground">{step.description}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </WorkspacePanel>
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="access" className="mt-5">
@@ -882,49 +1148,54 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
             </TabsContent>
 
             <TabsContent value="trust" className="mt-5">
-              <div className="grid gap-4 lg:grid-cols-[1.02fr_0.98fr]">
-                <WorkspacePanel
-                  eyebrow={content.securitySection.badge}
-                  title={content.securitySection.title}
-                  description={content.securitySection.description}
-                  className="bg-[linear-gradient(145deg,rgba(2,6,23,0.98),rgba(15,23,42,0.95))] text-white dark:border-white/10"
-                >
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {content.securitySection.bullets.map((bullet) => (
-                      <div key={bullet} className="rounded-[1.25rem] border border-white/10 bg-white/[0.06] p-4 text-sm leading-6 text-slate-200">
-                        {bullet}
-                      </div>
-                    ))}
-                  </div>
-                </WorkspacePanel>
-
-                <WorkspacePanel
-                  eyebrow="Trust layer"
-                  title="Compliance, contact, and product reassurance"
-                  description="Keep the premium healthcare tone while reducing the amount of footer-style scanning required on smaller screens."
-                >
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {content.footer.badges.map((badge) => {
-                      const Icon = badge.icon;
-                      const styles = toneStyles(content.hero.visualTone);
-
-                      return (
-                        <div key={badge.label} className="rounded-[1.2rem] border border-border bg-background/92 p-4 shadow-sm">
-                          <div className="flex items-center gap-3">
-                            <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', styles.panel)}>
-                              <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
-                            </div>
-                            <div className="text-sm font-semibold text-foreground">{badge.label}</div>
-                          </div>
+              {content.code === 'NG' ? (
+                <NigeriaCompactTrustTab content={content} />
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-[1.02fr_0.98fr]">
+                  <WorkspacePanel
+                    eyebrow={content.securitySection.badge}
+                    title={content.securitySection.title}
+                    description={content.securitySection.description}
+                    className="bg-[linear-gradient(145deg,rgba(2,6,23,0.98),rgba(15,23,42,0.95))] dark:border-white/10"
+                    dark
+                  >
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {content.securitySection.bullets.map((bullet) => (
+                        <div key={bullet} className="rounded-[1.25rem] border border-white/10 bg-white/[0.06] p-4 text-sm leading-6 text-slate-200">
+                          {bullet}
                         </div>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-4 rounded-[1.2rem] border border-border bg-muted/55 px-4 py-3 text-sm text-muted-foreground">
-                    Contact: <a href={`mailto:${content.footer.email}`} className="font-semibold text-foreground underline-offset-4 hover:underline">{content.footer.email}</a>
-                  </div>
-                </WorkspacePanel>
-              </div>
+                      ))}
+                    </div>
+                  </WorkspacePanel>
+
+                  <WorkspacePanel
+                    eyebrow="Trust layer"
+                    title="Compliance, contact, and product reassurance"
+                    description="Keep the premium healthcare tone while reducing the amount of footer-style scanning required on smaller screens."
+                  >
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {content.footer.badges.map((badge) => {
+                        const Icon = badge.icon;
+                        const styles = toneStyles(content.hero.visualTone);
+
+                        return (
+                          <div key={badge.label} className="rounded-[1.2rem] border border-border bg-background/92 p-4 shadow-sm">
+                            <div className="flex items-center gap-3">
+                              <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', styles.panel)}>
+                                <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+                              </div>
+                              <div className="text-sm font-semibold text-foreground">{badge.label}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-4 rounded-[1.2rem] border border-border bg-muted/55 px-4 py-3 text-sm text-muted-foreground">
+                      Contact: <a href={`mailto:${content.footer.email}`} className="font-semibold text-foreground underline-offset-4 hover:underline">{content.footer.email}</a>
+                    </div>
+                  </WorkspacePanel>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>
@@ -1342,9 +1613,12 @@ export default function MarketHomepage({ market = 'US' }) {
                   </a>
                 </div>
                 {isNigeriaExperience ? (
-                  <div className="xl:hidden">
-                    <NigeriaCareMontage compact />
-                  </div>
+                  <>
+                    <NigeriaHeroJourney content={content} />
+                    <div className="xl:hidden">
+                      <NigeriaHeroVisual content={content} compact />
+                    </div>
+                  </>
                 ) : (
                   <StoryArc content={content} />
                 )}
@@ -1356,7 +1630,7 @@ export default function MarketHomepage({ market = 'US' }) {
                 <CompactHeroSurface content={content} />
               </div>
               <div className="hidden xl:block">
-                {isNigeriaExperience ? <NigeriaCareMontage /> : <HeroPreview content={content} />}
+                {isNigeriaExperience ? <NigeriaHeroVisual content={content} /> : <HeroPreview content={content} />}
               </div>
             </div>
 
@@ -1395,66 +1669,74 @@ export default function MarketHomepage({ market = 'US' }) {
 
         <CompactMarketWorkspace content={content} activeTab={compactTab} onTabChange={handleCompactTabChange} />
 
-        <section id="features" className="hidden px-4 py-16 sm:px-6 md:py-20 xl:block">
-          <div className="mx-auto max-w-7xl space-y-12">
-            <SectionHeading badge={content.featureSection.badge} title={content.featureSection.title} subtitle={content.featureSection.subtitle} />
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-              {content.features.map((feature, index) => {
-                const styles = toneStyles(feature.tone);
-                const Icon = feature.icon;
-                const pointDot = feature.tone === 'emerald' ? 'bg-emerald-500' : feature.tone === 'violet' ? 'bg-violet-500' : feature.tone === 'amber' ? 'bg-amber-500' : 'bg-cyan-500';
+        {isNigeriaExperience ? (
+          <NigeriaDesktopCareSection />
+        ) : (
+          <section id="features" className="hidden px-4 py-16 sm:px-6 md:py-20 xl:block">
+            <div className="mx-auto max-w-7xl space-y-12">
+              <SectionHeading badge={content.featureSection.badge} title={content.featureSection.title} subtitle={content.featureSection.subtitle} />
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+                {content.features.map((feature, index) => {
+                  const styles = toneStyles(feature.tone);
+                  const Icon = feature.icon;
+                  const pointDot = feature.tone === 'emerald' ? 'bg-emerald-500' : feature.tone === 'violet' ? 'bg-violet-500' : feature.tone === 'amber' ? 'bg-amber-500' : 'bg-cyan-500';
 
-                return (
-                  <div
-                    key={feature.title}
-                    className="group rounded-[1.85rem] border border-white/70 bg-white/88 p-5 shadow-sm backdrop-blur-xl transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl dark:border-white/10 dark:bg-slate-950/72"
-                    style={{ transitionDelay: `${index * 40}ms` }}
-                  >
-                    <MiniPreview variant={feature.preview} tone={feature.tone} labels={feature.previewLabels} />
-                    <div className="mt-5 flex items-center gap-3">
-                      <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl border', styles.panel)}>
-                        <Icon className={cn('h-5 w-5', styles.icon)} />
-                      </div>
-                      <h3 className="text-xl leading-tight text-foreground">{feature.title}</h3>
-                    </div>
-                    <p className="mt-3 text-sm leading-7 text-muted-foreground">{feature.description}</p>
-                    <div className="mt-4 space-y-2">
-                      {feature.points.map((point) => (
-                        <div key={point} className="flex items-center gap-2 text-sm text-foreground/90">
-                          <span className={cn('h-2 w-2 rounded-full', pointDot)} />
-                          {point}
+                  return (
+                    <div
+                      key={feature.title}
+                      className="group rounded-[1.85rem] border border-white/70 bg-white/88 p-5 shadow-sm backdrop-blur-xl transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl dark:border-white/10 dark:bg-slate-950/72"
+                      style={{ transitionDelay: `${index * 40}ms` }}
+                    >
+                      <MiniPreview variant={feature.preview} tone={feature.tone} labels={feature.previewLabels} />
+                      <div className="mt-5 flex items-center gap-3">
+                        <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl border', styles.panel)}>
+                          <Icon className={cn('h-5 w-5', styles.icon)} />
                         </div>
-                      ))}
+                        <h3 className="text-xl leading-tight text-foreground">{feature.title}</h3>
+                      </div>
+                      <p className="mt-3 text-sm leading-7 text-muted-foreground">{feature.description}</p>
+                      <div className="mt-4 space-y-2">
+                        {feature.points.map((point) => (
+                          <div key={point} className="flex items-center gap-2 text-sm text-foreground/90">
+                            <span className={cn('h-2 w-2 rounded-full', pointDot)} />
+                            {point}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
-        <section id="workflow" className="hidden border-y border-border/60 bg-card/40 px-4 py-16 sm:px-6 md:py-20 xl:block">
-          <div className="mx-auto max-w-7xl space-y-12">
-            <SectionHeading title={content.workflowSection.title} subtitle={content.workflowSection.subtitle} />
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-              {content.workflowSteps.map((step, index) => {
-                const Icon = step.icon;
-                const tone = toneStyles(index === 1 ? 'emerald' : index === 2 ? 'violet' : index === 3 ? 'amber' : content.hero.visualTone);
+        {isNigeriaExperience ? (
+          <NigeriaDesktopWorkflowSection content={content} />
+        ) : (
+          <section id="workflow" className="hidden border-y border-border/60 bg-card/40 px-4 py-16 sm:px-6 md:py-20 xl:block">
+            <div className="mx-auto max-w-7xl space-y-12">
+              <SectionHeading title={content.workflowSection.title} subtitle={content.workflowSection.subtitle} />
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+                {content.workflowSteps.map((step, index) => {
+                  const Icon = step.icon;
+                  const tone = toneStyles(index === 1 ? 'emerald' : index === 2 ? 'violet' : index === 3 ? 'amber' : content.hero.visualTone);
 
-                return (
-                  <div key={step.title} className="relative rounded-[1.8rem] border border-white/70 bg-white/88 p-6 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72">
-                    <div className="absolute right-6 top-6 text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">0{index + 1}</div>
-                    <div className={cn('flex h-14 w-14 items-center justify-center rounded-[1.25rem] border', tone.panel)}>
-                      <Icon className={cn('h-6 w-6', tone.icon)} />
+                  return (
+                    <div key={step.title} className="relative rounded-[1.8rem] border border-white/70 bg-white/88 p-6 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72">
+                      <div className="absolute right-6 top-6 text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">0{index + 1}</div>
+                      <div className={cn('flex h-14 w-14 items-center justify-center rounded-[1.25rem] border', tone.panel)}>
+                        <Icon className={cn('h-6 w-6', tone.icon)} />
+                      </div>
+                      <h3 className="mt-5 text-2xl leading-tight text-foreground">{step.title}</h3>
+                      <p className="mt-3 text-sm leading-7 text-muted-foreground">{step.description}</p>
                     </div>
-                    <h3 className="mt-5 text-2xl leading-tight text-foreground">{step.title}</h3>
-                    <p className="mt-3 text-sm leading-7 text-muted-foreground">{step.description}</p>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         <section id={content.audienceSection.id} className="hidden px-4 py-16 sm:px-6 md:py-20 xl:block">
           <div className="mx-auto max-w-7xl space-y-12">

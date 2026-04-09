@@ -932,7 +932,7 @@ const EffectsPanel = ({ filterStyle, setFilterStyle, lightingBoost, setLightingB
             className={`px-3 py-2 text-xs rounded-lg border transition-all ${
               filterStyle === opt.id
                 ? 'border-blue-400 bg-blue-400/10 text-blue-300'
-                : 'border-gray-700 bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
+                : 'border-gray-700 ui-dark-chip-action'
             }`}>
             {opt.label}
           </button>
@@ -1131,7 +1131,7 @@ const SidebarTabBtn = ({ label, icon: Icon, active, onClick }) => (
 const TabPill = ({ label, active, onClick }) => (
   <button onClick={onClick}
     className={`px-2.5 py-1 text-[10px] font-medium rounded transition-colors ${
-      active ? 'bg-violet-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+      active ? 'bg-violet-500 text-white' : 'ui-dark-chip-action'
     }`}>{label}</button>
 );
 

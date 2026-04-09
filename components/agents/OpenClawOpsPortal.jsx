@@ -44,7 +44,7 @@ function statusPill(status) {
   if (s === 'running' || s === 'active') return 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300';
   if (s === 'halted' || s === 'warning') return 'bg-amber-500/10 border-amber-500/20 text-amber-300';
   if (s === 'failed' || s === 'error' || s === 'critical') return 'bg-rose-500/10 border-rose-500/20 text-rose-300';
-  return 'bg-white/5 border-white/10 text-slate-300';
+  return 'ui-dark-glass-chip';
 }
 
 function timeAgo(iso) {
@@ -520,7 +520,7 @@ export default function OpenClawOpsPortal() {
                   disabled={!voiceSupported}
                   className={classNames(
                     'px-3 py-2 rounded-lg border text-xs font-mono transition-colors',
-                    voiceSupported ? (soundEnabled ? 'bg-blue-600/20 border-blue-500/30 text-blue-100' : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10') : 'bg-white/5 border-white/10 text-slate-500 cursor-not-allowed'
+                    voiceSupported ? (soundEnabled ? 'bg-blue-600/20 border-blue-500/30 text-blue-100' : 'ui-dark-glass-chip-action') : 'ui-dark-glass-chip-disabled'
                   )}
                   title={voiceSupported ? 'Toggle voice' : 'Voice not supported in this browser'}
                 >
@@ -544,7 +544,7 @@ export default function OpenClawOpsPortal() {
                     onClick={() => setActiveTab(t.id)}
                     className={classNames(
                       'px-3 py-2 rounded-lg border text-xs font-mono flex items-center gap-2 transition-colors',
-                      activeTab === t.id ? 'bg-blue-600/20 border-blue-500/30 text-blue-100' : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                      activeTab === t.id ? 'bg-blue-600/20 border-blue-500/30 text-blue-100' : 'ui-dark-glass-chip-action'
                     )}
                   >
                     <t.icon size={14} className={activeTab === t.id ? 'text-blue-300' : 'text-slate-400'} />
@@ -593,7 +593,7 @@ export default function OpenClawOpsPortal() {
                     <div className="lg:col-span-2">
                       <div className="text-xs text-slate-500 font-mono mb-2 flex items-center gap-2">
                         <Terminal size={14} /> LIVE_FEED
-                        <span className={classNames('ml-2 px-2 py-0.5 rounded border text-[10px] font-mono', socketConnected ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-white/5 border-white/10 text-slate-400')}>
+                        <span className={classNames('ml-2 px-2 py-0.5 rounded border text-[10px] font-mono', socketConnected ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'ui-dark-glass-chip')}>
                           {socketConnected ? 'LIVE' : 'OFFLINE'}
                         </span>
                       </div>

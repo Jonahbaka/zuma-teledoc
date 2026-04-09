@@ -153,7 +153,7 @@ export default function BankPage() {
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all ${
               activeTab === tab.id
                 ? 'bg-emerald-600 text-white'
-                : 'bg-gray-800/60 text-gray-400 hover:bg-gray-800 hover:text-white'
+                : 'ui-dark-chip-action-soft'
             }`}
           >
             <tab.icon className="w-4 h-4" /> {tab.label}
@@ -192,7 +192,7 @@ export default function BankPage() {
                   <p className={`text-lg font-bold mt-2 ${parseFloat(acc.current_balance) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                     {fmt(acc.current_balance)}
                   </p>
-                  <span className="text-[10px] px-2 py-0.5 mt-2 inline-block rounded bg-gray-700 text-gray-400 uppercase">{acc.account_type}</span>
+                  <span className="ui-dark-chip text-[10px] px-2 py-0.5 mt-2 inline-block rounded uppercase">{acc.account_type}</span>
                 </div>
               ))}
             </div>
@@ -433,7 +433,7 @@ export default function BankPage() {
                         <tr key={i} className="border-b border-gray-800/30">
                           <td className="py-2 text-gray-400">{new Date(txn.posted_date).toLocaleDateString()}</td>
                           <td className="py-2">
-                            <span className="text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-400">{txn.transaction_type}</span>
+                            <span className="ui-dark-chip text-xs px-2 py-0.5 rounded">{txn.transaction_type}</span>
                           </td>
                           <td className="py-2 text-gray-300 max-w-xs truncate">{txn.description}</td>
                           <td className="py-2 text-gray-400">{txn.counterparty || '—'}</td>
@@ -467,8 +467,8 @@ export default function BankPage() {
                   <div className="flex items-center justify-between mb-2">
                     <div>
                       <span className="text-xs text-gray-500">#{je.entry_number}</span>
-                      <span className="text-xs text-gray-600 ml-2">{new Date(je.entry_date).toLocaleDateString()}</span>
-                      <span className="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-400 ml-2">{je.source}</span>
+                      <span className="text-xs text-gray-400 ml-2">{new Date(je.entry_date).toLocaleDateString()}</span>
+                      <span className="ui-dark-chip text-xs px-2 py-0.5 rounded ml-2">{je.source}</span>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded ${je.is_posted ? 'bg-emerald-900/40 text-emerald-400' : 'bg-amber-900/40 text-amber-400'}`}>
                       {je.is_posted ? 'Posted' : 'Draft'}
@@ -522,7 +522,7 @@ export default function BankPage() {
                     <tr key={i} className="border-b border-gray-800/30">
                       <td className="py-2 text-gray-300 font-mono text-xs">{inv.invoice_number}</td>
                       <td className="py-2 text-gray-300">{inv.customer_name}</td>
-                      <td className="py-2"><span className="text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-400 capitalize">{inv.customer_type}</span></td>
+                      <td className="py-2"><span className="ui-dark-chip text-xs px-2 py-0.5 rounded capitalize">{inv.customer_type}</span></td>
                       <td className="py-2 text-right font-mono">{fmt(inv.amount)}</td>
                       <td className="py-2 text-right font-mono text-emerald-400">{fmt(inv.amount_paid)}</td>
                       <td className="py-2 text-right font-mono text-amber-400">{fmt(inv.balance_due)}</td>
@@ -570,7 +570,7 @@ export default function BankPage() {
                     <tr key={i} className="border-b border-gray-800/30">
                       <td className="py-2 text-gray-300 font-mono text-xs">{bill.bill_number}</td>
                       <td className="py-2 text-gray-300">{bill.vendor_name}</td>
-                      <td className="py-2"><span className="text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-400">{bill.vendor_type}</span></td>
+                      <td className="py-2"><span className="ui-dark-chip text-xs px-2 py-0.5 rounded">{bill.vendor_type}</span></td>
                       <td className="py-2 text-right font-mono">{fmt(bill.amount)}</td>
                       <td className="py-2 text-right font-mono text-red-400">{fmt(bill.balance_due)}</td>
                       <td className="py-2 text-gray-400">{new Date(bill.due_date).toLocaleDateString()}</td>
@@ -699,7 +699,7 @@ export default function BankPage() {
                 <div key={i} className="bg-gray-800/40 rounded-lg p-4 border border-gray-700/30">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium text-gray-300">{r.initiative_name}</span>
-                    <span className="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-400 capitalize">{r.category}</span>
+                    <span className="ui-dark-chip text-xs px-2 py-0.5 rounded capitalize">{r.category}</span>
                   </div>
                   <div className="grid grid-cols-3 gap-3 text-center mt-3">
                     <div>

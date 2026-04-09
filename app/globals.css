@@ -165,6 +165,34 @@
     color: rgb(203 213 225);
   }
 
+  .ui-dark-chip {
+    @apply bg-slate-800 text-slate-200;
+  }
+
+  .ui-dark-chip-soft {
+    @apply bg-slate-800/80 text-slate-200;
+  }
+
+  .ui-dark-chip-action {
+    @apply bg-slate-800 text-slate-200 transition-colors hover:bg-slate-700 hover:text-white;
+  }
+
+  .ui-dark-chip-action-soft {
+    @apply bg-slate-800/70 text-slate-200 transition-colors hover:bg-slate-700 hover:text-white;
+  }
+
+  .ui-dark-glass-chip {
+    @apply border border-white/10 bg-white/5 text-slate-200;
+  }
+
+  .ui-dark-glass-chip-action {
+    @apply border border-white/10 bg-white/5 text-slate-200 transition-colors hover:bg-white/10 hover:text-white;
+  }
+
+  .ui-dark-glass-chip-disabled {
+    @apply border border-white/10 bg-white/5 text-slate-400 cursor-not-allowed;
+  }
+
   .gradient-text {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-indigo-700;
   }

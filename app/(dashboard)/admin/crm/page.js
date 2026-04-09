@@ -602,7 +602,7 @@ export default function CRMPage() {
                     <div className="flex flex-wrap gap-1">
                       {templates.slice(0, 5).map(t => (
                         <button key={t.id} onClick={() => setEmailForm({ subject: t.subject, body: t.body })}
-                          className="text-xs px-2 py-1 bg-gray-800 rounded hover:bg-gray-700 text-gray-400">{t.name}</button>
+                          className="ui-dark-chip-action text-xs px-2 py-1 rounded">{t.name}</button>
                       ))}
                     </div>
                   </div>
@@ -705,7 +705,7 @@ export default function CRMPage() {
                       c.status === 'running' ? 'bg-emerald-900/40 text-emerald-300' :
                       c.status === 'approved' ? 'bg-blue-900/40 text-blue-300' :
                       c.status === 'completed' ? 'bg-gray-800 text-gray-300' :
-                      c.status === 'draft' ? 'bg-amber-900/40 text-amber-300' : 'bg-gray-800 text-gray-400'}`}>
+                      c.status === 'draft' ? 'bg-amber-900/40 text-amber-300' : 'ui-dark-chip'}`}>
                       {c.status?.toUpperCase()}
                     </span>
                     {c.status === 'draft' && (
@@ -1050,7 +1050,7 @@ export default function CRMPage() {
             {['all', 'unread', 'alert', 'report'].map(f => (
               <button key={f} onClick={() => setReportFilter(f)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  reportFilter === f ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                  reportFilter === f ? 'bg-purple-600 text-white' : 'ui-dark-chip-action'}`}>
                 {f === 'all' ? 'All' : f === 'unread' ? `Unread (${reportUnread})` : f.charAt(0).toUpperCase() + f.slice(1) + 's'}
               </button>
             ))}
