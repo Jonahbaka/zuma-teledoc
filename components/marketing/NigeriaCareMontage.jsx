@@ -1,118 +1,140 @@
 import Image from 'next/image';
+import { Video } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const STORY_MEDIA = {
   consultation: {
-    eyebrow: 'Online consultation',
-    title: 'Start with a doctor visit that feels local, calm, and immediate.',
-    body: 'Patients can open a consultation, talk to a clinician, and move directly into the next care step without jumping between tools.',
-    badge: 'Doctor access',
     src: '/marketing/ng/doctor-video-call.jpg',
     alt: 'Doctor speaking to a patient through a mobile video consultation setup.',
     objectPosition: 'object-center',
   },
   prescription: {
-    eyebrow: 'Prescription follow-through',
-    title: 'Keep clinical review and medication instructions visible after the call.',
-    body: 'The homepage now shows the prescription journey as part of care delivery instead of reducing it to generic feature cards.',
-    badge: 'Prescription support',
     src: '/marketing/ng/doctor-phone-notes.jpg',
     alt: 'Doctor documenting care instructions while speaking with a patient on the phone.',
     objectPosition: 'object-center',
   },
   family: {
-    eyebrow: 'Care at home',
-    title: 'Families can stay connected to care plans from the same patient account.',
-    body: 'Support, follow-up, and home access remain readable for patients managing care beyond the consultation itself.',
-    badge: 'Care continuity',
     src: '/marketing/ng/family-care-tablet.jpg',
     alt: 'Parent and child reviewing care information together from home on a tablet and laptop.',
     objectPosition: 'object-center',
   },
   pharmacy: {
-    eyebrow: 'Pharmacy handoff',
-    title: 'Move from prescription confirmation to fulfillment with fewer dead ends.',
-    body: 'Partner pharmacy support, medication pickup, and delivery coordination are framed as part of the same trusted journey.',
-    badge: 'Pharmacy coordination',
     src: '/marketing/ng/pharmacy-handoff.jpg',
     alt: 'Pharmacy counter handoff showing medication support and fulfillment coordination.',
     objectPosition: 'object-center',
   },
 };
 
-function StoryImageCard({ variant, className, sizes }) {
-  const card = STORY_MEDIA[variant];
+const JOURNEY_STEPS = [
+  {
+    id: 'step-1-img',
+    step: '1. Instant consultations',
+    title: 'Start care with a secure online consultation.',
+    body: 'Patients can begin with a doctor visit from home and keep the next step of care visible instead of getting pushed into separate flows.',
+    media: STORY_MEDIA.consultation,
+  },
+  {
+    id: 'step-2-img',
+    step: '2. Digital prescriptions',
+    title: 'Keep prescriptions and care instructions easy to follow.',
+    body: 'Prescription review, medication guidance, and provider follow-through remain visible after the consultation.',
+    media: STORY_MEDIA.prescription,
+  },
+  {
+    id: 'step-3-img',
+    step: '3. Pharmacy support',
+    title: 'Move from review to pharmacy coordination with less friction.',
+    body: 'Medicine search, partner pharmacy confirmation, and fulfillment updates stay connected to the same Nigeria-ready patient journey.',
+    media: STORY_MEDIA.pharmacy,
+  },
+];
 
+function MediaSurface({ media, className, sizes, overlay = false, priority = false, caption, captionTone = 'light' }) {
   return (
-    <article
+    <div
       className={cn(
-        'group relative isolate overflow-hidden rounded-[1.8rem] border border-white/12 bg-[linear-gradient(160deg,rgba(3,36,28,0.96),rgba(15,23,42,0.94))] shadow-[0_26px_70px_rgba(15,23,42,0.28)]',
+        'relative isolate overflow-hidden rounded-[1.7rem] border border-slate-200/80 bg-slate-100 shadow-[0_22px_55px_rgba(15,23,42,0.12)]',
         className
       )}
     >
-      <div className="absolute inset-0">
-        <Image
-          src={card.src}
-          alt={card.alt}
-          fill
-          sizes={sizes}
-          className={cn('object-cover transition-transform duration-700 group-hover:scale-[1.03]', card.objectPosition)}
-        />
-      </div>
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.16),rgba(2,6,23,0.34)_38%,rgba(2,6,23,0.9))]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.22),transparent_34%),radial-gradient(circle_at_82%_12%,rgba(245,158,11,0.18),transparent_24%)]" />
-
-      <div className="relative flex h-full flex-col justify-between p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="rounded-full border border-white/14 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-white/92 backdrop-blur-md">
-            {card.eyebrow}
-          </div>
-          <div className="rounded-full border border-emerald-400/18 bg-slate-950/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-100 backdrop-blur-md">
-            {card.badge}
+      <Image
+        src={media.src}
+        alt={media.alt}
+        fill
+        priority={priority}
+        sizes={sizes}
+        className={cn('object-cover', media.objectPosition)}
+      />
+      {overlay ? (
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.08),rgba(15,23,42,0.16)_45%,rgba(15,23,42,0.72))]" />
+      ) : null}
+      {caption ? (
+        <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
+          <div
+            className={cn(
+              'inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] backdrop-blur-md',
+              captionTone === 'dark'
+                ? 'border-white/14 bg-slate-950/50 text-slate-100'
+                : 'border-white/14 bg-white/90 text-slate-700'
+            )}
+          >
+            {caption}
           </div>
         </div>
-
-        <div className="max-w-md space-y-3">
-          <h3 className="text-xl leading-tight text-white sm:text-2xl">{card.title}</h3>
-          <p className="max-w-sm text-sm leading-6 text-slate-200/92">{card.body}</p>
-        </div>
-      </div>
-    </article>
+      ) : null}
+    </div>
   );
 }
 
 export default function NigeriaCareMontage({ compact = false }) {
   return (
-    <div className={cn('grid gap-4', compact ? 'grid-cols-1 sm:grid-cols-2' : 'md:grid-cols-[1.08fr_0.92fr]')}>
-      <StoryImageCard
-        variant="consultation"
-        className={cn(compact ? 'min-h-[17.5rem] sm:col-span-2' : 'min-h-[20rem] md:min-h-[27rem]')}
-        sizes={compact ? '(min-width: 640px) 100vw, 100vw' : '(min-width: 768px) 58vw, 100vw'}
+    <div className="relative">
+      <MediaSurface
+        media={STORY_MEDIA.consultation}
+        priority
+        overlay
+        caption="hero-image-container"
+        captionTone="dark"
+        className={cn(compact ? 'aspect-[4/5] min-h-[21rem]' : 'aspect-[4/5] min-h-[30rem]')}
+        sizes={compact ? '(min-width: 640px) 88vw, 100vw' : '(min-width: 1280px) 46vw, 100vw'}
       />
-      <div className="grid gap-4">
-        <StoryImageCard variant="prescription" className="min-h-[15rem]" sizes="(min-width: 768px) 28vw, 100vw" />
-        <StoryImageCard variant="pharmacy" className="min-h-[15rem]" sizes="(min-width: 768px) 28vw, 100vw" />
-      </div>
+
+      {!compact ? (
+        <div className="absolute -bottom-5 left-5 sm:left-6">
+          <div className="flex items-center gap-3 rounded-[1.4rem] border border-slate-200/80 bg-white/95 px-4 py-3 shadow-[0_20px_40px_rgba(15,23,42,0.16)] backdrop-blur-xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+              <Video className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">Connected care</div>
+              <div className="mt-1 text-sm font-semibold text-slate-900">
+                Consultations, prescriptions, and pharmacy support stay in one flow.
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 export function NigeriaStoryCards({ compact = false }) {
-  const cards = ['consultation', 'prescription', 'pharmacy'];
-
   return (
-    <div className={cn('grid gap-4', compact ? 'grid-cols-1' : 'md:grid-cols-3')}>
-      {cards.map((variant, index) => (
-        <StoryImageCard
-          key={variant}
-          variant={variant}
-          className={cn(
-            'min-h-[18rem]',
-            !compact && index === 1 && 'md:-translate-y-2',
-            !compact && index === 2 && 'md:translate-y-2'
-          )}
-          sizes={compact ? '100vw' : '(min-width: 768px) 31vw, 100vw'}
-        />
+    <div className={cn('grid gap-8', compact ? 'grid-cols-1' : 'md:grid-cols-3')}>
+      {JOURNEY_STEPS.map((card) => (
+        <article key={card.id} className="space-y-5">
+          <MediaSurface
+            media={card.media}
+            caption={card.id}
+            className="aspect-square"
+            sizes={compact ? '100vw' : '(min-width: 768px) 31vw, 100vw'}
+          />
+          <div className="space-y-3">
+            <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">{card.step}</div>
+            <h3 className="text-2xl leading-tight text-foreground">{card.title}</h3>
+            <p className="text-sm leading-7 text-muted-foreground sm:text-base">{card.body}</p>
+          </div>
+        </article>
       ))}
     </div>
   );
@@ -120,9 +142,12 @@ export function NigeriaStoryCards({ compact = false }) {
 
 export function NigeriaSupportSpotlight() {
   return (
-    <StoryImageCard
-      variant="family"
-      className="min-h-[22rem]"
+    <MediaSurface
+      media={STORY_MEDIA.family}
+      overlay
+      caption="mobile-app-img"
+      captionTone="dark"
+      className="aspect-[4/5] min-h-[22rem]"
       sizes="(min-width: 1024px) 40vw, 100vw"
     />
   );

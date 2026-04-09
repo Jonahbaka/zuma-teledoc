@@ -85,6 +85,27 @@ const HOME_DOCK_ITEMS = [
   { id: 'trust', label: 'Trust', icon: ShieldCheck },
 ];
 
+const NIGERIA_REALITY_FEATURES = [
+  {
+    icon: Activity,
+    tone: 'emerald',
+    title: 'Designed for mobile-first consultations',
+    body: 'The Nigeria experience keeps doctor access, prescription context, and the next care action readable on phones before anything else.',
+  },
+  {
+    icon: ShieldCheck,
+    tone: 'blue',
+    title: 'Private and NDPA-aware by default',
+    body: 'Consultation records, prescription review, and pharmacy coordination are framed with trust, privacy, and production-grade handling.',
+  },
+  {
+    icon: CreditCard,
+    tone: 'amber',
+    title: 'Local payment and pharmacy follow-through',
+    body: 'Patients can move from consultation to medicine access with transfer, card, and USSD language that feels native to Nigeria operations.',
+  },
+];
+
 const MARKET_STORY_ARCS = {
   US: [
     {
@@ -177,23 +198,24 @@ function getNigeriaSpotlightFeatures(content) {
 function NigeriaHeroJourney({ content }) {
   return (
     <div className="grid gap-3 sm:grid-cols-3">
-      {content.workflowSteps.slice(0, 3).map((step, index) => {
-        const Icon = step.icon;
+      {content.hero.trustItems.slice(0, 3).map((item, index) => {
+        const Icon = item.icon;
         const styles = toneStyles(index === 1 ? 'blue' : index === 2 ? 'amber' : 'emerald');
 
         return (
           <div
-            key={step.title}
+            key={item.text}
             className="rounded-[1.45rem] border border-white/70 bg-white/88 p-4 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72"
           >
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
               <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl border', styles.panel)}>
                 <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
               </div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">0{index + 1}</div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">Care layer 0{index + 1}</div>
+                <div className="mt-1 text-sm font-semibold text-foreground">{item.text}</div>
+              </div>
             </div>
-            <div className="mt-3 text-base font-semibold text-foreground">{step.title}</div>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">{step.description}</p>
           </div>
         );
       })}
@@ -202,38 +224,7 @@ function NigeriaHeroJourney({ content }) {
 }
 
 function NigeriaHeroVisual({ content, compact = false }) {
-  return (
-    <div className={cn('relative', !compact && 'pb-12')}>
-      <NigeriaCareMontage compact={compact} />
-      {!compact ? (
-        <div className="absolute -bottom-1 left-6 right-6 md:right-auto md:max-w-sm">
-          <div className="rounded-[1.55rem] border border-white/10 bg-slate-950/88 p-4 shadow-[0_28px_80px_rgba(15,23,42,0.3)] backdrop-blur-xl">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
-                <Activity className="h-4.5 w-4.5 text-emerald-300" />
-              </div>
-              <div>
-                <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Connected care journey</div>
-                <div className="mt-1 text-sm font-semibold leading-6 text-white">
-                  Consult, confirm the prescription, and keep pharmacy support visible without leaving the same patient flow.
-                </div>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {content.hero.trustItems.slice(0, 3).map((item) => (
-                <span
-                  key={item.text}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-slate-200"
-                >
-                  {item.text}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
+  return <NigeriaCareMontage compact={compact} />;
 }
 
 function NigeriaDesktopCareSection() {
@@ -252,7 +243,6 @@ function NigeriaDesktopCareSection() {
 }
 
 function NigeriaDesktopWorkflowSection({ content }) {
-  const spotlightFeatures = getNigeriaSpotlightFeatures(content);
   const primaryTone = toneStyles(content.hero.visualTone);
 
   return (
@@ -264,13 +254,13 @@ function NigeriaDesktopWorkflowSection({ content }) {
           <div className="space-y-6">
             <SectionHeading
               align="left"
-              badge={content.featureSection.badge}
-              title="Healthcare built for real Nigeria care access."
-              subtitle={content.featureSection.subtitle}
+              badge="Built for the Nigerian reality"
+              title="Healthcare built for the Nigerian reality."
+              subtitle="The experience combines consultations, prescription clarity, and local payment language in a way that feels trustworthy, mobile-first, and operationally real."
             />
 
             <div className="space-y-4">
-              {spotlightFeatures.map((feature) => {
+              {NIGERIA_REALITY_FEATURES.map((feature) => {
                 const Icon = feature.icon;
                 const styles = toneStyles(feature.tone);
 
@@ -285,7 +275,7 @@ function NigeriaDesktopWorkflowSection({ content }) {
                       </div>
                       <div>
                         <div className="text-xl leading-tight text-foreground">{feature.title}</div>
-                        <p className="mt-2 text-sm leading-7 text-muted-foreground">{feature.description}</p>
+                        <p className="mt-2 text-sm leading-7 text-muted-foreground">{feature.body}</p>
                       </div>
                     </div>
                   </div>
@@ -827,7 +817,7 @@ function NigeriaCompactCareTab({ content }) {
                     </div>
                     <div>
                       <div className="text-sm font-semibold text-foreground">{feature.title}</div>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">{feature.description}</p>
+                      <p className="mt-1 text-sm leading-6 text-muted-foreground">{feature.body}</p>
                     </div>
                   </div>
                 </div>
@@ -844,20 +834,31 @@ function NigeriaCompactTrustTab({ content }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[1.02fr_0.98fr]">
       <WorkspacePanel
-        eyebrow={content.securitySection.badge}
-        title={content.securitySection.title}
-        description={content.securitySection.description}
-        className="bg-[linear-gradient(145deg,rgba(2,6,23,0.98),rgba(15,23,42,0.95))] dark:border-white/10"
-        dark
+        eyebrow="Built for the Nigerian reality"
+        title="Healthcare that stays readable and trustworthy on every screen."
+        description="The same local-image trust section is preserved on mobile: care at home, privacy-aware workflows, and payment language that fits Nigeria operations."
       >
         <div className="grid gap-4">
           <NigeriaSupportSpotlight />
-          <div className="grid gap-3 sm:grid-cols-2">
-            {content.securitySection.bullets.map((bullet) => (
-              <div key={bullet} className="rounded-[1.25rem] border border-white/10 bg-white/[0.06] p-4 text-sm leading-6 text-slate-200">
-                {bullet}
-              </div>
-            ))}
+          <div className="space-y-3">
+            {NIGERIA_REALITY_FEATURES.map((feature) => {
+              const Icon = feature.icon;
+              const styles = toneStyles(feature.tone);
+
+              return (
+                <div key={feature.title} className="rounded-[1.25rem] border border-border bg-background/92 p-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className={cn('flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border', styles.panel)}>
+                      <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">{feature.title}</div>
+                      <p className="mt-1 text-sm leading-6 text-muted-foreground">{feature.body}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </WorkspacePanel>
@@ -1614,9 +1615,11 @@ export default function MarketHomepage({ market = 'US' }) {
                 </div>
                 {isNigeriaExperience ? (
                   <>
-                    <NigeriaHeroJourney content={content} />
                     <div className="xl:hidden">
                       <NigeriaHeroVisual content={content} compact />
+                    </div>
+                    <div className="md:hidden">
+                      <NigeriaHeroJourney content={content} />
                     </div>
                   </>
                 ) : (
@@ -1634,17 +1637,7 @@ export default function MarketHomepage({ market = 'US' }) {
               </div>
             </div>
 
-            {isNigeriaExperience ? (
-              <div className="mt-12 hidden xl:block">
-                <div className="mb-5 max-w-2xl">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted-foreground">Care journey</div>
-                  <div className="mt-2 text-2xl leading-tight text-foreground">
-                    See the consultation, prescription, and pharmacy story before you ever open a portal.
-                  </div>
-                </div>
-                <NigeriaStoryCards />
-              </div>
-            ) : (
+            {isNigeriaExperience ? null : (
               <div className="mt-12 hidden gap-4 sm:grid-cols-2 xl:grid xl:grid-cols-4">
               {content.stats.map((stat) => {
                 const Icon = stat.icon;
