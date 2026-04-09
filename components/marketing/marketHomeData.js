@@ -26,7 +26,26 @@ export const MARKET_HOME_DATA = {
     showCountrySelector: false,
     otherMarket: {
       href: '/ng',
-      label: 'Nigeria Experience',
+      label: 'DoctaRx Nigeria',
+    },
+    marketBridge: {
+      badge: 'Nigeria operations',
+      title: 'Looking for DoctaRx Nigeria?',
+      description:
+        'Stakeholders, providers, pharmacies, and patients in Nigeria should use DoctaRx Nigeria at doctarx.com/ng for online doctor consultations, prescription upload, medicine search, pharmacy onboarding, and local payment workflows.',
+      primaryCta: {
+        label: 'Visit DoctaRx Nigeria',
+        href: '/ng',
+      },
+      secondaryCta: {
+        label: 'Nigeria Provider Registration',
+        href: '/ng/provider/register',
+      },
+      points: [
+        'Online doctor consultation and prescription follow-through in Nigeria.',
+        'Medicine search, partner pharmacy coordination, and local payment rails.',
+        'Dedicated Nigeria provider and pharmacy onboarding paths.',
+      ],
     },
     banner: {
       emergencyNumber: '911',
@@ -359,6 +378,8 @@ export const MARKET_HOME_DATA = {
           title: 'Operations',
           links: [
             { label: 'Pharmacy Portal', href: '/pharmacy/login' },
+            { label: 'DoctaRx Nigeria', href: '/ng' },
+            { label: 'Nigeria Provider Registration', href: '/ng/provider/register' },
             { label: 'Contact', href: '/contact' },
           ],
         },
@@ -386,7 +407,7 @@ export const MARKET_HOME_DATA = {
     showCountrySelector: false,
     otherMarket: {
       href: '/',
-      label: 'US Experience',
+      label: 'DoctaRx United States',
     },
     banner: {
       emergencyNumber: '112',

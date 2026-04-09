@@ -227,6 +227,68 @@ function NigeriaHeroVisual({ content, compact = false }) {
   return <NigeriaCareMontage compact={compact} />;
 }
 
+function MarketBridgePanel({ content }) {
+  if (!content.marketBridge) {
+    return null;
+  }
+
+  const bridgeTone = toneStyles('emerald');
+
+  return (
+    <section className="px-4 pb-4 sm:px-6 md:pb-8 xl:pb-10">
+      <div className="mx-auto max-w-7xl">
+        <div className="overflow-hidden rounded-[2rem] border border-emerald-500/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_34%),radial-gradient(circle_at_90%_16%,rgba(8,145,178,0.12),transparent_26%),linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_30%),radial-gradient(circle_at_90%_16%,rgba(8,145,178,0.1),transparent_24%),linear-gradient(180deg,rgba(2,6,23,0.9),rgba(15,23,42,0.92))] sm:p-7 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-8 lg:p-8">
+          <div className="space-y-5">
+            <TonePill tone="emerald" icon={Sparkles}>{content.marketBridge.badge}</TonePill>
+            <div className="space-y-3">
+              <h2 className="max-w-3xl text-2xl leading-tight text-foreground sm:text-3xl">
+                {content.marketBridge.title}
+              </h2>
+              <p className="max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
+                {content.marketBridge.description}{' '}
+                <Link href={content.marketBridge.primaryCta.href} className="font-semibold text-emerald-700 underline underline-offset-4 transition-colors hover:text-emerald-600 dark:text-emerald-300 dark:hover:text-emerald-200">
+                  doctarx.com/ng
+                </Link>
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <Link
+                href={content.marketBridge.primaryCta.href}
+                className={cn('inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-semibold transition-colors', bridgeTone.button)}
+                title="Visit DoctaRx Nigeria at doctarx.com/ng"
+              >
+                {content.marketBridge.primaryCta.label}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+              <Link
+                href={content.marketBridge.secondaryCta.href}
+                className="inline-flex items-center justify-center rounded-full border border-border bg-background/80 px-5 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-accent"
+                title="Open Nigeria provider registration"
+              >
+                {content.marketBridge.secondaryCta.label}
+              </Link>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-3 lg:mt-0 lg:grid-cols-1">
+            {content.marketBridge.points.map((point) => (
+              <div
+                key={point}
+                className="rounded-[1.4rem] border border-white/70 bg-white/84 p-4 text-sm leading-6 text-foreground shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/68"
+              >
+                <div className={cn('mb-3 flex h-10 w-10 items-center justify-center rounded-2xl border', bridgeTone.panel)}>
+                  <Activity className={cn('h-4.5 w-4.5', bridgeTone.icon)} />
+                </div>
+                {point}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function NigeriaDesktopCareSection() {
   return (
     <section id="features" className="hidden px-4 py-16 sm:px-6 md:py-20 xl:block">
@@ -1234,6 +1296,9 @@ export default function MarketHomepage({ market = 'US' }) {
   const pricingCards = pricingMode === 'access' ? (content.pricingSection.cards || []) : content.plans;
   const primaryTone = toneStyles(content.hero.visualTone);
   const hasAlternateMarket = Boolean(content.otherMarket?.href && content.otherMarket?.label);
+  const alternateMarketTitle = content.code === 'US'
+    ? 'Visit DoctaRx Nigeria at doctarx.com/ng'
+    : 'Visit DoctaRx United States at doctarx.com';
   const [isScrolled, setIsScrolled] = useState(false);
   const [compactTab, setCompactTab] = useState('care');
   const [compactDockSection, setCompactDockSection] = useState('home');
@@ -1417,7 +1482,7 @@ export default function MarketHomepage({ market = 'US' }) {
           <div className="hidden md:flex lg:hidden items-center gap-2">
             <ThemeToggle />
             {hasAlternateMarket ? (
-              <Link href={content.otherMarket.href} className="rounded-full border border-border bg-background/80 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent">
+              <Link href={content.otherMarket.href} title={alternateMarketTitle} className="rounded-full border border-border bg-background/80 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent">
                 {content.otherMarket.label}
               </Link>
             ) : null}
@@ -1453,7 +1518,7 @@ export default function MarketHomepage({ market = 'US' }) {
 
           <div className="hidden lg:flex items-center gap-3">
             {hasAlternateMarket ? (
-              <Link href={content.otherMarket.href} className="rounded-full border border-border bg-background/80 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent">
+              <Link href={content.otherMarket.href} title={alternateMarketTitle} className="rounded-full border border-border bg-background/80 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent">
                 {content.otherMarket.label}
               </Link>
             ) : null}
@@ -1563,7 +1628,7 @@ export default function MarketHomepage({ market = 'US' }) {
               </div>
 
               {hasAlternateMarket ? (
-                <Link href={content.otherMarket.href} onClick={() => setMobileMenuOpen(false)} className="block rounded-2xl border border-border bg-background/80 px-4 py-3 text-center text-sm font-medium text-foreground transition-colors hover:bg-accent">
+                <Link href={content.otherMarket.href} title={alternateMarketTitle} onClick={() => setMobileMenuOpen(false)} className="block rounded-2xl border border-border bg-background/80 px-4 py-3 text-center text-sm font-medium text-foreground transition-colors hover:bg-accent">
                   {content.otherMarket.label}
                 </Link>
               ) : null}
@@ -1659,6 +1724,8 @@ export default function MarketHomepage({ market = 'US' }) {
             )}
           </div>
         </section>
+
+        {isNigeriaExperience ? null : <MarketBridgePanel content={content} />}
 
         <CompactMarketWorkspace content={content} activeTab={compactTab} onTabChange={handleCompactTabChange} />
 
