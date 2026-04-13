@@ -25,6 +25,10 @@ import NigeriaCareMontage, {
   NigeriaStoryCards,
   NigeriaSupportSpotlight,
 } from '@/components/marketing/NigeriaCareMontage';
+import USCareMontage, {
+  USFamilySpotlight,
+  USStoryCards,
+} from '@/components/marketing/USCareMontage';
 
 const TONE_STYLES = {
   blue: {
@@ -195,6 +199,10 @@ function getNigeriaSpotlightFeatures(content) {
   return [content.features[0], content.features[1], content.features[3]].filter(Boolean);
 }
 
+function getUSSpotlightFeatures(content) {
+  return [content.features[0], content.features[1], content.features[2]].filter(Boolean);
+}
+
 function NigeriaHeroJourney({ content }) {
   return (
     <div className="grid gap-3 sm:grid-cols-3">
@@ -225,6 +233,10 @@ function NigeriaHeroJourney({ content }) {
 
 function NigeriaHeroVisual({ content, compact = false }) {
   return <NigeriaCareMontage compact={compact} />;
+}
+
+function USHeroVisual({ content, compact = false }) {
+  return <USCareMontage compact={compact} />;
 }
 
 function MarketBridgePanel({ content }) {
@@ -348,6 +360,88 @@ function NigeriaDesktopWorkflowSection({ content }) {
             <div className="flex flex-wrap gap-2">
               {content.securitySection.bullets.map((bullet) => (
                 <TonePill key={bullet} tone="emerald" icon={ShieldCheck}>{bullet}</TonePill>
+              ))}
+            </div>
+
+            <Link
+              href={content.hero.primaryCta.href}
+              className={cn('inline-flex items-center rounded-full px-6 py-3.5 text-sm font-semibold transition-colors', primaryTone.button)}
+            >
+              {content.hero.primaryCta.label}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function USDesktopCareSection({ content }) {
+  return (
+    <section id="features" className="hidden px-4 py-16 sm:px-6 md:py-20 xl:block">
+      <div className="mx-auto max-w-7xl space-y-12">
+        <SectionHeading
+          badge={content.featureSection.badge}
+          title={content.featureSection.title}
+          subtitle={content.featureSection.subtitle}
+        />
+        <USStoryCards />
+      </div>
+    </section>
+  );
+}
+
+function USDesktopWorkflowSection({ content }) {
+  const primaryTone = toneStyles(content.hero.visualTone);
+  const spotlightFeatures = getUSSpotlightFeatures(content);
+
+  return (
+    <section id="workflow" className="hidden border-y border-border/60 bg-card/40 px-4 py-16 sm:px-6 md:py-20 xl:block">
+      <div className="mx-auto max-w-7xl">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:items-center">
+          <USFamilySpotlight />
+
+          <div className="space-y-6">
+            <SectionHeading
+              align="left"
+              badge="Built for the American routine"
+              title={content.workflowSection.title}
+              subtitle={content.workflowSection.subtitle}
+            />
+
+            <div className="space-y-4">
+              {spotlightFeatures.map((feature) => {
+                const Icon = feature.icon;
+                const styles = toneStyles(feature.tone);
+
+                return (
+                  <div
+                    key={feature.title}
+                    className="rounded-[1.6rem] border border-white/70 bg-white/88 p-5 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className={cn('flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[1rem] border', styles.panel)}>
+                        <Icon className={cn('h-5 w-5', styles.icon)} />
+                      </div>
+                      <div>
+                        <div className="text-xl leading-tight text-foreground">{feature.title}</div>
+                        <p className="mt-2 text-sm leading-7 text-muted-foreground">{feature.description}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {feature.points.map((point) => (
+                            <TonePill key={point} tone={feature.tone} icon={Activity}>{point}</TonePill>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {content.securitySection.bullets.map((bullet) => (
+                <TonePill key={bullet} tone={content.hero.visualTone} icon={ShieldCheck}>{bullet}</TonePill>
               ))}
             </div>
 
@@ -892,6 +986,77 @@ function NigeriaCompactCareTab({ content }) {
   );
 }
 
+function USCompactCareTab({ content }) {
+  const spotlightFeatures = getUSSpotlightFeatures(content);
+
+  return (
+    <div className="grid gap-4">
+      <WorkspacePanel
+        eyebrow="Care journey"
+        title="See the US care story before you enter a portal."
+        description="The compact layout keeps the same consultation, prescription, and pharmacy follow-through story visible on smaller screens."
+      >
+        <USStoryCards compact />
+      </WorkspacePanel>
+
+      <div className="grid gap-4 lg:grid-cols-[1.03fr_0.97fr]">
+        <WorkspacePanel
+          eyebrow="Workflow"
+          title="A faster at-home care path"
+          description={content.workflowSection.subtitle}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            {content.workflowSteps.map((step, index) => {
+              const Icon = step.icon;
+              const tone = toneStyles(index === 1 ? 'emerald' : index === 2 ? 'violet' : index === 3 ? 'amber' : content.hero.visualTone);
+
+              return (
+                <div key={step.title} className="rounded-[1.3rem] border border-border bg-background/92 p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', tone.panel)}>
+                      <Icon className={cn('h-4.5 w-4.5', tone.icon)} />
+                    </div>
+                    <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">0{index + 1}</div>
+                  </div>
+                  <div className="mt-3 text-base font-semibold text-foreground">{step.title}</div>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{step.description}</p>
+                </div>
+              );
+            })}
+          </div>
+        </WorkspacePanel>
+
+        <WorkspacePanel
+          eyebrow={content.featureSection.badge}
+          title="Built for life between work, school, and home"
+          description={content.featureSection.subtitle}
+        >
+          <div className="space-y-3">
+            {spotlightFeatures.map((feature) => {
+              const Icon = feature.icon;
+              const styles = toneStyles(feature.tone);
+
+              return (
+                <div key={feature.title} className="rounded-[1.25rem] border border-border bg-background/92 p-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className={cn('flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border', styles.panel)}>
+                      <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">{feature.title}</div>
+                      <p className="mt-1 text-sm leading-6 text-muted-foreground">{feature.description}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </WorkspacePanel>
+      </div>
+    </div>
+  );
+}
+
 function NigeriaCompactTrustTab({ content }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[1.02fr_0.98fr]">
@@ -955,6 +1120,65 @@ function NigeriaCompactTrustTab({ content }) {
   );
 }
 
+function USCompactTrustTab({ content }) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1.02fr_0.98fr]">
+      <WorkspacePanel
+        eyebrow="Family-ready trust"
+        title="Protected care that still feels at home on every screen."
+        description="The same US image-backed trust section is preserved on mobile: secure care, digital prescriptions, and family follow-up without reverting to generic brochure blocks."
+      >
+        <div className="grid gap-4">
+          <USFamilySpotlight />
+          <div className="space-y-3">
+            {content.securitySection.bullets.map((bullet, index) => {
+              const styles = toneStyles(index === 1 ? 'emerald' : index === 2 ? 'violet' : index === 3 ? 'amber' : content.hero.visualTone);
+
+              return (
+                <div key={bullet} className="rounded-[1.25rem] border border-border bg-background/92 p-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className={cn('flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border', styles.panel)}>
+                      <Activity className={cn('h-4.5 w-4.5', styles.icon)} />
+                    </div>
+                    <div className="text-sm leading-6 text-foreground">{bullet}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </WorkspacePanel>
+
+      <WorkspacePanel
+        eyebrow="Trust layer"
+        title="Compliance, contact, and product reassurance"
+        description="Keep the premium healthcare tone while reducing the amount of footer-style scanning required on smaller screens."
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          {content.footer.badges.map((badge) => {
+            const Icon = badge.icon;
+            const styles = toneStyles(content.hero.visualTone);
+
+            return (
+              <div key={badge.label} className="rounded-[1.2rem] border border-border bg-background/92 p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border', styles.panel)}>
+                    <Icon className={cn('h-4.5 w-4.5', styles.icon)} />
+                  </div>
+                  <div className="text-sm font-semibold text-foreground">{badge.label}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-4 rounded-[1.2rem] border border-border bg-muted/55 px-4 py-3 text-sm text-muted-foreground">
+          Contact: <a href={`mailto:${content.footer.email}`} className="font-semibold text-foreground underline-offset-4 hover:underline">{content.footer.email}</a>
+        </div>
+      </WorkspacePanel>
+    </div>
+  );
+}
+
 function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
   const pricingMode = content.pricingSection.mode || 'plans';
   const pricingCards = pricingMode === 'access' ? (content.pricingSection.cards || []) : content.plans;
@@ -992,6 +1216,8 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
             <TabsContent value="care" className="mt-5">
               {content.code === 'NG' ? (
                 <NigeriaCompactCareTab content={content} />
+              ) : content.code === 'US' ? (
+                <USCompactCareTab content={content} />
               ) : (
                 <div className="grid gap-4 lg:grid-cols-[1.03fr_0.97fr]">
                   <WorkspacePanel
@@ -1213,6 +1439,8 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
             <TabsContent value="trust" className="mt-5">
               {content.code === 'NG' ? (
                 <NigeriaCompactTrustTab content={content} />
+              ) : content.code === 'US' ? (
+                <USCompactTrustTab content={content} />
               ) : (
                 <div className="grid gap-4 lg:grid-cols-[1.02fr_0.98fr]">
                   <WorkspacePanel
@@ -1292,6 +1520,7 @@ function HomeQuickDock({ activeSection, onSelect }) {
 export default function MarketHomepage({ market = 'US' }) {
   const content = MARKET_HOME_DATA[market] || MARKET_HOME_DATA.US;
   const isNigeriaExperience = content.code === 'NG';
+  const isUSExperience = content.code === 'US';
   const pricingMode = content.pricingSection.mode || 'plans';
   const pricingCards = pricingMode === 'access' ? (content.pricingSection.cards || []) : content.plans;
   const primaryTone = toneStyles(content.hero.visualTone);
@@ -1687,6 +1916,10 @@ export default function MarketHomepage({ market = 'US' }) {
                       <NigeriaHeroJourney content={content} />
                     </div>
                   </>
+                ) : isUSExperience ? (
+                  <div className="xl:hidden">
+                    <USHeroVisual content={content} compact />
+                  </div>
                 ) : (
                   <StoryArc content={content} />
                 )}
@@ -1698,7 +1931,7 @@ export default function MarketHomepage({ market = 'US' }) {
                 <CompactHeroSurface content={content} />
               </div>
               <div className="hidden xl:block">
-                {isNigeriaExperience ? <NigeriaHeroVisual content={content} /> : <HeroPreview content={content} />}
+                {isNigeriaExperience ? <NigeriaHeroVisual content={content} /> : isUSExperience ? <USHeroVisual content={content} /> : <HeroPreview content={content} />}
               </div>
             </div>
 
@@ -1731,6 +1964,8 @@ export default function MarketHomepage({ market = 'US' }) {
 
         {isNigeriaExperience ? (
           <NigeriaDesktopCareSection />
+        ) : isUSExperience ? (
+          <USDesktopCareSection content={content} />
         ) : (
           <section id="features" className="hidden px-4 py-16 sm:px-6 md:py-20 xl:block">
             <div className="mx-auto max-w-7xl space-y-12">
@@ -1773,6 +2008,8 @@ export default function MarketHomepage({ market = 'US' }) {
 
         {isNigeriaExperience ? (
           <NigeriaDesktopWorkflowSection content={content} />
+        ) : isUSExperience ? (
+          <USDesktopWorkflowSection content={content} />
         ) : (
           <section id="workflow" className="hidden border-y border-border/60 bg-card/40 px-4 py-16 sm:px-6 md:py-20 xl:block">
             <div className="mx-auto max-w-7xl space-y-12">
