@@ -473,28 +473,28 @@ export const MARKET_HOME_DATA = {
       },
     ],
     hero: {
-      badge: 'Nigeria telehealth and pharmacy access',
-      title: 'See a doctor, manage prescriptions, and fill medicines in one Nigeria-ready platform.',
-      highlight: 'Online consultations and pharmacy access that feel local from the first tap.',
+      badge: 'Nigeria telehealth access',
+      title: 'Quality healthcare,',
+      highlight: 'right in your pocket.',
       description:
-        'Book online doctor consultations, upload prescriptions, compare pharmacy availability, and pay with trusted local rails without switching apps.',
+        'Consult with board-certified doctors from home, receive digital prescriptions, and keep pharmacy delivery or lab follow-through moving without a waiting room.',
       primaryCta: {
-        label: 'Create Patient Account',
+        label: 'Book a Consultation',
         href: '/ng/auth/register',
       },
       secondaryCta: {
-        label: 'Search Medicines',
+        label: 'Explore Specialists',
         href: '/ng/patient/search',
       },
       tertiaryCta: {
-        label: 'Join as Provider',
+        label: 'View Plans',
         href: '/ng/provider/register',
       },
       trustItems: [
-        { icon: Video, text: 'Online doctor consults' },
-        { icon: Package, text: 'Prescription upload' },
-        { icon: CreditCard, text: 'Naira payment rails' },
-        { icon: ShieldCheck, text: 'NDPA-aware workflow' },
+        { icon: Video, text: '24/7 virtual care' },
+        { icon: Stethoscope, text: 'Board-certified clinicians' },
+        { icon: Pill, text: 'Digital prescriptions' },
+        { icon: Building2, text: 'Pharmacy and labs' },
       ],
       visualTone: 'emerald',
       visual: {
