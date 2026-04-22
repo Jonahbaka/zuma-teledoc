@@ -12,7 +12,8 @@ function buildDeployCommand() {
     'rm -f .git/index.lock',
     'git fetch --prune origin main',
     'git reset --hard origin/main',
-    'git clean -fd',
+    // Preserve production-only secrets and certificates that are intentionally untracked.
+    'git clean -fd -e .env -e .env.* -e global-bundle.pem -e *.pem',
     'npm install --prefer-offline --no-audit --no-fund',
     'rm -rf .next .turbo',
     'node ng/migrations/migrate.js',

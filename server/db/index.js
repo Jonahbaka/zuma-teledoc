@@ -3,6 +3,8 @@
  * Production-ready with SSL/TLS support for AWS RDS
  */
 
+require('dotenv').config();
+
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
