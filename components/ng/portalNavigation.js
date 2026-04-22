@@ -20,7 +20,7 @@ export const nigeriaPatientNavigation = [
   { name: 'Appointments', href: '/ng/patient/appointments', icon: Calendar },
   { name: 'Prescriptions', href: '/ng/patient/prescriptions', icon: Pill },
   { name: 'Orders', href: '/ng/patient/orders', icon: Package },
-  { name: 'Medication Search', href: '/ng/patient/search', icon: Search },
+  { name: 'Find Care', href: '/ng/patient/search', icon: Search },
   { name: 'Records', href: '/ng/patient/records', icon: FileText },
   { name: 'Messages', href: '/ng/patient/messages', icon: MessageSquare },
   { name: 'Profile', href: '/ng/patient/profile', icon: User },

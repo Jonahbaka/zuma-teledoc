@@ -16,6 +16,7 @@ import {
 import api, { appointmentsAPI, messagesAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import NigeriaDiscoverySpotlight from '@/components/ng/NigeriaDiscoverySpotlight';
 import { formatDateTime } from '@/lib/utils';
 
 const QUICK_ACTIONS = [
@@ -42,6 +43,12 @@ const QUICK_ACTIONS = [
     description: 'Stay connected with care coordination and providers.',
     href: '/ng/patient/messages',
     icon: MessageSquare,
+  },
+  {
+    title: 'Continue Care Plan',
+    description: 'Resume the latest provider, prescription, or pharmacy follow-through.',
+    href: '/ng/patient/search',
+    icon: ClipboardList,
   },
 ];
 
@@ -290,6 +297,8 @@ export default function NigeriaPatientPortalPage() {
           </CardContent>
         </Card>
       </section>
+
+      <NigeriaDiscoverySpotlight embeddedInPortal />
     </div>
   );
 }

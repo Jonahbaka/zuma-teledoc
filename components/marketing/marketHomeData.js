@@ -453,7 +453,7 @@ export const MARKET_HOME_DATA = {
       {
         label: 'Search Medicines',
         description: 'Compare trusted pharmacy options',
-        href: '/ng/patient/search',
+        href: '/ng/medicines',
         tone: 'blue',
         icon: Search,
       },
@@ -484,7 +484,7 @@ export const MARKET_HOME_DATA = {
       },
       secondaryCta: {
         label: 'Explore Specialists',
-        href: '/ng/patient/search',
+        href: '/ng/find-care',
       },
       tertiaryCta: {
         label: 'View Plans',
@@ -671,7 +671,7 @@ export const MARKET_HOME_DATA = {
             'Pickup or delivery updates after checkout',
           ],
           ctaLabel: 'Search Medicines',
-          ctaHref: '/ng/patient/search',
+          ctaHref: '/ng/medicines',
         },
         {
           eyebrow: 'Partner network',
@@ -718,7 +718,7 @@ export const MARKET_HOME_DATA = {
       },
       secondary: {
         label: 'Search Medicines',
-        href: '/ng/patient/search',
+        href: '/ng/medicines',
       },
     },
     footer: {
@@ -731,7 +731,7 @@ export const MARKET_HOME_DATA = {
           title: 'Patients',
           links: [
             { label: 'Create Account', href: '/ng/auth/register' },
-            { label: 'Search Medicines', href: '/ng/patient/search' },
+            { label: 'Search Medicines', href: '/ng/medicines' },
             { label: 'Sign In', href: '/ng/auth/login' },
           ],
         },

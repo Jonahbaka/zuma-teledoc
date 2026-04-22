@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 
 // Import NG routes
+const discoveryRoutes = require('./discovery');
 const pharmacyRoutes = require('./pharmacy');
 const patientRoutes = require('./patient');
 const adminRoutes = require('./admin');
@@ -60,6 +61,7 @@ const requireAdmin = (req, res, next) => {
 };
 
 // Mount routes
+router.use('/discovery', discoveryRoutes);
 router.use('/pharmacy', authenticate, pharmacyRoutes);
 router.use('/patient', authenticate, patientRoutes);
 router.use('/admin', authenticate, requireAdmin, adminRoutes);

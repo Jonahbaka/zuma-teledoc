@@ -1,0 +1,26 @@
+source,source_med_code,generic_name,form,strength,pack_size,therapeutic_class,symptom_tags,controlled,prescription_required,nhia_listed
+nhia,NHIS-02-03-02,Paracetamol,tablet,500mg,,analgesic_antipyretic,fever;pain,False,False,True
+nhia,NHIS-02-03-04,Paracetamol,syrup/suspension,125mg/5ml 60mls,,analgesic_antipyretic,fever;pain;paediatric,False,False,True
+nhia,NHIS-02-04-12,Ibuprofen,tablet/capsule,200mg,,analgesic_nsaid,pain;fever,False,False,True
+nhia,NHIS-02-04-14,Ibuprofen,suspension,100mg/5ml 100mls,,analgesic_nsaid,pain;fever;paediatric,False,False,True
+nhia,NHIS-06-01-03,Metronidazole,suspension,200mg/5ml 60mls,,antiinfective,gi_infection;anaerobic,False,True,True
+nhia,NHIS-06-05-04,Artemether + Lumefantrine,tablet/caps/soft gel,20mg/120mg Tab x 24s,,antimalarial,malaria;fever,False,True,True
+nhia,NHIS-06-05-06,Artemether + Lumefantrine,paediatric dispersible,,,antimalarial,malaria;fever;paediatric,False,True,True
+nhia,NHIS-06-05-07,Artemether + Lumefantrine,suspension,180mg/1080mg 60mls,,antimalarial,malaria;fever;paediatric,False,True,True
+nhia,NHIS-16-05-04,Oral Rehydration Salt,sachet,"Glucose 13.5g, Potassium Cl. 1.5g, Sodium bicarbonate 2.5%, Sodium Chloride 2.6g",,rehydration,diarrhoea;dehydration,False,False,True
+nhia,NHIS-16-00-06,Omeprazole,tablet,"10mg,20mg",,gastrointestinal,reflux;gastritis,False,False,True
+nhia,NHIS-15-02-09,Xylometazoline,nasal drops,0.25% 10mls,,ent,cold;nasal_congestion;paediatric,False,False,True
+nhia,NHIS-15-02-10,Xylometazoline,nasal drops,0.50% 10mls,,ent,cold;nasal_congestion,False,False,True
+nhia,NHIS-12-04-02,Amlodipine,tablet,5mg,,cardiovascular,hypertension,False,True,True
+nhia,NHIS-12-04-03,Amlodipine,tablet,10mg,,cardiovascular,hypertension,False,True,True
+nhia,NHIS-12-04-48,Losartan,tablet,25mg,,cardiovascular,hypertension,False,True,True
+nhia,NHIS-12-04-49,Losartan,tablet,50mg,,cardiovascular,hypertension,False,True,True
+nhia,NHIS-17-06-15,Metformin,tablet,500mg,,diabetes,diabetes,False,True,True
+nhia,NHIS-17-06-24,Metformin,tablet,1000mg,,diabetes,diabetes,False,True,True
+nhia,NHIS-17-06-25,Metformin,tablet,850mg,,diabetes,diabetes,False,True,True
+nhia,NHIS-17-06-03,Insulin Soluble,injection,40 units/ml,,diabetes,diabetes,False,True,True
+nhia,NHIS-17-06-04,Insulin Soluble,injection,100 units/ml,,diabetes,diabetes,False,True,True
+nhia,NHIS-17-06-10,Insulin Glargine,cartridge,100iu per ml 3ml,,diabetes,diabetes,False,True,True
+nhia,NHIS-24-01-09,Salbutamol,aerosol,0.1mg/metered dose,,respiratory,asthma;wheeze,False,True,True
+nhia,NHIS-24-01-10,Salbutamol,nebule,2.5mg,,respiratory,asthma;wheeze,False,True,True
+nhia,NHIS-24-01-11,Salbutamol,nebule,5mg,,respiratory,asthma;wheeze,False,True,True

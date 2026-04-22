@@ -1,0 +1,13 @@
+ui_category,generic_name,listing_status,access_mode,product_logic_note
+Pain & Fever,Paracetamol,nhia_listed,otc_candidate,Common fever/pain relief; useful hero chip in Nigeria telehealth flows
+Pain & Fever,Ibuprofen,nhia_listed,otc_candidate,Alternative analgesic; keep GI and pregnancy cautions in logic
+Malaria,Artemether + Lumefantrine,nhia_listed,prescription_or_protocol,High-value malaria flow item; tie to symptom checker and testing guidance
+Digestive / Dehydration,Oral Rehydration Salts,nhia_listed,otc_candidate,Strong for diarrhoea/dehydration flows
+Digestive / Infection,Metronidazole,nhia_listed,prescription,Only surface after clinician review or validated protocol
+Cold / Nasal,Xylometazoline,nhia_listed,otc_candidate,Useful for symptomatic relief; enforce duration warnings
+Gastric,Omeprazole,nhia_listed,otc_candidate_or_rx,Good for reflux/gastritis category search
+Respiratory,Salbutamol,nhia_listed,prescription,Useful in asthma/wheeze pathways
+Hypertension,Amlodipine,nhia_listed,prescription,High chronic-care relevance
+Hypertension,Losartan,nhia_listed,prescription,Good chronic-care search target
+Diabetes,Metformin,nhia_listed,prescription,High chronic-care relevance
+Diabetes,Insulin soluble / glargine,nhia_listed,prescription,Important for continuity-of-care medication search

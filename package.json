@@ -13,6 +13,8 @@
     "start:next": "next start",
     "start:server": "node --max-http-header-size=32768 server/index.js",
     "migrate": "node server/db/migrate.js",
+    "ng:migrate": "node ng/migrations/migrate.js",
+    "ng:seed:pack": "node ng/scripts/ingest-doctarx-nigeria-pack.js",
     "migrate:rollback": "node server/db/rollback.js",
     "seed:links": "node server/scripts/seed-testing-links.js",
     "lint": "eslint .",

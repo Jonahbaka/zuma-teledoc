@@ -1,0 +1,17 @@
+source,organization,payer_type,state_code,website,address_raw,email,phone,director
+nhia,Abia State Health Insurance Agency (ABSHIA),state_scheme,ABIA,abshia.com.ng,"100 Aba Road, HMB Premises, Umuahia, Abia",Chidou2@yahoo.com,08036019421,Dr. Ubani - Ukoma C
+nhia,Adamawa State Contributory Health Management Agency (ASCHMA),state_scheme,ADAMAWA,aschma.org,"State Secretariat Complex, Yola, Adamawa",ajmalyaya@gmail.com,08069115355,Halima S. Abubakar
+nhia,Akwa Ibom State Health Insurance Agency,state_scheme,AKS,,,Peterinyang2008@gmail.com,08037457756,Dr. Peter Inyang
+nhia,Anambra State Health Insurance Agency (ASHIA),state_scheme,ANAMBRA,www.ashiang.org,"Road 1, Abuja Estate, Venerable Prof. Ben Okeke Avenue, Opp. Government House, Anambra State",Belmaechi1@gmail.com,08036740872,Dr. Simeon Onyemaechi
+nhia,Bauchi State Health Contributory Management Agency (BASHCMA),state_scheme,BAUCHI,bashcma.com,"Bello Kirfi Road, Off Murtala Mohammed Way, Bauchi",mansurmdg@gmail.com,08034508669,Dr. Mansur M. Dada
+nhia,Benue State Health Insurance Agency (BNSHIA),state_scheme,BENUE,bnshia.be.gov.ng,"No. 9 Ogiri Oko Road, Makurdi",egwudanielanthony@gmail.com,07080095556,Anthony D Egwu
+nhia,Borno State Contributory Health Care Management Agency (BOSCHMA),state_scheme,BORNO,boschma.bo.gov.ng,"State Secretariat Complex, Maiduguri",drabbasaleh@gmail.com,08021212770,Dr. Abba K Saleh
+nhia,Bayelsa Health Insurance Scheme (BHIS),state_scheme,BAYELSA,bhis.by.gov.ng,"State Secretariat Complex, Yenagoa, Bayelsa",agadahzuoboeni@yahoo.com,08061359729,Dr. Agadah Z.
+nhia,Cross River State Health Insurance Agency (CRSHIA),state_scheme,CRS,www.ebshia.eb.gov.ng,"30 Barrack Road, Calabar",iyalago@gmail.com,08027560036,Iyala Okara Godwin
+nhia,Delta State Contributory Health Commission (DSCHC),state_scheme,DELTA,dschc.org.ng,"State Secretariat Complex, Asaba, Delta State",ben@dschc.org.ng,08055251757,Dr. Ben Nkechuka
+nhia,Ebonyi State Health Insurance Agency (EBSHIA),state_scheme,EBONYI,www.ebshia.eb.gov.ng,"3rd Floor, Block 5, New Secretariat Complex, Commentary City, Abakaliki, Ebonyi State",archichinweoke@gmail.co,08069391870,Dr Archi Chinweoke Doris
+nhia,Edo State Health Insurance Scheme (EDHIC),state_scheme,EDO,edhic.org,"2nd Floor Specialist Hospital, Sapele Road, Benin-City, Edo State",amegorrock@gmail.com,08033812393,Dr. Amejor Rock
+nhia,Ekiti State Health Insurance Scheme (EKHIS),state_scheme,EKITI,www.ekitistate.gov.ng,"Data Bank Complex, Ministry Of Health, Ado-Ekiti, Ekiti State",Joeileke2004@gmail.com,08062267648,Dr Joshua Ideke
+nhia,Enugu State Universal Health Coverage Scheme (ESUHCS),state_scheme,ENUGU,www.esauhc.org,"No. 1 Colliery Avenue, GRA, Enugu State",edithokolo@gmail.com,07064492317,Dr Edith Okolo
+nhia,Imo State Health Insurance Agency (IMSHIA),state_scheme,IMO,imshiaonline.com,"Quinters Youth Avenue, Opp. Civic Centre, Off Concord Road, Imo State",Jonyeokoro2014@gmail.com,08057763680,Dr. John Onyeokoro
+nhia,Jigawa state contributory Healthcare Management Agency,state_scheme,JIGAWA,jichma.jg.gov.ng,"State Secretariat Complex, Dutse, Jigawa",Nuraibrahim68@gmail.com,08033611311,Dr. Nura Ibrahim

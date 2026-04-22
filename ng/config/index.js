@@ -76,6 +76,12 @@ const config = {
     },
   },
 
+  discovery: {
+    whatsappNumber: process.env.NEXT_PUBLIC_NIGERIA_WHATSAPP_NUMBER || '',
+    callbackNumber: process.env.NEXT_PUBLIC_NIGERIA_CALLBACK_NUMBER || '',
+    callbackLabel: process.env.NEXT_PUBLIC_NIGERIA_CALLBACK_LABEL || 'Request a phone callback',
+  },
+
   // AI / OCR
   ai: {
     prescriptionOcrEnabled: true,
