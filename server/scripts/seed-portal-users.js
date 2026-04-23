@@ -84,6 +84,17 @@ const PORTAL_ACCOUNTS = [
     tier: 'gold',
     country: 'United States',
   },
+  {
+    key: 'pharmacy-ng-owner',
+    role: 'pharmacy',
+    targetEmail: 'iamjonah.baka@gmail.com',
+    legacyEmails: [],
+    firstName: 'Jonah',
+    lastName: 'Baka Pharmacy',
+    accessLevel: 'gold_monthly',
+    tier: 'gold',
+    country: 'Nigeria',
+  },
 ];
 
 function normalizeEmail(email) {
@@ -107,8 +118,6 @@ function selectCandidate(rows, account) {
   return (
     rows.find((row) => row.role === account.role && normalizeEmail(row.email) === targetEmail) ||
     rows.find((row) => row.role === account.role && legacyEmails.has(normalizeEmail(row.email))) ||
-    rows.find((row) => normalizeEmail(row.email) === targetEmail) ||
-    rows.find((row) => legacyEmails.has(normalizeEmail(row.email))) ||
     null
   );
 }

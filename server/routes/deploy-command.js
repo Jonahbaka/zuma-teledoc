@@ -11,7 +11,7 @@ function buildDeployCommand() {
     'git reset --hard origin/main',
     // Preserve production-only secrets and certificates that are intentionally untracked.
     'git clean -fd -e .env -e .env.* -e global-bundle.pem -e *.pem',
-    'npm install --prefer-offline --no-audit --no-fund',
+    'npm install --include=dev --prefer-offline --no-audit --no-fund',
     'rm -rf .turbo',
     'node ng/migrations/migrate.js',
     'node ng/scripts/ingest-doctarx-nigeria-pack.js',
