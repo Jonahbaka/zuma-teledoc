@@ -5,8 +5,8 @@ const DEPLOY_BUILD_MEMORY_MB = process.env.DEPLOY_BUILD_MEMORY_MB || '1536';
 function buildDeployCommand() {
   return [
     `cd ${PROJECT_ROOT}`,
-    // Stop stale processes before rebuilding so Next can replace .next safely.
-    'pkill -9 -f "node server" || true',
+    // The bracketed pattern avoids killing this deploy shell while matching stale node server processes.
+    'pkill -9 -f "[n]ode server" || true',
     'sleep 2',
     // Production checkout should match origin/main exactly; clear local drift before building.
     'rm -f .git/index.lock',
