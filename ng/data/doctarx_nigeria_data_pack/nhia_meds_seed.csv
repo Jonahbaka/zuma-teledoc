@@ -1,26 +1,1021 @@
-source,source_med_code,generic_name,form,strength,pack_size,therapeutic_class,symptom_tags,controlled,prescription_required,nhia_listed
-nhia,NHIS-02-03-02,Paracetamol,tablet,500mg,,analgesic_antipyretic,fever;pain,False,False,True
-nhia,NHIS-02-03-04,Paracetamol,syrup/suspension,125mg/5ml 60mls,,analgesic_antipyretic,fever;pain;paediatric,False,False,True
-nhia,NHIS-02-04-12,Ibuprofen,tablet/capsule,200mg,,analgesic_nsaid,pain;fever,False,False,True
-nhia,NHIS-02-04-14,Ibuprofen,suspension,100mg/5ml 100mls,,analgesic_nsaid,pain;fever;paediatric,False,False,True
-nhia,NHIS-06-01-03,Metronidazole,suspension,200mg/5ml 60mls,,antiinfective,gi_infection;anaerobic,False,True,True
-nhia,NHIS-06-05-04,Artemether + Lumefantrine,tablet/caps/soft gel,20mg/120mg Tab x 24s,,antimalarial,malaria;fever,False,True,True
-nhia,NHIS-06-05-06,Artemether + Lumefantrine,paediatric dispersible,,,antimalarial,malaria;fever;paediatric,False,True,True
-nhia,NHIS-06-05-07,Artemether + Lumefantrine,suspension,180mg/1080mg 60mls,,antimalarial,malaria;fever;paediatric,False,True,True
-nhia,NHIS-16-05-04,Oral Rehydration Salt,sachet,"Glucose 13.5g, Potassium Cl. 1.5g, Sodium bicarbonate 2.5%, Sodium Chloride 2.6g",,rehydration,diarrhoea;dehydration,False,False,True
-nhia,NHIS-16-00-06,Omeprazole,tablet,"10mg,20mg",,gastrointestinal,reflux;gastritis,False,False,True
-nhia,NHIS-15-02-09,Xylometazoline,nasal drops,0.25% 10mls,,ent,cold;nasal_congestion;paediatric,False,False,True
-nhia,NHIS-15-02-10,Xylometazoline,nasal drops,0.50% 10mls,,ent,cold;nasal_congestion,False,False,True
-nhia,NHIS-12-04-02,Amlodipine,tablet,5mg,,cardiovascular,hypertension,False,True,True
-nhia,NHIS-12-04-03,Amlodipine,tablet,10mg,,cardiovascular,hypertension,False,True,True
-nhia,NHIS-12-04-48,Losartan,tablet,25mg,,cardiovascular,hypertension,False,True,True
-nhia,NHIS-12-04-49,Losartan,tablet,50mg,,cardiovascular,hypertension,False,True,True
-nhia,NHIS-17-06-15,Metformin,tablet,500mg,,diabetes,diabetes,False,True,True
-nhia,NHIS-17-06-24,Metformin,tablet,1000mg,,diabetes,diabetes,False,True,True
-nhia,NHIS-17-06-25,Metformin,tablet,850mg,,diabetes,diabetes,False,True,True
-nhia,NHIS-17-06-03,Insulin Soluble,injection,40 units/ml,,diabetes,diabetes,False,True,True
-nhia,NHIS-17-06-04,Insulin Soluble,injection,100 units/ml,,diabetes,diabetes,False,True,True
-nhia,NHIS-17-06-10,Insulin Glargine,cartridge,100iu per ml 3ml,,diabetes,diabetes,False,True,True
-nhia,NHIS-24-01-09,Salbutamol,aerosol,0.1mg/metered dose,,respiratory,asthma;wheeze,False,True,True
-nhia,NHIS-24-01-10,Salbutamol,nebule,2.5mg,,respiratory,asthma;wheeze,False,True,True
-nhia,NHIS-24-01-11,Salbutamol,nebule,5mg,,respiratory,asthma;wheeze,False,True,True
+nhis_code,medicine_name,dosage_form,strength,presentation,category_hint,prescription_class,source_url,extracted_at
+NHIS-01-01-01,Halothane,"Inhalation, Liquid","10 mg/ml in 20 ml,",Per 1ml,Anaesthesia and perioperative medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-01-02,Ketamine,Injection (HCL),"50mg/ml in 10ml, 100mg/ml in 5ml",vial,Anaesthesia and perioperative medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-01-03,Nitrous oxide,"Inhalation, medicinal Gas",,Gas,Anaesthesia and perioperative medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-01-04,Oxygen,"Inhalation, medicinal Gas",per hour,Gas,Anaesthesia and perioperative medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-02-01,Atropine,Injection (sulphate),0.5mg/amp,Amp.,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-02-02,Atropine,Injection (sulphate),1mg/ 1ml,Amp.,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-02-03,Diazepam,Injection,5mg/ml in 2 ml,Amp.,Anaesthesia and perioperative medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-02-04,Hyoscine N -Butylbromide,Injection,20mg/ml,amp,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-02-05,Midazolam 15mg Injection,Injection,15mg,Injection,Anaesthesia and perioperative medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-02-06,Morphine,Injection (Sulphate or,"10 mg/ml, 15mg/ml in 1ml ampoules",Amp,Anaesthesia and perioperative medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-02-07,Morphine,Injection (Sulphate or,"25mg, (Hydrochloride)",Amp,Anaesthesia and perioperative medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-02-08,Promethazine,Tablets,5mg,Tab.,Anaesthesia and perioperative medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-02-09,Promethazine,Syrup,25mg/ml (HC1) in 1 ml,60mls,Anaesthesia and perioperative medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-02-10,Promethazine,Injection,2ml Ampoule,Amp,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-02-11,Glycopyrollate 0.2mg Injection 1,Injection,0.2mg,Injection,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-03-01,Atracurium,Injection,50 mg/ml,Amp.,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-03-02,Edrophonium,Injection (chloride),10mg/ml,Amp,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-03-03,Neostigmine,Injection,,Amp,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-03-04,Pancuronium,Injection (Bromide),4mg/2ml,Amp,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-03-05,Pancuronium,Injection (Bromide),,Amp.,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-03-06,Suxamethonium,Injection (Chloride),100mg/2ml,Amp.,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-03-07,Propofol 1% Injection,Injection,1%,Injection,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-04-01,Lidocaine,Injection (HCL),"1%, /2% + Adrenaline 1:200000",Vial50mls,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-04-02,Bupivacaine,Injection (HCL),Plain or with epinephrine,Amp,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-04-03,Lidocaine,,10%,,Anaesthesia and perioperative medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-04-04,Lidocaine,Topical spray,2-4%,Spray,Anaesthesia and perioperative medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-04-05,Lidocaine,Jelly,2-5%,Tube,Anaesthesia and perioperative medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-04-06,Lidocaine,"Cream, Ointment","2% + epinephrine (adrenaline) 1:80,000",Tube,Anaesthesia and perioperative medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-04-07,Lidocaine,Dental cartridge,"0.25%, 0.5%, in 10ml amp (with or without",Tube,Anaesthesia and perioperative medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-01-04-08,Prilocaine,Injection,3% with felypressin 0.03units/ml,Amp,Anaesthesia and perioperative medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-01-01,Morphine,Injection,10mg (SO4 or HC1) in 1ml Ampoule,Amp.,Analgesics and anti-inflammatory medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-01-02,Morphine,Injection,15mg (SO4 or HC1) in 1ml Ampoule,Amp.,Analgesics and anti-inflammatory medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-01-03,Morphine,Tablet,30mg,Tab.,Analgesics and anti-inflammatory medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-01-04,Pentazocine,Injection (lactate),30mg/ml,Amp.,Analgesics and anti-inflammatory medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-01-05,Pethidine,Injection,50mg/ml in 2 ml Ampoule,Amp.,Analgesics and anti-inflammatory medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-01-06,Tramadol,Tablet,50mg,Tab.,Analgesics and anti-inflammatory medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-01-07,Tramadol,Injection,50mg/ml ampoule,Amp.,Analgesics and anti-inflammatory medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-01-08,Morphine 1mg/ml Syrup 200ml,Syrup,1mg/ml(200ml),Syrup,Analgesics and anti-inflammatory medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-01-09,Morphine 1mg/ml Syrup 500ml,Syrup,1mg/ml(500ml),Syrup,Analgesics and anti-inflammatory medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-01-10,Dihydrocodeine 30mg tab,Tablet,30mg,Tablet,Analgesics and anti-inflammatory medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-01-11,Codeine/Paracetamol (8/500mg) tab,Tablet,8/500mg,Tablet,Analgesics and anti-inflammatory medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-01-12,Codeine/Paracetamol(30/500mg) tab,Tablet,30/500mg,Tablet,Analgesics and anti-inflammatory medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-02-01,Naloxone,Injection,0.4mg/ml in 1ml Ampoule,Amp,Analgesics and anti-inflammatory medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-03-01,Acetyl salicylic Acid,"Tablet, capsule",300mg,Tab/Caps.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-03-02,Paracetamol,Tablets,500mg,Tab,Analgesics and anti-inflammatory medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-03-03,Paracetamol,Suppository,100 mg,Supp.,Analgesics and anti-inflammatory medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-03-04,Paracetamol,Syrup/suspension,125mg/5ml,60mls,Analgesics and anti-inflammatory medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-03-05,Paracetamol,Drop,125mg/5ml,15mls,Analgesics and anti-inflammatory medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-03-06,Paracetamol,Injection,150mg/ml,Amp.,Analgesics and anti-inflammatory medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-01,Allopurinol,Tablet,100mg,Tab.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-02,Allopurinol,Tablet,300mg,Tab.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-03,Celecoxib,Capsules,200mg,Caps.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-04,Chondroitin sulphate+ Glucoseamine,Capsules,200mg+250mg,Caps.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-05,Diclofenac (sodium or potassium salt),Tablet,"100mg,",Tab.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-06,Diclofenac (sodium or potassium salt),Tablet,50mg,Tab.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-07,Diclofenac (sodium or potassium salt),Injection,25mg/ml Ampoule,Amp.,Analgesics and anti-inflammatory medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-08,Diclofenac sodium,Gel,1%,Tube,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-09,Diclofenac sodium + misoprostol,Tab,75/200mg,Tab,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-10,Diclofenac sodium+B1+B6+B12,Tablet,,,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-11,Diclofenac sodium + Cholestyramine,Tablet,75mg/65mg,Tab,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-12,Ibuprofen,"Tablets, capsules","200mg,",Tab.,Analgesics and anti-inflammatory medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-13,Ibuprofen,"Tablets, capsules",400mg,Tab,Analgesics and anti-inflammatory medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-14,Ibuprofen,Suspension,100mg/5ml,100mls,Analgesics and anti-inflammatory medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-15,Ketoprofen,Capsules,200mg,Caps./tabs,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-16,Ketoprofen,Injection,100mg,2ml Amp,Analgesics and anti-inflammatory medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-17,Naproxen,Tablet,250mg,Tab.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-18,Naproxen,Tablet,500mg,Tab.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-19,Piroxicam,Capsules,20mg,Caps.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-20,Piroxicam,Injection,10mg/ml,2ml Amp,Analgesics and anti-inflammatory medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-21,Meloxicam 15mg Capsule,Capsule,15mg,Capsule,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-22,Meloxicam 7.5mg Capsule,Capsule,7.5mg,Capsule,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-23,Diclofenac 100mg Suppository,Suppository,100mg,Suppository,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-24,Diclofenac 12.5mg Suppository,Suppository,12.5mg,Suppository,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-25,Diclofenac 50mg Suppository,Suppository,50mg,Suppository,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-26,Tenoxicam,Capsule,20mg,Capsule,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-27,Aceclofenac,Tablet,100mg/tab,Tablet,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-04-28,Aceclofenac + paracetamol + Serratiopeptidase,Tablet,100mg+325mg+15mg,Tablet,Analgesics and anti-inflammatory medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-05-01,Orphenadrine,Tablet (citrate),100mg,Tab.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-05-02,Orphenadrine + Paracetamol,Tablet (citrate),35mg+ 450mg,Tab.,Analgesics and anti-inflammatory medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-05-03,Tizanidine,Tablet,4mg,Tab.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-05-04,Tizanidine,Tablet,2mg,Tab.,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-02-05-05,Baclofen 10mg Tablet,Tablet,10mg,Tablet,Analgesics and anti-inflammatory medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-01,Cetrizine,Tablet,10mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-02,Cetrizine,Syrup,1mg/5ml,100ml,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-03,Chlorpheniramine,Tablet,4mg (Maleate),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-04,Chlorpheniramine,Syrup,2mg/5ml,60mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-05,Chlorpheniramine,Injection,10mg (Maleate) in 1ml Ampoule,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-06,Clemastine,Tablet,1mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-07,Clemastine,Syrup,500mcg/5ml,100ml,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-08,Loratidine,Tablet,10mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-09,Loratidine,Syrup,5mg/5ml,60ml,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-10,Promethazine,Tablets,"25mg, (Hydrochloride)",Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-11,Promethazine,Syrup,5mg/5ml,60mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-12,Promethazine,Injection,25mg/ml (HC1) in 1 ml and 2ml Ampoule,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-13,Cinnarizine,Tablet,25mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-14,Fexofenadine 120mg Tablet,Tablet,120mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-01-15,Fexofenadine 180mg Tablet,Tablet,180mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-02-01,Dexamethasone,Injection (sodium phosphate),4mg/1ml,Amp,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-02-02,Epinephrine (Adrenaline),Injection,1mg/ml (1 in 1000) as Acid tartrate or,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-02-03,Epinephrine (Adrenaline),Injection,HC1 in 1ml Ampoule,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-02-04,Hydrocortisone,Injection,"Powder for reconstitution, 100mg",Vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-03-02-05,Hydrocortisone,Injection,(Sodium Succinate) in vial,Vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-01,Atropine,Injection,1.0mg (Sulphate) in 1ml Ampoule,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-02,Atropine,Tablet,1 mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-03,Deferoxamine,Injection (mesilate),500 mg/vial,Vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-04,Dimercaprol,Injection,50 mg/ml in 2 ml Ampoules,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-05,Methylene blue,Injection,5ml,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-06,Methylene blue,Injection,50 ml,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-07,Naloxone,Injection (HCL),400mcg/ml,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-08,Phytomenadione (Vitamin K1),Ampoule,10mg/ml in 1ml,Amp.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-09,Potassium ferric hexacyanoferrate (11) (Prussian blue),Powder for oral administration,,Powder,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-10,Protamine sulphate,Injection,10mg/ml in 5 ml,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-11,Sodium calcium edetate,Injection,200mg/ml in 5 ml,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-12,Sodium nitrite,Injection,30mg/ml in 10 ml vial,Vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-13,Sodium thiosulphate,Injection,500mg/ml,Amp,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-14,Acetylcysteine 200mg Injection,Injection,200mg/vial,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-01-15,Acetylcysteine 500mg Tablet,Tablet,500mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-02-01,Activated charcoal,Tablet,Tablet,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-04-02-02,Activated charcoal,"Granule, Powder for","5g/satchet, powder 25 g, 50 g pack, for",,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-01,Carbamazepine,Tablet,200mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-02,Carbamazepine,Tablet,400mg SR,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-03,Carbamazepine,Syrup,100mg/5ml,100ml,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-04,Diazepam,Injection,5mg/ml in 2ml Ampoule,Amp.,,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-05,Ethosuximide,Caps/tablets,250 mg,Caps.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-06,Ethosuximide,Syrup,250mg/5ml,100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-07,Magnesium sulphate,Injection,50% (500 mg/ml) in 2 ml,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-08,Paraldehyde,Injection,"10ml, 5 mls",Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-09,Phenobarbital,Tablets,"15mg,",Tab.,,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-10,Phenobarbital,Tablets,"30mg, 60mg",Tab,,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-11,Phenobarbital,"Elixir, Syrup",15mg/5ml,60mls,,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-12,Phenobarbital,Injection,200mg/ml,Amp.,,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-13,Phenytoin Sodium,Capsule,"100mg, 50 mg, 25, mg",Caps,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-14,Sodium valproate,Tablets,200mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-15,Sodium valproate,Tablets,500mg SR,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-16,Sodium valproate,Elixir/syrup,200mg/5ml,200mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-17,Pregabalin,Tablet,75mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-18,Pregabalin,Tablet,150mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-05-01-19,Pregabalin + Methylcobalamin,Tablet,75mg+750mcg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-01-01,Metronidazole,Tablets,200mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-01-02,Metronidazole,Tablet,400mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-01-03,Metronidazole,Suspension,200mg/5ml,60mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-01-04,Metronidazole,IV Injection,500mg in 100ml bottle,100mls,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-01-05,Metronidazole,Suppository,500mg,supp/ovule,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-01-06,Secnidazole,4 Tablets (single dose),500mg,4 tabs,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-01-07,Tinidazole,4 Tablets (Single,500mg,4 tabs,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-02-01,Albendazole,Tablet,200mg,2 tabs,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-02-02,Albendazole,Suspension Oral,100mg/5ml,30mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-02-03,Levamisole,Tablet,40mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-02-04,Levamisole,Suspension,40mg/5ml,30mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-02-05,Mebendazole,Tablet,"100mg,",6`s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-02-06,Mebendazole,Tablet,500 mg,x 1,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-02-07,Mebendazole,Suspension,100mg/5ml,30mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-02-08,Pyrantel Pamoate,Tablet,125mg (pamoate),6`s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-02-09,Pyrantel Pamoate,Syrup,125mg/5ml,15mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-03-01,Praziquantel,Tablet,600mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-04-01,Ivermectin,Tablet,6mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-02,Artemeter,Injection (Phosphate),80mg/ml,Amp.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-03,Artemether,Injection (Phosphate),40mg/ml in 1ml Ampoule,Amp.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-04,Artemether + Lumefantrine,Tablet/caps/soft Gel/Others,20mg/120mg,Tab x 24s,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-05,Artemether + Lumefantrine,Tablet/caps/soft Gel/Others,80mg/480mg,,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-06,Artemether + Lumefantrine,Paediatric Dispersible,,,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-07,Artemether + Lumefantrine,Suspension,180mg/1080mg,60mls,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-08,Artemether + Lumefantrine,Suppository,20mg/120mg,x 6s,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-09,Artesunate,Tablet,50mg/tab,12 Tablet,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-10,Artesunate,Syrup,80mg/5ml,100ml,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-11,Artesunate 120mg Injection,Injection,120mg Ampoule,Injection,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-12,Artesunate 30mg Injection,Injection,30mg,Injection,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-13,Artesunate 60mg Injection,Injection,60mg,Injection,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-14,Atersunate + Sulphadoxine+ Pyrimethamine,Tablet (Adult),200mg/500mg/25mg,Tab.x3s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-15,Atersunate + Sulphadoxine+ Pyrimethamine,(Paed),100mg/250mg/12.5mg,Tab.x3s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-16,Atersunate + Amodiaquine,Tablet,50mg/200mg,Tab x 12s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-18,Atersunate + Amodiaquine,Paediatric Powder,25mg/75mg,Sachet x 6s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-19,Atersunate + Mefloquine,Tablet (Adult),200mg/250mg,Tab x 6s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-20,Atersunate + Mefloquine,(Paed),100mg/125mg,Tab x 6s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-21,Chloroquine (restricted),"Tablet, Capsule","300 mg,",Tab/ Caps.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-22,Chloroquine (restricted),Injection,"200mg/5ml,",Ampoules,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-23,Chloroquine (restricted),Syrup,"75mg/5ml,",60 ml,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-24,Dihydroartemisinin + Piperaquine phosphate,Tab,40mg/320mg,Tabx9s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-26,Dihydroartemisinin + Piperaquine phosphate,Suspension,80/640mg,80mls Bottle,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-27,Proguanil,Tablet,100mg (HC1),Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-29,Pyrimethamine,Tablet,25mg Pyrimethamine,Tab,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-30,Quinine,Tablet,300mg,Tab,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-05-31,Quinine,Injection,300mg (dihydrochloride)/ml in 2ml amp,Amp.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-16,Ampicillin + Cloxacillin,Neonatal injection,Ampicillin 50mg + cloxacillin 25 mg,Amp.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-17,Ampicillin + Cloxacillin,Injection,Ampicillin 250mg+Cloxacillin 250mg per vial (sodium salt of each),Amp.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-18,Ampicillin + sulbactam 1.5g Injection,Injection,1.5g/vial,Injection,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-19,Ampicillin/Sulbactam injection,Injection,3g/vial,Injection,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-20,Azithromycin,Capsules,250mg,Caps.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-21,Azithromycin,Capsules,500mg,Caps.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-22,Azithromycin,Suspension,200mg/ 5ml,30mls,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-23,Benzathine- Benzylpenicillin,Injections,2.4 M.U. of benzylpenicillin,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-24,Benzylpenicillin,"Injection, powder",1.0 MU Vial,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-25,Benzylpenicillin,"Injection, powder",5 MU Vial,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-26,Cefixime,Tablet,400mg,Tab,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-27,Cefixime,Tablet,200mg,Tab,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-28,Cefixime,Suspension,100mg/5ml,100ml,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-29,Cefixime 50mg Granules,Granules,50mg,Granules,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-30,Cefotaxime,Injection,500mg,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-31,Cefpodoxime 100mg tab,Tablet,100mg,Tablet,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-32,Cefpodoxime 200mg tab,Tablet,200mg,Tablet,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-33,Cefpodoxime 40mg/5ml Suspension,Suspension,40mg/5ml,100 ml Suspension,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-34,Ceftazidime,Injection,1gm,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-35,Ceftriaxone,Injection,"250mg,",Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-36,Ceftriaxone,Injection,500mg I.M.,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-37,Ceftriaxone,Injection,1g IV,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-38,Cefuroxime,Tablets (axetil),"250mg,",Tab.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-39,Cefuroxime,Tablets (axetil),500 mg,Tab.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-40,Cefuroxime,Suspension (axetil),125mg/5ml,100mls,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-41,Cefuroxime,Injection (sodium salt),750mg,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-42,Cefuroxime,Injection (sodium salt),250 mg,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-43,Cephalexin,Capsules/Tablet,500mg,Caps/Tab,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-44,Cephalexin,Suspension,125mg/5ml,100mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-45,Cephalexin,Suspension,250mg/5ml,100mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-46,Chloramphenicol (restricted),Capsule,250mg,Caps.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-47,Chloramphenicol (restricted),"Suspension, Oral",125mg/5ml (Palmitate),100mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-48,Chloramphenicol (restricted),Injection,1g (sodium succinate) in vial,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-49,Ciprofloxacin,Tablet,250mg (HC1),Tab.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-50,Ciprofloxacin,Tablet,500 mg (Hcl),Tab.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-51,Ciprofloxacin,Infusion,I.V. 2mg/ml (lactate) in 50 and 100ml vials,Infusion,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-52,Clarithromycin,Tablet,250mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-53,Clarithromycin,Tablet,500mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-54,Clarithromycin,Suspension,125mg,100ml,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-55,Clindamycin,Capsule,HCL 150mg,Cap,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-56,Clindamycin,Injection,Phosphate 150mg/ml,Amp,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-57,Clindamycin,Tablet,300mg,Tablet,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-58,Cloxacillin,"Injection, powder","250mg,",Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-59,Cloxacillin,"Injection, powder",500 mg in vial,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-60,Cloxacillin,Capsule,250mg,Caps.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-61,Cloxacillin,"Suspension, oral,",125mg/5mls,100mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-62,Co-trimoxazole,Tablet,400mg Sulphamethoxazole +80mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-63,Co-trimoxazole,Tablet,800mg Sulphamethoxazole +160mg,Tab. (DS),Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-64,Co-trimoxazole,Suspension,Sulphamethoxazole 200 mg +40mg,60mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-65,Doxycycline,Capsule,100mg,Caps.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-66,Erythromycin,"Tablets, capsules, enteric, film coated",250mg stearate or ethylsuccinate),Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-67,Erythromycin,"Tablets, capsules, enteric, film coated",500mg (stearate or ethylsuccinate),Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-68,Erythromycin,Suspension oral,125mg/5ml (stearate or Ethylsuccinate),60mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-69,Ethambutol 400mg tab,Tablet,400mg,Tablet,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-70,Gentamycin,Injection,"80mg/mls, 40 mg/2mls (Sulphate)",Amp.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-71,Imipenem + Cilastin 500mg Injection,Injection,500mg,Injection,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-72,Isoniazid 300mg tab,Tablet,300mg,Tablet,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-73,Levofloxacin,Tablet,250mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-74,Levofloxacin,Tablet,500mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-75,Levofloxacin,Tablet,750mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-76,Levofloxacin,Injection,500mg/100mls Infusion,100mls,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-77,Lincomycin,Capsules,500 mg,Caps.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-78,Lincomycin,Suspension,250mg/5ml,100mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-79,Lincomycin,injection (Phosphate),150 mg/ml in 2 ml,Amp.,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-80,Metronidazole,Tablets,200mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-81,Metronidazole,Tablet,400mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-82,Metronidazole,Suspension,200mg/5ml,60mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-83,Metronidazole,IV Injection,500mg in 100ml bottle,100mls,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-84,Metronidazole,Suppository,500mg,supp/ovule,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-85,Moxifloxacin,Tablet,400mg,Tablet,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-86,Moxifloxacin,Injection,400mg/250ml,Injection,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-87,Moxifloxacin,eye drop,10ml,eye drop,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-88,Nitrofurantoin,Tablet,50mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-89,Nitrofurantoin,,100mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-90,Ofloxacin,Tablet,200mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-91,Ofloxacin,Infusion,200mg/100ml Infusion,100mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-92,Pefloxacin,Tablet,400mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-93,Phenoxymethyl- Penicillin,Tablet,250mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-94,Phenoxymethyl- Penicillin,Suspension,250mg/5ml,100mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-95,Piperacillin + Tazobactam 2.25g,Vial,2.25g,Vial,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-96,Pyrazinamide 500mg tab,Tablet,500mg,Tablet,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-97,Rifampicin,Capsules,"150mg, 300mg",Caps.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-98,Secnidazole,4 Tablets (single dose),See section 6.1,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-07-99,Sparfloxacin,Tablet,200mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-08-01,Clofazimine,Capsules,"50 mg, 100 mg",Caps.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-08-02,Dapsone,Tablets,"50mg, 100 mg",Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-08-03,Rifampicin,Capsules,300 mg,Caps.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-08-04,Rifampicin,Capsules,150 mg,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-01,Amphotericin B,"Injection, powder",50 mg/vial,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-02,Fluconazole,Capsule,50 mg,Caps.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-03,Fluconazole,Capsule,150 mg,Caps.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-04,Fluconazole,Capsule,200mg,Caps.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-05,Fluconazole,Suspension,50mg/5ml,35mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-06,Fluconazole,Injection,I.V. 2 mg/ml in 0.9 % sodium chloride,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-07,Griseofulvin,Tablet,500mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-08,Griseofulvin,Suspension,125mg/ 5ml,100mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-09,Itraconazole,Capsules,100mg,Cap.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-10,Itraconazole,Suspension,10mg/ml,Suspension,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-11,Ketoconazole,Tablet,200mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-12,Miconazole,Tablet,250 mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-13,Nystatin,Tablet,"500,000 units,",Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-14,Nystatin,Suspension,"100,000 units/ml",30mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-15,Nystatin,lozenges,"100,000 units/ml",Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-16,Nystatin,Pessary,"100,000 units",Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-09-17,Terbinafine,Tablet,250mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-10-01,Aciclovir,Tablets,200mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-10-02,Aciclovir,Tablets,400 mg,Tab.,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-10-03,Aciclovir,Suspension,200 mg/5 ml,125mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-10-04,Aciclovir,Cream,5%,Tube,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-10-05,Aciclovir,Injection,IV Sodium salt 250mg/vial,Vial,Anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-10-06,Idoxuridine,Solution,5% in dimethyl sulphoxide (for external use),Solution,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-10-07,Lamivudine,Tablet,150 mg,Tab,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-10-08,Lamivudine,Solution,50mg/5ml,240 mls,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-10-09,Sofosbuvir,Tablet,400mg,Tablet,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-10-10,Ledipasvir + Sofosbuvir,Tablet,90mg/400mg,Tablet,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-10-11,Daclatasvir,Tablet,60mg,Tablet,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-10-12,Tenofovir 300mg Tablet,Tablet,300mg,Tablet,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-02,Indinavir (IDV),Capsule (Sulphate),"200 mg, 333mg, 400 mg",,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-03,Nelfinavir (NFV),Tablet,250 mg,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-04,Ritonavir (RTV),Oral liqiud,400mg/5ml,bottle,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-05,Saquinavir (SQV),Capsule,100mg,Capsule,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-06,Saquinavir (SQV),Capsule,200mg,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-07,Lopinavir + ritonavir LPV/r),Capsule,133.3mg+33.3mg,Capsule,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-08,Lopinavir + ritonavir LPV/r),Tablet,100mg/25mg,Tab,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-10,Lopinavir + ritonavir LPV/r),Oral liquid,400mg/100mg/ 5ml,Bottle,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-12,Lamivudine (3TC),Tablet,150 mg,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-13,Lamivudine (3TC),Solution,5mg/ml,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-14,Zidovudine (ZDV),Capsules,"100 mg,",,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-15,Zidovudine (ZDV),Capsules,250 mg,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-16,Zidovudine (ZDV),Syrup,50 mg/5ml,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-17,Abacavir (ABC),Tablet (sulfate),300mg,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-18,Abacavir (ABC),Liquid,100mg/5ml,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-19,Stavudine (d4T),Tablet,40mg,Tab,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-20,Zalcitabine (ddC),Tablet,750ug,Tab,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-21,Didanosine (ddI),Capsule,125mg,Cap,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-24,Didanosine (ddI),Tablet,"25mg, 50mg",Tab,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-27,Didanosine (ddI),Powder for oral,"100mg,167mg",Packets,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-28,Didanosine (ddI),Powder for oral,200mg,Packets,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-30,Nevirapine (NVP),Tablet,200 mg,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-31,Nevirapine (NVP),Syrup,50 mg/5ml,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-32,Efavirenz (EFV or EFZ),Tablet,600mg,Tab,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-33,Efavirenz (EFV or EFZ),Capsules,50mg,Caps,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-35,Efavirenz (EFV or EFZ),Oral liquid,150mg/5ml,Bottle,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-36,Ribavirin 200mg Tablet,Tablet,200mg,Tablet,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-37,Lamivudine + nevirapine + stavudine,Tablet,150mg+200mg+30mg,Tab x60s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-38,Lamivudine + nevirapine + stavudine,Tablet,150mg+200mg+30mg,Tab x60s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-39,Lamivudine + nevirapine + stavudine,Tablet(Dispersible,30mg+50mg+6mg,Tab x60s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-40,Lamivudine + nevirapine + stavudine,Tablet(Dispersible,60mg+100mg+12mg,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-41,Lamivudine + nevirapine + Zidovudine,Tablet,30mg+50mg+60mg/,Tab x 60s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-42,Lamivudine + nevirapine + Zidovudine,Tablet,150mg+200mg+300mg,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-43,Lamivudine + Zidovudine,Tablet,30mg + 60mg,Tab x 60s,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-06-11-44,Lamivudine + Zidovudine,Tablet,150mg + 300mg,,Anti-infective medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-07-01-01,Ergotamine,Tablet,"Tartrate, 2g",Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-07-01-02,Ergotamine Tartrate + Caffeine,Tablet,1mg / 100mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-07-01-03,Pizotifen,Tablets,"0.5mg, 1.5 mg",Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-07-01-04,Pizotifen,Elixir,0.25 mg/ml,100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-07-01-05,Propranolol,Tablet,40mg/,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-08-01-01,Azathioprine (Restricted),Tablet,50 mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-08-01-02,Azathioprine (Restricted),"Injection, powder",50 mg/vial,Vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-08-01-03,Dexamethasone,Tablet,0.5 mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-08-01-04,Dexamethasone,Injection,"Sodium PO4, 4 mg/ml",Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-08-01-05,Methotrexate (restricted),Tablet,2.5 mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-08-01-06,Methotrexate (restricted),Injection,50 mg/vial sodium salt,Vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-08-01-07,Prednisolone,Tablet,5 mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-09-01-01,Benzhexol,Tablets,2mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-09-01-02,Benzhexol,Tablets,5 mg (as HCl),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-09-01-03,Biperiden,Tablet,2mg (as HCL),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-09-01-04,Biperiden,Injection,5mg/ml (as lactate) in 1ml ampoule,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-09-01-05,Levodopa + Carbidopa,Tablet,"Levodopa250mg + Carbidopa 25mg,",Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-09-01-06,Levodopa + Carbidopa,Tablet,Levodopa100 mg + Carbidopa 10 mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-09-02-01,Edrophonium,Injection,(Chloride) 10mg/ml,Inj,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-09-02-02,Neostigmine,Tablet,15mg (Bromide),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-09-02-03,Pyridostigmine,Tablet,60 mg (Bromide),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-09-03-01,Amino caproic acid (AA) plus lipid thromboplastin (LT),Injection,100 mg AA + 2 mg/ml LT in 5 ml,,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-01,Chlorhexidine,Solution,5% (Gluconate) for dilution,500mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-02,Chlorhexidine + Cetrimide,Solution,Cetrimide 15% + 1.5% chlorhexidine,500mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-03,Chloroxylenol,Solution,5% for dilution,250mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-04,Chloroxylenol,Solution,5% for dilution,125mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-05,Coal tar,Solution,5%,Solution,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-06,Compound Tincture of Benzoin (TBC),Liquid,2%,100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-07,Dichloroxylenol + Chlorophenol,Soap solution,,125mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-08,Iodine,Solution,Different Preparations 1%,30mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-09,Methylated spirit,Solution,Alcohol vol/vol,200mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-10,Potassium Permanganate,Solution,0.10%,15mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-12,Sodium hypochlorite,Solution,1-10% (chlorine in different preparations),500mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-13,Trichlorophenol,"Cream, Liquid, ointment",Mixture of halogenated phenols and Salicylic acid,-,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-01-14,Hydrogen peroxide 6%w/v,Bottle,6%w/v,Bottle,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-01,Fludrocortisone acetate + neomycin + polymyxin B Cream,Cream,,Cream,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-02,Donepezil HCL,Tablet,"5mg, 10mg",tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-03,Donepezil HCL,"Tablet, orodispersible","5mg, 10mg",tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-04,Donepezil HCL,Oral solution,"1mg/ml, 150ml",syrup,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-05,Galantamine,Tablet,"8mg, 12mg",Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-06,Galantamine,"Tablet, orodispersible","8mg, 16mg, 24mg",Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-07,Galantamine,Oral solution,"4mg/ml, 100mls",Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-08,Rivastigmine,Capsule,"1.5mg, 3mg",Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-09,Rivastigmine,Oral solution,"2mg/ml, 120mls",syrup,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-10,Rivastigmine,Transdermal patch,"4.6mg/24hr, 9.5mg/24hr, 13.3mg/24hr",Patch,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-11,Memantine,Tablet,"5mg, 10mg, 15mg, 20mg",tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-12,Memantine,"Tablet, orodispersible","10mg, 20mg",tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-10-02-13,Memantine,Oral solution,"10mg/ml, 50ml",syrup,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-01-01,Cyanocobalamin/ Hydroxocobalamin,Tablet,"0.05mg (injection,",Tab.,Cardiovascular medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-01-02,Cyanocobalamin/ Hydroxocobalamin,Injection,0.25 and 1mg/ml,Amp.,Cardiovascular medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-01-03,Ferric Ammonium Citrate,Mixture,400mg/5ml of Ferric Ammonium citrate,200mls,Cardiovascular medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-01-04,Ferrous Sulphate,"Tablets, Capsule",200 mg equivalent to 60mg of Iron,Tab,Cardiovascular medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-01-05,Folic Acid,Tablet,5mg,Tab.,Cardiovascular medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-01-06,Iron dextran,Injection,Equiv to 50mg/iron/ml in 2ml amp,Amp.,Cardiovascular medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-01-07,Erythropoietin,,,,Cardiovascular medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-02-01,Enoxaparin,Injection,100 mg/ml in 0.4ml (40mg),prefilled Syringe,Cardiovascular medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-02-02,Enoxaparin,Injection,100 mg/ml in 0.2ml (20mg),prefilled Syringe,Cardiovascular medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-02-03,Heparin Sodium,Injection,5000 units/ml in Ampoule,Amp.,Cardiovascular medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-02-04,Heparin Sodium,Injection,"25,000 units/ml in Ampoule",Amp.,Cardiovascular medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-02-05,Warfarin Sodium,Tablets (as sodium),"3mg,",Tab.,Cardiovascular medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-02-06,Warfarin Sodium,Tablets (as sodium),5mg,Tab.,Cardiovascular medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-02-07,Dabigatran 110mg tab,Tablet,110mg,Tablet,Cardiovascular medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-03-01,Acetylsalicylic acid,Tablet,75 mg,Tab,Cardiovascular medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-03-02,Dipyridamole,Tablet,25mg,Tab.,Cardiovascular medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-03-03,Dipyridamole,Tablet,100mg,Tab.,Cardiovascular medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-04-01,Aminocaproic acid,Tablet,500 mg,Tab.,Cardiovascular medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-11-04-03,Tranexamic acid 500mg Injection,Injection,500mg,Injection,Cardiovascular medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-01,Amiloride + Hydrochlorothiazide,Tablet,5mg+ 50mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-02,Bendrofluazide,Tablet,5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-03,Frusemide,Tablet,40mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-04,Frusemide,Injection,10mg/ml in 2ml ampoule,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-05,Hydrochlorothiazide,Tablet,25mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-06,Hydrochlorothiazide,Tablet,50mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-07,Spironolactone,Tablet,25mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-08,Spironolactone,Tablet,50mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-09,Spironolactone,Tablet,100mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-10,Torsemide,Injection,10mg/ml,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-11,Torsemide,Tablet,100mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-12,Torsemide,Tablet,10mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-13,Torsemide,Injection,20mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-03-14,Torsemide,Tablet,20mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-01,Amiloride + hydrochlorothiazide,Tablet,0.5mg/25mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-02,Amlodipine,Tablet (Besylate),5mg,Tab.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-03,Amlodipine,Tablet (Besylate),10mg,Tab.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-04,Amlodipine + Valsartan,Tablet,5 mg + 160mg,Tab,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-05,Amlodipine + Valsartan (10/160mg) Tablet,Tablet,10/160mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-06,Amlodipine + Valsartan + HCT (10/160/12.5mg) Tablet,Tablet,10mg/160mg/12.5mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-07,Amlodipine + Valsartan + HCT (10/160/25mg) Tablet,Tablet,10mg/160mg/25mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-08,Amlodipine + Valsartan + Hydrochlorothiazide,Tablet,5 mg + 160mg + 12.5mg,Tab,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-09,Atenolol,Tablet,25mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-10,Atenolol,Tablet,50 mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-11,Atenolol,Tablet,100mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-12,Candesartan cilexetil,Tab,8mg,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-13,Candesartan cilexetil,Tab,16mg,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-14,Candesartan cilexetil/hydrochlothiazide,Tab,16/12.5mg,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-15,Captopril,Tablet,"12.5 mg,",Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-16,Captopril,Tablet,25 mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-17,Captopril,Tablet,50mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-18,Carvedilol 12.5mg tab,Tablet,12.5mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-19,Carvedilol 25mg Tablet,Tablet,25mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-20,Carvedilol 3.125mg tab,Tablet,3.125mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-21,Carvedilol 6.25mg tab,Tablet,6.25mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-22,Doxazocin 2mg Tablet,Tablet,2mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-23,Doxazocin 4mg Tablet,Tablet,4mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-24,Enalapril,Tablet,5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-25,Enalapril,Tablet,10mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-26,Felodipine,Tablet,5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-27,Felodipine,Tablet,10mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-28,Hydralazine,Tablet,"25mg,",Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-29,Hydralazine,Tablet,50mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-30,Hydralazine,Injection powder,20mg in 1ml Ampoule,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-31,Indapamide 1.5mg tab,Tab,1.5mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-32,Irbesartan,Tablet,300mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-33,Irbesartan + Amlodipine,Tablet,300mg+10mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-34,Irbesartan + Amlodipine,Tablet,300mg+5mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-35,Irbesartan/Amlodipine(150/10mg) tab,Tablet,150mg/10mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-36,Irbesartan/amlodipine(150/5mg) tab,Tablet,150mg/5mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-37,Irbesartan 150mg Tablet,Tablet,150mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-38,Isradipine,Tablet,2.5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-39,Isradipine,Tablet,5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-40,Labetalol,Tablet (HCL),200mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-41,Labetalol,Injection powder,5mg/ml in 20ml Ampoule,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-42,Lacidipine,Tablet,2mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-43,Lisinopril,Tablet,2.5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-44,Lisinopril,Tablet,5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-45,Lisinopril,Tablet,10mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-46,Lisinopril + hydrochlorothiazide,Tablet,20mg/12.5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-47,Losartan + Amlodipine,Tablet,50mg/5mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-48,Losartan 25mg Tablet,Tablet,25mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-49,Losartan 50mg Tablet,Tablet,50mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-50,Methyldopa,Tablet,500mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-51,Metoprolol 25mg Tablet,Tablet,25mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-52,Metoprolol 50mg Tablet,Tablet,50mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-53,Metoprolol Succinate 100mg tab,Tablet,100mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-54,Metoprolol Succinate 25mg tab,Tablet,25mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-55,Metoprolol Succinate 50mg tab,Tablet,50mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-56,Metoprolol Tartrate 50mg tab,Tablet,50mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-57,Nebivolol,Tablet,5mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-58,Nebivolol + Hydrochlorothiazide,Tablet,5mg /12.5mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-59,Nifedipine,"Tablet,",20mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-60,Nifedipine,slow release,30mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-61,Olmesartan,Tablet,"20mg,40mg",Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-62,perindopril,Tablet,10mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-63,Perindopril,Tablet,5mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-64,Perindopril + Indapamide,Tablet,10/2.5mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-65,Perindopril + Indapamide,Tablet,5/1.25mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-66,Perindopril arginine + Amlodipine,Tablet,10mg/10mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-67,Perindopril arginine + Amlodipine,Tablet,10mg/5mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-68,Perindopril arginine + Amlodipine,Tablet,5mg/5mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-69,Perindopril arginine + Amlodipine,Tablet,5mg/10mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-70,Prazosin,Tablet,1mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-71,Prazosin,Tablet,2mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-72,Prazosin + Polythiazide,Tablet,0.5mg + 0.25mg (respectively),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-73,Propranolol (Hydrochloride),Tablet,40mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-74,Ramipril +hydrochlorothiazide,Tablet,5mg/25mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-75,Ramipril 10mg Tablet,Tablet,10mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-76,Ramipril 5mg Tablet,Tablet,5mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-77,Reserpine + Dihydroergocristine + Clopamide (Restricted),Tablet,Reserpine 0.1mg + Dihydroergocristine 0.5mg + Clopamide 5.0mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-78,Resperpine + Dihydroergocristine + Hydrochlorothiazide (Restricted),Tablet,Resperpine 0.1mg+ Dihydroergocristine 0.6mg+ HCT,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-79,Resperpine + Dihydroergocristine +Hydrochlorothiazide (Restricted),Tablet,Hydrochlorothiazide 10mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-80,S-Amlodipine 5mg Tablet,Tablet,5mg,Tablet,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-81,Telmisartan,Tablet,Telmisartan 40mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-82,Telmisartan,Tablet,Telmisartan 80mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-83,Telmisartan + Hydrochlorthiazide,Tablet,Telmisartan 40mg/HCTZ 12.5mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-84,Telmisartan + Hydrochlorthiazide,Tablet,Telmisartan 80mg/HCTZ 12.5mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-85,Valsatan,Tab,80mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-86,Valsatan,Tab,160mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-87,Valsatan /Hydrochlothiazide,Tab,80/12.5mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-88,Valsatan /Hydrochlothiazide,Tab,160/12.5mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-04-89,Valsatan /Hydrochlothiazide,Tab,160/25mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-05-01,Captopril,Tablet,"12.5 mg,",Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-05-02,Captopril,Tablet,"12.5 mg,",Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-05-03,Digoxin,Tablets,0.25mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-05-04,Digoxin,Injection,"0.25mg/ml in 2ml Ampoule, and 0.1mg/ml in 1ml Ampoule",Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-05-05,Digoxin,Syrup,50mg/ml,100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-05-06,Dopamine,Injection,40mg/ml in 5mls,Vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-05-07,Dobutamine 250mg/20ml Injection,Injection,250mg/20ml,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-06-01,Atorvastatin,Tab/Caps,10mg,Tab/ Cap.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-06-02,Atorvastatin,Tab/Caps,20mg,Tab/ Cap.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-06-03,Clofibrate,Tab/Caps,20mg,Tab/ Cap.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-06-04,Fluvastatin,Tab/Caps,40mg,Tab/ Cap.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-06-05,Fluvastatin,Tab/Caps,20mg,Tab/ Cap.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-06-06,Rosuvastatin,Tab/Caps,5mg,Tab/ Cap.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-06-07,Rosuvastatin,Tab/Caps,10mg,Tab/ Cap.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-06-08,Rosuvastatin,Tab/Caps,20mg,Tab/ Cap.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-06-09,Simvastatin,Tab/Caps,10mg,Tab/ Cap.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-06-10,Simvastatin,Tab/Caps,20mg,Tab/ Cap.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-06-11,Simvastatin,Tab/Caps,40mg,Tab/ Cap.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-12-06-12,Atorvastatin 40mg Tablet,Tablet,40mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-13-01-01,Benzocaine,Lozenges,10mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-13-01-02,Lidocaine,Injections,"2% + epinephrine 1 in 80,000 in dental",Cartridge,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-13-01-03,Lidocaine,Spray,,Tin,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-13-01-04,Prilocaine,Injection,3% with Felypressin 0.03 units/mls,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-13-02-01,Chorhexetidine,Solution,0.10%,100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-13-02-02,Glycerine thymol,Solution,,200mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-13-02-03,Hexetidine,Solution,0.10%,100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-13-02-04,Nystatin,Solution,"100,000 unit/ml",30mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-13-02-05,Zinc Chloride Plus Zinc sulphate,Solution,1% Zncl + 2% Zn2 SO4,Solution,,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-13-03-01,Triamcinolone,Paste (acetonide),0.10%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-01-01,Acyclovir,Cream,5%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-01-02,Framycetin,gauze dressing,1%,Gauze,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-01-03,Gentamicin,Ointment,0.30%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-01-04,Gentian Violet,Aqueous Solution,0.50%,60mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-01-05,Gentian Violet,Tincture,,60mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-01-06,Mupiricon,Ointment,2% w/w,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-01-07,Neomycin-Bacitracin,Ointment and Cream,Containing: Neomycin Sulphate 5mg plus Bacitracin zinc 500 units/g in 5g & 30g tubes,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-01-08,Neomycin-Bacitracin,Powder,Containing: Neomycin Sulphate 5mg plus Bacitracin zinc 250 units/g,Tin,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-01-09,Neomycin-Bacitracin,Spray,"Containing: Bacitracin, 12,500 units & Neomycin Sulphate, 165,000 units",Bottle,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-01-10,Silver Sulphadiazine,Cream,1%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-02-01,Betamethasone,Cream,0.1% (Valerate),Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-02-02,Betamethasone + Clioquinol,Cream,0.1% + 0.3%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-02-03,Betamethasone +Neomycin,Cream,0.1% + 0.5%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-02-04,Calamine Lotion,Lotion,,120mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-02-05,Clobetasol propionate,Cream,0.05%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-02-06,Clobetasone,Cream,0.05%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-02-07,Fluocinolone,Cream,0.03%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-02-08,Fluocinolone,Cream,0.025% +3% clioquinol,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-02-09,Hydrocortisone,Cream,1%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-03-01,Aluminium diacetate,Solution,13% for dilution,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-03-02,Calamine + Zinc oxide,"Lotion, plaster",,,,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-04-01,Benzoyl Peroxide,Cream,"10%, 5%, 2.5%",Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-04-02,Benzoyl Peroxide,Gel,"10%, 5%, 2.5%",Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-05-01,Benzyl Benzoate,Emulsion and lotion,,100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-05-02,Crotamiton,Cream,,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-05-03,Crotamiton,Lotion,,50mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-05-04,Monosulfiram,Soap,,Soap,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-05-05,Permethrin,"Cream, Lotion","5%, 1% respectively",lotion,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-01,Clotrimazole,Cream,1%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-02,Clotrimazole,"Aerosol, spray",1%,Tin,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-03,Clotrimazole,Dusting Powder,1%,Tin,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-04,Clotrimazole,Pessary,,6's,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-05,Clotrimazole,Vaginal Cream,,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-06,Ketoconazole,Cream,2%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-08,Miconazole,Cream,2%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-09,Miconazole,Lotion,2%,Tin,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-10,Miconazole,Ovule,,Ovules,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-11,Miconazole,Pessary,,Pessaries,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-12,Miconazole + Hydrocortisone,Cream,2% +1%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-13,Nystatin,Cream/Oint,"100,000 units",Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-14,Sulphur + Mesulphen,Ointment,Sulphur 10-20% + Mesulphen 64%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-15,Tioconazole,Cream,,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-16,Tioconazole,ovule,3s,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-17,"Metronidazole, Clotrimazole, Lactobacillus spores pessary",Pessary,500mg/100mg/150million spores,Pessary,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-06-18,Terbinafine 1% Cream,Cream,1%,Cream,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-07-01,Benzoic acid + salicylic acid,Cream ointment,6% + 3%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-07-02,Coal Tar,Solution/Cream,1-10%,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-07-03,Dithranol,Ointment,0.1 - 2%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-07-04,Podophyllum resin,Topical solution,10- 25%,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-07-05,Salicylic acid,"Topical solution,",12% in flexible collodion,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-07-06,Salicylic acid,Ointment,2-5%,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-14-07-07,Urea,Cream/ointment,10%,Tube,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-01-01,Chloramphenicol,Ear Drops,5%,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-01-02,Gentamicin,Eye/Ear Drops,0.3% (Sulphate),10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-01-04,Betamethasone,,,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-01-06,Hydrocortisone + Neomycin,Ear Drops,Hydrocortisone 1.5% (Acetate) + Neomycin 0.5% (Sulphate),5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-01-07,Betamethasone + Neomycin,Ear drops,0.1% + 0.5%,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-01-08,Dexamethasone + Neomycin,Ear drops,0.1% + 3200 unit/ml,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-01-09,Flumethasone plus clioquinol,Ear drops,0.02% + 1% clioquinol,7.5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-01-10,Hydrocortisone + Neomycin + polymyxin B,Ear Drops,"3400 units (Sulphate) + polymyxin B 10,000",10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-01-12,Glycerol plus sodium bicarbonate,Ear drops,,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-01-13,Chlorbutanol + Paradichlorobenzene+ Arachis oil + Turpentine oil,Ear drops,,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-02-02,Antazoline + Naphazoline,Nasal drops,0.5% + 0.025%,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-02-03,Beclomethasone Dipropionate,Nasal Spray,(aerosol) 0.05mg / metered spray,Spray,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-02-04,Ephedrine,Nasal drops (Hcl),0.50%,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-02-05,Pseudoephedrine (HCL),Tablet,60mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-02-06,Pseudoephedrine (HCL),Syrup,30mg/5ml,60mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-02-07,Triprolidine (HCL) + Pseudoephedrine (HCL),Tablet,60mg + 2.5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-02-08,Triprolidine (HCL) + Pseudoephedrine (HCL),Syrup,30mg + 1.2mg,60mks,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-02-09,Xylometazoline,Nasal drops,0.25%,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-02-10,Xylometazoline,Nasal drops,0.50%,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-02-11,Xylometazoline + Antazoline,Nasal drops,0.25% + 0.5% (paed),10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-02-14,Silver nitrate,"Sticks, crystals,",0.50%,Sticks,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-03-01,Dequalinium,Lozenges,250mg,lozenges,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-03-02,Dequalinium,Paint,250mg (HCL),10ml,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-15-03-03,Dichlrobenzyl alchohol + Amylmetacresol,Lozenges,,Lozenges,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-01-01,Aluminium hydroxide,Suspension,320mg/5ml,200mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-01-02,Aluminium hydroxide,Tablet,500mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-01-03,Aluminium hydroxide +Magnesium Hydroxide +Simethicone,Tablet,200mg+200mg +30mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-01-04,Aluminium hydroxide +Magnesium Hydroxide +Simethicone,Mixture (with or without diglycirrhizinnated Liquarice)-,6gm+80mg+100mg+/- 400mg,200ml,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-01-05,Aluminium hydroxide +Magnesium trisilicate,Tablet,120 mg + 250 mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-01-06,Aluminium hydroxide +Magnesium trisilicate,Mixture,BP,200mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-01-07,Magnesium Trisilicate,Tablet,500mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-01-08,Magnesium Trisilicate,Mixtures,250mg/ml,200mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-02-01,Metoclopramide,Tablet,10mg (HCL),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-02-02,Metoclopramide,Syrup,5mg/5ml (HCL),100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-02-03,Metoclopramide,Injection,5mg/ml (HCL),Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-02-04,Prochlorperazine,Tablet (Maleate),5 mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-02-05,Prochlorperazine,Tablet (Maleate),25 mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-02-06,Prochlorperazine,Syrup (Mesilate),5 mg/ 5 ml,100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-02-07,Prochlorperazine,Injection (Mesilate),12.5 mg/ml in 1 ml & 2 ml Ampoules,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-02-08,Promethazine,Tablet,10 and 25 mg (HCL),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-02-09,Promethazine,Syrup,5mg/5ml (HCL),60mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-02-10,Promethazine,Injection,25mg/ml (HCL) in 2ml Ampoules,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-02-11,Promethazine theoclate,Tablet,,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-03-01,Homatropine methyl bromide,Drop,2mg/ml,15ml,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-03-02,Hyoscine N-butylbro-Mide,Tablet,10mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-03-03,Hyoscine N-butylbro-Mide,Syrup,1mg/ml,100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-03-04,Hyoscine N-butylbro-Mide,Injection,20mg/ml in 1ml Ampoule,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-04-01,Bisacodyl,Tablet,5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-04-02,Bisacodyl,Suppositories,5 & 10mg,Supp.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-04-03,Liquid Paraffin,"Emulsion, oral",5mg/10ml of emulsion,100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-04-04,Senna,Tablet & granule,,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-04-05,Lactulose,syrup,120ml,syrup,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-04-06,Cholestyramine 4g Granules,Granules,4g,Granules,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-05-01,16.5.1 Antimotility Drugs,,,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-05-02,Diphenoxylate hydrochloride + Atropine sulphate,Tablet,2.5mg + 0.025mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-05-03,Loperamide,Tablet,2mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-05-04,Domperidone 10mg tab,Tablet,10mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-05-06,Oral Rehydration Salt,Salts,"Glucose 13.5 g, Potassium Cl. 1.5g, Sodium bicarbonate 2.5%, Sodium Chloride 2.6g",Sachet,,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-06-01,Aluminium Acetate +Hydrocortisone+ Lidocaine +Zinc oxide,Suppository,50mg +5mg + 60mg,supp,,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-06-02,Benzyl benzoate + bismuth Oxide + Bismuth subgallate+ Hydrocortisone,Suppository,33mg + 24mg + 59mg,supp,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-06-03,Benzyl benzoate + bismuth Oxide + Bismuth subgallate+ Hydrocortisone +,Suppository,33mg + 24mg + 59mg,supp,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-06-04,Cinchocaine hydrochloride +Prednisolone hexanoate,Suppository,1mg + 1.3mg,supp,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-01,Cimetidine,Tablets,200mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-02,Cimetidine,Tablets,400mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-03,Cimetidine,Injection,100mg/ml in 2 ml Ampoules,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-04,Esomeprazole,Tablet,20mg,Tabl,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-05,Lansoperazole,capsule,30mg,capsule,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-06,Omeprazole,Tablet,"10mg, 20 mg",20mgTab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-07,Rabeprazole,Tablet,20mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-08,Ranitidine,Tablets,150mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-09,Ranitidine,Tablets,300 mg (HCL),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-10,Ranitidine,Injection,25mg/ml in 2 ml Ampoules,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-11,Esomeprazole 40mg Tablet,Tablet,40mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-12,Rabeprazole,Injection,20mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-16-00-13,Rabeprazole +Clarithromycin + Amoxicillin,Tablet/capsule,20mg/500mg/1000mg,Tablet/capsule,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-01-01,Dexamethasone,Tablets,0.5mg,Tab.,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-01-02,Dexamethasone,Injection,"2mg/ml, 4mg/ml in 2ml Ampoule",Amp.,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-01-03,Fludrocortisone,Tablet,0.1mg,Tab.,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-01-04,Hydrocortisone,"Injection, powder",100mg/vial,Vial,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-01-05,Methyl prednisolone,Injection,40mg/ml I 2ml ampule,Amp,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-01-06,Prednisolone,Tablets,"1mg, 5mg",Tab,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-01-07,Triamcinolone,Injection,10mg/40mg/ml,Amp.,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-02-01,Ethinyloestradiol,Tablet,"0.01mg, 0.05mg",Tab,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-03-01,Hydroxyprogesterone,Injection,"Hexanoate 250mg/ml in 1ml, 2ml Ampoules",Amp.,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-03-02,Norethisterone,Injection,200mg/ml,Amp.,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-03-03,Cyclogest Pessary,Pessary,Hormonal Therapy,Pessary,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-04-01,Bromocriptine,Tablet,"1mg, 2.5mg (Mesylate)",Tab.,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-04-02,Clomiphene,Tablets,50mg (Citrate),10s,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-04-03,Danazol,Capsule,100mg/200mg,Cap,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-04-04,Epimestrol,Tablet,5mg,Tab,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-04-05,Follicle-stimulating hormone (FSH)) + luteinizing hormone (LH),Injection powder,75 units +75 units,Amp,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-04-06,Medroxyprogesterone,Tablet,5mg,Tablet,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-04-07,Letrozol,Tablet,2.5mg,Tablet,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-05-01,Desmopressin,Injection,4mcg/ml,Amp.,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-05-02,Desmopressin,Inhalation,10mcg metered spray,Spray,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-05-03,Vasopressin,Injection,20units/ml in 1ml ampoule,Amp,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-02,Biphasic Isophane Insulin,injection,Human Soluble Insulin 30%+isophane Insulin,Vial,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-03,Insulin Soluble,Injection,40 units/ml,Vial,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-04,Insulin Soluble,Injection,100 units/ml,Vial,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-05,Insulin Zinc Suspension (I.Z.S),Injection,40 units/ml,Vial,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-06,Insulin Zinc Suspension (I.Z.S),Injection,100 units/ml,Vial,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-07,Isophane Insulin,Injection,100 units/ml,Vial,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-08,Protamine Zinc Insulin,Injection,100 units/ml,Vial,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-09,Insulin 30/70 Pen refill cartridges (3ml),Cartridges (pen refill),3ml,Cartridges (pen refill),Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-10,Insulin Glargine (Lantus),Cartridge,100iu per ml,3ml,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-11,Insulin glargine Pen,Prefilled pen,100iu per ml,3ml,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-12,,Cartridges (soluble,,,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-14,Chlorpropamide,Tablets,250mg,Tab.,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-15,Metformin,Tablets,500mg (HCL),Tab.,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-16,Glibenclamide,Tablets,5mg,Tab,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-17,Gliclazide,Tablet,80mg,Tab.,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-18,Gliclazide,Tablet,30mg,,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-19,Gliclazide,Tablet,60mg,,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-20,Glimepiride,Tab,1mg,,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-21,Glimepiride,Tab,2mg,,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-22,Glimepiride,Tab,4mg,,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-23,Glucagon,Injection,1mg/ml,Amp.,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-24,Metformin,Tablets,1000mg,,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-25,Metformin,Tablets,850mg,,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-26,Metformin + Glabenclamide,Tablet,500mg (HCL) +2.5mg,Tab.,Endocrine medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-27,Pioglitazone Hydrochloride,Tab,15mg,,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-06-28,Pioglitazone Hydrochloride,Tab,30mg,,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-07-01,Carbimazole,Tablets,5mg,Tab.,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-07-02,Levothyroxine,Tablets,0.05 mg (sodium salt),Tab.,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-07-03,Levothyroxine,Tablets,0.1mg (sodium salt),Tab.,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-07-05,Propylthiouracil,Tablet,50 mg,Tab.,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-08-01,Dutasteride,Tablet,,Tab,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-08-02,Finasteride,Tablet,5mg,Tab,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-08-03,Tamsulosin,Tablet,400mcg,Tab,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-17-08-04,Alfuzosin 10mg Tablet,Tablet,10mg,Tablet,Endocrine medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-01-01,Alpha interferon,Injection,4.5mu,Vial,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-01-03,Anti Scorpion serum,Injection,1 ml in Ampoule,Amp.,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-01-04,Anti snake bite serum,Injection,"Polyvalent, 10 ml, 20 ml in Ampoule",Amp.,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-01-05,Anti tetanus immunoglobin (human),Injection,"1500 units/amp,",Amp.,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-01-06,Anti tetanus immunoglobin (human),Injection,"10,000 units / ampoule",Amp.,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-01-07,Gas gangrene anti toxin,Injection,"4,000 units in vial, 10,000 units in vial",Vial*,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-01-08,Rabies immunoglobin,Injection,150 unit in ml in vial,Vial .,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-02,BCG Vaccines dried,Injection,Powder for reconstitution in multidose amp,,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-03,"Diphtheria, Tetanus and Pertussis Vaccine",Injection,"0.5ml, 5ml",,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-04,"Measles, Mumps & Rubella vaccine",Injection,0.5 ml,,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-05,Measles vaccine,Injection,0.5ml,,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-06,Pentavalent Vaccine,Injection,,,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-07,Poliomyelitis vaccine,Oral suspension,,,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-08,Tetanus vaccine,Injection,"Formoltoxoid, 0.5 ml, 5 ml vial","0.5ml, amp.",Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-12,Hepatitis B Vaccine,Injection,"0.02 mg/ml in 0.5 ml, 1 ml vial",,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-13,HPV Vaccine (Quadrivalent),Injection,0.5mls single dose vial or prefilled inj,,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-14,Meningococcal vaccine,Injection,Powder for reconstitution in multidose vial of,,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-15,Pneumococcal Vaccine,Injection,55mcg/0.5ml,,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-16,Rabies vaccine,Injection,1 ml,,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-17,Typhoid vaccine (TAB),Injection,1.5ml/vial,,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-18,Typhoid vaccine (VI antigen),Injection,"10 ml vial (20 doses), 25ml/vial (50 doses), 0.5",,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-18-00-19,Yellow fever vaccine,Injection,"Powder for reconstitution 1,5 and 10 dose vial",,Gastrointestinal medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-01,Acyclovir,Eye ointment,3.00%,5gms,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-02,Chloramphenicol,Eye Ointment,1%,5gm,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-03,Chloramphenicol,Eye Drops,0.50%,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-04,Ciprofloxacin,Drops,0.30%,10mls,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-05,Fluconazole,Eye Drops,0.30%,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-06,Gentamicin,Eye Drops,0.3% (Sulphate),10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-07,Idoxuridine,Eye ointment,0.10%,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-08,Miconazole,Eye Drops,,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-09,Natamycin,Eye Drops,50mg/ml,5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-10,Ofloxacin,Drops,0.10%,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-11,Oxytetracycline plus Polymyxin B,Eye ointment,"5mg + 10,000 unit",5gms,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-12,Neomycin sulfate + Polymyxin B + Dexamethasone,,,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-01-13,Levofloxacin 0.5% Eyedrop,Eye drop,0.50%,Eye drop,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-02-01,"Antazoline HCL, Tetrazoline HCL, Methylhydroxy Propyl cellulose.",Eye Drops,,5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-02-02,Tetrahydrozoline (HCl),Eye Drops,0.05%,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-03-01,Amethocaine,,Eye Drop,"0.5%, 1%",,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-03-02,Betamethasone,Eye Drops,"0,10%",10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-03-03,Betamethasone + Neomycin,Eye Drops,"0,10% +0.5%",10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-03-04,Dexamethasone,Eye Drops,0.10%,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-03-05,Dexamethasone + Chloramphenicol + Tetrahydrozoline,Eye Drops,,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-03-06,Hydrocortisone + Neomycin,Eye Drops,1.5% + 0.5%,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-03-07,Ketotifen,Eye Drops,250mcg/ml,5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-03-08,Lodoxamide,Eye Drops,0.10%,10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-03-09,Prednisolone,Eye Drops,1% (Acetate) 5% (Sodium phosphate),5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-03-10,Sodium cromoglycate 2% Eyedrop,Eye drop,2%,Eye drop,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-03-11,Brimonidine 0.2% Alphagan Eyedrop,Eyedrop,0.20%,Eyedrop,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-03-12,Ketorolac Trometamol,Injection,30mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-04-01,Acetazolamide,Tablet,250mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-04-02,Acetazolamide,Injection,500 mg/vial,Vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-04-03,Betaxolol Hydrochloride,Eye Drops,0.50%,5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-04-04,Betaxolol Hydrochloride + Neomycin,Eye Drops,,5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-04-05,Brinzolamide,Eye Drops,10mg/ml,5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-04-06,Dorzolamide,Eye Drops,2%,5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-04-07,Dorzolamide HCL + Timolol,Eye Drops,2% + 0.5%,5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-04-08,Latanoprost,Eye Drops,500mcg,5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-04-09,Pilocarpine,Eye Drops,2% & 4% (HCL),5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-04-10,Timolol,Eye Drops,"0.25, 0.5% (Maleate)",10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-04-11,Travoprost,Eye Drops,40mcg/ml,2.5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-05-01,Atropine,Eye Drops,"0.5%, 1% (Sulphate)",5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-05-02,Homatropine,Eye Drops,"2%, 1% (Hydrobromide)",5mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-05-03,Phenylephrine,Eye Drops,"2.5%, 10% (HCL)",10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-05-04,Tropicamide,Eye Drops,"0.5%, 1%",10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-06-01,Cyclopentolate,Eye Drops,"0.5%, 0.1% (Hydrochloride)",10mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-06-02,Fluorescein sodium,Eye Drops,"1%, 2%",Per Strip,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-19-06-03,Methylcellulose,Eye Drops,"1%, 2%",,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-20-01-01,Ergometrine,Tablet,0.5mg (Maleate),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-20-01-02,Ergometrine,Injection,0.5mg/ml (Maleate),Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-20-01-03,Oxytocin,Injection,"10 units/ml, 5 units/ml in Ampoules",Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-20-01-04,Dinoprostone,Pessary,3mg,Pessary,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-20-01-05,Misoprostol,Tablet,200mcg,Suppository,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-01-01,Oral Rehydration Salt,Powder,(See 18.5.2),Sachet,,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-01-02,Potassium Chloride (slow release),Tablet,600mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-01-03,Potassium Chloride (slow release),Oral solution,"5%, 10%, 20%",Sol.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-02-02,Dextrose + Sodium Chloride,Infusion,5% + 0.9%,500ml IVF,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-02-03,Glucose (Dextrose),Injection,5% & 10%,500ml IVF,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-02-04,Glucose (Dextrose),Injection,50% in water,500ml IVF,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-02-05,Glucose + Sodium Chloride (Paediatric),Injection,4.3% + 0.18%,500ml IVF,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-02-06,Histoplasma,Infusion,,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-02-07,Mannitol,Infusion,10%,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-02-08,Mannitol,Infusion,20%,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-02-09,Potassium Chloride,Injection Strong,15% in 10ml Ampoule,10mls,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-02-11,Sodium Lactate Compound solution,Injection,"Solution, BP",500ml IVF,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-02-12,Sodium Bicarbonate,Injection,1.4% in 10ml (isotonic),10mls,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-02-13,Sodium chloride,Infusion,"0.9%, 0.45%",,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-21-02-14,Water for injection,Injection,"10ml, per amp/vial",Vial.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-22-00-01,Intraperitoneal Dialysis fluid B.P.C.,Parenteral; solution,"acetate 4.76g, NaCl 5.56g, Na metabisulphite 0.15g",,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-22-00-02,Haemodialysis fluid,,Haemodialysis fluid B.P.,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-01-01,Bromazepam,Tablet,1.5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-01-02,Bromazepam,Tablet,3mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-01-03,Diazepam,Tablets,"5mg, 2mg, 10mg",Tab.,,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-01-04,Diazepam,Injection,5mg/ml in 2ml,Amp.,,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-01-05,Flunitrazepam,Tablet,1mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-01-06,Lorazepam,Tablets,"1mg,",Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-01-07,Lorazepam,Tablets,2mg,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-01-08,Nitrazepam,Tablets,5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-01-09,Clonazepam 2mg Tablet,Tablet,2mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-01-10,Zopiclone 7.5mg Tablet,Tablet,7.5mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-01,Amitriptyline,Tablets,25mg (HCL),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-02,Amitriptyline,Tablet,50mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-03,Clomipramine,Tablet,10mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-04,Clomipramine,,25mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-05,Citalopram,,,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-06,Gabapentin + Methylcobalamin,,,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-07,Imipramine,Tablets,"10mg,",Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-08,Imipramine,Tablet,25mg (HCL),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-09,Moclobemide,Tablet,150mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-10,Olanzapine,Tablet,5mg/10mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-11,Paroxetine,Tablet,20mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-12,Paroxetine,Tablet,30mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-13,Sertraline,Capsule,50mg,Caps.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-14,Fluoxetine,Tablet,20mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-02-15,Escitalopram 10mg Tablet,Tablet,10mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-01,Carbamazepine (plain/SR),Tablet (scored),200mg,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-02,Carbamazepine (plain/SR),Tablet (scored),400mg,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-03,Carbamazepine,Syrup,100mg/5ml,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-04,Chlorpromazine,Tablets,25mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-05,Chlorpromazine,Tablet,50mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-06,Chlorpromazine,Tablet,100mg (HCL),Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-07,Chlorpromazine,Syrup,25mg/5ml (HCL),100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-08,Chlorpromazine,Injection,25mg/ml (HCL) in 2ml Ampoule,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-09,Fluoxetine,Capsules,20mg,Cap.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-10,Fluoxetine,Injection (oily),25mg/ml in 1ml Ampoule (decanoate or enanthate),Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-11,Flupenthixol,Injection (depot),20mg (decanoate or enanthate) in 1ml Ampoule,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-12,Flupenthixol,Tablet,"1.5mg, 3mg",Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-13,Flupenthixol,Injection,"50mg/ml, 100mg/ml,",Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-14,Fluphenazine,injection,25mg,,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-15,Haloperidol,Tablet,2mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-16,Haloperidol,injection,5mg/ml,injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-17,Thioridazine,Tablet,100mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-18,Thioridazine,Tablet,50mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-19,Thioridazine,Syrup,25mg/5ml,100mls,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-20,Trifluoperazine,Tablet,1mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-21,Trifluoperazine,Tablet,5mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-03-22,Valproic acid (sodium valproate),Tablet (enteric-coated),200mg,Tab,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-04-01,Benzhexol (trihexyphenidyl),Tablets,"2mg, 5mg (HCL)",Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-04-02,Biperiden,Tablet (Hcl),"2mg, 5mg (Hcl)",Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-04-03,Biperiden,Injection,5mg/ml,Amp.,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-04-04,Risperidone 0.5mg Tablet,Tablet,0.5mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-04-05,Risperidone 1mg Tablet,Tablet,1mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-23-04-06,Risperidone 2mg Tablet,Tablet,2mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-01,Aminophylline,Injection,25mg/ml in 10ml Ampoule,Amp.,Psychotherapeutic medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-02,Beclomethasone,Aerosol inhalation,0.050mg/metered dose,Spray,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-03,Ephedrine + Theophylline,Tablet,11mg + 20 mg,Tab.,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-04,Epinephrine (Adrenaline),Injection,1mg/ml (1 in 1000) in 1ml Ampoule,Amp.,Psychotherapeutic medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-05,Hydrocortisone,Injection,100mg/vial,Vial,Psychotherapeutic medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-06,Ipratropium bromide,Inhalation (aerosol),20 micrograms per metered dose,Spray,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-07,Salbutamol,Tablets,"2mg, 4mg (Sulphate)",Tab.,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-08,Salbutamol,Syrup,2mg/5ml (Sulphate),100mls,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-09,Salbutamol,Aerosol,0.1mg/metered dose,Spray,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-10,Salbutamol 2.5mg Nebule,Nebule,2.5mg,Nebule,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-11,Salbutamol 5mg Nebules,Nebule,5mg,Nebule,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-12,Salbutamol,Injection,500ug/ml,Amp,Psychotherapeutic medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-13,Salmeterol,Inhalation,100mcg/dose,Spray,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-14,Salmeterol,Inhalation,250mcg/dose,Spray,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-15,Salmeterol + Fluticasone,Inhalation,250mcg /100mcg,Spray,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-16,Theophylline,Tablet,125mg,Tab.,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-17,Theophylline,Tablet,250mg (SR),Tab.,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-18,Budesonide 0.5 Nebule,Nebule,0.5,Nebule,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-19,Budesonide 0.25 Nebule,Nebule,0.25,Nebule,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-20,Carbocysteine 2.5% (Children) syrup,Syrup (paed),2.50%,Syrup (paed),Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-21,Carbocysteine 5% (Adult) syrup,Syrup (Adult),5%,syrup(Adult),Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-22,Montelukast,Tablet,10mg,Tablet,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-23,Montelukast,Tablet,5mg,Tablet,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-24,Montelukast,Tablet,4mg,Tablet,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-01-25,Montelukast + levocetirizine 10mg/5mg Tablet,Tablet,10mg+5mg,Tablet,Psychotherapeutic medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-02-01,Bromhexine,Tablet,8mg,Tab.,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-02-02,Bromhexine,Elixir,4mg/5ml,100mls,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-02-03,Cough Mixtures containing Codeine,Syrup,RESTRICTED,100mls,Psychotherapeutic medicines,controlled_or_high_risk_rx,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-02-04,Cough Mixtures containing Guaphenesin,Syrup,,100mls,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-02-05,Dextromethorphan hydrobromide,Syrup,15mg/5ml,100mls,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-02-06,Diphenyl hydramine Mixtures,Syrup,,,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-24-02-07,"Cough Mixtures containing chlorpheniramine, amm cl, citric acid, Na citrate, ipecacuanha, arise oil, menthol ipecacuanha, arise oil, menthol",Syrup,,100mls,Psychotherapeutic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-01,Alpha tocopherol acetate (Vitamin E),Capsules/ Tablet,400 IU,Cap./Tab.,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-02,Alpha tocopherol acetate (Vitamin E),Capsules/ Tablet,1000 I.U,Cap./Tab.,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-03,Ascorbic Acid,Tablets,100mg,Tab.,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-04,Ascorbic Acid,Syrup,"100mg/5ml, 200mg/5ml, 500mg/5ml",100mls,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-05,Cyanocobalamin (B12),Injection,"0.25mg in 1ml, 1mg/ml",Amp.,Respiratory tract medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-06,Cyanocobalamin (B12),Tablet,0.05 mg,Tab.,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-07,Ergocalciferol (Vit. D),"Tablets, capsules","0.25mg, 1.25mg",Tab.,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-08,Folic acid,Tablet,5 mg,Tab.,Respiratory tract medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-09,Multivitamin,Syrup,,100mls,Respiratory tract medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-10,Multivitamin,Tablet,,Caps.,Respiratory tract medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-11,Multivitamin,Drops,,10mls,Respiratory tract medicines,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-12,Pyridoxine (Vitamin B6),Tablets,"10,20,50, mg (HCL)",Tab.,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-13,Retinol (Vitamin A),Tablets/Capsules,"1.5mg, 7.5mg , 15mg (5 000,25 000, 50 000",Caps.,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-14,Retinol (Vitamin A),Tablets/Capsules,10000iu(5.5mg)/5ml,Caps.,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-15,Retinol (Vitamin A),Syrup/Emulsion,,60mls,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-16,Retinol (Vitamin A),Syrup/Emulsion,,200mls,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-17,Riboflavin (Vitamin B2),Tablets,5mg,Tab.,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-18,Thiamine (Vitamin B1),Tablets,"25, 50mg (HCL)",Tab.,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-19,Vitamin B Complex,Tablets/Capsules,,Tab.,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-20,Vitamin B Complex,Syrup,,100mls,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-21,Vitamin B Complex,Injection,,Vial,Respiratory tract medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-22,Vitamins B1+B6+B12,Tablet,100mg+200mg+200mcg,Tab,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-23,Vitamins B1+B6+B12,Injection,100mg+100mg+1000mcg,Amp.,Respiratory tract medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-25-01-24,Yeast BPC,Tablets,300mg,Tab.,Respiratory tract medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-26-01-01,Calcium Gluconate,Tablets,600mg,1gram,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-26-01-02,Calcium Lactate,Tablets,300mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-26-01-03,Sodium Fluoride,Tablet,2.2 mg,Tab.,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-26-01-04,Calcium carbonate 600mg/Vitamin D3 tabs,Tablet,600mg,Tablet,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-26-01-05,Calcium gluconate 10% Injection,Injection,10%,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-26-01-06,Zinc 20mg Dispersible Tablet,Tablet (dispersible),20mg,Tablet (dispersible),,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-26-01-07,Zinc Sulphate,Tablet,20mg,Tablet,,pharmacist_review_or_otc_candidate,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-01,5 Fluorouracil (5FU),Injection,500mg,,Vitamins and minerals,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-02,Anastrozole,Tablet,1mg,Tablet,Vitamins and minerals,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-03,Bicalutamide,Tablet,50mg,,Vitamins and minerals,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-04,Cyclophosphamides,Tablet/ Injection,500mg,vial,Vitamins and minerals,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-05,Cytarabine,Injection,,Injection,Vitamins and minerals,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-06,Doxorubicin,Injection,50mg,,Vitamins and minerals,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-07,Granisetron,Injection,3mg,vial,Vitamins and minerals,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-08,Granisetron,Tablet,2mg,Tab,Vitamins and minerals,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-09,Hydroxyurea,Tablet,"200mg,300mg,400mg,500mg",Tablet,Vitamins and minerals,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-10,Leucovorin,Injection,50mg,vial,Vitamins and minerals,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-11,Leucovorin,Tablet,5mg,Tab,Vitamins and minerals,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-12,Ondansetron,Injection,8mg,vial,Vitamins and minerals,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-13,Ondansetron,Tablet,4mg,Tab,Vitamins and minerals,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-14,Tamoxifen,Tablet,20mg,Tab,Vitamins and minerals,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-15,Vincristine,Injection,2mg,Ampoule,Vitamins and minerals,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-27-01-16,Xeloda,Tablet,500mg,Tab,Vitamins and minerals,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-01-01,Trypsin + Chymotrypsin,Tablet,"Trypsin 50,000 Armour units + Chymotrypsin",Tab.,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-01,Blood giving set,Unit,Unit,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-02,Chromic catgut,Size,All sizes,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-03,Cotton wool,Roll,All sizes,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-04,Crepe bandage,Roll,All sizes,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-06,Infusion set,Unit,Unit,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-07,IV Cannula,Size,"14G, 16G, 18G, 20G-23G, 25G",Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-08,Mucus extractor,Size,All sizes,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-09,Needle,Unit,Unit,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-10,NG Tube,Size,All sizes,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-11,Nylon,Size,All sizes,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-12,plaster,Roll,All sizes,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-13,Scalp vein needle,Size,"20G, 21G, 22G, 23G, 25G",Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-14,Soluset,Size,All sizes,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-15,Surgical blade,Size,All sizes,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-16,Surgical Gloves,Size,All sizes,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-17,Syringe/Needle,Unit,2ml,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-18,Syringe/Needle,Unit,5ml,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-19,Syringe/Needle,Unit,10ml,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-20,Syringe/Needle,Unit,20ml,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-21,Urine Bag,Size,All siizes,Unit,Medical consumables and devices,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-28-02-22,Insulin needles,Needle,,Needle,Medical consumables and devices,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-29-00-01,Meropenem 1g Injection,Injection,1g,Injection,Reserve anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-29-00-02,Meropenem 500mg Injection,Injection,500mg,Injection,Reserve anti-infective medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-30-00-01,Chorionic gonadotropin,Injection powder,500 units in Ampoule,Amp,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-30-00-02,Chorionic gonadotropin,Injection powder,1000 units in Ampoule,Amp,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-30-00-03,Goserelin 10.8mg Prefilled syringe,Syringe (prefilled),10.8mg,Syringe (prefilled),,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-30-00-04,Human Menopausal Gonadotrophin injection,Injection,Hormonal Therapy,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-31-01-00,Rosiglitazone,Tablet,4mg,Tab.,Diabetes and metabolic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-31-01-01,Vildagliptin,Tablet,50mg,Tab,Diabetes and metabolic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-31-01-02,Vildagliptin + Metformin,Tablet,50mg/500mg,Tab,Diabetes and metabolic medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-31-01-03,Vildagliptin + Metformin,Tablet,50mg/1000mg,Tab,Diabetes and metabolic medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-31-01-04,Saxagliptin + Metformin,Tablet,5mg+500mg,Tablet,Diabetes and metabolic medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-31-01-05,Saxagliptin 5mg Tablet,Tablet,5mg,Tablet,Diabetes and metabolic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-31-01-06,Saxagliptin/Metformin,Tablet,2.5/1000mg,Tablet,Diabetes and metabolic medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-31-01-07,Saxagliptin/Metformin,Tablet,5/1000mg,Tablet,Diabetes and metabolic medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-31-01-08,Sitagliptin,Tablet,50mg,Tablet,Diabetes and metabolic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-31-01-09,Sitagliptin,Tablet,100mg,Tablet,Diabetes and metabolic medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-31-01-10,Sitagliptin/Metformin,Tablet,50/1000mg,Tablet,Diabetes and metabolic medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-31-01-11,Sitagliptin/Metformin,Tablet,50/500mg,Tablet,Diabetes and metabolic medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-32-01-01,Anti-D (Rhesus) immunoglobulin (Humans),Injection,"300microgram (1,500 I.U)/ml",Prefilled Syringe,Vaccines and immunoglobulins,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-32-01-02,Hepatitis B Anti-serum,Injection,200iu,Amp.,Vaccines and immunoglobulins,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-32-01-03,Hepatitis B Anti-serum,Injection,400iu,Amp.,Vaccines and immunoglobulins,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-32-01-04,Normal immunoglobulin,"IV Injection,","30mg/ml, 165mg/ml",Vial*,Vaccines and immunoglobulins,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-32-01-05,interferon (pegylated alpha-2a),Injection,180mcg,sc,Vaccines and immunoglobulins,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-32-02-02,Hepatitis B vaccines,Liquid for injection,10 doses/vial,Vial,Vaccines and immunoglobulins,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-32-02-03,Rotavirus Vaccine,Vaccine,,Vaccine,Vaccines and immunoglobulins,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-33-01-01,Gelofusine 500ml Infusion,Infusion,500ml,Infusion,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-33-01-02,Lipid Emulsion 10%. 20% Infusion,Infusion,10%.20%,Infusion,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-33-01-03,Total parenteral nutrition (TPN),Infusion,,Infusion,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-34-00-01,Lithium Carbonate,Capsules/ Tablets,300mg,Cap./ Tab.,Mental health medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-34-00-02,Pimozide,Tablets,4mg,Tab.,Mental health medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-34-00-03,Pimozide,Tablets,10mg,Tab.,Mental health medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-34-00-04,Risperidone Depot,Injection,25mg,Injection,Mental health medicines,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-35-01-01,Budesonide/Formoterol inhaler,Inhaler,160/4.5ug,Inhaler,Respiratory inhalers and asthma/COPD medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-35-01-02,Budesonide/Formoterol inhaler,Inhaler,80/4.5ug,Inhaler,Respiratory inhalers and asthma/COPD medicines,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-01,Bevacizumab Injection,Injection,100mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-02,Bevacizumab Injection,Injection,400mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-03,Docetaxel,Injection,80mg,vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-04,Docetaxel Injection,Injection,20mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-05,Docetaxel,Injection,80mg/ 4mls,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-06,Docetaxel,Injection,20rng/ 4mls,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-07,Oxaliplatin,Injection,100mg,vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-08,Oxaliplatin,Injection,50mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-09,Oxaliplatin Injection,Injection,100mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-10,Oxaliplatin Injection,Injection,50mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-11,Carboplatin,"Injection, solution","50mg/5ml, 150 mg/15ml, 450 mg/45ml or 600 mg/60ml multi-dose vials containing 10mg/ml","Injection, solution",,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-12,Paclitaxel,Injection,100mg,vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-13,Paclitaxel,Injection,300mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-14,Bleomycin,Injection,"15units/vial, 30units/vial; lyophilized pwd for",,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-15,Cisplatinium,,50mg,,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-16,Rituximab,Injection,1200mg,SC,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-17,Rituximab,Injection,500mg,IV,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-18,Rituximab,Injection,100mg,IV,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-19,Epirubicin,Injection,50mg,vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-20,Pertuzumab,Injection,420mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-21,Zoladex Inj,Injection,3.6mg,Prefilled syringe,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-22,Zoledronic acid,Solution,5mg/100ml,Solution,,clinical_review_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-23,Trastuzumab,Injection,150mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-24,Trastuzumab,Injection,440mg,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-25,Trastuzumab,Injection,600mg,SC,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-26,Filgrastim,Injection,30IU,Injection,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+NHIS-36-00-27,Gemcitabine,Injection,1gm,vial,,prescription_required,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z

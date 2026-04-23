@@ -1,129 +1,138 @@
-create extension if not exists pgcrypto;
+-- DoctaRx Nigeria discovery schema starter
+-- Adapt into the repo migration style. Use PostGIS geography when available; otherwise use Haversine over latitude/longitude.
 
-create table if not exists providers (
-  id uuid primary key default gen_random_uuid(),
-  source text not null,
-  source_provider_id text,
-  provider_name text not null,
-  normalized_name text,
-  provider_type text,
-  provider_subtype text,
-  accreditation_authority text,
-  accreditation_status text,
-  address_raw text,
-  street_address text,
-  city text,
-  lga text,
-  state text,
-  country text default 'Nigeria',
-  postal_code text,
-  latitude double precision,
-  longitude double precision,
-  geocode_quality text,
-  phone text[],
-  email text[],
-  website text,
-  opening_hours jsonb,
-  services jsonb,
-  specialties jsonb,
-  insurances jsonb,
-  payer_ids jsonb,
-  pharmacy_inventory_hint jsonb,
-  telehealth_capable boolean,
-  emergency_capable boolean,
-  maternity_capable boolean,
-  pediatric_capable boolean,
-  optical_capable boolean,
-  dental_capable boolean,
-  gym_spa boolean,
-  trust_score numeric,
-  popularity_score numeric,
-  data_confidence numeric,
-  last_verified_at timestamptz,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS ng_data_sources (
+  id BIGSERIAL PRIMARY KEY,
+  source_key TEXT NOT NULL UNIQUE,
+  source_url TEXT NOT NULL,
+  source_name TEXT NOT NULL,
+  extracted_at TIMESTAMPTZ,
+  notes TEXT
 );
 
-create index if not exists providers_state_idx on providers(state);
-create index if not exists providers_type_idx on providers(provider_type);
-create index if not exists providers_geo_idx on providers(latitude, longitude);
-
-create table if not exists payer_networks (
-  id uuid primary key default gen_random_uuid(),
-  source text not null,
-  payer_name text not null,
-  payer_type text not null, -- HMO, TPA, state_scheme, private_plan
-  payer_code text,
-  website text,
-  address_raw text,
-  email text[],
-  phone text[],
-  state text,
-  metadata jsonb,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS ng_hmos (
+  id BIGSERIAL PRIMARY KEY,
+  nhia_hmo_id TEXT UNIQUE,
+  organization_name TEXT NOT NULL,
+  website TEXT,
+  address TEXT,
+  email TEXT,
+  phone TEXT,
+  state_hint TEXT,
+  source_url TEXT,
+  extracted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-create table if not exists med_catalog (
-  id uuid primary key default gen_random_uuid(),
-  source text not null,
-  source_med_code text,
-  generic_name text not null,
-  brand_name text,
-  form text,
-  strength text,
-  route text,
-  pack_size text,
-  therapeutic_class text,
-  symptom_tags text[],
-  disease_tags text[],
-  controlled boolean default false,
-  prescription_required boolean default false,
-  nhia_listed boolean default false,
-  otc_candidate boolean,
-  pediatric_safe_hint boolean,
-  pregnancy_caution boolean,
-  price_ngn numeric,
-  price_notes text,
-  metadata jsonb,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS ng_sshias (
+  id BIGSERIAL PRIMARY KEY,
+  state TEXT NOT NULL,
+  organization_name TEXT NOT NULL,
+  director TEXT,
+  phone TEXT,
+  email TEXT,
+  website TEXT,
+  address TEXT,
+  source_url TEXT,
+  extracted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (state, organization_name)
 );
 
-create index if not exists med_catalog_generic_idx on med_catalog(generic_name);
-create index if not exists med_catalog_class_idx on med_catalog(therapeutic_class);
-
-create table if not exists service_price_catalog (
-  id uuid primary key default gen_random_uuid(),
-  source text not null,
-  code text,
-  service_name text not null,
-  specialty text,
-  price_ngn numeric,
-  metadata jsonb,
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS ng_providers (
+  id BIGSERIAL PRIMARY KEY,
+  external_source TEXT NOT NULL,
+  external_id TEXT,
+  provider_name TEXT NOT NULL,
+  provider_type TEXT NOT NULL CHECK (provider_type IN ('hospital','clinic','pharmacy','laboratory','diagnostics','doctor','healthcare_provider')),
+  state TEXT,
+  lga TEXT,
+  city TEXT,
+  address TEXT,
+  phone TEXT,
+  email TEXT,
+  website TEXT,
+  accepts_nhia BOOLEAN DEFAULT false,
+  accepts_cash BOOLEAN DEFAULT true,
+  accepts_hmo BOOLEAN DEFAULT false,
+  telehealth_enabled BOOLEAN DEFAULT false,
+  verification_status TEXT NOT NULL DEFAULT 'seed' CHECK (verification_status IN ('seed','pending_manual_verification','verified','rejected','stale')),
+  source_url TEXT,
+  extracted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (external_source, provider_name, address)
 );
 
-create table if not exists provider_meds (
-  provider_id uuid references providers(id) on delete cascade,
-  med_id uuid references med_catalog(id) on delete cascade,
-  stock_status text,
-  stock_confidence numeric,
-  price_ngn numeric,
-  last_seen_at timestamptz,
-  primary key(provider_id, med_id)
+CREATE TABLE IF NOT EXISTS ng_provider_locations (
+  id BIGSERIAL PRIMARY KEY,
+  provider_id BIGINT NOT NULL REFERENCES ng_providers(id) ON DELETE CASCADE,
+  latitude NUMERIC(10,7),
+  longitude NUMERIC(10,7),
+  geocode_query TEXT,
+  geocode_provider TEXT,
+  geocode_confidence TEXT DEFAULT 'pending' CHECK (geocode_confidence IN ('exact','street','city','state','failed','pending')),
+  geocoded_at TIMESTAMPTZ,
+  UNIQUE (provider_id)
 );
 
-create table if not exists provider_search_logs (
-  id uuid primary key default gen_random_uuid(),
-  patient_session_id text,
-  lat double precision,
-  lng double precision,
-  state text,
-  query text,
-  symptom_tags text[],
-  preferred_provider_types text[],
-  sort_mode text,
-  selected_provider_id uuid,
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS ng_medicines (
+  id BIGSERIAL PRIMARY KEY,
+  nhis_code TEXT UNIQUE,
+  medicine_name TEXT NOT NULL,
+  dosage_form TEXT,
+  strength TEXT,
+  presentation TEXT,
+  category_hint TEXT,
+  prescription_class TEXT NOT NULL DEFAULT 'clinical_review_required',
+  searchable_text TEXT GENERATED ALWAYS AS (lower(coalesce(medicine_name,'') || ' ' || coalesce(strength,'') || ' ' || coalesce(dosage_form,''))) STORED,
+  source_url TEXT,
+  extracted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS ng_featured_medicines (
+  id BIGSERIAL PRIMARY KEY,
+  display_order INTEGER NOT NULL,
+  display_name TEXT NOT NULL,
+  medicine_id BIGINT REFERENCES ng_medicines(id) ON DELETE SET NULL,
+  use_case TEXT,
+  safety_label TEXT NOT NULL,
+  storefront_action TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT true,
+  source_url TEXT,
+  extracted_at TIMESTAMPTZ,
+  UNIQUE (display_name)
+);
+
+CREATE TABLE IF NOT EXISTS ng_provider_medicine_availability (
+  id BIGSERIAL PRIMARY KEY,
+  provider_id BIGINT NOT NULL REFERENCES ng_providers(id) ON DELETE CASCADE,
+  medicine_id BIGINT NOT NULL REFERENCES ng_medicines(id) ON DELETE CASCADE,
+  availability_status TEXT NOT NULL DEFAULT 'unknown' CHECK (availability_status IN ('unknown','in_stock','low_stock','out_of_stock','call_to_confirm')),
+  last_confirmed_at TIMESTAMPTZ,
+  confirmation_source TEXT,
+  UNIQUE (provider_id, medicine_id)
+);
+
+CREATE TABLE IF NOT EXISTS ng_location_search_events (
+  id BIGSERIAL PRIMARY KEY,
+  user_id TEXT,
+  request_type TEXT NOT NULL,
+  provider_type TEXT,
+  state TEXT,
+  lga TEXT,
+  city TEXT,
+  radius_km NUMERIC(6,2),
+  used_device_location BOOLEAN DEFAULT false,
+  result_count INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ng_providers_type_state_lga ON ng_providers(provider_type, state, lga);
+CREATE INDEX IF NOT EXISTS idx_ng_provider_locations_lat_lng ON ng_provider_locations(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_ng_medicines_searchable ON ng_medicines(searchable_text);
+CREATE INDEX IF NOT EXISTS idx_ng_featured_medicines_active_order ON ng_featured_medicines(active, display_order);

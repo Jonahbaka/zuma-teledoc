@@ -44,6 +44,9 @@ COPY --from=builder /app/server ./server
 # Copy shared libraries
 COPY --from=builder /app/lib ./lib
 
+# Copy Nigeria region API/data layer used by /api/ng/*
+COPY --from=builder /app/ng ./ng
+
 # Copy config files
 COPY --from=builder /app/next.config.js ./next.config.js
 COPY --from=builder /app/postcss.config.js ./postcss.config.js

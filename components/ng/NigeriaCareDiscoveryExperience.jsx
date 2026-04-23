@@ -395,6 +395,35 @@ export default function NigeriaCareDiscoveryExperience({
     await runProviderSearch(activeTab);
   }
 
+  function requestDeviceLocation() {
+    if (typeof window === 'undefined' || !window.navigator?.geolocation) {
+      setLocationStatus('manual');
+      setFeedbackMessage('Device location is unavailable. Use state, city, and landmark search instead.');
+      return;
+    }
+
+    setLocationStatus('detecting');
+    window.navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nextLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+        setLocation(nextLocation);
+        setLocationStatus('granted');
+        setFeedbackMessage('Location added. Search again to rank nearby providers first.');
+        trackEvent('location_permission_granted', { payload: nextLocation });
+        loadHome(nextLocation);
+      },
+      () => {
+        setLocationStatus('manual');
+        setFeedbackMessage('Location permission was not available. Manual state, city, and LGA search still works.');
+        trackEvent('location_permission_denied');
+      },
+      { enableHighAccuracy: false, timeout: 6000, maximumAge: 300000 }
+    );
+  }
+
   function persistState() {
     if (typeof window === 'undefined') {
       return;
@@ -493,24 +522,7 @@ export default function NigeriaCareDiscoveryExperience({
       return;
     }
 
-    window.navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const nextLocation = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        };
-        setLocation(nextLocation);
-        setLocationStatus('granted');
-        trackEvent('location_permission_granted', { payload: nextLocation });
-        loadHome(nextLocation);
-      },
-      () => {
-        setLocationStatus('manual');
-        trackEvent('location_permission_denied');
-        loadHome();
-      },
-      { enableHighAccuracy: false, timeout: 6000, maximumAge: 300000 }
-    );
+    loadHome();
   }, []);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -647,13 +659,18 @@ export default function NigeriaCareDiscoveryExperience({
               placeholder="Landmark or LGA for manual fallback"
               className="h-11 rounded-2xl border border-border bg-background px-3 text-sm"
             />
-            <div className="inline-flex items-center gap-2 rounded-2xl border border-border px-4 py-3 text-sm text-muted-foreground">
-              <MapPin className="h-4 w-4" />
-              {locationStatus === 'granted'
-                ? 'Location ready'
-                : locationStatus === 'manual'
-                  ? 'Using manual location fallback'
-                  : 'Checking location permission'}
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border px-3 py-2 text-sm text-muted-foreground">
+              <div className="inline-flex flex-1 items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                {locationStatus === 'granted'
+                  ? 'Location ready'
+                  : locationStatus === 'manual'
+                    ? 'Using manual location fallback'
+                    : 'Location not requested yet'}
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={requestDeviceLocation}>
+                Use my location
+              </Button>
             </div>
           </div>
         </CardContent>

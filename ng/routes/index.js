@@ -14,6 +14,32 @@ const patientRoutes = require('./patient');
 const adminRoutes = require('./admin');
 const webhookRoutes = require('./webhooks');
 
+let discoverySeedScheduled = false;
+
+function scheduleDiscoverySeed() {
+  if (discoverySeedScheduled || process.env.NG_AUTO_SEED_DISCOVERY === 'false') {
+    return;
+  }
+
+  discoverySeedScheduled = true;
+  const delayMs = parseInt(process.env.NG_AUTO_SEED_DELAY_MS, 10) || 15000;
+  const timer = setTimeout(async () => {
+    try {
+      const { seedNigeriaDiscoveryIfNeeded } = require('../scripts/ingest-doctarx-nigeria-pack');
+      const result = await seedNigeriaDiscoveryIfNeeded();
+      console.log('[NG Discovery] Seed bootstrap result:', JSON.stringify(result));
+    } catch (error) {
+      console.error('[NG Discovery] Seed bootstrap skipped:', error.message);
+    }
+  }, delayMs);
+
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
+}
+
+scheduleDiscoverySeed();
+
 // Health check for NG region
 router.get('/health', (req, res) => {
   res.json({

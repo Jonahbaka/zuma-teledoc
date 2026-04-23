@@ -6,8 +6,51 @@ const {
   scoreProvider,
   splitMultiValue,
 } = require('./utils');
+const {
+  getSeedFeaturedCategories,
+  getSeedFeaturedMedicines,
+  getSeedMedicines,
+  getSeedPayers,
+  getSeedProviders,
+} = require('./seedFallbackData');
 
 const DEFAULT_LIMIT = 12;
+
+function logFallbackWarning(scope, error) {
+  if (error) {
+    console.warn(`[NG Discovery] Using seed fallback for ${scope}: ${error.message}`);
+  }
+}
+
+function providerMatchesType(provider, requestedType) {
+  const typeNeedle = normalizeText(requestedType);
+  if (!typeNeedle || typeNeedle === 'all') {
+    return true;
+  }
+
+  const providerTypeText = normalizeText(`${provider.providerType || ''} ${provider.providerSubtype || ''} ${provider.canonicalName || ''}`);
+  if (providerTypeText.includes(typeNeedle)) {
+    return true;
+  }
+
+  if (typeNeedle === 'lab') {
+    return provider.labRelevant || providerTypeText.includes('laboratory') || providerTypeText.includes('diagnostic');
+  }
+
+  if (typeNeedle === 'optical') {
+    return provider.opticalCapable || providerTypeText.includes('eye');
+  }
+
+  if (typeNeedle === 'dental') {
+    return provider.dentalCapable || providerTypeText.includes('dent');
+  }
+
+  if (typeNeedle === 'specialist') {
+    return providerTypeText.includes('specialist') || providerTypeText.includes('doctor');
+  }
+
+  return false;
+}
 
 const SYMPTOM_PROVIDER_MAP = {
   malaria: ['clinic', 'hospital'],
@@ -167,112 +210,138 @@ function buildProviderResponse(provider, scoring) {
 
 async function getFeaturedMedicines(limit = 18) {
   const pool = getPoolSafe();
-  const result = await pool.query(
-    `
-      SELECT
-        id,
-        name,
-        generic_name,
-        dosage_form,
-        strength,
-        featured_category,
-        access_mode,
-        product_logic_note,
-        listing_status,
-        price_ngn,
-        requires_prescription,
-        otc_candidate,
-        therapeutic_class
-      FROM ng_drug_catalog
-      WHERE featured_category IS NOT NULL
-      ORDER BY featured_category ASC, generic_name ASC
-      LIMIT $1
-    `,
-    [limit]
-  );
 
-  return result.rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    genericName: row.generic_name,
-    dosageForm: row.dosage_form,
-    strength: row.strength,
-    featuredCategory: row.featured_category,
-    accessMode: row.access_mode,
-    productLogicNote: row.product_logic_note,
-    listingStatus: row.listing_status,
-    priceNgn: row.price_ngn,
-    requiresPrescription: row.requires_prescription,
-    otcCandidate: row.otc_candidate,
-    therapeuticClass: row.therapeutic_class,
-  }));
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          id,
+          name,
+          generic_name,
+          dosage_form,
+          strength,
+          featured_category,
+          access_mode,
+          product_logic_note,
+          listing_status,
+          price_ngn,
+          requires_prescription,
+          otc_candidate,
+          therapeutic_class
+        FROM ng_drug_catalog
+        WHERE featured_category IS NOT NULL
+        ORDER BY featured_category ASC, generic_name ASC
+        LIMIT $1
+      `,
+      [limit]
+    );
+
+    if (result.rows.length > 0) {
+      return result.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        genericName: row.generic_name,
+        dosageForm: row.dosage_form,
+        strength: row.strength,
+        featuredCategory: row.featured_category,
+        accessMode: row.access_mode,
+        productLogicNote: row.product_logic_note,
+        listingStatus: row.listing_status,
+        priceNgn: row.price_ngn,
+        requiresPrescription: row.requires_prescription,
+        otcCandidate: row.otc_candidate,
+        therapeuticClass: row.therapeutic_class,
+      }));
+    }
+  } catch (error) {
+    logFallbackWarning('featured medicines', error);
+  }
+
+  return getSeedFeaturedMedicines(limit);
 }
 
 async function getFeaturedMedicineCategories(limit = 8) {
   const pool = getPoolSafe();
-  const result = await pool.query(
-    `
-      SELECT
-        featured_category,
-        MIN(access_mode) AS access_mode,
-        COUNT(*) AS med_count,
-        ARRAY_REMOVE(ARRAY_AGG(DISTINCT generic_name ORDER BY generic_name), NULL) AS medicine_examples
-      FROM ng_drug_catalog
-      WHERE featured_category IS NOT NULL
-      GROUP BY featured_category
-      ORDER BY COUNT(*) DESC, featured_category ASC
-      LIMIT $1
-    `,
-    [limit]
-  );
 
-  return result.rows.map((row) => ({
-    category: row.featured_category,
-    accessMode: row.access_mode,
-    medCount: Number(row.med_count || 0),
-    medicineExamples: (row.medicine_examples || []).slice(0, 4),
-  }));
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          featured_category,
+          MIN(access_mode) AS access_mode,
+          COUNT(*) AS med_count,
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT generic_name ORDER BY generic_name), NULL) AS medicine_examples
+        FROM ng_drug_catalog
+        WHERE featured_category IS NOT NULL
+        GROUP BY featured_category
+        ORDER BY COUNT(*) DESC, featured_category ASC
+        LIMIT $1
+      `,
+      [limit]
+    );
+
+    if (result.rows.length > 0) {
+      return result.rows.map((row) => ({
+        category: row.featured_category,
+        accessMode: row.access_mode,
+        medCount: Number(row.med_count || 0),
+        medicineExamples: (row.medicine_examples || []).slice(0, 4),
+      }));
+    }
+  } catch (error) {
+    logFallbackWarning('featured medicine categories', error);
+  }
+
+  return getSeedFeaturedCategories(limit);
 }
 
 async function getPayers(limit = 50) {
   const pool = getPoolSafe();
-  const [hmos, agencies] = await Promise.all([
-    pool.query(
-      `
-        SELECT id, payer_name, payer_type, payer_code, state, website
-        FROM ng_payer_networks
-        ORDER BY payer_name ASC
-        LIMIT $1
-      `,
-      [limit]
-    ),
-    pool.query(
-      `
-        SELECT id, agency_name, state, website
-        FROM ng_state_insurance_agencies
-        ORDER BY agency_name ASC
-        LIMIT $1
-      `,
-      [limit]
-    ),
-  ]);
+  try {
+    const [hmos, agencies] = await Promise.all([
+      pool.query(
+        `
+          SELECT id, payer_name, payer_type, payer_code, state, website
+          FROM ng_payer_networks
+          ORDER BY payer_name ASC
+          LIMIT $1
+        `,
+        [limit]
+      ),
+      pool.query(
+        `
+          SELECT id, agency_name, state, website
+          FROM ng_state_insurance_agencies
+          ORDER BY agency_name ASC
+          LIMIT $1
+        `,
+        [limit]
+      ),
+    ]);
 
-  return {
-    hmos: hmos.rows.map((row) => ({
-      id: row.id,
-      name: row.payer_name,
-      type: row.payer_type,
-      code: row.payer_code,
-      state: row.state,
-      website: row.website,
-    })),
-    stateSchemes: agencies.rows.map((row) => ({
-      id: row.id,
-      name: row.agency_name,
-      state: row.state,
-      website: row.website,
-    })),
-  };
+    if (hmos.rows.length > 0 || agencies.rows.length > 0) {
+      return {
+        hmos: hmos.rows.map((row) => ({
+          id: row.id,
+          name: row.payer_name,
+          type: row.payer_type,
+          code: row.payer_code,
+          state: row.state,
+          website: row.website,
+        })),
+        stateSchemes: agencies.rows.map((row) => ({
+          id: row.id,
+          name: row.agency_name,
+          state: row.state,
+          website: row.website,
+        })),
+      };
+    }
+  } catch (error) {
+    logFallbackWarning('payers', error);
+  }
+
+  return getSeedPayers(limit);
 }
 
 async function getGroupProviders(filters = {}) {
@@ -309,8 +378,16 @@ async function getGroupProviders(filters = {}) {
     LIMIT 200
   `;
 
-  const result = await pool.query(sql, values);
-  return result.rows.map(mapGroupRow);
+  try {
+    const result = await pool.query(sql, values);
+    if (result.rows.length > 0) {
+      return result.rows.map(mapGroupRow);
+    }
+  } catch (error) {
+    logFallbackWarning('provider groups', error);
+  }
+
+  return getSeedProviders(filters);
 }
 
 async function getApprovedPharmacies({ state, city, medicine }) {
@@ -366,8 +443,21 @@ async function getApprovedPharmacies({ state, city, medicine }) {
     LIMIT 100
   `;
 
-  const result = await pool.query(sql, values);
-  return result.rows.map((row) => mapPharmacyRow(row, medicine));
+  try {
+    const result = await pool.query(sql, values);
+    if (result.rows.length > 0) {
+      return result.rows.map((row) => mapPharmacyRow(row, medicine));
+    }
+  } catch (error) {
+    logFallbackWarning('approved pharmacies', error);
+  }
+
+  return getSeedProviders({
+    state,
+    city,
+    providerType: 'pharmacy',
+    query: medicine,
+  });
 }
 
 async function getInternalTelehealthProviders({ state, city, specialty, query }) {
@@ -421,8 +511,13 @@ async function getInternalTelehealthProviders({ state, city, specialty, query })
     LIMIT 100
   `;
 
-  const result = await pool.query(sql, values);
-  return result.rows.map(mapInternalProviderRow);
+  try {
+    const result = await pool.query(sql, values);
+    return result.rows.map(mapInternalProviderRow);
+  } catch (error) {
+    logFallbackWarning('internal telehealth providers', error);
+    return [];
+  }
 }
 
 async function searchProviders(params = {}) {
@@ -468,8 +563,23 @@ async function searchProviders(params = {}) {
       : Promise.resolve([]),
   ]);
 
+  const seenProviders = new Set();
   const mergedProviders = [...groups, ...telehealthProviders, ...pharmacies]
     .filter((provider) => {
+      const dedupeKey = [
+        normalizeText(provider.canonicalName),
+        normalizeText(provider.addressRaw),
+        normalizeText(provider.city),
+        normalizeText(provider.state),
+      ].filter(Boolean).join('::');
+
+      if (dedupeKey && seenProviders.has(dedupeKey)) {
+        return false;
+      }
+      if (dedupeKey) {
+        seenProviders.add(dedupeKey);
+      }
+
       const providerTypeText = `${provider.providerType || ''} ${provider.providerSubtype || ''}`.toLowerCase();
 
       if (mode === 'teleconsult' && !provider.telehealthCapable) {
@@ -489,7 +599,7 @@ async function searchProviders(params = {}) {
       }
 
       if (preferredTypes.length > 0) {
-        if (!preferredTypes.some((type) => providerTypeText.includes(normalizeText(type)))) {
+        if (!preferredTypes.some((type) => providerMatchesType(provider, type))) {
           return false;
         }
       }
@@ -552,6 +662,9 @@ async function searchMedicines(params = {}) {
       LOWER(name) LIKE $${values.length}
       OR LOWER(COALESCE(generic_name, '')) LIKE $${values.length}
       OR LOWER(COALESCE(brand_name, '')) LIKE $${values.length}
+      OR LOWER(COALESCE(therapeutic_class, '')) LIKE $${values.length}
+      OR LOWER(COALESCE(featured_category, '')) LIKE $${values.length}
+      OR LOWER(COALESCE(product_logic_note, '')) LIKE $${values.length}
     )`);
   }
 
@@ -602,28 +715,37 @@ async function searchMedicines(params = {}) {
 
   values.push(Number(limit || DEFAULT_LIMIT));
 
-  const result = await pool.query(sql, values);
-  const medicines = result.rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    genericName: row.generic_name,
-    brandName: row.brand_name,
-    dosageForm: row.dosage_form,
-    strength: row.strength,
-    therapeuticClass: row.therapeutic_class,
-    symptomTags: row.symptom_tags || [],
-    diseaseTags: row.disease_tags || [],
-    requiresPrescription: row.requires_prescription,
-    otcCandidate: row.otc_candidate,
-    controlled: row.controlled,
-    nhiaListed: row.nhia_listed,
-    priceNgn: row.price_ngn,
-    priceNotes: row.price_notes,
-    featuredCategory: row.featured_category,
-    listingStatus: row.listing_status,
-    accessMode: row.access_mode,
-    productLogicNote: row.product_logic_note,
-  }));
+  let medicines = [];
+  try {
+    const result = await pool.query(sql, values);
+    medicines = result.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      genericName: row.generic_name,
+      brandName: row.brand_name,
+      dosageForm: row.dosage_form,
+      strength: row.strength,
+      therapeuticClass: row.therapeutic_class,
+      symptomTags: row.symptom_tags || [],
+      diseaseTags: row.disease_tags || [],
+      requiresPrescription: row.requires_prescription,
+      otcCandidate: row.otc_candidate,
+      controlled: row.controlled,
+      nhiaListed: row.nhia_listed,
+      priceNgn: row.price_ngn,
+      priceNotes: row.price_notes,
+      featuredCategory: row.featured_category,
+      listingStatus: row.listing_status,
+      accessMode: row.access_mode,
+      productLogicNote: row.product_logic_note,
+    }));
+  } catch (error) {
+    logFallbackWarning('medicine search', error);
+  }
+
+  if (medicines.length === 0) {
+    medicines = getSeedMedicines({ query, symptom, category, accessMode }).slice(0, Number(limit || DEFAULT_LIMIT));
+  }
 
   return {
     medicines,

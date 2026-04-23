@@ -1,13 +1,16 @@
-ui_category,generic_name,listing_status,access_mode,product_logic_note
-Pain & Fever,Paracetamol,nhia_listed,otc_candidate,Common fever/pain relief; useful hero chip in Nigeria telehealth flows
-Pain & Fever,Ibuprofen,nhia_listed,otc_candidate,Alternative analgesic; keep GI and pregnancy cautions in logic
-Malaria,Artemether + Lumefantrine,nhia_listed,prescription_or_protocol,High-value malaria flow item; tie to symptom checker and testing guidance
-Digestive / Dehydration,Oral Rehydration Salts,nhia_listed,otc_candidate,Strong for diarrhoea/dehydration flows
-Digestive / Infection,Metronidazole,nhia_listed,prescription,Only surface after clinician review or validated protocol
-Cold / Nasal,Xylometazoline,nhia_listed,otc_candidate,Useful for symptomatic relief; enforce duration warnings
-Gastric,Omeprazole,nhia_listed,otc_candidate_or_rx,Good for reflux/gastritis category search
-Respiratory,Salbutamol,nhia_listed,prescription,Useful in asthma/wheeze pathways
-Hypertension,Amlodipine,nhia_listed,prescription,High chronic-care relevance
-Hypertension,Losartan,nhia_listed,prescription,Good chronic-care search target
-Diabetes,Metformin,nhia_listed,prescription,High chronic-care relevance
-Diabetes,Insulin soluble / glargine,nhia_listed,prescription,Important for continuity-of-care medication search
+display_order,display_name,use_case,nhis_code,dosage_form,strength,safety_label,storefront_action,source_url,extracted_at
+1,Codeine/Paracetamol (8/500mg) tab,Fever and pain relief,NHIS-02-01-11,Tablet,8/500mg,controlled_or_high_risk_rx,Start consult before purchase,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+2,Torsemide,Dehydration support,NHIS-12-03-10,Injection,10mg/ml,prescription_required,Start consult before purchase,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+3,Zinc Chloride Plus Zinc sulphate,Child diarrhoea support,NHIS-13-02-05,Solution,1% Zncl + 2% Zn2 SO4,pharmacist_review_or_otc_candidate,Check pharmacy availability,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+4,Loratadine,Allergy relief,,,,pharmacist_review_or_otc_candidate,Check pharmacy availability,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+5,Montelukast + levocetirizine 10mg/5mg Tablet,Allergy relief,NHIS-24-01-25,Tablet,10mg+5mg,pharmacist_review_or_otc_candidate,Check pharmacy availability,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+6,Ibuprofen,Pain and inflammation,NHIS-02-04-12,"Tablets, capsules","200mg,",pharmacist_review_or_otc_candidate,Check pharmacy availability,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+7,Rabeprazole +Clarithromycin + Amoxicillin,Common bacterial infections,NHIS-16-00-13,Tablet/capsule,20mg/500mg/1000mg,prescription_required,Start consult before purchase,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+8,Artemether,Malaria treatment,NHIS-06-05-03,Injection (Phosphate),40mg/ml in 1ml Ampoule,prescription_required,Start consult before purchase,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+9,Amlodipine,Hypertension care,NHIS-12-04-02,Tablet (Besylate),5mg,prescription_required,Start consult before purchase,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+10,Metformin,Diabetes care,NHIS-17-06-15,Tablets,500mg (HCL),prescription_required,Start consult before purchase,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+11,Salbutamol,Asthma relief,NHIS-24-01-07,Tablets,"2mg, 4mg (Sulphate)",clinical_review_required,Check pharmacy availability,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+12,Esomeprazole,Acid reflux support,NHIS-16-00-04,Tablet,20mg,clinical_review_required,Check pharmacy availability,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+13,Folic Acid,Pregnancy and anaemia support,NHIS-11-01-05,Tablet,5mg,pharmacist_review_or_otc_candidate,Check pharmacy availability,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+14,Ferrous Sulphate,Iron deficiency support,NHIS-11-01-04,"Tablets, Capsule",200 mg equivalent to 60mg of Iron,clinical_review_required,Check pharmacy availability,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z
+15,Ciprofloxacin,Bacterial infections,NHIS-06-07-49,Tablet,250mg (HC1),prescription_required,Start consult before purchase,https://www.nhia.gov.ng/nhia-drug-list-and-prices/,2026-04-23T08:51:41.746Z

@@ -87,6 +87,105 @@ function readCsv(filename) {
   return parseCsv(fs.readFileSync(path.join(DATA_DIR, filename), 'utf8'));
 }
 
+function firstNonEmpty(...values) {
+  return values.find((value) => String(value || '').trim() !== '') || '';
+}
+
+function inferPrescriptionFlags(row) {
+  const prescriptionClass = normalizeText(row.prescription_class || row.safety_label || row.access_mode);
+  const controlled = parseBoolean(row.controlled) || prescriptionClass.includes('controlled') || prescriptionClass.includes('restricted');
+  const requiresPrescription =
+    controlled ||
+    parseBoolean(row.prescription_required) ||
+    prescriptionClass.includes('prescription') ||
+    prescriptionClass.includes('clinical review');
+  const otcCandidate = prescriptionClass.includes('otc') || prescriptionClass.includes('pharmacist');
+
+  return { controlled, requiresPrescription, otcCandidate };
+}
+
+function normalizeHmoRow(row) {
+  return {
+    source: firstNonEmpty(row.source, 'nhia'),
+    payer_name: firstNonEmpty(row.payer_name, row.organization_name, row.HMO, row.hmo),
+    payer_type: firstNonEmpty(row.payer_type, 'HMO'),
+    payer_code: firstNonEmpty(row.payer_code, row.nhia_hmo_id, row['HMO ID']),
+    website: firstNonEmpty(row.website, row.WEBSITES),
+    address_raw: firstNonEmpty(row.address_raw, row.address, row.Address),
+    email: firstNonEmpty(row.email, row.Email),
+    phone: firstNonEmpty(row.phone, row['Call Center Numbers'], row.call_center_numbers),
+    state: firstNonEmpty(row.state, row.state_hint),
+  };
+}
+
+function normalizeStateSchemeRow(row) {
+  return {
+    source: firstNonEmpty(row.source, 'nhia'),
+    organization: firstNonEmpty(row.organization, row.organization_name, row.agency_name),
+    state_code: firstNonEmpty(row.state_code, row.state),
+    director: firstNonEmpty(row.director),
+    website: firstNonEmpty(row.website),
+    address_raw: firstNonEmpty(row.address_raw, row.address),
+    email: firstNonEmpty(row.email),
+    phone: firstNonEmpty(row.phone),
+  };
+}
+
+function normalizeMedicineRow(row) {
+  const flags = inferPrescriptionFlags(row);
+  const genericName = firstNonEmpty(row.generic_name, row.medicine_name, row.name);
+
+  return {
+    source: firstNonEmpty(row.source, 'nhia'),
+    source_med_code: firstNonEmpty(row.source_med_code, row.nhis_code),
+    generic_name: genericName,
+    form: firstNonEmpty(row.form, row.dosage_form),
+    strength: firstNonEmpty(row.strength),
+    pack_size: firstNonEmpty(row.pack_size, row.presentation),
+    therapeutic_class: firstNonEmpty(row.therapeutic_class, row.category_hint),
+    symptom_tags: firstNonEmpty(row.symptom_tags),
+    prescription_required: flags.requiresPrescription ? 'true' : 'false',
+    controlled: flags.controlled ? 'true' : 'false',
+    nhia_listed: row.nhia_listed || row.nhis_code ? 'true' : 'false',
+    otc_candidate: flags.otcCandidate ? 'true' : 'false',
+  };
+}
+
+function normalizeFeaturedRow(row) {
+  const flags = inferPrescriptionFlags(row);
+  const displayName = firstNonEmpty(row.generic_name, row.display_name, row.name);
+  const accessMode = firstNonEmpty(
+    row.access_mode,
+    flags.controlled ? 'controlled_or_high_risk_rx' : flags.requiresPrescription ? 'prescription_required' : 'pharmacist_review_or_otc_candidate'
+  );
+
+  return {
+    generic_name: displayName,
+    ui_category: firstNonEmpty(row.ui_category, row.use_case, row.featured_category, 'Featured medicines'),
+    listing_status: firstNonEmpty(row.listing_status, 'featured'),
+    access_mode: accessMode,
+    product_logic_note: firstNonEmpty(row.product_logic_note, row.storefront_action),
+  };
+}
+
+function normalizeProviderRow(row) {
+  const providerType = firstNonEmpty(row.provider_type, row.service_category, 'healthcare_provider');
+  const sourceUrl = firstNonEmpty(row.source_url);
+  return {
+    source: firstNonEmpty(row.source, normalizeText(sourceUrl).includes('reliance') ? 'reliance' : 'seed'),
+    provider_name: firstNonEmpty(row.provider_name, row.facility_name, row.name),
+    provider_type: providerType,
+    city: firstNonEmpty(row.city),
+    lga: firstNonEmpty(row.lga),
+    state: firstNonEmpty(row.state, row.state_hint),
+    address_raw: firstNonEmpty(row.address_raw, row.address),
+    phone: firstNonEmpty(row.phone),
+    email: firstNonEmpty(row.email),
+    website: firstNonEmpty(row.website),
+    notes: firstNonEmpty(row.notes, row.service_category),
+  };
+}
+
 function buildGroupMetadata(row) {
   const normalizedName = normalizeProviderName(row.provider_name);
   const matchKey = buildProviderMatchKey({
@@ -242,7 +341,7 @@ async function upsertMedCatalog(pool, medRows, featuredRows) {
     const controlled = parseBoolean(row.controlled);
     const otcCandidate = featured
       ? normalizeText(featured.access_mode).includes('otc')
-      : !requiresPrescription;
+      : parseBoolean(row.otc_candidate) || !requiresPrescription;
 
     await pool.query(
       `
@@ -600,11 +699,11 @@ async function ingestNigeriaPack() {
   const pool = getPool();
   await runNgMigrations(pool);
 
-  const hmoRows = readCsv('nhia_hmo_seed.csv');
-  const stateSchemeRows = readCsv('nhia_sshia_seed.csv');
-  const medRows = readCsv('nhia_meds_seed.csv');
-  const featuredRows = readCsv('featured_meds.csv');
-  const providerRows = readCsv('provider_seed_reliance.csv');
+  const hmoRows = readCsv('nhia_hmo_seed.csv').map(normalizeHmoRow).filter((row) => row.payer_name);
+  const stateSchemeRows = readCsv('nhia_sshia_seed.csv').map(normalizeStateSchemeRow).filter((row) => row.organization);
+  const medRows = readCsv('nhia_meds_seed.csv').map(normalizeMedicineRow).filter((row) => row.generic_name);
+  const featuredRows = readCsv('featured_meds.csv').map(normalizeFeaturedRow).filter((row) => row.generic_name);
+  const providerRows = readCsv('provider_seed_reliance.csv').map(normalizeProviderRow).filter((row) => row.provider_name);
 
   await pool.query('BEGIN');
 
@@ -628,8 +727,42 @@ async function ingestNigeriaPack() {
   };
 }
 
+async function getDiscoverySeedCounts(pool) {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        (SELECT COUNT(*)::INTEGER FROM ng_provider_match_groups) AS providers,
+        (SELECT COUNT(*)::INTEGER FROM ng_drug_catalog WHERE source_med_code IS NOT NULL OR nhia_listed = true) AS medicines,
+        (SELECT COUNT(*)::INTEGER FROM ng_payer_networks) AS payers,
+        (SELECT COUNT(*)::INTEGER FROM ng_state_insurance_agencies) AS state_schemes
+    `);
+
+    return rows[0] || { providers: 0, medicines: 0, payers: 0, state_schemes: 0 };
+  } catch (error) {
+    return { providers: 0, medicines: 0, payers: 0, state_schemes: 0 };
+  }
+}
+
+async function seedNigeriaDiscoveryIfNeeded() {
+  const pool = getPool();
+  const before = await getDiscoverySeedCounts(pool);
+  const needsSeed =
+    Number(before.providers || 0) < 1000 ||
+    Number(before.medicines || 0) < 900 ||
+    Number(before.payers || 0) < 60 ||
+    Number(before.state_schemes || 0) < 30;
+
+  if (!needsSeed && process.env.NG_FORCE_SEED_DISCOVERY !== 'true') {
+    return { skipped: true, before };
+  }
+
+  const summary = await ingestNigeriaPack();
+  const after = await getDiscoverySeedCounts(pool);
+  return { skipped: false, before, after, summary };
+}
+
 if (require.main === module) {
-  ingestNigeriaPack()
+  seedNigeriaDiscoveryIfNeeded()
     .then((summary) => {
       console.log('[NG Discovery] Nigeria pack ingestion complete');
       console.log(JSON.stringify(summary, null, 2));
@@ -643,4 +776,5 @@ if (require.main === module) {
 
 module.exports = {
   ingestNigeriaPack,
+  seedNigeriaDiscoveryIfNeeded,
 };
