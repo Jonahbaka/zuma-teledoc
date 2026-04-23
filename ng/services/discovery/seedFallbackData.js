@@ -10,6 +10,11 @@ const {
 } = require('./utils');
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data', 'doctarx_nigeria_data_pack');
+const PROVIDER_SEED_FILES = [
+  { filename: 'provider_seed_reliance.csv', defaultSource: 'reliance' },
+  { filename: 'provider_seed_nhia_hcp.csv', defaultSource: 'nhia_hcp' },
+  { filename: 'pharmacy_seed_base.csv', defaultSource: 'reliance', defaultProviderType: 'pharmacy' },
+];
 
 let cache = null;
 
@@ -89,6 +94,20 @@ function boolish(value) {
   return ['true', 'yes', '1'].includes(normalizeText(value));
 }
 
+function firstNonEmpty(...values) {
+  return values.find((value) => String(value || '').trim() !== '') || '';
+}
+
+function sourceIncludes(source, value) {
+  return normalizeText(source).includes(value);
+}
+
+function getSourceBadgeLabel(source) {
+  if (sourceIncludes(source, 'reliance')) return 'Reliance/Alafia Network';
+  if (sourceIncludes(source, 'nhia')) return 'NHIA Directory';
+  return titleCase(source || 'Seed Directory');
+}
+
 function isControlled(row) {
   const safety = normalizeText(row.prescription_class || row.safety_label || row.access_mode);
   return safety.includes('controlled') || safety.includes('restricted') || safety.includes('high risk');
@@ -160,17 +179,24 @@ function mapFeaturedMedicine(row, medicines, index = 0) {
 }
 
 function mapProvider(row, index = 0) {
-  const providerName = row.provider_name || row.facility_name || row.name || 'Provider';
-  const providerType = row.provider_type || row.service_category || 'healthcare_provider';
+  const providerName = firstNonEmpty(row.provider_name, row.facility_name, row.pharmacy_name, row.name, 'Provider');
+  const providerType = firstNonEmpty(
+    row.provider_type,
+    row.service_category,
+    row.default_provider_type,
+    row.pharmacy_name ? 'pharmacy' : '',
+    'healthcare_provider'
+  );
   const state = row.state || row.state_hint || null;
   const city = row.city || null;
   const coordinates = getApproximateCoordinates({ city, state });
   const flags = deriveProviderFlags(providerType, providerName);
-  const source = normalizeText(row.source || row.source_url).includes('reliance') ? 'reliance' : row.source || 'seed';
-  const sourceBadge = source === 'reliance' ? 'Reliance/Alafia Network' : titleCase(source);
+  const source = sourceIncludes(row.source || row.source_url, 'reliance') ? 'reliance' : row.source || 'seed';
+  const sourceBadge = getSourceBadgeLabel(source);
+  const rowKey = firstNonEmpty(row.source_code, row.serial_no, `${row.source_file || 'seed'}:${index}`);
 
   return {
-    id: `seed-provider:${row.serial_no || index}`,
+    id: `seed-provider:${row.source_file || source}:${rowKey}`,
     rawId: row.serial_no || null,
     kind: 'directory_provider',
     sourceType: 'seed_directory',
@@ -198,16 +224,27 @@ function mapProvider(row, index = 0) {
     dentalCapable: flags.dentalCapable,
     pharmacyRelevant: flags.pharmacyRelevant || normalizeText(providerType).includes('pharmacy'),
     labRelevant: flags.labRelevant,
-    trustScore: source === 'reliance' ? 0.76 : 0.62,
+    trustScore: sourceIncludes(source, 'reliance') ? 0.76 : sourceIncludes(source, 'nhia') ? 0.72 : 0.62,
     popularityScore: 0.55,
     dataConfidence: row.address || row.address_raw ? 0.72 : 0.55,
     sourceCount: 1,
     lastVerifiedAt: row.extracted_at || null,
     services: [titleCase(providerType), ...Object.entries(flags).filter(([, enabled]) => enabled).map(([key]) => key.replace(/Capable|Relevant/g, ''))],
     specialties: [],
-    insurances: source === 'reliance' ? ['Reliance Health'] : [],
+    insurances: sourceIncludes(source, 'reliance') ? ['Reliance Health'] : sourceIncludes(source, 'nhia') ? ['NHIA'] : [],
     payerIds: [],
   };
+}
+
+function readProviderSeedRows() {
+  return PROVIDER_SEED_FILES.flatMap((seedFile) =>
+    readCsv(seedFile.filename).map((row) => ({
+      ...row,
+      source: firstNonEmpty(row.source, seedFile.defaultSource),
+      source_file: seedFile.filename,
+      default_provider_type: seedFile.defaultProviderType || '',
+    }))
+  );
 }
 
 function loadSeedData() {
@@ -217,7 +254,7 @@ function loadSeedData() {
 
   const medicines = readCsv('nhia_meds_seed.csv').map(mapMedicine);
   const featuredMedicines = readCsv('featured_meds.csv').map((row, index) => mapFeaturedMedicine(row, medicines, index));
-  const providers = readCsv('provider_seed_reliance.csv').map(mapProvider);
+  const providers = readProviderSeedRows().map(mapProvider);
   const hmos = readCsv('nhia_hmo_seed.csv').map((row, index) => ({
     id: `seed-hmo:${row.nhia_hmo_id || row.payer_code || index}`,
     name: row.organization_name || row.payer_name || row.hmo || 'HMO',

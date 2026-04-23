@@ -37,7 +37,7 @@ function getCountryAwareLoginPath(role, pathname = '') {
       return isNigeriaPath ? '/ng/pharmacy/login' : '/pharmacy/login';
     case 'patient':
     default:
-      return isNigeriaPath ? '/ng/auth/login' : '/patient/login';
+      return isNigeriaPath ? '/ng/patient/login' : '/patient/login';
   }
 }
 

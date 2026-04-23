@@ -18,6 +18,11 @@ const {
 } = require('../services/discovery/utils');
 
 const DATA_DIR = path.join(__dirname, '..', 'data', 'doctarx_nigeria_data_pack');
+const PROVIDER_SEED_FILES = [
+  { filename: 'provider_seed_reliance.csv', defaultSource: 'reliance' },
+  { filename: 'provider_seed_nhia_hcp.csv', defaultSource: 'nhia_hcp' },
+  { filename: 'pharmacy_seed_base.csv', defaultSource: 'reliance', defaultProviderType: 'pharmacy' },
+];
 
 function parseCsv(text) {
   const rows = [];
@@ -168,12 +173,28 @@ function normalizeFeaturedRow(row) {
   };
 }
 
-function normalizeProviderRow(row) {
-  const providerType = firstNonEmpty(row.provider_type, row.service_category, 'healthcare_provider');
+function inferProviderType(row, defaultProviderType = '') {
+  const name = firstNonEmpty(row.provider_name, row.facility_name, row.pharmacy_name, row.name);
+  const explicitType = firstNonEmpty(row.provider_type, row.service_category, defaultProviderType);
+  if (explicitType) return explicitType;
+  if (row.pharmacy_name || normalizeText(name).includes('pharm')) return 'pharmacy';
+  return 'healthcare_provider';
+}
+
+function normalizeProviderRow(row, options = {}) {
+  const providerType = inferProviderType(row, options.defaultProviderType);
   const sourceUrl = firstNonEmpty(row.source_url);
+  const source = firstNonEmpty(
+    row.source,
+    options.defaultSource,
+    normalizeText(sourceUrl).includes('reliance') ? 'reliance' : ''
+  );
+
   return {
-    source: firstNonEmpty(row.source, normalizeText(sourceUrl).includes('reliance') ? 'reliance' : 'seed'),
-    provider_name: firstNonEmpty(row.provider_name, row.facility_name, row.name),
+    source: source || 'seed',
+    source_file: options.filename || null,
+    source_code: firstNonEmpty(row.source_code, row.code, row.provider_code),
+    provider_name: firstNonEmpty(row.provider_name, row.facility_name, row.pharmacy_name, row.name),
     provider_type: providerType,
     city: firstNonEmpty(row.city),
     lga: firstNonEmpty(row.lga),
@@ -182,8 +203,35 @@ function normalizeProviderRow(row) {
     phone: firstNonEmpty(row.phone),
     email: firstNonEmpty(row.email),
     website: firstNonEmpty(row.website),
-    notes: firstNonEmpty(row.notes, row.service_category),
+    notes: firstNonEmpty(row.notes, row.service_category, row.accreditation_hint),
   };
+}
+
+function sourceIncludes(source, value) {
+  return normalizeText(source).includes(value);
+}
+
+function getSourceBadgeLabel(source) {
+  if (sourceIncludes(source, 'reliance')) return 'Reliance Network';
+  if (sourceIncludes(source, 'nhia')) return 'NHIA Directory';
+  return titleCase(source || 'Seed Directory');
+}
+
+function getAccreditationAuthority(row) {
+  if (sourceIncludes(row.source, 'nhia')) return 'NHIA';
+  if (sourceIncludes(row.source, 'reliance')) return 'Reliance Health';
+  return getSourceBadgeLabel(row.source);
+}
+
+function getAccreditationStatus(row) {
+  if (normalizeText(row.verification_status).includes('verified')) return 'verified';
+  return 'listed';
+}
+
+function readProviderSeedRows() {
+  return PROVIDER_SEED_FILES.flatMap((seedFile) =>
+    readCsv(seedFile.filename).map((row) => normalizeProviderRow(row, seedFile))
+  ).filter((row) => row.provider_name);
 }
 
 function buildGroupMetadata(row) {
@@ -204,8 +252,10 @@ function buildGroupMetadata(row) {
     flags.dentalCapable ? 'Dental care' : null,
   ].filter(Boolean);
 
-  const trustScore = row.source === 'reliance' ? 0.78 : 0.64;
-  const dataConfidence = row.city && row.state ? 0.84 : 0.68;
+  const isReliance = sourceIncludes(row.source, 'reliance');
+  const isNhia = sourceIncludes(row.source, 'nhia');
+  const trustScore = isReliance ? 0.78 : isNhia ? 0.74 : 0.64;
+  const dataConfidence = row.city && row.state ? 0.84 : row.address_raw && row.state ? 0.78 : 0.68;
 
   return {
     normalizedName,
@@ -216,8 +266,8 @@ function buildGroupMetadata(row) {
     trustScore,
     dataConfidence,
     acceptedPaymentTypes: inferAcceptedPaymentTypes(row.source),
-    sourceBadges: [row.source === 'reliance' ? 'Reliance Network' : titleCase(row.source)],
-    insurances: row.source === 'reliance' ? ['Reliance Health'] : [],
+    sourceBadges: [getSourceBadgeLabel(row.source)],
+    insurances: isReliance ? ['Reliance Health'] : isNhia ? ['NHIA'] : [],
   };
 }
 
@@ -480,6 +530,8 @@ async function upsertMedCatalog(pool, medRows, featuredRows) {
 async function upsertProviderRows(pool, rows) {
   for (const row of rows) {
     const metadata = buildGroupMetadata(row);
+    const accreditationAuthority = getAccreditationAuthority(row);
+    const accreditationStatus = getAccreditationStatus(row);
     const slugBase = slugify(`${row.provider_name}-${row.city || 'ng'}-${row.state || 'ng'}`)
       || slugify(metadata.matchKey)
       || slugify(row.provider_name);
@@ -523,9 +575,9 @@ async function upsertProviderRows(pool, rows) {
           last_verified_at
         )
         VALUES (
-          $1, $2, $3, $4, $5, $6, 'Reliance Health', 'listed', $7, $8, $9, 'Nigeria',
-          $10, $11, $12, $13, $14, $15, $16, $17, false, $18, $19, $20, $21, $22, $23, $24,
-          $25, $26, 0.55, $27, 1, NOW()
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'Nigeria',
+          $12, $13, $14, $15, $16, $17, $18, $19, false, $20, $21, $22, $23, $24, $25, $26,
+          $27, $28, 0.55, $29, 1, NOW()
         )
         ON CONFLICT (match_key)
         DO UPDATE SET
@@ -565,6 +617,8 @@ async function upsertProviderRows(pool, rows) {
         slugBase,
         row.provider_type || 'provider',
         row.provider_type || null,
+        accreditationAuthority,
+        accreditationStatus,
         row.address_raw || null,
         row.city || null,
         row.state || null,
@@ -624,8 +678,8 @@ async function upsertProviderRows(pool, rows) {
           last_verified_at
         )
         VALUES (
-          $1, $2, $3, $4, $5, $6, $7, 'Reliance Health', 'listed', $8, $9, $10, 'Nigeria',
-          $11, $12, $13, $14, $15, false, $16, $17, $18, $19, $20, $21, $22, 0.55, $23, $24, NOW()
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'Nigeria',
+          $13, $14, $15, $16, $17, false, $18, $19, $20, $21, $22, $23, $24, 0.55, $25, $26, NOW()
         )
         ON CONFLICT (dedupe_key)
         DO UPDATE SET
@@ -662,6 +716,8 @@ async function upsertProviderRows(pool, rows) {
         metadata.normalizedName,
         row.provider_type || 'provider',
         row.provider_type || null,
+        accreditationAuthority,
+        accreditationStatus,
         row.address_raw || null,
         row.city || null,
         row.state || null,
@@ -678,7 +734,11 @@ async function upsertProviderRows(pool, rows) {
         metadata.flags.gymSpa,
         metadata.trustScore,
         metadata.dataConfidence,
-        { sourceFile: 'provider_seed_reliance.csv', notes: row.notes || null },
+        {
+          sourceFile: row.source_file || 'provider_seed_reliance.csv',
+          sourceCode: row.source_code || null,
+          notes: row.notes || null,
+        },
       ]
     );
   }
@@ -705,7 +765,7 @@ async function ingestNigeriaPack() {
   const stateSchemeRows = readCsv('nhia_sshia_seed.csv').map(normalizeStateSchemeRow).filter((row) => row.organization);
   const medRows = readCsv('nhia_meds_seed.csv').map(normalizeMedicineRow).filter((row) => row.generic_name);
   const featuredRows = readCsv('featured_meds.csv').map(normalizeFeaturedRow).filter((row) => row.generic_name);
-  const providerRows = readCsv('provider_seed_reliance.csv').map(normalizeProviderRow).filter((row) => row.provider_name);
+  const providerRows = readProviderSeedRows();
 
   await pool.query('BEGIN');
 

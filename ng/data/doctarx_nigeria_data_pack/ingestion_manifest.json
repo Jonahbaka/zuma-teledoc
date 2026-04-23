@@ -15,7 +15,7 @@
     "nhia_hmo_seed": 83,
     "nhia_sshia_seed": 37,
     "nhia_meds_seed": 1020,
-    "provider_seed_nhia_hcp": 0,
+    "provider_seed_nhia_hcp": 1662,
     "pharmacy_seed_base": 76,
     "provider_seed_reliance": 1909,
     "featured_meds": 15
@@ -23,7 +23,7 @@
   "quality_notes": [
     "NHIA HMO, SSHIA, and medicine rows were parsed from public NHIA HTML tables.",
     "Reliance/Alafia provider rows were parsed from the public provider page and still require verification/geocoding before production trust labels.",
-    "NHIA HCP rows are opportunistic because the public HCP page may not expose facility tables consistently.",
+    "NHIA HCP rows were populated from Integrated Health Care HMO's public NHIA provider directory because the NHIA HCP landing page does not expose a facility table consistently.",
     "Do not geocode in-browser in bulk. Use queued server-side geocoding with caching, attribution, and provider switching."
   ]
 }

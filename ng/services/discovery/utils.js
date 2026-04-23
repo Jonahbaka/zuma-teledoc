@@ -232,7 +232,8 @@ function deriveProviderFlags(providerType, providerName) {
 }
 
 function inferAcceptedPaymentTypes(source) {
-  if (normalizeText(source).includes('reliance')) {
+  const normalizedSource = normalizeText(source);
+  if (normalizedSource.includes('reliance') || normalizedSource.includes('nhia')) {
     return ['cash', 'self_pay', 'hmo', 'insurance'];
   }
 

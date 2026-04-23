@@ -423,7 +423,7 @@ export const MARKET_HOME_DATA = {
       {
         label: 'Patient Portal',
         description: 'Consultations, prescriptions, and orders',
-        href: '/ng/auth/login',
+        href: '/ng/patient/login',
         icon: User,
         tone: 'emerald',
       },
@@ -732,7 +732,7 @@ export const MARKET_HOME_DATA = {
           links: [
             { label: 'Create Account', href: '/ng/auth/register' },
             { label: 'Search Medicines', href: '/ng/medicines' },
-            { label: 'Sign In', href: '/ng/auth/login' },
+            { label: 'Sign In', href: '/ng/patient/login' },
           ],
         },
         {
