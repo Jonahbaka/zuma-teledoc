@@ -480,7 +480,9 @@ async function upsertMedCatalog(pool, medRows, featuredRows) {
 async function upsertProviderRows(pool, rows) {
   for (const row of rows) {
     const metadata = buildGroupMetadata(row);
-    const slugBase = slugify(`${row.provider_name}-${row.city || row.state || 'ng'}`) || slugify(row.provider_name);
+    const slugBase = slugify(`${row.provider_name}-${row.city || 'ng'}-${row.state || 'ng'}`)
+      || slugify(metadata.matchKey)
+      || slugify(row.provider_name);
 
     const groupResult = await pool.query(
       `
