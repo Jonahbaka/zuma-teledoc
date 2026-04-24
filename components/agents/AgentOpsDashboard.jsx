@@ -290,7 +290,7 @@ export default function AgentOpsDashboard() {
   }
 
   return (
-    <div className="relative">
+    <div className="contrast-dark relative">
       {/* Background grid */}
       <div
         className="absolute inset-0 pointer-events-none opacity-20"

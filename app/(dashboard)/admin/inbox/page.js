@@ -199,7 +199,7 @@ export default function InboxPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="min-h-screen contrast-dark bg-gray-950 flex items-center justify-center">
         <div className="text-center">
           <Inbox className="w-16 h-16 text-purple-400 animate-pulse mx-auto mb-4" />
           <p className="text-gray-400 text-lg">Loading agent inbox...</p>
@@ -209,7 +209,7 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen contrast-dark bg-gray-950 text-gray-100">
       {/* Header */}
       <div className="bg-gray-900 border-b border-gray-800 px-6 py-5">
         <div className="flex items-center justify-between">
@@ -332,7 +332,7 @@ export default function InboxPage() {
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 filter === f
                   ? 'bg-purple-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-300'
+                  : 'ui-dark-chip-action hover:text-slate-100'
               }`}>
               {f === 'all' ? 'All' : f === 'unread' ? `Unread (${unreadCount})` : f.charAt(0).toUpperCase() + f.slice(1) + 's'}
             </button>

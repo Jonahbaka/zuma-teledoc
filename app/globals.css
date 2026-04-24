@@ -4,6 +4,10 @@
 
 @layer base {
   :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
     /* Slate/ink base (matches footer palette) */
     --background: 210 40% 98%;          /* slate-50 */
     --foreground: 222.2 84% 4.9%;       /* slate-950-ish */
@@ -17,7 +21,7 @@
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215 20.2% 38.4%;
     /* Subtle purple-tinted accent surfaces */
     --accent: 270 100% 98%;
     --accent-foreground: 222.2 47.4% 11.2%;
@@ -43,7 +47,7 @@
     --secondary: 217.2 32.6% 14%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 14%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted-foreground: 215 20.2% 72%;
     --accent: 217.2 32.6% 14%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
@@ -59,10 +63,55 @@
     @apply border-border;
   }
 
+  html {
+    min-height: 100%;
+    scroll-behavior: smooth;
+    scrollbar-gutter: stable both-edges;
+    background:
+      radial-gradient(circle at top left, rgba(34, 211, 238, 0.08), transparent 28%),
+      radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.08), transparent 22%),
+      hsl(var(--background));
+  }
+
   body {
     @apply bg-background text-foreground;
+    min-height: 100%;
     font-family: 'DM Sans', system-ui, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+    overflow-x: clip;
+    text-rendering: optimizeLegibility;
+  }
+
+  main,
+  section,
+  article,
+  aside,
+  header,
+  footer {
+    min-width: 0;
+  }
+
+  img,
+  svg,
+  video,
+  canvas {
+    max-width: 100%;
+    height: auto;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
   }
 
   h1, h2, h3, h4 {
@@ -84,11 +133,64 @@
   }
 
   .glass {
-    @apply bg-white/70 backdrop-blur-xl border border-slate-200/60;
+    @apply bg-white/70 text-slate-900 backdrop-blur-xl border border-slate-200/60;
   }
 
   .glass-dark {
-    @apply bg-slate-950/60 backdrop-blur-xl border border-white/10;
+    @apply bg-slate-950/60 text-slate-100 backdrop-blur-xl border border-white/10;
+  }
+
+  .contrast-dark {
+    color: rgb(241 245 249);
+  }
+
+  .contrast-dark .text-muted-foreground,
+  .contrast-dark :is(.text-slate-600, .text-gray-600, .text-slate-500, .text-gray-500) {
+    color: rgb(203 213 225);
+  }
+
+  .contrast-dark :is(.text-slate-400, .text-gray-400) {
+    color: rgb(226 232 240);
+  }
+
+  .contrast-dark :is(.text-slate-300, .text-gray-300) {
+    color: rgb(241 245 249);
+  }
+
+  .contrast-dark :is(.placeholder\:text-slate-600, .placeholder\:text-gray-600, .placeholder\:text-slate-500, .placeholder\:text-gray-500)::placeholder {
+    color: rgb(148 163 184);
+  }
+
+  .contrast-dark :is(.placeholder\:text-slate-400, .placeholder\:text-gray-400)::placeholder {
+    color: rgb(203 213 225);
+  }
+
+  .ui-dark-chip {
+    @apply bg-slate-800 text-slate-200;
+  }
+
+  .ui-dark-chip-soft {
+    @apply bg-slate-800/80 text-slate-200;
+  }
+
+  .ui-dark-chip-action {
+    @apply bg-slate-800 text-slate-200 transition-colors hover:bg-slate-700 hover:text-white;
+  }
+
+  .ui-dark-chip-action-soft {
+    @apply bg-slate-800/70 text-slate-200 transition-colors hover:bg-slate-700 hover:text-white;
+  }
+
+  .ui-dark-glass-chip {
+    @apply border border-white/10 bg-white/5 text-slate-200;
+  }
+
+  .ui-dark-glass-chip-action {
+    @apply border border-white/10 bg-white/5 text-slate-200 transition-colors hover:bg-white/10 hover:text-white;
+  }
+
+  .ui-dark-glass-chip-disabled {
+    @apply border border-white/10 bg-white/5 text-slate-400 cursor-not-allowed;
   }
 
   .gradient-text {
@@ -216,6 +318,159 @@
   @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1;
 }
 
+.app-shell-root {
+  min-height: 100dvh;
+  overflow-x: clip;
+}
+
+.app-install-banner {
+  position: fixed;
+  left: max(1rem, calc(1rem + var(--safe-left)));
+  right: max(1rem, calc(1rem + var(--safe-right)));
+  bottom: calc(5.5rem + var(--safe-bottom));
+  z-index: 60;
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: 1.5rem;
+  border: 1px solid hsl(var(--border) / 0.7);
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.9));
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(24px);
+}
+
+.app-install-banner__eyebrow {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(103 232 249);
+}
+
+.app-install-banner__copy {
+  margin: 0;
+  color: rgb(226 232 240);
+  line-height: 1.5;
+}
+
+.app-install-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.app-install-banner__primary,
+.app-install-banner__secondary,
+.app-install-banner__hint {
+  display: inline-flex;
+  min-height: 2.9rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 1rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.app-install-banner__primary {
+  border: 0;
+  background: linear-gradient(135deg, rgb(34 211 238), rgb(59 130 246));
+  color: rgb(15 23 42);
+}
+
+.app-install-banner__secondary {
+  border: 1px solid rgba(226, 232, 240, 0.18);
+  background: rgba(15, 23, 42, 0.42);
+  color: rgb(241 245 249);
+}
+
+.app-install-banner__hint {
+  border: 1px solid rgba(226, 232, 240, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgb(241 245 249);
+}
+
+.app-mobile-dock {
+  position: fixed;
+  left: 50%;
+  bottom: calc(0.85rem + var(--safe-bottom));
+  z-index: 50;
+  display: flex;
+  width: min(31rem, calc(100vw - 1.5rem - var(--safe-left) - var(--safe-right)));
+  gap: 0.45rem;
+  transform: translateX(-50%);
+  padding: 0.55rem;
+  border-radius: 1.6rem;
+  border: 1px solid hsl(var(--border) / 0.7);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(22px);
+}
+
+.dark .app-mobile-dock {
+  background: rgba(2, 6, 23, 0.84);
+}
+
+.app-mobile-dock__item {
+  flex: 1 1 0;
+}
+
+.app-mobile-dock__link {
+  display: flex;
+  min-height: 3.65rem;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.24rem;
+  border-radius: 1.1rem;
+  color: hsl(var(--muted-foreground));
+  transition: transform 180ms ease, background 180ms ease, color 180ms ease;
+}
+
+.app-mobile-dock__link[data-active='true'] {
+  background: linear-gradient(135deg, rgb(59 130 246 / 0.16), rgb(34 211 238 / 0.18));
+  color: hsl(var(--foreground));
+}
+
+.app-mobile-dock__link:active {
+  transform: scale(0.96);
+}
+
+.app-mobile-dock__icon {
+  display: flex;
+  height: 1.25rem;
+  width: 1.25rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-mobile-dock__label {
+  max-width: 4.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.app-mobile-content-pad {
+  padding-bottom: calc(6.6rem + var(--safe-bottom));
+}
+
+.app-safe-top {
+  padding-top: var(--safe-top);
+}
+
+.app-safe-bottom {
+  padding-bottom: var(--safe-bottom);
+}
+
+.pwa-standalone body {
+  overscroll-behavior-y: contain;
+}
+
 /* Medical-specific colors */
 .status-scheduled {
   @apply bg-blue-100 text-blue-800 border-blue-200;
@@ -239,5 +494,43 @@
 
 .status-no-show {
   @apply bg-gray-100 text-gray-800 border-gray-200;
+}
+
+@media (min-width: 1024px) {
+  .app-install-banner {
+    left: auto;
+    right: 1.5rem;
+    bottom: 1.5rem;
+    width: min(25rem, calc(100vw - 3rem));
+  }
+}
+
+@media (max-width: 1023px) {
+  .app-mobile-dock {
+    display: flex;
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-mobile-dock {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-install-banner {
+    bottom: calc(6rem + var(--safe-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .app-mobile-dock__link,
+  .card-hover {
+    transition: none;
+  }
 }
 

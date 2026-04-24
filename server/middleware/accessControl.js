@@ -6,6 +6,10 @@
 const db = require('../db');
 const { keysToCamel } = require('../../lib/utils');
 const logger = require('../middleware/logger');
+const {
+  getEffectiveAccessLevel,
+  getTestingBypassState
+} = require('../services/testingAccessService');
 
 // Access levels that can book appointments and join waiting rooms
 const PAID_ACCESS_LEVELS = ['basic_monthly', 'gold_monthly', 'gold_yearly', 'platinum_monthly', 'pay_per_visit', 'insurance'];
@@ -27,7 +31,8 @@ const requirePaidAccess = async (req, res, next) => {
 
     // Get user's current access level
     const { rows } = await db.query(
-      `SELECT access_level, id FROM users WHERE id = $1`,
+      `SELECT access_level, id, testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
+       FROM users WHERE id = $1`,
       [req.user.id]
     );
 
@@ -38,7 +43,8 @@ const requirePaidAccess = async (req, res, next) => {
       });
     }
 
-    const accessLevel = rows[0].access_level;
+    const testingBypass = getTestingBypassState(rows[0]);
+    const accessLevel = getEffectiveAccessLevel(rows[0]);
 
     // Check if user has paid access
     if (!PAID_ACCESS_LEVELS.includes(accessLevel)) {
@@ -70,7 +76,7 @@ const requirePaidAccess = async (req, res, next) => {
 
       const appointment = keysToCamel(appointmentRows[0]);
 
-      if (appointment.paymentRequired && !appointment.paymentCompleted) {
+      if (appointment.paymentRequired && !appointment.paymentCompleted && !testingBypass.active) {
         return res.status(402).json({
           success: false,
           error: 'Payment required before accessing this appointment',
@@ -80,6 +86,7 @@ const requirePaidAccess = async (req, res, next) => {
     }
 
     req.userAccessLevel = accessLevel;
+    req.testingBypass = testingBypass;
     next();
   } catch (error) {
     logger.error('Access control error', {
@@ -106,7 +113,8 @@ const requirePrescriptionAccess = async (req, res, next) => {
     }
 
     const { rows } = await db.query(
-      `SELECT access_level FROM users WHERE id = $1`,
+      `SELECT access_level, testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
+       FROM users WHERE id = $1`,
       [req.user.id]
     );
 
@@ -117,7 +125,7 @@ const requirePrescriptionAccess = async (req, res, next) => {
       });
     }
 
-    const accessLevel = rows[0].access_level;
+    const accessLevel = getEffectiveAccessLevel(rows[0]);
 
     if (!PRESCRIPTION_ACCESS_LEVELS.includes(accessLevel)) {
       return res.status(403).json({

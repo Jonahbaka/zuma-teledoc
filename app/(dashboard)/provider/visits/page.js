@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { 
   FileText, Calendar, Clock, User, Search, Filter,
   ChevronRight, Eye, Loader2, AlertCircle
@@ -12,8 +13,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { formatDateTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 export default function ProviderVisitsPage() {
+  const pathname = usePathname();
   const [loading, setLoading] = useState(true);
   const [visits, setVisits] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -100,7 +103,7 @@ export default function ProviderVisitsPage() {
       ) : (
         <div className="space-y-4">
           {filteredVisits.map((visit) => (
-            <Link key={visit.id} href={`/provider/appointments/${visit.appointmentId}/visit`}>
+            <Link key={visit.id} href={toProviderPortalPath(`/appointments/${visit.appointmentId}/visit`, { pathname })}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">

@@ -7,6 +7,10 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const db = require('../db');
 const logger = require('./logger');
+const {
+  getEffectiveAccessLevel,
+  getTestingBypassPayload
+} = require('../services/testingAccessService');
 
 // Generate fallback secret if not provided (matches auth.js logic)
 const generateFallbackSecret = () => crypto.randomBytes(64).toString('hex');
@@ -74,7 +78,8 @@ const authenticate = async (req, res, next) => {
     
     // Get user from database
     const { rows } = await db.query(
-      `SELECT id, email, role, first_name, last_name, is_active, mfa_enabled, provider_status, access_level
+      `SELECT id, email, role, first_name, last_name, is_active, mfa_enabled, provider_status, access_level,
+              testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
        FROM users WHERE id = $1`,
       [decoded.userId]
     );
@@ -113,7 +118,8 @@ const authenticate = async (req, res, next) => {
       lastName: user.last_name,
       mfaEnabled: user.mfa_enabled,
       providerStatus: user.provider_status,
-      accessLevel: user.access_level
+      accessLevel: getEffectiveAccessLevel(user),
+      ...getTestingBypassPayload(user)
     };
     
     next();

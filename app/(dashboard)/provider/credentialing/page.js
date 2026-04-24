@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { 
   CheckCircle2, Circle, Clock, AlertCircle, FileText, Upload,
   User, Stethoscope, Award, Shield, GraduationCap, Briefcase,
@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
 import { Progress } from '@/components/ui/progress';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 // Step configuration with icons
 const STEPS = [
@@ -57,6 +58,7 @@ const SPECIALTIES = [
 
 function CredentialingContent() {
   const { user } = useAuth();
+  const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -1041,7 +1043,7 @@ function CredentialingContent() {
                     <p className="text-sm text-muted-foreground mt-4">
                       Valid until: {new Date(credentialing.approvalExpiry).toLocaleDateString()}
                     </p>
-                    <Button className="mt-6" onClick={() => router.push('/provider/dashboard')}>
+                    <Button className="mt-6" onClick={() => router.push(toProviderPortalPath('/dashboard', { pathname }))}>
                       Go to Dashboard
                     </Button>
                   </div>

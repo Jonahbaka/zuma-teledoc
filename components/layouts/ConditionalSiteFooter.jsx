@@ -3,8 +3,19 @@
 import { usePathname } from 'next/navigation';
 import SiteFooter from './SiteFooter';
 
-const HIDE_PREFIXES = ['/patient', '/provider', '/admin'];
-const HIDE_EXACT = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email'];
+const HIDE_PREFIXES = [
+  '/patient',
+  '/provider',
+  '/admin',
+  '/pharmacy',
+  '/secure',
+  '/ng/patient',
+  '/ng/pharmacy',
+  '/ng/admin',
+  '/ng/auth',
+  '/access',
+];
+const HIDE_EXACT = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/signup'];
 
 export default function ConditionalSiteFooter() {
   const pathname = usePathname() || '/';

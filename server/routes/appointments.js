@@ -18,8 +18,17 @@ const {
 } = require('../../lib/validation');
 const { keysToCamel, parseQueryParams, getPaginationMeta, generateRoomId } = require('../../lib/utils');
 const notificationService = require('../services/notifications');
+const { getUserTestingAccess } = require('../services/testingAccessService');
+const {
+  ensureAppointmentRoomId,
+  getAuthorizedVideoAppointment,
+  getTelehealthIceServers
+} = require('../services/telehealthSessionService');
 
 const router = express.Router();
+const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
+const PROVIDER_UPCOMING_LOOKBACK_MS = 2 * 60 * 60 * 1000;
+const MAX_UPCOMING_LIMIT = 50;
 
 /**
  * POST /api/appointments
@@ -75,6 +84,14 @@ router.post('/',
       
       // Create appointment
       const patientId = req.user.role === 'patient' ? req.user.id : req.body.patientId;
+      const patientTestingAccess =
+        req.user.role === 'patient' && patientId === req.user.id
+          ? {
+              testingBypassActive: Boolean(req.user.testingBypassActive)
+            }
+          : await getUserTestingAccess(patientId);
+      const paymentRequired = !patientTestingAccess.testingBypassActive;
+      const paymentCompleted = Boolean(patientTestingAccess.testingBypassActive);
       
       const { rows } = await db.query(
         `INSERT INTO appointments (
@@ -92,8 +109,8 @@ router.post('/',
           data.reasonForVisit,
           data.patientNotes,
           roomId,
-          true, // Payment required
-          false // Not completed yet (will be completed before waiting room access)
+          paymentRequired,
+          paymentCompleted
         ]
       );
       
@@ -222,6 +239,11 @@ router.get('/', authenticate, async (req, res) => {
     } else if (userRole === 'provider') {
       whereConditions.push(`a.provider_id = $${paramIndex++}`);
       values.push(userId);
+
+      if (filters.patientId) {
+        whereConditions.push(`a.patient_id = $${paramIndex++}`);
+        values.push(filters.patientId);
+      }
     } else if (userRole === 'admin' || userRole === 'super_admin') {
       // Admins can see all, or filter by specific user if provided in query
       if (filters.patientId) {
@@ -286,13 +308,10 @@ router.get('/', authenticate, async (req, res) => {
       SELECT a.*,
              p.first_name as patient_first_name, p.last_name as patient_last_name,
              pr.first_name as provider_first_name, pr.last_name as provider_last_name,
-             pr.specialty as provider_specialty,
-             v.subjective as triage_subjective,
-             v.assessment as triage_assessment
+             pr.specialty as provider_specialty
       FROM appointments a
       LEFT JOIN users p ON p.id = a.patient_id
       LEFT JOIN users pr ON pr.id = a.provider_id
-      LEFT JOIN visits v ON v.appointment_id = a.id
       ${whereClause}
       ORDER BY a.scheduled_at ${sortOrder}
       LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}
@@ -307,45 +326,6 @@ router.get('/', authenticate, async (req, res) => {
       // Extract triage data from metadata if it exists
       if (apt.metadata && apt.metadata.triage) {
         apt.triageData = apt.metadata.triage;
-      }
-      // Also check if triage data is in triageSubjective (from visits)
-      else if (apt.triageSubjective) {
-        // Try to extract triage info from visit subjective
-        const subj = apt.triageSubjective.toLowerCase();
-        let severity = 2;
-        let specialty = 'Primary Care';
-        let flags = [];
-        let suggestedMeds = [];
-        
-        if (subj.includes('severity: 5') || subj.includes('urgent')) {
-          severity = 5;
-        } else if (subj.includes('severity: 4')) {
-          severity = 4;
-        } else if (subj.includes('severity: 3')) {
-          severity = 3;
-        }
-        
-        if (subj.includes('cardiology')) specialty = 'Cardiology';
-        else if (subj.includes('nephrology')) specialty = 'Nephrology';
-        else if (subj.includes('urgent care')) specialty = 'Urgent Care';
-        
-        if (subj.includes('critical cardiac')) flags.push('CRITICAL CARDIAC');
-        if (subj.includes('renal failure')) flags.push('RENAL FAILURE RISK');
-        
-        // Extract suggested meds
-        const medMatches = subj.match(/(?:lisinopril|prednisone|amoxicillin|azithromycin|aspirin|nitroglycerin)/gi);
-        if (medMatches) {
-          suggestedMeds = [...new Set(medMatches.map(m => m.charAt(0).toUpperCase() + m.slice(1)))];
-        }
-        
-        apt.triageData = {
-          severity,
-          soapDraft: apt.triageSubjective,
-          triageLevel: severity >= 4 ? 'URGENT' : 'ROUTINE',
-          suggestedSpecialty: specialty,
-          flags,
-          suggestedMeds
-        };
       }
       return apt;
     });
@@ -370,22 +350,50 @@ router.get('/', authenticate, async (req, res) => {
  */
 router.get('/upcoming', authenticate, async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 5;
-    
+    const parsedLimit = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), MAX_UPCOMING_LIMIT)
+      : 5;
+    const referenceTime = new Date();
     const whereConditions = [];
-    const values = [new Date()];
+    const values = [referenceTime];
     let paramIndex = 2;
-    
-    whereConditions.push(`a.scheduled_at > $1`);
-    whereConditions.push(`a.status IN ('scheduled', 'confirmed')`);
-    
+
     const userRole = String(req.user.role || '').toLowerCase().trim();
-    if (userRole === 'patient') {
-      whereConditions.push(`a.patient_id = $${paramIndex++}`);
-      values.push(req.user.id);
-    } else if (userRole === 'provider') {
+    let orderByClause = 'ORDER BY a.scheduled_at ASC';
+
+    if (!['patient', 'provider', 'admin', 'super_admin'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied'
+      });
+    }
+
+    if (userRole === 'provider') {
+      const providerVisibilityStart = new Date(referenceTime.getTime() - PROVIDER_UPCOMING_LOOKBACK_MS);
+      whereConditions.push(`a.scheduled_at >= $${paramIndex++}`);
+      values.push(providerVisibilityStart);
+      whereConditions.push(`a.status IN ('scheduled', 'confirmed', 'in_progress')`);
       whereConditions.push(`a.provider_id = $${paramIndex++}`);
       values.push(req.user.id);
+      orderByClause = `
+        ORDER BY
+          CASE
+            WHEN a.status = 'in_progress' THEN 0
+            WHEN a.scheduled_at <= $1 THEN 1
+            ELSE 2
+          END,
+          ABS(EXTRACT(EPOCH FROM (a.scheduled_at - $1))),
+          a.scheduled_at ASC
+      `;
+    } else {
+      whereConditions.push(`a.scheduled_at > $1`);
+      whereConditions.push(`a.status IN ('scheduled', 'confirmed')`);
+
+      if (userRole === 'patient') {
+        whereConditions.push(`a.patient_id = $${paramIndex++}`);
+        values.push(req.user.id);
+      }
     }
     
     const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
@@ -400,7 +408,7 @@ router.get('/upcoming', authenticate, async (req, res) => {
        LEFT JOIN users p ON p.id = a.patient_id
        LEFT JOIN users pr ON pr.id = a.provider_id
        ${whereClause}
-       ORDER BY a.scheduled_at ASC
+       ${orderByClause}
        LIMIT $${paramIndex}`,
       values
     );
@@ -431,6 +439,7 @@ router.post('/smart-book',
       const {
         category,
         specialties,
+        providerId: requestedProviderId,
         scheduledAt,
         type,
         reasonForVisit,
@@ -459,6 +468,10 @@ router.post('/smart-book',
           error: 'Patient ID is required'
         });
       }
+
+      const patientTestingAccess = await getUserTestingAccess(patientId);
+      const paymentRequired = !patientTestingAccess.testingBypassActive;
+      const paymentCompleted = Boolean(patientTestingAccess.testingBypassActive);
       
       const scheduledDate = new Date(scheduledAt);
       
@@ -470,11 +483,11 @@ router.post('/smart-book',
         });
       }
       
-      // Validate date is in the future
-      if (scheduledDate < new Date()) {
+      // Allow same-minute bookings with a short tolerance for client/server clock drift.
+      if (scheduledDate.getTime() < Date.now() - SAME_MINUTE_BUFFER_MS) {
         return res.status(400).json({
           success: false,
-          error: 'Appointment must be scheduled for a future date and time'
+          error: 'Appointment must be scheduled for now or a future date and time'
         });
       }
       
@@ -487,29 +500,57 @@ router.post('/smart-book',
       }
       
       // Find available provider matching specialties
-      let providerId = null;
+      let providerId = requestedProviderId || null;
       let provider = null;
-      
-      // Try to find a provider with matching specialty
-      const specialtyList = Array.isArray(specialties) ? specialties : (specialties || '').split(',');
-      
-      for (const specialty of specialtyList) {
-        const { rows: providers } = await db.query(
+
+      if (providerId) {
+        const { rows: requestedProviders } = await db.query(
           `SELECT id, first_name, last_name, specialty, credentials
            FROM users
-           WHERE role = 'provider'
+           WHERE id = $1
+           AND role = 'provider'
            AND provider_status = 'approved'
            AND is_active = true
-           AND (specialty ILIKE $1 OR specialty ILIKE $2)
-           ORDER BY RANDOM()
            LIMIT 1`,
-          [`%${specialty.trim()}%`, `%${category}%`]
+          [providerId]
         );
-        
-        if (providers.length > 0) {
-          providerId = providers[0].id;
-          provider = providers[0];
-          break;
+
+        if (requestedProviders.length === 0) {
+          return res.status(404).json({
+            success: false,
+            error: 'Selected provider is not available'
+          });
+        }
+
+        provider = requestedProviders[0];
+      }
+      
+      // Try to find a provider with matching specialty
+      const specialtyList = Array.isArray(specialties)
+        ? specialties
+        : String(specialties || '')
+            .split(',')
+            .filter(Boolean);
+      
+      if (!providerId) {
+        for (const specialty of specialtyList) {
+          const { rows: providers } = await db.query(
+            `SELECT id, first_name, last_name, specialty, credentials
+             FROM users
+             WHERE role = 'provider'
+             AND provider_status = 'approved'
+             AND is_active = true
+             AND (specialty ILIKE $1 OR specialty ILIKE $2)
+             ORDER BY RANDOM()
+             LIMIT 1`,
+            [`%${specialty.trim()}%`, `%${category}%`]
+          );
+          
+          if (providers.length > 0) {
+            providerId = providers[0].id;
+            provider = providers[0];
+            break;
+          }
         }
       }
       
@@ -583,14 +624,17 @@ router.post('/smart-book',
         reasonForVisit, // $6
         patientNotes || null, // $7
         roomId,         // $8
-        metadata ? JSON.stringify(metadata) : '{}' // $9
+        metadata ? JSON.stringify(metadata) : '{}', // $9
+        paymentRequired, // $10
+        paymentCompleted // $11
       ];
       
       const { rows } = await db.query(
         `INSERT INTO appointments (
           patient_id, provider_id, scheduled_at, duration_minutes,
-          type, reason_for_visit, patient_notes, room_id, status, metadata
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'scheduled', $9::jsonb)
+          type, reason_for_visit, patient_notes, room_id, status, metadata,
+          payment_required, payment_completed
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'scheduled', $9::jsonb, $10, $11)
         RETURNING *`,
         insertValues
       );
@@ -660,7 +704,8 @@ router.post('/smart-book',
         appointmentId: rows[0].id,
         patientId,
         providerId,
-        category
+        category,
+        requestedProviderId: requestedProviderId || null
       });
       
       res.status(201).json({
@@ -1043,65 +1088,25 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
 router.post('/:id/join', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const { rows } = await db.query(
-      'SELECT * FROM appointments WHERE id = $1',
-      [id]
-    );
-    
-    if (rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Appointment not found'
-      });
-    }
-    
-    const appointment = rows[0];
-    
-    // Check access
-    if (appointment.patient_id !== req.user.id && appointment.provider_id !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      });
-    }
-    
-    // Check if appointment can be joined
-    if (appointment.type !== 'video') {
-      return res.status(400).json({
-        success: false,
-        error: 'This is not a video appointment'
-      });
-    }
-    
-    if (!['scheduled', 'confirmed', 'in_progress'].includes(appointment.status)) {
-      return res.status(400).json({
-        success: false,
-        error: 'This appointment cannot be joined'
-      });
-    }
-    
-    // No time restrictions - allow immediate access for setup
-    // Both patients and providers can access the video portal immediately after appointment is created
-    // This allows them to set up their devices, test connections, and prepare ahead of time
-    
-    // Generate room ID if not exists
-    let roomId = appointment.room_id;
-    if (!roomId) {
-      roomId = generateRoomId();
-      await db.query(
-        'UPDATE appointments SET room_id = $1 WHERE id = $2',
-        [roomId, id]
-      );
-    }
-    
+
+    const appointment = await getAuthorizedVideoAppointment(id, req.user);
+    const roomId = await ensureAppointmentRoomId(appointment.id, appointment.roomId);
+
     res.json({
       success: true,
       roomId,
       joinUrl: `/video/${roomId}`,
-      appointmentId: id
+      appointmentId: id,
+      iceServers: getTelehealthIceServers()
     });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({
+        success: false,
+        error: error.message
+      });
+    }
+
     logger.error('Join appointment error', { error: error.message });
     res.status(500).json({
       success: false,

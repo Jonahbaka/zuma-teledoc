@@ -398,7 +398,7 @@ export default function AgentChatPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="min-h-screen contrast-dark bg-gray-950 flex items-center justify-center">
         <div className="text-center">
           <MessageSquare className="w-16 h-16 text-purple-400 animate-pulse mx-auto mb-4" />
           <p className="text-gray-400 text-lg">Opening communication channel...</p>
@@ -408,7 +408,7 @@ export default function AgentChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen contrast-dark bg-gray-950 text-gray-100">
       {/* Header */}
       <div className="bg-gray-900 border-b border-gray-800 px-6 py-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -930,7 +930,7 @@ export default function AgentChatPage() {
                     }))} className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 border transition-colors ${
                       credForm.assignedAgents.includes(agent.id)
                         ? 'border-purple-500 bg-purple-900/30 text-purple-300'
-                        : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600'}`}>
+                        : 'border-gray-700 ui-dark-chip-action hover:border-gray-600'}`}>
                       <agent.icon className={`w-3 h-3 ${credForm.assignedAgents.includes(agent.id) ? agent.color : 'text-gray-500'}`} />
                       {agent.codeName}
                     </button>
@@ -985,7 +985,7 @@ export default function AgentChatPage() {
                       </div>
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
                         cred.status === 'active' ? 'bg-emerald-900/40 text-emerald-300' :
-                        cred.status === 'expired' ? 'bg-red-900/40 text-red-300' : 'bg-gray-800 text-gray-400'}`}>
+                        cred.status === 'expired' ? 'bg-red-900/40 text-red-300' : 'ui-dark-chip'}`}>
                         {cred.status.toUpperCase()}
                       </span>
                       <button onClick={() => deleteCredential(cred.id)} className="p-2 hover:bg-red-900/30 rounded-lg text-red-400" title="Delete">
@@ -1176,7 +1176,7 @@ function GoalsDashboard({ apiCall, agents }) {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               selectedTimeframe === tf
                 ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/30'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-300'}`}>
+                : 'ui-dark-chip-action hover:text-slate-100'}`}>
             {TF_LABELS[tf]}
           </button>
         ))}
@@ -1306,7 +1306,7 @@ function GoalsDashboard({ apiCall, agents }) {
             </div>
             <span className={`px-2 py-1 rounded text-xs font-medium ${
               ms.status === 'achieved' ? 'bg-emerald-900/40 text-emerald-300' :
-              ms.status === 'in_progress' ? 'bg-blue-900/40 text-blue-300' : 'bg-gray-800 text-gray-400'}`}>
+              ms.status === 'in_progress' ? 'bg-blue-900/40 text-blue-300' : 'ui-dark-chip'}`}>
               {ms.status?.toUpperCase()}
             </span>
           </div>

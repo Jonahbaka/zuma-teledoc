@@ -1,153 +1,163 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { ChevronLeft, User, Phone, Mail, MapPin, AlertCircle, CheckCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Loader2, MapPin, Phone, Save, User } from 'lucide-react';
+import { usersAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import NgNav from '../../components/NgNav';
-import { NG_STATES } from '../../lib/ngUtils';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
-export default function PatientProfile() {
-  const [form, setForm] = useState({ full_name: '', phone: '', email: '', dob: '', gender: '', blood_group: '', address: '', state: '', allergies: '', emergency_name: '', emergency_phone: '' });
+export default function NigeriaPatientProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    dateOfBirth: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    zipCode: '',
+  });
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) { setLoading(false); return; }
-    fetch('/api/ng/patients/me', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => { if (d.patient) setForm(p => ({ ...p, ...d.patient })); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    const loadProfile = async () => {
+      try {
+        const response = await usersAPI.getProfile().catch(() => ({ data: { success: false } }));
+        const profile = response.data?.profile || response.data?.user;
+
+        if (profile) {
+          setFormData({
+            firstName: profile.firstName || '',
+            lastName: profile.lastName || '',
+            email: profile.email || '',
+            phone: profile.phone || profile.phoneNumber || '',
+            dateOfBirth: profile.dateOfBirth || '',
+            addressLine1: profile.addressLine1 || '',
+            addressLine2: profile.addressLine2 || '',
+            city: profile.city || '',
+            state: profile.state || '',
+            zipCode: profile.zipCode || '',
+          });
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProfile();
   }, []);
 
-  const handleChange = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(''); setSaving(true);
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage('');
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/ng/patients/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Update failed');
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (err) {
-      setError(err.message);
+      const response = await usersAPI.updateProfile(formData);
+      if (response.data?.success) {
+        setMessage('Profile updated successfully.');
+      }
+    } catch (error) {
+      setMessage(error.response?.data?.error || 'Failed to update profile.');
     } finally {
       setSaving(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <NgNav />
-      <div className="pt-14 max-w-2xl mx-auto px-6 py-8 space-y-6">
-
-        <div className="flex items-center gap-3">
-          <Link href="/ng/patient/dashboard" className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center"><ChevronLeft size={16} /></Link>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">My Profile</h1>
-            <p className="text-muted-foreground text-sm">Update your personal and medical information</p>
-          </div>
-        </div>
-
-        {success && (
-          <div className="bg-green-500/10 border border-green-500/20 text-green-600 rounded-xl px-4 py-3 text-sm flex items-center gap-2">
-            <CheckCircle size={16} /> Profile updated successfully.
-          </div>
-        )}
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-600 rounded-xl px-4 py-3 text-sm flex items-start gap-2">
-            <AlertCircle size={16} className="shrink-0 mt-0.5" /> {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
-            <h3 className="font-bold text-foreground text-sm flex items-center gap-2"><User size={15} className="text-green-500" /> Personal Info</h3>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <label>
-                <span className="text-xs text-muted-foreground block mb-1">Full Name *</span>
-                <input name="full_name" value={form.full_name} onChange={handleChange} required placeholder="Your full name"
-                  className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none" />
-              </label>
-              <label>
-                <span className="text-xs text-muted-foreground block mb-1">Phone *</span>
-                <input name="phone" value={form.phone} onChange={handleChange} required placeholder="080XXXXXXXX"
-                  className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none" />
-              </label>
-              <label>
-                <span className="text-xs text-muted-foreground block mb-1">Email</span>
-                <input name="email" type="email" value={form.email} onChange={handleChange} placeholder="you@email.com"
-                  className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none" />
-              </label>
-              <label>
-                <span className="text-xs text-muted-foreground block mb-1">Date of Birth</span>
-                <input name="dob" type="date" value={form.dob} onChange={handleChange}
-                  className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none" />
-              </label>
-              <label>
-                <span className="text-xs text-muted-foreground block mb-1">Gender</span>
-                <select name="gender" value={form.gender} onChange={handleChange}
-                  className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none">
-                  <option value="">Select</option>
-                  <option>Male</option><option>Female</option><option>Other</option><option>Prefer not to say</option>
-                </select>
-              </label>
-              <label>
-                <span className="text-xs text-muted-foreground block mb-1">Blood Group</span>
-                <select name="blood_group" value={form.blood_group} onChange={handleChange}
-                  className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none">
-                  <option value="">Select</option>
-                  {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(g => <option key={g}>{g}</option>)}
-                </select>
-              </label>
-            </div>
-            <label>
-              <span className="text-xs text-muted-foreground block mb-1">State of Residence</span>
-              <select name="state" value={form.state} onChange={handleChange}
-                className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none">
-                <option value="">Select state</option>
-                {NG_STATES.map(s => <option key={s}>{s}</option>)}
-              </select>
-            </label>
-            <label>
-              <span className="text-xs text-muted-foreground block mb-1">Known Allergies</span>
-              <input name="allergies" value={form.allergies} onChange={handleChange} placeholder="e.g., Penicillin, Sulfa drugs, Peanuts — or 'None'"
-                className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none" />
-            </label>
-          </div>
-
-          <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
-            <h3 className="font-bold text-foreground text-sm flex items-center gap-2"><Phone size={15} className="text-green-500" /> Emergency Contact</h3>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <label>
-                <span className="text-xs text-muted-foreground block mb-1">Contact Name</span>
-                <input name="emergency_name" value={form.emergency_name} onChange={handleChange} placeholder="e.g., Adaeze Okafor"
-                  className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none" />
-              </label>
-              <label>
-                <span className="text-xs text-muted-foreground block mb-1">Contact Phone</span>
-                <input name="emergency_phone" value={form.emergency_phone} onChange={handleChange} placeholder="080XXXXXXXX"
-                  className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground outline-none" />
-              </label>
-            </div>
-          </div>
-
-          <Button type="submit" disabled={saving} className="w-full bg-green-600 hover:bg-green-500 text-white h-12 rounded-2xl font-bold">
-            {saving ? 'Saving…' : 'Save Profile'}
-          </Button>
-        </form>
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
       </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <section>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Patient Profile</p>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Personal details and delivery information</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Keep your patient identity and address current for prescriptions, appointments, and pharmacy fulfillment.</p>
+      </section>
+
+      {message ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</div>
+      ) : null}
+
+      <Card className="border-border/70">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5 text-emerald-600" />
+            Basic patient details
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="firstName">First Name</Label>
+            <Input id="firstName" value={formData.firstName} onChange={(event) => setFormData((current) => ({ ...current, firstName: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="lastName">Last Name</Label>
+            <Input id="lastName" value={formData.lastName} onChange={(event) => setFormData((current) => ({ ...current, lastName: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" value={formData.email} disabled />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="phone">Phone Number</Label>
+            <div className="relative">
+              <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input id="phone" className="pl-10" value={formData.phone} onChange={(event) => setFormData((current) => ({ ...current, phone: event.target.value }))} />
+            </div>
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="dateOfBirth">Date of Birth</Label>
+            <Input id="dateOfBirth" type="date" value={formData.dateOfBirth} onChange={(event) => setFormData((current) => ({ ...current, dateOfBirth: event.target.value }))} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/70">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-emerald-600" />
+            Address for care and delivery
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="addressLine1">Address Line 1</Label>
+            <Input id="addressLine1" value={formData.addressLine1} onChange={(event) => setFormData((current) => ({ ...current, addressLine1: event.target.value }))} />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="addressLine2">Address Line 2</Label>
+            <Input id="addressLine2" value={formData.addressLine2} onChange={(event) => setFormData((current) => ({ ...current, addressLine2: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="city">City</Label>
+            <Input id="city" value={formData.city} onChange={(event) => setFormData((current) => ({ ...current, city: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="state">State</Label>
+            <Input id="state" value={formData.state} onChange={(event) => setFormData((current) => ({ ...current, state: event.target.value }))} />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="zipCode">Postal Code</Label>
+            <Input id="zipCode" value={formData.zipCode} onChange={(event) => setFormData((current) => ({ ...current, zipCode: event.target.value }))} />
+          </div>
+          <div className="md:col-span-2 flex justify-end">
+            <Button onClick={handleSave} disabled={saving} className="bg-emerald-600 text-white hover:bg-emerald-500">
+              <Save className="mr-2 h-4 w-4" />
+              {saving ? 'Saving...' : 'Save Profile'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

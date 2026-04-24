@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   UserCheck, UserX, Search, Mail, Phone, MapPin,
   Calendar, FileText, CheckCircle2, XCircle, Clock
@@ -43,7 +44,7 @@ export default function ProviderApprovalsPage() {
 
   const handleApprove = async (providerId) => {
     try {
-      const response = await adminAPI.updateUserStatus(providerId, { isActive: true, status: 'approved' });
+      const response = await adminAPI.updateUserStatus(providerId, { isActive: true, providerStatus: 'approved' });
       if (response?.data?.success) {
         toast({
           title: 'Success',
@@ -63,7 +64,7 @@ export default function ProviderApprovalsPage() {
 
   const handleReject = async (providerId) => {
     try {
-      const response = await adminAPI.updateUserStatus(providerId, { isActive: false, status: 'rejected' });
+      const response = await adminAPI.updateUserStatus(providerId, { isActive: false, providerStatus: 'rejected' });
       if (response?.data?.success) {
         toast({
           title: 'Success',
@@ -212,13 +213,11 @@ export default function ProviderApprovalsPage() {
                       <XCircle className="w-4 h-4 mr-2" />
                       Reject
                     </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => window.open(`/admin/users/${provider.id}`, '_blank')}
-                    >
-                      View Details
-                    </Button>
+                    <Link href={`/admin/users/${provider.id}`} className="w-full">
+                      <Button variant="outline" className="w-full">
+                        View Details
+                      </Button>
+                    </Link>
                   </div>
                 </div>
               </CardContent>

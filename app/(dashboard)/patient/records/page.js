@@ -258,7 +258,7 @@ export default function PatientRecordsPage() {
                   <ShieldCheck className="w-5 h-5 text-green-600" />
                   Telehealth Consent
                 </CardTitle>
-                <p className="text-xs text-muted-foreground mt-1">Protected by NVIDIA NemoClaw OpenShell sandbox — your records are read-only to AI agents</p>
+                <p className="text-xs text-muted-foreground mt-1">Protected by encryption, role-based access controls, and audit logging.</p>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid md:grid-cols-3 gap-4 items-end">

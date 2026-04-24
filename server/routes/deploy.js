@@ -1,50 +1,72 @@
 const express = require('express');
 const router = express.Router();
-const { exec } = require('child_process');
+const { buildDeployCommand } = require('./deploy-command');
+const { runDetachedCommand } = require('./run-detached-command');
+const fs = require('fs');
 
-const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
+const DEPLOY_SECRET = process.env.DEPLOY_SECRET;
+if (!DEPLOY_SECRET) {
+  console.error('FATAL: DEPLOY_SECRET env var is not set. Deploy endpoint is disabled.');
+}
+
 let deploying = false;
+const DEPLOY_LOG = '/tmp/doctarx-deploy.log';
+const DEPLOY_LOCK_TIMEOUT_MS = 30 * 60 * 1000; // 30 min safety timeout
+let deployStartedAt = null;
+
+function isDeployStuck() {
+  if (!deploying || !deployStartedAt) return false;
+  return Date.now() - deployStartedAt > DEPLOY_LOCK_TIMEOUT_MS;
+}
 
 router.post('/', (req, res) => {
+  // Require DEPLOY_SECRET to be explicitly set — no insecure fallback
+  if (!DEPLOY_SECRET) {
+    return res.status(503).json({ success: false, error: 'Deploy endpoint not configured. Set DEPLOY_SECRET env var.' });
+  }
+
   const token = req.headers['x-deploy-token'] || req.body?.token;
   if (token !== DEPLOY_SECRET) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 
+  // Release stuck lock automatically after timeout
+  if (isDeployStuck()) {
+    console.warn('[deploy] Releasing stale deploy lock (exceeded 30m timeout)');
+    deploying = false;
+    deployStartedAt = null;
+  }
+
   if (deploying) {
-    return res.json({ success: false, message: 'Deploy already in progress — skipping' });
+    return res.json({ success: false, message: 'Deploy already in progress - skipping' });
   }
 
   deploying = true;
-  res.json({ success: true, message: 'Deploy triggered' });
+  deployStartedAt = Date.now();
 
-  const cmd = [
-    'cd /home/ec2-user/zuma-teledoc',
-    // Hard kill stuck process (if Next.js.prepare is hanging)
-    'pkill -9 -f "node server" || true',
-    'sleep 2',
-    // Pull latest code
-    'git pull origin main || true',
-    // Only rebuild if .next doesn't exist (saves time)
-    'if [ ! -d .next ]; then npm install --prefer-offline && npm run build; fi',
-    // Symlink _next -> .next
-    'ln -sfn .next _next || true',
-    // Fix nginx configs
-    "sudo find /etc/nginx -name '*.conf' -exec grep -l '_next' {} \\; 2>/dev/null | xargs -r sudo sed -i 's|/home/ubuntu/zuma-teledoc|/home/ec2-user/zuma-teledoc|g' 2>/dev/null || true",
-    'sudo nginx -t 2>&1 && sudo nginx -s reload 2>&1 || true',
-    // Restart apps
-    'pm2 delete doctarx cronops 2>/dev/null || true',
-    'sleep 1',
-    'pm2 start npm --name doctarx -- start',
-    'pm2 start npm --name cronops -- run cronops',
-  ].join(' && ');
+  const job = runDetachedCommand(buildDeployCommand(), { logFile: DEPLOY_LOG });
 
-  exec(cmd, { timeout: 1800000 /* 30 min */ }, (err, stdout, stderr) => {
-    deploying = false;
-    if (err) console.error('[DEPLOY] Error:', err.message);
-    if (stdout) console.log('[DEPLOY] stdout:', stdout);
-    if (stderr) console.log('[DEPLOY] stderr:', stderr);
-    console.log('[DEPLOY] Complete');
+  // Watch for deploy completion via log file tail and reset flag
+  const interval = setInterval(() => {
+    try {
+      const log = fs.existsSync(DEPLOY_LOG) ? fs.readFileSync(DEPLOY_LOG, 'utf8') : '';
+      const done = log.includes('pm2 start') && (log.includes('[PM2]') || log.includes('online'));
+      const failed = log.includes('npm ERR!') || log.includes('Build failed');
+      if (done || failed || isDeployStuck()) {
+        deploying = false;
+        deployStartedAt = null;
+        clearInterval(interval);
+      }
+    } catch {
+      // ignore read errors
+    }
+  }, 10000);
+
+  res.json({
+    success: true,
+    message: 'Deploy triggered',
+    logFile: job.logFile,
+    pid: job.pid,
   });
 });
 

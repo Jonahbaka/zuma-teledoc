@@ -3,8 +3,43 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { getProviderLoginPath, toProviderPortalPath } from '@/lib/providerPortal';
 
 const AuthContext = createContext({});
+
+function getCountryAwarePortalPath(role, pathname = '') {
+  const isNigeriaPath = pathname.startsWith('/ng');
+
+  switch (role) {
+    case 'admin':
+    case 'super_admin':
+      return isNigeriaPath ? '/ng/admin' : '/admin/dashboard';
+    case 'provider':
+      return toProviderPortalPath('/dashboard', { pathname });
+    case 'pharmacy':
+      return isNigeriaPath ? '/ng/pharmacy/dashboard' : '/pharmacy/dashboard';
+    case 'patient':
+    default:
+      return isNigeriaPath ? '/ng/patient' : '/patient/dashboard';
+  }
+}
+
+function getCountryAwareLoginPath(role, pathname = '') {
+  const isNigeriaPath = pathname.startsWith('/ng');
+
+  switch (role) {
+    case 'admin':
+    case 'super_admin':
+      return '/secure/admin';
+    case 'provider':
+      return getProviderLoginPath({ pathname });
+    case 'pharmacy':
+      return isNigeriaPath ? '/ng/pharmacy/login' : '/pharmacy/login';
+    case 'patient':
+    default:
+      return isNigeriaPath ? '/ng/patient/login' : '/patient/login';
+  }
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -142,10 +177,12 @@ export function AuthProvider({ children }) {
     } catch (err) {
       // Continue with logout even if API call fails
     } finally {
+      const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+      const logoutPath = getCountryAwareLoginPath(user?.role, pathname);
       setUser(null);
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
-      router.push('/login');
+      router.push(logoutPath);
     }
   };
 
@@ -169,21 +206,30 @@ export function AuthProvider({ children }) {
   };
 
   const getRedirectPath = (u) => {
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
     const role = u?.role;
     switch (role) {
       case 'admin':
       case 'super_admin':
-        return '/admin/dashboard';
+        return getCountryAwarePortalPath(role, pathname);
       case 'provider':
-        return '/provider/dashboard';
+        return toProviderPortalPath('/dashboard', {
+          user: u,
+          pathname,
+        });
+      case 'pharmacy':
+        return getCountryAwarePortalPath(role, pathname);
       case 'patient':
       default:
         // If patient isn't paid up, route them to subscription first.
         // Access control middleware will block booking/prescriptions without paid access.
         if (!u?.accessLevel || u.accessLevel === 'read_only') {
+          if (pathname.startsWith('/ng')) {
+            return '/ng/patient';
+          }
           return '/patient/subscription';
         }
-        return '/patient/dashboard';
+        return getCountryAwarePortalPath(role, pathname);
     }
   };
 
@@ -206,6 +252,7 @@ export function AuthProvider({ children }) {
     register,
     logout,
     refreshToken,
+    refreshUser: checkAuth,
     updateUser,
     checkAuth
   };

@@ -101,7 +101,7 @@ export default function AccessURLsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
             <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl">
@@ -136,7 +136,7 @@ export default function AccessURLsPage() {
       {/* Testing Links CTA */}
       <Card className="border-amber-500/50 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30">
         <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg">
                 <Zap className="w-5 h-5 text-white" />
@@ -228,37 +228,39 @@ export default function AccessURLsPage() {
                         <p className="text-xs font-medium text-muted-foreground uppercase mb-1">
                           {type === 'login' ? 'Login URL' : 'Registration URL'}
                         </p>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                           <Input
                             value={displayUrl}
                             readOnly
                             className={`text-sm font-mono ${isHidden ? 'text-muted-foreground' : ''}`}
                           />
-                          {portal.sensitive && (
+                          <div className="flex items-center gap-2 sm:shrink-0">
+                            {portal.sensitive && (
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                onClick={() => setShowAdminUrl(!showAdminUrl)}
+                              >
+                                {showAdminUrl ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </Button>
+                            )}
                             <Button
                               size="icon"
                               variant="outline"
-                              onClick={() => setShowAdminUrl(!showAdminUrl)}
+                              onClick={() => copyToClipboard(fullUrl, `${portal.name} ${type} URL`)}
+                              disabled={isHidden}
                             >
-                              {showAdminUrl ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              <Copy className="w-4 h-4" />
                             </Button>
-                          )}
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            onClick={() => copyToClipboard(fullUrl, `${portal.name} ${type} URL`)}
-                            disabled={isHidden}
-                          >
-                            <Copy className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            onClick={() => openInNewTab(fullUrl)}
-                            disabled={isHidden}
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </Button>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() => openInNewTab(fullUrl)}
+                              disabled={isHidden}
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -266,7 +268,7 @@ export default function AccessURLsPage() {
                 </div>
 
                 {/* Actions */}
-                <div className="pt-4 border-t flex gap-2">
+                <div className="pt-4 border-t flex flex-col gap-2 sm:flex-row">
                   {portal.id === 'patient' && (
                     <Button
                       size="sm"
@@ -353,8 +355,8 @@ export default function AccessURLsPage() {
             <div className="p-4 bg-muted rounded-lg">
               <h4 className="font-medium mb-2">Plain Text Links</h4>
               <div className="text-sm space-y-1 bg-background p-3 rounded border">
-                <p>Patient Login: {baseUrl}/patient/login</p>
-                <p>Patient Sign Up: {baseUrl}/patient/register</p>
+                <p className="break-all">Patient Login: {baseUrl}/patient/login</p>
+                <p className="break-all">Patient Sign Up: {baseUrl}/patient/register</p>
               </div>
               <Button
                 size="sm"
@@ -383,7 +385,7 @@ export default function AccessURLsPage() {
             <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
               <div>
                 <p className="text-sm text-muted-foreground">Base URL</p>
-                <p className="font-mono text-sm">{baseUrl}</p>
+                <p className="font-mono text-sm break-all">{baseUrl}</p>
               </div>
               <Button
                 size="icon"

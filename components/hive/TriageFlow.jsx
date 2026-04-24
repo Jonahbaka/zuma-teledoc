@@ -122,7 +122,7 @@ export default function TriageFlow() {
   const urgencyConfig = urgency ? URGENCY_CONFIG[urgency] : null;
 
   return (
-    <div className="bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden">
+    <div className="contrast-dark bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden">
       {/* Header */}
       <div className="px-5 py-4 bg-gradient-to-r from-purple-900/40 to-blue-900/30 border-b border-gray-800">
         <div className="flex items-center justify-between">
@@ -236,7 +236,7 @@ export default function TriageFlow() {
 
       <div className="px-4 pb-2 flex items-center gap-2">
         <Shield className="w-3 h-3 text-green-500" />
-        <p className="text-[10px] text-gray-600">HIPAA compliant. Encrypted and private. AI runs in NemoClaw OpenShell sandbox — your data never leaves the secure environment.</p>
+        <p className="text-[10px] text-gray-600">HIPAA aligned. Encrypted and private. AI responses pass through privacy filtering and audit logging.</p>
       </div>
     </div>
   );

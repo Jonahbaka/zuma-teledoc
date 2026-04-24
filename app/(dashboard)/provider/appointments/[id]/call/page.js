@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useEffect, useRef, useState } from 'react';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import {
   Mic, MicOff, Video as VideoIcon, VideoOff,
-  PhoneOff, ShieldCheck, User, MonitorUp,
+  PhoneOff, ShieldCheck, User,
   MessageSquare, Sparkles, X, Calendar, Clock,
   ArrowLeft, FileText, Save, Loader2, ClipboardList, Brain,
-  Bot, HeartPulse, Activity, MoreVertical, Smile
+  Bot, HeartPulse
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -17,14 +17,34 @@ import { toast } from '@/components/ui/use-toast';
 import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import ClinicalCoPilot from '@/components/hive/ClinicalCoPilot';
+import { resolveProviderMarket, toProviderPortalPath } from '@/lib/providerPortal';
+import useTelehealthSession from '@/lib/useTelehealthSession';
 
 /* ─────────────────── constants ─────────────────── */
 
-const AI_SUGGESTIONS = [
-  { type: 'insight', text: 'Consider confirming symptom duration and onset pattern.', confidence: 92 },
-  { type: 'action', text: 'Suggest comprehensive medication history review.', confidence: 85 },
-  { type: 'alert', text: 'Check for potential drug interactions with current medications.', confidence: 90 },
+const CONSULTATION_CHECKLIST = [
+  { type: 'insight', text: 'Confirm symptom duration, onset, and progression.' },
+  { type: 'action', text: 'Review current medications, allergies, and recent changes.' },
+  { type: 'alert', text: 'Document red flags or escalation triggers before closing the visit.' },
 ];
+
+const getRawPatientName = (appointment) =>
+  `${appointment?.patientFirstName || ''} ${appointment?.patientLastName || ''}`.trim();
+
+const getPatientDisplayName = (appointment) =>
+  getRawPatientName(appointment) || 'On-demand care session';
+
+const getPatientInitials = (appointment) => {
+  const firstInitial = appointment?.patientFirstName?.[0] || '';
+  const lastInitial = appointment?.patientLastName?.[0] || '';
+  const initials = `${firstInitial}${lastInitial}`.toUpperCase();
+  return initials || 'VC';
+};
+
+const getWaitingRoomCopy = (appointment) =>
+  getRawPatientName(appointment)
+    ? `${getRawPatientName(appointment)} can join the waiting room at any time`
+    : 'A patient can join the waiting room at any time';
 
 const FILTER_OPTIONS = [
   { id: 'none', label: 'None', css: 'none' },
@@ -41,10 +61,13 @@ const FILTER_OPTIONS = [
 
 export default function ProviderVideoCallPage() {
   const params = useParams();
+  const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
   const appointmentId = params.id;
   const isStandalone = appointmentId === 'standalone';
+  const isNigeriaPortal = resolveProviderMarket({ pathname, user }) === 'NG';
+  const complianceLabel = isNigeriaPortal ? 'NDPA aligned' : 'HIPAA encrypted';
 
   const [appointment, setAppointment] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -52,48 +75,28 @@ export default function ProviderVideoCallPage() {
   const [userName, setUserName] = useState('');
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
-  const [localStream, setLocalStream] = useState(null);
-  const [mediaError, setMediaError] = useState(null);
-
-  const ensureLocalStream = useCallback(async () => {
-    if (localStream) return localStream;
-    try {
-      let stream = null;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-          audio: true,
-        });
-      } catch {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-          audio: false,
-        });
-        toast({ title: 'Microphone unavailable', description: 'Camera active; mic permission not granted.', variant: 'destructive' });
-      }
-      setLocalStream(stream);
-      setMediaError(null);
-      return stream;
-    } catch (err) {
-      const msg = err?.name === 'NotFoundError'
-        ? 'No camera/microphone found'
-        : err?.name === 'NotReadableError'
-          ? 'Camera is busy in another app'
-          : 'Camera/microphone permission denied';
-      setMediaError(msg);
-      throw err;
-    }
-  }, [localStream]);
+  const {
+    callError,
+    connectionStatus,
+    ensureLocalStream,
+    joinCall,
+    leaveCall,
+    localStream,
+    mediaError,
+    mediaWarning,
+    remoteParticipant,
+    remoteStream
+  } = useTelehealthSession({ appointmentId: isStandalone ? null : appointmentId });
 
   /* ── Load appointment ── */
   useEffect(() => {
     if (isStandalone) {
       setAppointment({
         id: 'standalone', type: 'video', status: 'in_progress',
-        patientFirstName: 'Test', patientLastName: 'Patient',
+        patientFirstName: '', patientLastName: '',
         providerFirstName: user?.firstName || '', providerLastName: user?.lastName || '',
         scheduledAt: new Date().toISOString(), durationMinutes: 30,
-        reasonForVisit: 'Standalone provider video call'
+        reasonForVisit: 'Direct care video session'
       });
       if (user?.firstName) setUserName(`Dr. ${user.firstName}${user.lastName ? ` ${user.lastName}` : ''}`);
       setLoading(false);
@@ -109,35 +112,62 @@ export default function ProviderVideoCallPage() {
         }
       } catch {
         toast({ title: 'Error', description: 'Failed to load appointment', variant: 'destructive' });
-        router.push('/provider/appointments');
+        router.push(toProviderPortalPath('/schedule', { pathname, user }));
       } finally { setLoading(false); }
     })();
-  }, [appointmentId]);
+  }, [appointmentId, isStandalone, pathname, router, user]);
 
   const startCall = async () => {
     if (!userName.trim()) return;
-    if (camOn || micOn) {
-      try { await ensureLocalStream(); }
-      catch {
-        toast({ title: 'Device access failed', description: 'Please allow camera/microphone and try again.', variant: 'destructive' });
-        return;
-      }
-    }
     setIsInCall(true);
+
+    try {
+      if (isStandalone) {
+        if (camOn || micOn) {
+          await ensureLocalStream();
+        }
+      } else {
+        await joinCall({ displayName: userName });
+      }
+    } catch (error) {
+      setIsInCall(false);
+      toast({
+        title: 'Unable to start call',
+        description: error.message || 'Please allow camera and microphone access, then try again.',
+        variant: 'destructive'
+      });
+    }
   };
-  const endCall = () => {
+  const endCall = async () => {
+    await leaveCall();
     setIsInCall(false);
-    router.push(isStandalone ? '/provider/dashboard' : `/provider/appointments/${appointmentId}/visit`);
+    router.push(isStandalone
+      ? toProviderPortalPath('/dashboard', { pathname, user })
+      : toProviderPortalPath(`/appointments/${appointmentId}/visit`, { pathname, user }));
   };
 
   /* ── Track controls to stream ── */
-  useEffect(() => { return () => { if (localStream) localStream.getTracks().forEach(t => t.stop()); }; }, [localStream]);
   useEffect(() => { if (localStream) localStream.getVideoTracks().forEach(t => { t.enabled = camOn; }); }, [localStream, camOn]);
   useEffect(() => { if (localStream) localStream.getAudioTracks().forEach(t => { t.enabled = micOn; }); }, [localStream, micOn]);
+  useEffect(() => {
+    if (!mediaWarning) return;
+    toast({ title: 'Device fallback', description: mediaWarning });
+  }, [mediaWarning]);
+  useEffect(() => {
+    if (isStandalone || !appointment?.id || connectionStatus !== 'connected' || appointment.status === 'in_progress') {
+      return;
+    }
+
+    api.put(`/appointments/${appointment.id}`, { status: 'in_progress' })
+      .then(() => {
+        setAppointment((current) => current ? { ...current, status: 'in_progress' } : current);
+      })
+      .catch(() => {});
+  }, [appointment?.id, appointment?.status, connectionStatus, isStandalone]);
 
   /* ── Loading / Not found ── */
   if (loading) return (
-    <div className="min-h-screen bg-[#121212] flex items-center justify-center">
+    <div className="min-h-screen contrast-dark bg-[#121212] flex items-center justify-center">
       <div className="text-center">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-400 mx-auto mb-4" />
         <p className="text-gray-400">{isStandalone ? 'Preparing...' : 'Loading appointment...'}</p>
@@ -146,51 +176,57 @@ export default function ProviderVideoCallPage() {
   );
 
   if (!appointment) return (
-    <div className="min-h-screen bg-[#121212] flex items-center justify-center">
+    <div className="min-h-screen contrast-dark bg-[#121212] flex items-center justify-center">
       <p className="text-gray-400 mb-4">Appointment not found</p>
-      <Button onClick={() => router.push('/provider/appointments')}>Back</Button>
+      <Button onClick={() => router.push(toProviderPortalPath('/schedule', { pathname, user }))}>Back</Button>
     </div>
   );
 
+  const patientDisplayName = getPatientDisplayName(appointment);
+  const patientInitials = getPatientInitials(appointment);
+
   return (
-    <div className="h-screen flex flex-col bg-[#121212] text-white overflow-hidden font-sans selection:bg-blue-500/30">
+    <div className="flex contrast-dark min-h-[100dvh] flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_20%),radial-gradient(circle_at_85%_0%,rgba(15,23,42,0.42),transparent_34%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)] text-white font-sans selection:bg-blue-500/20">
       {/* ── Top Bar ── */}
-      <header className="h-16 px-6 flex items-center justify-between shrink-0 bg-[#121212] z-10">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" className="text-gray-400 hover:text-white hover:bg-white/10"
-            onClick={() => router.push(isStandalone ? '/provider/dashboard' : `/provider/appointments/${appointmentId}/visit`)}>
-            <ArrowLeft className="w-5 h-5" />
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/72 px-4 pb-3 pt-[calc(0.7rem+env(safe-area-inset-top,0px))] backdrop-blur-xl sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+          <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl border border-white/10 bg-white/5 text-slate-100 hover:bg-white/10 hover:text-white"
+            onClick={() => router.push(isStandalone
+              ? toProviderPortalPath('/dashboard', { pathname, user })
+              : toProviderPortalPath(`/appointments/${appointmentId}/visit`, { pathname, user }))}>
+            <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div className="flex items-center gap-2">
-            <span className="rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-white/10">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="rounded-2xl border border-white/10 bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.14)]">
               <DoctaRxLogo className="h-7 w-auto" />
             </span>
           </div>
-          <div className="h-5 w-px bg-gray-700 mx-1" />
-          <div>
-            <h2 className="text-sm font-medium text-gray-200">
-              Consultation: {appointment.patientFirstName} {appointment.patientLastName}
-            </h2>
-            <span className="text-xs text-gray-500 flex items-center gap-1">
-              <ShieldCheck size={10} className="text-emerald-500" /> HIPAA Encrypted &middot; E2E Secure
-            </span>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-white">
+              {isStandalone ? 'Direct Care Session' : `Consultation with ${patientDisplayName}`}
+            </div>
+            <div className="flex items-center gap-1 text-xs text-slate-400">
+              <ShieldCheck size={10} className="text-emerald-400" /> {complianceLabel} | Secure visit
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-shrink-0 items-center gap-3">
           {isInCall && <CallTimer />}
-          <div className="flex -space-x-2">
-            <div className="w-8 h-8 rounded-full border-2 border-[#121212] bg-gray-700 flex items-center justify-center text-xs font-medium">
-              {(appointment.patientFirstName?.[0] || '').toUpperCase()}{(appointment.patientLastName?.[0] || '').toUpperCase()}
+          <div className="hidden items-center gap-2 sm:flex">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-slate-200">
+              {patientInitials}
             </div>
-            <div className="w-8 h-8 rounded-full border-2 border-[#121212] bg-blue-600 flex items-center justify-center text-xs font-medium">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-500/20 text-xs font-semibold text-cyan-50">
               {(appointment.providerFirstName?.[0] || 'D').toUpperCase()}{(appointment.providerLastName?.[0] || 'R').toUpperCase()}
             </div>
           </div>
         </div>
+        </div>
       </header>
 
       {/* ── Main ── */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 flex flex-col">
         {!isInCall ? (
           <Lobby appointment={appointment} userName={userName} setUserName={setUserName}
             onJoin={startCall} micOn={micOn} setMicOn={setMicOn}
@@ -202,7 +238,9 @@ export default function ProviderVideoCallPage() {
             micOn={micOn} toggleMic={() => setMicOn(v => !v)}
             camOn={camOn} toggleCam={() => setCamOn(v => !v)}
             onEndCall={endCall}
-            localStream={localStream} ensureLocalStream={ensureLocalStream} />
+            localStream={localStream} ensureLocalStream={ensureLocalStream}
+            remoteStream={remoteStream} remoteParticipant={remoteParticipant}
+            connectionStatus={connectionStatus} callError={callError} />
         )}
       </div>
     </div>
@@ -232,9 +270,12 @@ const CallTimer = () => {
 const Lobby = ({
   appointment, userName, setUserName, onJoin, micOn, setMicOn, camOn, setCamOn,
   localStream, ensureLocalStream, mediaError
-}) => (
-  <div className="h-full flex items-center justify-center p-6">
-    <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-5 gap-8 items-center">
+}) => {
+  const patientDisplayName = getPatientDisplayName(appointment);
+
+  return (
+    <div className="h-full flex items-center justify-center p-6">
+      <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-5 gap-8 items-center">
       {/* Camera preview */}
       <div className="lg:col-span-3 bg-[#1e1e1e] rounded-2xl overflow-hidden border border-gray-800">
         <div className="aspect-video relative flex items-center justify-center bg-gray-800">
@@ -261,7 +302,7 @@ const Lobby = ({
       <div className="lg:col-span-2 space-y-5">
         <h1 className="text-2xl font-semibold leading-snug">Ready to join?</h1>
         <p className="text-gray-400">
-          Appointment with <span className="text-white font-medium">{appointment.patientFirstName} {appointment.patientLastName}</span>
+          Appointment with <span className="text-white font-medium">{patientDisplayName}</span>
         </p>
 
         <div className="bg-[#1e1e1e] rounded-xl p-4 space-y-3 text-sm border border-gray-800">
@@ -291,12 +332,13 @@ const Lobby = ({
 
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          <span>{appointment.patientFirstName} can join the waiting room at any time</span>
+          <span>{getWaitingRoomCopy(appointment)}</span>
         </div>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*              CAMERA PREVIEW (Lobby)                                */
@@ -343,7 +385,7 @@ const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
 
 const ActiveCall = ({
   appointment, micOn, toggleMic, camOn, toggleCam, onEndCall,
-  localStream, ensureLocalStream
+  localStream, ensureLocalStream, remoteStream, remoteParticipant, connectionStatus, callError
 }) => {
   const [showAI, setShowAI] = useState(false);
   const [sidebarTab, setSidebarTab] = useState('notes');
@@ -362,76 +404,158 @@ const ActiveCall = ({
     return parts.join(' ') || 'none';
   };
 
+  const remoteLabel = remoteParticipant?.name || getPatientDisplayName(appointment);
+  const providerLabel = appointment.providerFirstName ? `Dr. ${appointment.providerFirstName}` : 'You';
+  const stageStatus = callError
+    ? 'Action needed'
+    : connectionStatus === 'connected'
+      ? 'Live now'
+      : connectionStatus === 'connecting' || connectionStatus === 'reconnecting'
+        ? 'Connecting'
+        : 'Waiting room';
+
+  const closePanels = () => {
+    setShowAI(false);
+    setIsSidebarOpen(false);
+    setShowEffects(false);
+  };
+
+  const toggleNotesPanel = () => {
+    setShowAI(false);
+    setShowEffects(false);
+    setSidebarTab('notes');
+    setIsSidebarOpen((current) => !(current && sidebarTab === 'notes'));
+  };
+
+  const toggleChatPanel = () => {
+    setShowAI(false);
+    setShowEffects(false);
+    setSidebarTab('chat');
+    setIsSidebarOpen((current) => !(current && sidebarTab === 'chat'));
+  };
+
+  const toggleAiPanel = () => {
+    setIsSidebarOpen(false);
+    setShowEffects(false);
+    setShowAI((current) => !current);
+  };
+
+  const toggleEffectsPanel = () => {
+    setShowAI(false);
+    setIsSidebarOpen(false);
+    setShowEffects((current) => !current);
+  };
+
   return (
-    <div className="h-full flex overflow-hidden relative">
+    <div className="relative flex-1 min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_20%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.14),transparent_24%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)]">
+      {(showAI || isSidebarOpen || showEffects) && (
+        <button
+          type="button"
+          aria-label="Close panel"
+          onClick={closePanels}
+          className="absolute inset-0 z-20 bg-slate-950/55 backdrop-blur-[2px] lg:hidden"
+        />
+      )}
 
       {/* ── Video Stage ── */}
-      <div className="flex-1 flex flex-col gap-4 p-4 pt-0 transition-all duration-300">
+      <div className={`flex h-full min-h-0 transition-all duration-300 ${(showAI || isSidebarOpen) ? 'lg:pr-[22rem]' : ''}`}>
 
         {/* Main Stage Grid */}
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 h-full relative">
+        <div className="relative flex-1 min-h-0 px-3 pb-[calc(8.2rem+env(safe-area-inset-bottom,0px))] pt-3 sm:px-4 sm:pt-4">
 
           {/* Patient Feed (main, large) */}
-          <div className="md:col-span-2 relative h-full">
-            <PatientVideoArea appointment={appointment} />
+          <div className="relative h-full overflow-hidden rounded-[1.9rem] border border-white/10 bg-black shadow-[0_34px_90px_rgba(2,6,23,0.52)]">
+            <PatientVideoArea
+              appointment={appointment}
+              stream={remoteStream}
+              participant={remoteParticipant}
+              connectionStatus={connectionStatus}
+              callError={callError}
+            />
+
+            <div className="absolute inset-x-3 top-3 z-10 flex items-start justify-between gap-3 sm:inset-x-5 sm:top-5">
+              <div className="max-w-[17rem] rounded-2xl border border-white/10 bg-black/45 px-4 py-3 text-white shadow-lg backdrop-blur-xl">
+                <h3 className="text-sm font-semibold">{remoteLabel}</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-300">
+                  {callError
+                    ? callError
+                    : appointment.reasonForVisit || 'Consultation in progress'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200 backdrop-blur-xl">
+                <span className={`h-2 w-2 rounded-full ${connectionStatus === 'connected' ? 'bg-emerald-400' : callError ? 'bg-rose-400' : 'bg-amber-300 animate-pulse'}`} />
+                {stageStatus}
+              </div>
+            </div>
+
+            <div className="absolute right-3 top-3 z-10 w-[7.4rem] overflow-hidden rounded-[1.35rem] border border-white/10 bg-slate-900 shadow-[0_18px_50px_rgba(2,6,23,0.38)] sm:w-40 md:right-5 md:top-5 md:w-48 lg:bottom-6 lg:right-6 lg:top-auto">
+              <div className="relative aspect-[4/5] sm:aspect-video">
+                <SelfView
+                  stream={localStream}
+                  ensureLocalStream={ensureLocalStream}
+                  camOn={camOn}
+                  micOn={micOn}
+                  userName={providerLabel}
+                  cssFilter={getCssFilter()}
+                />
+              </div>
+            </div>
 
             <LiveCaptionsOverlay
               enabled={showCaptions}
-              speakerLabel={appointment.providerFirstName ? `Dr. ${appointment.providerFirstName}` : 'Provider'}
+              speakerLabel={providerLabel}
               defaultTargetLang={(typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en-US'}
             />
           </div>
 
-          {/* Right column: Self-view + Screen share slot */}
-          <div className="flex flex-col gap-4 h-full">
-            {/* Provider self-view (real camera) */}
-            <div className="flex-1 h-full relative">
-              <SelfView
-                stream={localStream}
-                ensureLocalStream={ensureLocalStream}
-                camOn={camOn}
-                micOn={micOn}
-                userName={appointment.providerFirstName ? `Dr. ${appointment.providerFirstName}` : 'You'}
-                cssFilter={getCssFilter()}
-              />
-            </div>
-
-            {/* Screen Sharing / Quick Actions slot */}
-            <div className="bg-gray-800 rounded-2xl flex-1 flex flex-col items-center justify-center border border-gray-700 p-6 text-center space-y-3">
-              <div className="bg-gray-700/50 p-4 rounded-full">
-                <MonitorUp className="text-gray-400" size={28} />
-              </div>
-              <div>
-                <h3 className="text-gray-200 font-medium text-sm">Screen Sharing</h3>
-                <p className="text-gray-500 text-xs mt-1">Share patient records, images, or documents</p>
-              </div>
-              <button className="text-xs bg-blue-600/20 text-blue-400 px-4 py-2 rounded-lg hover:bg-blue-600/30 transition-colors">
-                Start Sharing
-              </button>
-            </div>
-          </div>
         </div>
       </div>
 
       {/* ── AI Sidebar (Hive Clinical Co-Pilot) ── */}
-      <div className={`transition-all duration-500 ease-in-out relative ${showAI ? 'w-80 opacity-100 translate-x-0' : 'w-0 opacity-0 translate-x-10 overflow-hidden'}`}>
-        <ClinicalCoPilot
-          appointmentId={appointment?.id}
-          patientId={appointment?.patientId}
-          patientName={`${appointment?.patientFirstName || ''} ${appointment?.patientLastName || ''}`.trim()}
-        />
-      </div>
+      {showAI && (
+        <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[78vh] flex-col overflow-hidden rounded-t-[1.8rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_26px_60px_rgba(2,6,23,0.58)] backdrop-blur-2xl lg:absolute lg:inset-y-0 lg:right-0 lg:left-auto lg:max-h-none lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l">
+          <div className="mx-auto mt-3 h-1.5 w-14 rounded-full bg-white/15 lg:hidden" />
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Clinical Co-Pilot</h3>
+              <p className="mt-1 text-xs text-slate-400">Decision support stays alongside the live visit.</p>
+            </div>
+            <button
+              onClick={() => setShowAI(false)}
+              className="rounded-full border border-white/10 bg-white/5 p-2 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <ClinicalCoPilot
+              appointmentId={appointment?.id}
+              patientId={appointment?.patientId}
+              patientName={getPatientDisplayName(appointment)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── Notes/Chat Sidebar ── */}
       {isSidebarOpen && (
-        <div className="w-[340px] bg-[#1e1e1e] border-l border-gray-800 flex flex-col z-20 shadow-2xl">
-          <div className="flex border-b border-gray-800">
+        <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[78vh] flex-col overflow-hidden rounded-t-[1.8rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_26px_60px_rgba(2,6,23,0.58)] backdrop-blur-2xl lg:absolute lg:inset-y-0 lg:right-0 lg:left-auto lg:max-h-none lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l">
+          <div className="mx-auto mt-3 h-1.5 w-14 rounded-full bg-white/15 lg:hidden" />
+          <div className="flex border-b border-white/10">
             <SidebarTabBtn label="Notes" icon={FileText} active={sidebarTab === 'notes'} onClick={() => setSidebarTab('notes')} />
             <SidebarTabBtn label="Chat" icon={MessageSquare} active={sidebarTab === 'chat'} onClick={() => setSidebarTab('chat')} />
-            <button onClick={() => setIsSidebarOpen(false)} className="px-3 text-gray-500 hover:text-white"><X size={16} /></button>
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="px-4 text-slate-400 transition-colors hover:text-white"
+            >
+              <X size={16} />
+            </button>
           </div>
-          {sidebarTab === 'notes' && <LiveNotesPanel appointment={appointment} />}
-          {sidebarTab === 'chat' && <ChatPanel appointment={appointment} />}
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {sidebarTab === 'notes' && <LiveNotesPanel appointment={appointment} />}
+            {sidebarTab === 'chat' && <ChatPanel appointment={appointment} />}
+          </div>
         </div>
       )}
 
@@ -445,51 +569,22 @@ const ActiveCall = ({
       )}
 
       {/* ── Bottom Control Bar ── */}
-      <div className="absolute bottom-0 inset-x-0 flex items-center justify-center py-4 z-40 px-6">
-        {/* Left: time & encryption */}
-        <div className="absolute left-6 flex items-center gap-2 text-white">
-          <span className="text-sm font-medium font-mono">
-            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          <div className="h-4 w-px bg-gray-700 mx-1" />
-          <span className="text-xs text-gray-500">Encrypted e2e</span>
-        </div>
-
-        {/* Center: control island */}
-        <div className="bg-[#1e1e1e] border border-gray-700 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
-          <ControlBtn icon={micOn ? Mic : MicOff} active={micOn} onClick={toggleMic} label={micOn ? 'Mute' : 'Unmute'} />
-          <ControlBtn icon={camOn ? VideoIcon : VideoOff} active={camOn} onClick={toggleCam} label={camOn ? 'Stop Video' : 'Start Video'} />
-
-          <div className="w-px h-8 bg-gray-700 mx-1" />
-
-          <ControlBtn icon={Sparkles} active={showEffects} onClick={() => setShowEffects(!showEffects)}
-            label="Effects" color="transparent" />
-          <ControlBtn icon={MonitorUp} label="Present" color="transparent" />
-          <ControlBtn icon={Smile} label="Reactions" color="transparent" />
-          <ControlBtn icon={MoreVertical} label="More" color="transparent" />
-
-          <div className="w-px h-8 bg-gray-700 mx-1" />
-
-          <button onClick={onEndCall}
-            className="p-3 rounded-full bg-red-500 hover:bg-red-600 text-white transition-all duration-200">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.9rem+env(safe-area-inset-bottom,0px))] pt-6 sm:px-4">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-[31rem] flex-wrap items-center justify-center gap-2 rounded-[1.9rem] border border-white/10 bg-slate-950/82 px-3 py-3 shadow-[0_26px_60px_rgba(2,6,23,0.54)] backdrop-blur-2xl sm:gap-3 sm:px-4">
+          <ControlBtn icon={micOn ? Mic : MicOff} active={micOn} onClick={toggleMic} label={micOn ? 'Mute' : 'Unmute'} color={micOn ? 'primary' : 'danger'} />
+          <ControlBtn icon={camOn ? VideoIcon : VideoOff} active={camOn} onClick={toggleCam} label={camOn ? 'Stop Video' : 'Start Video'} color={camOn ? 'primary' : 'danger'} />
+          <ControlBtn icon={FileText} label="Captions" color={showCaptions ? 'primary' : 'glass'} onClick={() => setShowCaptions(!showCaptions)} />
+          <ControlBtn icon={ClipboardList} label="Visit Notes" color={isSidebarOpen && sidebarTab === 'notes' ? 'primary' : 'glass'} onClick={toggleNotesPanel} />
+          <ControlBtn icon={MessageSquare} label="Chat" color={isSidebarOpen && sidebarTab === 'chat' ? 'primary' : 'glass'} onClick={toggleChatPanel} />
+          <ControlBtn icon={Bot} label="AI Assistant" color={showAI ? 'primary' : 'glass'} onClick={toggleAiPanel} />
+          <ControlBtn icon={Sparkles} active={showEffects} onClick={toggleEffectsPanel} label="Effects" color={showEffects ? 'primary' : 'glass'} />
+          <button
+            onClick={onEndCall}
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-[0_18px_42px_rgba(244,63,94,0.42)] transition-all hover:bg-rose-400"
+            title="Leave call"
+          >
             <PhoneOff size={20} />
           </button>
-        </div>
-
-        {/* Right: sidebar toggles */}
-        <div className="absolute right-6 flex items-center gap-3">
-          <ControlBtn icon={FileText} label="Captions"
-            color={showCaptions ? 'primary' : 'glass'}
-            onClick={() => setShowCaptions(!showCaptions)} />
-          <ControlBtn icon={ClipboardList} label="Visit Notes"
-            color={isSidebarOpen && sidebarTab === 'notes' ? 'primary' : 'glass'}
-            onClick={() => {
-              if (isSidebarOpen && sidebarTab === 'notes') setIsSidebarOpen(false);
-              else { setSidebarTab('notes'); setIsSidebarOpen(true); }
-            }} />
-          <ControlBtn icon={Bot} label="AI Assistant"
-            color={showAI ? 'primary' : 'glass'}
-            onClick={() => setShowAI(!showAI)} />
         </div>
       </div>
     </div>
@@ -500,26 +595,57 @@ const ActiveCall = ({
 /*                   PATIENT VIDEO AREA                               */
 /* ═══════════════════════════════════════════════════════════════════ */
 
-const PatientVideoArea = ({ appointment }) => (
-  <div className="relative w-full h-full bg-gray-800 rounded-2xl overflow-hidden shadow-2xl border border-gray-700 group">
+const PatientVideoArea = ({ appointment, stream, participant, connectionStatus, callError }) => {
+  const patientDisplayName = getPatientDisplayName(appointment);
+  const patientInitials = getPatientInitials(appointment);
+  const videoRef = useRef(null);
+  const remoteLabel = participant?.name || patientDisplayName;
+  const statusCopy = callError
+    ? callError
+    : connectionStatus === 'connected'
+      ? 'Connected'
+      : connectionStatus === 'connecting' || connectionStatus === 'reconnecting'
+        ? 'Connecting to patient...'
+        : 'Waiting for patient to join...';
+
+  useEffect(() => {
+    if (!videoRef.current) {
+      return;
+    }
+
+    videoRef.current.srcObject = stream || null;
+
+    if (stream) {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream]);
+
+  return (
+    <div className="relative w-full h-full bg-gray-800 rounded-2xl overflow-hidden shadow-2xl border border-gray-700 group">
     {/* Patient placeholder — when WebRTC connects, replace with real stream */}
-    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
-      <div className="text-center">
-        <div className="w-28 h-28 mx-auto rounded-full bg-[#5f6368] flex items-center justify-center mb-5 shadow-xl">
-          <span className="text-4xl font-medium text-white">
-            {(appointment.patientFirstName?.[0] || '').toUpperCase()}
-            {(appointment.patientLastName?.[0] || '').toUpperCase()}
-          </span>
-        </div>
-        <h2 className="text-xl font-medium mb-2 text-white">
-          {appointment.patientFirstName} {appointment.patientLastName}
-        </h2>
-        <div className="flex items-center justify-center gap-2 text-gray-400 text-sm">
-          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          Waiting for patient to join...
+    {stream ? (
+      <video
+        ref={videoRef}
+        className="w-full h-full object-cover bg-black"
+        autoPlay
+        playsInline
+      />
+    ) : (
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+        <div className="text-center px-6">
+          <div className="w-28 h-28 mx-auto rounded-full bg-[#5f6368] flex items-center justify-center mb-5 shadow-xl">
+            <span className="text-4xl font-medium text-white">{patientInitials}</span>
+          </div>
+          <h2 className="text-xl font-medium mb-2 text-white">
+            {patientDisplayName}
+          </h2>
+          <div className="flex items-center justify-center gap-2 text-gray-400 text-sm">
+            <div className={`w-2 h-2 rounded-full ${callError ? 'bg-red-400' : 'bg-amber-400 animate-pulse'}`} />
+            {statusCopy}
+          </div>
         </div>
       </div>
-    </div>
+    )}
 
     {/* AI Vitals Overlay (for when patient joins — decorative for now) */}
     <div className="absolute top-4 left-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
@@ -532,7 +658,7 @@ const PatientVideoArea = ({ appointment }) => (
     {/* Name Tag */}
     <div className="absolute bottom-4 left-4 flex items-center gap-2">
       <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2 border border-white/5">
-        <span className="text-white text-sm font-medium">{appointment.patientFirstName} {appointment.patientLastName}</span>
+        <span className="text-white text-sm font-medium">{remoteLabel}</span>
         <span className="text-xs text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">Patient</span>
       </div>
     </div>
@@ -541,11 +667,12 @@ const PatientVideoArea = ({ appointment }) => (
     <div className="absolute top-4 right-4">
       <div className="bg-black/40 backdrop-blur-md px-2 py-1 rounded-full flex items-center gap-1 border border-white/10">
         <ShieldCheck size={10} className="text-emerald-500" />
-        <span className="text-[10px] text-gray-400">Secure</span>
+        <span className="text-[10px] text-gray-400">{connectionStatus === 'connected' ? 'Live' : 'Secure'}</span>
+      </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*              SELF VIEW (Provider camera — real feed)                */
@@ -660,7 +787,7 @@ const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
           <div>
             <h3 className="text-white font-semibold text-sm">DoctaRx AI</h3>
             <span className="text-xs text-green-400 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> Active
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400" /> Available
             </span>
           </div>
         </div>
@@ -673,11 +800,11 @@ const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
       <div className="flex border-b border-gray-800">
         <button onClick={() => setActiveTab('insight')}
           className={`flex-1 py-3 text-xs font-medium transition-colors ${activeTab === 'insight' ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5' : 'text-gray-400 hover:text-white'}`}>
-          Live Insights
+          Visit Guide
         </button>
         <button onClick={() => setActiveTab('notes')}
           className={`flex-1 py-3 text-xs font-medium transition-colors ${activeTab === 'notes' ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5' : 'text-gray-400 hover:text-white'}`}>
-          Smart Notes
+          SOAP Notes
         </button>
       </div>
 
@@ -685,34 +812,24 @@ const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
         {activeTab === 'insight' && (
           <>
-            {/* Sentiment */}
+            {/* Session guide */}
             <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700 space-y-2">
-              <div className="flex items-center justify-between text-xs text-gray-400">
-                <span>Patient Sentiment</span>
-                <span className="text-emerald-400">Calm</span>
-              </div>
-              <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                <div className="h-full w-3/4 bg-gradient-to-r from-green-500 via-emerald-400 to-green-400 transition-all duration-1000" />
-              </div>
+              <div className="text-xs text-gray-400">Session setup</div>
+              <p className="text-xs text-gray-300 leading-relaxed">
+                Use this panel as a documentation checklist while you confirm identity, safety concerns,
+                medications, and the reason for visit.
+              </p>
             </div>
 
             {/* Suggestions */}
             <div className="space-y-3">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Suggested Actions</h4>
-              {AI_SUGGESTIONS.map((item, idx) => (
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Consultation checklist</h4>
+              {CONSULTATION_CHECKLIST.map((item, idx) => (
                 <div key={idx} className="bg-gray-800 p-3 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors group cursor-pointer">
                   <div className="flex items-start gap-3">
                     {item.type === 'alert' ? <ShieldCheck size={16} className="text-red-400 mt-0.5" /> : <Sparkles size={16} className="text-blue-400 mt-0.5" />}
                     <div>
                       <p className="text-sm text-gray-200 leading-snug">{item.text}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-[10px] bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded border border-gray-600">
-                          {item.confidence}% Confidence
-                        </span>
-                        <button className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-blue-400 hover:underline">
-                          Apply
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -722,11 +839,11 @@ const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
             {/* Real-time context */}
             <div className="bg-blue-500/10 p-3 rounded-xl border border-blue-500/20 space-y-2">
               <div className="flex items-center gap-2 text-xs text-blue-300">
-                <Brain size={14} /> Real-time Analysis
+                <Brain size={14} /> Documentation note
               </div>
               <p className="text-xs text-blue-200/80 leading-relaxed">
-                Monitoring conversation patterns, symptom mentions, and medication references.
-                AI will flag relevant clinical insights in real-time.
+                SOAP generation and Clinical Co-Pilot outputs depend on captured visit data.
+                This guide is reference-only and should not be treated as live clinical analysis.
               </p>
             </div>
           </>
@@ -777,7 +894,7 @@ const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
 
       {/* Footer */}
       <div className="p-3 border-t border-gray-800 text-center">
-        <span className="text-[10px] text-gray-600">DoctaRx AI &middot; HIPAA Compliant &middot; Not a diagnosis</span>
+        <span className="text-[10px] text-gray-600">DoctaRx AI &middot; Secure clinical workspace &middot; Not a diagnosis</span>
       </div>
 
       <style>{`
@@ -800,7 +917,7 @@ const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
 /* ═══════════════════════════════════════════════════════════════════ */
 
 const EffectsPanel = ({ filterStyle, setFilterStyle, lightingBoost, setLightingBoost, onClose }) => (
-  <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-[380px] bg-[#1e1e1e] rounded-xl shadow-2xl border border-gray-700 p-5 z-50 animate-in fade-in slide-in-from-bottom-4">
+  <div className="fixed inset-x-4 bottom-[calc(6.4rem+env(safe-area-inset-bottom,0px))] z-50 max-h-[min(68vh,34rem)] overflow-y-auto rounded-[1.6rem] border border-white/10 bg-slate-950/96 p-5 text-white shadow-[0_30px_80px_rgba(2,6,23,0.6)] backdrop-blur-2xl lg:absolute lg:inset-x-auto lg:bottom-[calc(7.6rem+env(safe-area-inset-bottom,0px))] lg:left-1/2 lg:w-[24rem] lg:-translate-x-1/2">
     <div className="flex justify-between items-center mb-4">
       <h3 className="font-medium text-white text-sm">Visual Effects</h3>
       <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={16} /></button>
@@ -815,7 +932,7 @@ const EffectsPanel = ({ filterStyle, setFilterStyle, lightingBoost, setLightingB
             className={`px-3 py-2 text-xs rounded-lg border transition-all ${
               filterStyle === opt.id
                 ? 'border-blue-400 bg-blue-400/10 text-blue-300'
-                : 'border-gray-700 bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
+                : 'border-gray-700 ui-dark-chip-action'
             }`}>
             {opt.label}
           </button>
@@ -981,12 +1098,13 @@ const ChatPanel = ({ appointment }) => (
 /* ═══════════════════════════════════════════════════════════════════ */
 
 const ControlBtn = ({ icon: Icon, active, onClick, label, color = 'default' }) => {
-  const base = 'p-3 rounded-full transition-all duration-200 flex items-center justify-center backdrop-blur-md';
+  const base = 'flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-200 backdrop-blur-md sm:h-[3.25rem] sm:w-[3.25rem]';
   const colors = {
-    default: active !== false ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-red-500 hover:bg-red-600 text-white',
-    primary: 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20',
-    glass: 'bg-white/10 hover:bg-white/20 text-white border border-white/10',
-    transparent: 'text-gray-400 hover:text-white hover:bg-white/10',
+    default: active !== false ? 'border-cyan-400/30 bg-cyan-500/20 text-cyan-100 shadow-[0_12px_28px_rgba(59,130,246,0.18)]' : 'border-white/10 bg-white/10 text-slate-100 hover:bg-white/15',
+    primary: 'border-cyan-400/30 bg-cyan-500/20 text-cyan-100 shadow-[0_12px_28px_rgba(59,130,246,0.18)]',
+    glass: 'border-white/10 bg-white/10 text-white hover:bg-white/15',
+    danger: 'border-rose-500/20 bg-rose-500/15 text-rose-100',
+    transparent: 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white',
   };
 
   return (
@@ -1013,7 +1131,7 @@ const SidebarTabBtn = ({ label, icon: Icon, active, onClick }) => (
 const TabPill = ({ label, active, onClick }) => (
   <button onClick={onClick}
     className={`px-2.5 py-1 text-[10px] font-medium rounded transition-colors ${
-      active ? 'bg-violet-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+      active ? 'bg-violet-500 text-white' : 'ui-dark-chip-action'
     }`}>{label}</button>
 );
 

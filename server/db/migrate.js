@@ -51,14 +51,22 @@ const migrations = [
     name: '002_create_enums',
     up: `
       DO $$ BEGIN
-        CREATE TYPE user_role AS ENUM ('patient', 'provider', 'admin', 'super_admin');
+        CREATE TYPE user_role AS ENUM ('patient', 'provider', 'pharmacy', 'admin', 'super_admin');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
       
-      -- If enum already exists, add super_admin if it doesn't exist
+      -- If enum already exists, add new values if they don't exist
       DO $$ 
       BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_enum 
+          WHERE enumlabel = 'pharmacy' 
+          AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'user_role')
+        ) THEN
+          ALTER TYPE user_role ADD VALUE 'pharmacy';
+        END IF;
+
         IF NOT EXISTS (
           SELECT 1 FROM pg_enum 
           WHERE enumlabel = 'super_admin' 

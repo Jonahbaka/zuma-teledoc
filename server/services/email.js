@@ -619,7 +619,18 @@ const sendPasswordResetEmail = async (user, resetToken) => {
 const sendVerificationEmail = async (user, verificationToken) => {
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
-    const verificationUrl = `${appUrl}/verify-email?token=${verificationToken}`;
+    const normalizedCountry = String(user.country || '').trim().toUpperCase();
+    const roleParam = user.role ? `&role=${encodeURIComponent(user.role)}` : '';
+    const marketParam = (
+      normalizedCountry === 'NG' ||
+      normalizedCountry === 'NIGERIA'
+    ) ? '&market=NG' : (
+      normalizedCountry === 'US' ||
+      normalizedCountry === 'USA' ||
+      normalizedCountry === 'UNITED STATES' ||
+      normalizedCountry === 'UNITED STATES OF AMERICA'
+    ) ? '&market=US' : '';
+    const verificationUrl = `${appUrl}/verify-email?token=${verificationToken}${roleParam}${marketParam}`;
 
     const bodyContent = `
       <p style="margin: 0 0 24px 0; font-size: 18px;">

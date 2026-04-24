@@ -1,87 +1,98 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <!-- Primary Pages -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://doctarx.com/</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en-US" href="https://doctarx.com/" />
+    <xhtml:link rel="alternate" hreflang="en-NG" href="https://doctarx.com/ng" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://doctarx.com/" />
   </url>
-
-  <!-- Public Marketing Pages -->
+  <url>
+    <loc>https://doctarx.com/ng</loc>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+    <xhtml:link rel="alternate" hreflang="en-US" href="https://doctarx.com/" />
+    <xhtml:link rel="alternate" hreflang="en-NG" href="https://doctarx.com/ng" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://doctarx.com/" />
+  </url>
+  <url>
+    <loc>https://doctarx.com/ng/provider/register</loc>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.72</priority>
+  </url>
   <url>
     <loc>https://doctarx.com/contact</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://doctarx.com/faq</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://doctarx.com/blog</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://doctarx.com/help</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
-
-  <!-- Legal and Compliance Pages -->
   <url>
     <loc>https://doctarx.com/privacy</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://doctarx.com/terms</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://doctarx.com/hipaa</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://doctarx.com/accessibility</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
   </url>
-
-  <!-- Entry Points -->
   <url>
     <loc>https://doctarx.com/patient/login</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://doctarx.com/patient/register</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://doctarx.com/provider/login</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://doctarx.com/provider/register</loc>
-    <lastmod>2026-02-20</lastmod>
+    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>

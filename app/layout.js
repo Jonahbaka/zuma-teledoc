@@ -6,18 +6,32 @@ import { I18nProvider } from '@/components/providers/I18nProvider';
 import { DeploymentVersionCheck } from '@/components/providers/DeploymentVersionCheck';
 import ConditionalSiteFooter from '@/components/layouts/ConditionalSiteFooter';
 import GoogleAnalytics from '@/components/analytics/GoogleAnalytics';
+import PwaBootstrap from '@/components/pwa/PwaBootstrap';
 import { THEME_STORAGE_KEY } from '@/lib/theme';
 
 export const metadata = {
+  metadataBase: new URL('https://doctarx.com'),
   title: {
-    default: 'DoctaRx Nigeria | Online Doctor Consultations, Prescriptions & Pharmacy Delivery',
-    template: '%s | DoctaRx Nigeria'
+    default: 'DoctaRx | Virtual Care, Prescriptions, and Pharmacy Coordination',
+    template: '%s | DoctaRx'
   },
-  description: 'DoctaRx is Nigeria\'s telehealth platform. See a doctor online, get prescriptions, and receive medications from pharmacies near you. Pay with cash, bank transfer, or card.',
-  keywords: 'telehealth Nigeria, online doctor Nigeria, telemedicine, e-prescribing, pharmacy delivery Lagos, video consultation, doctor app Nigeria, digital health Africa, healthcare platform Nigeria, virtual healthcare, prescription delivery, pharmacy network Nigeria',
+  description: 'DoctaRx is a modern healthcare platform for virtual care, secure messaging, e-prescribing, prescription routing, and pharmacy coordination across market-specific experiences.',
+  keywords: 'telehealth platform, virtual care, e-prescribing, secure messaging, pharmacy coordination, digital health, healthcare operations',
   authors: [{ name: 'DoctaRx' }],
   creator: 'DoctaRx',
   publisher: 'DoctaRx',
+  applicationName: 'DoctaRx',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'DoctaRx',
+  },
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
+  },
   robots: {
     index: true,
     follow: true,
@@ -39,27 +53,31 @@ export const metadata = {
     siteName: 'DoctaRx',
     title: 'DoctaRx | HIPAA-Compliant Telehealth & AI-Powered Healthcare',
     description: 'HIPAA-compliant telehealth with AI triage, video visits, encrypted messaging, and e-prescribing. Secure healthcare on any device.',
-    images: [
-      {
-        url: 'https://doctarx.com/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'DoctaRx - HIPAA-Compliant Telehealth & AI-Powered E-Prescribing Platform',
-      },
-    ],
+    images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'DoctaRx | HIPAA-Compliant Telehealth & AI-Powered Healthcare',
     description: 'HIPAA-compliant telehealth with AI triage, video visits, encrypted messaging, and e-prescribing.',
-    images: ['https://doctarx.com/og-image.png'],
+    images: ['/opengraph-image'],
   },
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
-      { url: '/icon.svg', type: 'image/svg+xml' }
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
-    apple: '/icon.svg'
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }
+    ],
+    other: [
+      {
+        rel: 'mask-icon',
+        url: '/icon.svg',
+        color: '#0f172a'
+      }
+    ]
   },
   verification: {
     // Add Google Search Console verification code after setup:
@@ -70,7 +88,13 @@ export const metadata = {
 
 export const viewport = {
   width: 'device-width',
-  initialScale: 1
+  initialScale: 1,
+  viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f8fafc' },
+    { media: '(prefers-color-scheme: dark)', color: '#020617' }
+  ]
 };
 
 // JSON-LD Structured Data for SEO
@@ -80,21 +104,8 @@ const jsonLdApp = {
   "name": "DoctaRx",
   "operatingSystem": "Web",
   "applicationCategory": "HealthApplication",
-  "description": "HIPAA-compliant telehealth platform with AI-powered triage, video consultations, encrypted messaging, SOAP notes, and subscription billing.",
+  "description": "Telehealth, messaging, prescription routing, and pharmacy coordination with market-specific experiences.",
   "url": "https://doctarx.com",
-  "offers": {
-    "@type": "AggregateOffer",
-    "priceCurrency": "USD",
-    "lowPrice": "0",
-    "highPrice": "49.99",
-    "offerCount": "3"
-  },
-  "aggregateRating": {
-    "@type": "AggregateRating",
-    "ratingValue": "4.9",
-    "bestRating": "5",
-    "ratingCount": "24"
-  },
   "provider": {
     "@type": "Organization",
     "name": "DoctaRx",
@@ -108,14 +119,14 @@ const jsonLdOrg = {
   "name": "DoctaRx",
   "url": "https://doctarx.com",
   "logo": "https://doctarx.com/icon.svg",
-  "description": "DoctaRx is a HIPAA-compliant telehealth platform providing AI-powered triage, secure video consultations, encrypted messaging, and e-prescribing services.",
+  "description": "DoctaRx is a healthcare technology platform for virtual care, secure communication, prescription routing, and pharmacy coordination.",
   "email": "info@doctarx.com",
   "sameAs": [],
   "medicalSpecialty": "Primary Care",
   "availableService": {
     "@type": "MedicalTherapy",
-    "name": "Telehealth Consultation",
-    "description": "Secure HD video consultations with board-certified physicians"
+    "name": "Digital Healthcare Workflow",
+    "description": "Secure virtual care, messaging, prescription routing, and pharmacy coordination"
   }
 };
 
@@ -124,7 +135,7 @@ const jsonLdWebsite = {
   "@type": "WebSite",
   "name": "DoctaRx",
   "url": "https://doctarx.com",
-  "description": "HIPAA-compliant telehealth platform with AI-powered triage and e-prescribing",
+  "description": "Market-specific digital healthcare experiences for virtual care, prescription routing, and pharmacy coordination",
   "publisher": {
     "@type": "Organization",
     "name": "DoctaRx",
@@ -139,7 +150,12 @@ export default function RootLayout({ children }) {
         {/* Favicon and icons */}
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/icon.svg" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="DoctaRx" />
         
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -167,15 +183,18 @@ export default function RootLayout({ children }) {
           }}
         />
       </head>
-      <body className="min-h-screen bg-background font-sans antialiased" suppressHydrationWarning>
+      <body className="min-h-[100dvh] overflow-x-clip bg-background font-sans antialiased" suppressHydrationWarning>
         <GoogleAnalytics />
         <DeploymentVersionCheck />
+        <PwaBootstrap />
         <I18nProvider>
           <AuthProvider>
             <HiveProvider>
-              {children}
-              <ConditionalSiteFooter />
-              <Toaster />
+              <div className="app-shell-root">
+                {children}
+                <ConditionalSiteFooter />
+                <Toaster />
+              </div>
             </HiveProvider>
           </AuthProvider>
         </I18nProvider>

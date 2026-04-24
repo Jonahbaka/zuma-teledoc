@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, usePathname } from 'next/navigation';
 import {
   ArrowLeft,
   FileText,
@@ -27,9 +27,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
 import { formatDateTime } from '@/lib/utils';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 export default function ProviderPatientEhrPage() {
   const params = useParams();
+  const pathname = usePathname();
   const patientId = params.id;
 
   const [loading, setLoading] = useState(true);
@@ -214,7 +216,7 @@ export default function ProviderPatientEhrPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Link href={`/provider/patients/${patientId}`}>
+          <Link href={toProviderPortalPath(`/patients/${patientId}`, { pathname })}>
             <Button variant="ghost" size="icon">
               <ArrowLeft className="w-5 h-5" />
             </Button>
@@ -268,7 +270,7 @@ export default function ProviderPatientEhrPage() {
                           Start: {e.encounterStart ? formatDateTime(e.encounterStart) : '—'} · Status: {e.status}
                         </p>
                       </div>
-                      <Link href={`/provider/encounters/${e.id}`}>
+                      <Link href={toProviderPortalPath(`/encounters/${e.id}`, { pathname })}>
                         <Button variant="outline" size="sm">
                           Open Chart <ExternalLink className="w-4 h-4 ml-2" />
                         </Button>

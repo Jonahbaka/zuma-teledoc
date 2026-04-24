@@ -15,6 +15,58 @@ import { LanguageToggle } from '@/components/ui/language-toggle';
 import { notificationsAPI } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
+import {
+  getProviderInvitePatientPath,
+  toProviderPortalPath,
+} from '@/lib/providerPortal';
+import { getPortalPath } from '@/lib/portalPaths';
+
+const MOBILE_NAV_PRIORITIES = {
+  Provider: ['Dashboard', 'Triage Queue', 'Schedule', 'Patients'],
+  Patient: ['Dashboard', 'Appointments', 'AI Triage', 'Messages'],
+  Admin: ['Dashboard', 'Users', 'Notifications', 'Analytics'],
+  Pharmacy: ['Dashboard', 'Prescriptions', 'Orders', 'Settings'],
+  default: ['Dashboard'],
+};
+
+function isActivePath(pathname, href) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function getMobileLabel(name) {
+  const compactLabels = {
+    'AI Triage': 'Triage',
+    'Triage Queue': 'Queue',
+    'Prescription Activity': 'Rx',
+    'Health Records': 'Records',
+    'Hospital Network': 'Network',
+    'Visit Notes': 'Notes',
+  };
+
+  return compactLabels[name] || name;
+}
+
+function pickMobileNavigation(portalName, items) {
+  const priorities = MOBILE_NAV_PRIORITIES[portalName] || MOBILE_NAV_PRIORITIES.default;
+  const selected = [];
+  const seen = new Set();
+
+  priorities.forEach((label) => {
+    const match = items.find((item) => item.name === label);
+    if (match && !seen.has(match.href)) {
+      selected.push(match);
+      seen.add(match.href);
+    }
+  });
+
+  items.forEach((item) => {
+    if (selected.length >= 4 || seen.has(item.href)) return;
+    selected.push(item);
+    seen.add(item.href);
+  });
+
+  return selected.slice(0, 4);
+}
 
 export default function DashboardLayout({ 
   children, 
@@ -22,6 +74,7 @@ export default function DashboardLayout({
   navigationGroups, // NEW: Support for grouped navigation
   portalName, 
   portalColor, 
+  portalHomeHref,
   showQuickActions = false 
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -73,16 +126,10 @@ export default function DashboardLayout({
     await logout();
   };
 
-  const getRoleRoute = (role) => {
-    if (role === 'admin' || role === 'super_admin') {
-      return 'admin';
-    }
-    return role;
-  };
-
   const handleCopyInviteLink = async () => {
     const baseUrl = window.location.origin;
-    const inviteLink = `${baseUrl}/patient/register?ref=${user?.id || 'provider'}`;
+    const invitePath = getProviderInvitePatientPath({ pathname, user });
+    const inviteLink = `${baseUrl}${invitePath}${invitePath.includes('?') ? '&' : '?'}ref=${user?.id || 'provider'}`;
     try {
       await navigator.clipboard.writeText(inviteLink);
       setCopied(true);
@@ -101,6 +148,54 @@ export default function DashboardLayout({
 
   const isProviderPortal = portalName === 'Provider';
   const isAdminPortal = portalName === 'Admin';
+  const visibleNavigation = navigation
+    ?.filter((item) => !item.superAdminOnly || user?.role === 'super_admin')
+    ?.filter((item) => !item.hideFromRole || !item.hideFromRole.includes(user?.role)) || [];
+  const groupedNavigation = navigationGroups
+    ? navigationGroups.flatMap((group) =>
+        group.items.filter((item) => {
+          if (item.superAdminOnly && user?.role !== 'super_admin') return false;
+          if (item.hideFromRole && item.hideFromRole.includes(user?.role)) return false;
+          return true;
+        })
+      )
+    : [];
+  const allNavigationItems = [...visibleNavigation, ...groupedNavigation].filter(
+    (item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index
+  );
+  const activeNavigationItem = allNavigationItems.find((item) => isActivePath(pathname, item.href)) || allNavigationItems[0];
+  const mobileNavigation = pickMobileNavigation(portalName, allNavigationItems);
+  const userInitials = `${user?.firstName?.[0] || ''}${user?.lastName?.[0] || ''}` || user?.email?.[0]?.toUpperCase() || 'U';
+  const resolvedPortalHomeHref =
+    portalHomeHref ||
+    visibleNavigation[0]?.href ||
+    allNavigationItems[0]?.href ||
+    '/';
+
+  useEffect(() => {
+    setSidebarOpen(false);
+    setUserMenuOpen(false);
+    setQuickActionsOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return undefined;
+
+    if (window.innerWidth >= 1024) {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    if (sidebarOpen || userMenuOpen || quickActionsOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = previousOverflow;
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [quickActionsOpen, sidebarOpen, userMenuOpen]);
 
   // Render navigation item
   const renderNavItem = (item, inGroup = false) => {
@@ -112,15 +207,15 @@ export default function DashboardLayout({
       return null;
     }
 
-    const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+    const isActive = isActivePath(pathname, item.href);
     
     return (
       <Link
         key={item.name}
         href={item.href}
         className={cn(
-          'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all',
-          inGroup && 'ml-4 px-3',
+          'flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all active:scale-[0.98]',
+          inGroup && 'ml-4 rounded-xl px-3 py-2.5',
           isActive 
             ? `bg-gradient-to-r ${portalColor} text-white shadow-lg` 
             : 'text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -164,7 +259,7 @@ export default function DashboardLayout({
               <button
                 onClick={() => toggleGroup(group.name)}
                 className={cn(
-                  "w-full flex items-center justify-between px-4 py-2 rounded-lg text-sm font-semibold transition-all",
+                  "w-full flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition-all",
                   hasActiveItem 
                     ? "text-foreground bg-accent/50" 
                     : "text-muted-foreground hover:text-foreground hover:bg-accent/30"
@@ -195,24 +290,28 @@ export default function DashboardLayout({
     );
   };
 
+  const getPortalHref = (suffix) => {
+    return getPortalPath(suffix, { pathname, user });
+  };
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="app-shell-root min-h-[100dvh] bg-background text-foreground">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <aside className={cn(
-        'fixed top-0 left-0 z-50 h-full w-64 bg-card border-r border-border transform transition-transform duration-300 lg:translate-x-0',
+        'app-safe-top fixed inset-y-0 left-0 z-50 flex h-full w-64 max-w-[86vw] flex-col border-r border-border/80 bg-card/92 shadow-2xl backdrop-blur-2xl transition-transform duration-300 lg:max-w-none lg:translate-x-0',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
         {/* Logo */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-border">
-          <Link href="/" className="flex items-center gap-2">
+        <div className="flex min-h-[4.75rem] items-center justify-between border-b border-border/70 px-4">
+          <Link href={resolvedPortalHomeHref} className="flex items-center gap-2">
             <div>
               <span className="inline-flex rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-800">
                 <DoctaRxLogo className="h-7 w-auto" />
@@ -234,26 +333,24 @@ export default function DashboardLayout({
         </div>
 
         {/* Navigation */}
-        <nav className="p-4 space-y-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+        <nav className="flex-1 space-y-1 overflow-y-auto px-4 pb-6 pt-4" style={{ maxHeight: 'calc(100dvh - 220px)' }}>
           {/* Use grouped navigation if available, otherwise flat */}
           {navigationGroups ? (
             renderGroupedNavigation()
           ) : (
-            navigation
-              ?.filter((item) => !item.superAdminOnly || user?.role === 'super_admin')
-              .map((item) => renderNavItem(item))
+            visibleNavigation.map((item) => renderNavItem(item))
           )}
         </nav>
 
         {/* User info at bottom - Privacy Enhanced */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border bg-muted/30">
+        <div className="app-safe-bottom border-t border-border/70 bg-background/75 p-4 backdrop-blur-xl">
           <div 
             className="flex items-center gap-3 cursor-pointer group"
             onClick={() => setShowSidebarEmail(!showSidebarEmail)}
           >
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center border border-border shadow-md">
               <span className="text-white text-sm font-medium">
-                {user?.firstName?.[0]}{user?.lastName?.[0]}
+                {userInitials}
               </span>
             </div>
             <div className="flex-1 min-w-0">
@@ -278,16 +375,27 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main content */}
-      <div className="lg:pl-64">
+      <div className="min-h-[100dvh] lg:pl-64">
         {/* Top header */}
-        <header className="sticky top-0 z-30 h-16 bg-card/80 backdrop-blur-xl border-b border-border flex items-center justify-between px-4 lg:px-8">
-          <div className="flex items-center gap-4">
+        <header className="sticky top-0 z-30 border-b border-border/70 bg-background/88 backdrop-blur-2xl">
+          <div className="flex min-h-[4.5rem] items-center justify-between gap-3 px-4 py-3 md:px-6 lg:min-h-20 lg:px-8 [padding-top:calc(0.75rem+env(safe-area-inset-top,0px))]">
+            <div className="flex min-w-0 items-center gap-3">
             <button 
-              className="lg:hidden text-muted-foreground hover:text-foreground"
+              className="rounded-2xl border border-border/70 bg-card/80 p-2.5 text-muted-foreground shadow-sm transition hover:text-foreground lg:hidden"
               onClick={() => setSidebarOpen(true)}
+              aria-label={`Open ${portalName.toLowerCase()} navigation`}
             >
               <Menu className="w-6 h-6" />
             </button>
+
+            <div className="min-w-0 lg:hidden">
+              <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                {portalName} Portal
+              </div>
+              <div className="truncate text-sm font-semibold text-foreground sm:text-base">
+                {activeNavigationItem?.name || portalName}
+              </div>
+            </div>
             
             {/* Search */}
             <div className="hidden md:flex items-center">
@@ -296,34 +404,34 @@ export default function DashboardLayout({
                 <input
                   type="text"
                   placeholder={isAdminPortal ? "Search users, logs..." : "Search patients, notes, ICD-10..."}
-                  className="w-72 pl-10 pr-4 py-2 bg-muted/60 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  className="w-[min(28rem,48vw)] rounded-2xl border border-border bg-muted/60 py-2.5 pl-10 pr-4 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
             {/* Quick Actions - Provider Only */}
             {isProviderPortal && (
               <div className="relative">
                 <div className="hidden sm:flex items-center gap-2 mr-2">
-                  <Link href="/provider/patients?action=new">
+                  <Link href={toProviderPortalPath('/patients', { pathname, user })}>
                     <Button 
                       size="sm" 
                       className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25"
                     >
                       <UserPlus className="w-4 h-4 mr-1.5" />
-                      New Patient
+                      Open Patients
                     </Button>
                   </Link>
-                  <Link href="/provider/visits?action=new">
+                  <Link href={toProviderPortalPath('/visits', { pathname, user })}>
                     <Button 
                       size="sm" 
                       variant="outline"
                       className="border-purple-500 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950"
                     >
                       <FileText className="w-4 h-4 mr-1.5" />
-                      Quick Note
+                      Visit Notes
                     </Button>
                   </Link>
                   <Button 
@@ -365,20 +473,20 @@ export default function DashboardLayout({
                       />
                       <div className="absolute right-0 mt-2 w-48 bg-popover rounded-xl shadow-lg border border-border py-2 z-50">
                         <Link
-                          href="/provider/patients?action=new"
+                          href={toProviderPortalPath('/patients', { pathname, user })}
                           className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent"
                           onClick={() => setQuickActionsOpen(false)}
                         >
                           <UserPlus className="w-4 h-4 text-emerald-500" />
-                          New Patient
+                          Open Patients
                         </Link>
                         <Link
-                          href="/provider/visits?action=new"
+                          href={toProviderPortalPath('/visits', { pathname, user })}
                           className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent"
                           onClick={() => setQuickActionsOpen(false)}
                         >
                           <FileText className="w-4 h-4 text-purple-500" />
-                          Quick Note
+                          Visit Notes
                         </Link>
                         <button
                           onClick={() => {
@@ -397,11 +505,11 @@ export default function DashboardLayout({
               </div>
             )}
 
-            <LanguageToggle className="hidden md:flex" />
-            <ThemeToggle />
+            <LanguageToggle className="hidden xl:flex" />
+            <ThemeToggle className="hidden sm:inline-flex" />
             
             {/* Notifications */}
-            <Link href={`/${getRoleRoute(user?.role)}/notifications`}>
+            <Link href={getPortalHref('/notifications')}>
               <Button variant="ghost" size="icon" className="relative">
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
@@ -413,21 +521,21 @@ export default function DashboardLayout({
             </Link>
 
             {/* Settings */}
-            <Link href={`/${getRoleRoute(user?.role)}/settings`}>
+            <Link href={getPortalHref('/settings')} className="hidden sm:block">
               <Button variant="ghost" size="icon">
                 <Settings className="w-5 h-5" />
               </Button>
             </Link>
 
             {/* User menu */}
-            <div className="relative">
+            <div className="relative hidden sm:block">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent transition-colors"
               >
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center">
                   <span className="text-white text-sm font-medium">
-                    {user?.firstName?.[0]}{user?.lastName?.[0]}
+                    {userInitials}
                   </span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-muted-foreground" />
@@ -447,7 +555,7 @@ export default function DashboardLayout({
                       <p className="text-sm text-muted-foreground">{user?.email}</p>
                     </div>
                     <Link
-                      href={`/${getRoleRoute(user?.role)}/profile`}
+                      href={getPortalHref('/profile')}
                       className="flex items-center gap-3 px-4 py-2 text-sm text-foreground/90 hover:bg-accent"
                       onClick={() => setUserMenuOpen(false)}
                     >
@@ -455,7 +563,7 @@ export default function DashboardLayout({
                       Profile
                     </Link>
                     <Link
-                      href={`/${getRoleRoute(user?.role)}/settings`}
+                      href={getPortalHref('/settings')}
                       className="flex items-center gap-3 px-4 py-2 text-sm text-foreground/90 hover:bg-accent"
                       onClick={() => setUserMenuOpen(false)}
                     >
@@ -476,12 +584,46 @@ export default function DashboardLayout({
               )}
             </div>
           </div>
+          </div>
         </header>
 
         {/* Page content */}
-        <main className="p-4 lg:p-8">
+        <main className="app-mobile-content-pad p-4 pt-5 lg:p-8 lg:pb-8">
           {children}
         </main>
+
+        {mobileNavigation.length > 0 ? (
+          <nav className="app-mobile-dock lg:hidden" aria-label={`${portalName} quick navigation`}>
+            {mobileNavigation.map((item) => (
+              <div key={item.href} className="app-mobile-dock__item">
+                <Link
+                  href={item.href}
+                  className="app-mobile-dock__link"
+                  data-active={isActivePath(pathname, item.href)}
+                >
+                  <span className="app-mobile-dock__icon">
+                    <item.icon className="h-5 w-5" />
+                  </span>
+                  <span className="app-mobile-dock__label">{getMobileLabel(item.name)}</span>
+                </Link>
+              </div>
+            ))}
+            <div className="app-mobile-dock__item">
+              <button
+                type="button"
+                className="app-mobile-dock__link"
+                data-active={sidebarOpen}
+                onClick={() => setSidebarOpen(true)}
+                aria-label={`Open ${portalName.toLowerCase()} menu`}
+              >
+                <span className="app-mobile-dock__icon">
+                  <Menu className="h-5 w-5" />
+                </span>
+                <span className="app-mobile-dock__label">Menu</span>
+              </button>
+            </div>
+          </nav>
+        ) : null}
       </div>
     </div>
   );

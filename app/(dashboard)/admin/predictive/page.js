@@ -95,7 +95,7 @@ export default function PredictiveEnginePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="min-h-screen contrast-dark bg-gray-950 flex items-center justify-center">
         <div className="text-center">
           <Brain className="w-16 h-16 text-purple-400 animate-pulse mx-auto mb-4" />
           <p className="text-gray-400 text-lg">Loading Predictive Intelligence Engine...</p>
@@ -105,7 +105,7 @@ export default function PredictiveEnginePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen contrast-dark bg-gray-950 text-gray-100">
       {/* Header */}
       <div className="bg-gray-900 border-b border-gray-800 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -249,7 +249,7 @@ export default function PredictiveEnginePage() {
                         <span className={`px-2 py-0.5 rounded text-xs ${
                           model.status === 'production' ? 'bg-green-900/50 text-green-300' :
                           model.status === 'staging' ? 'bg-yellow-900/50 text-yellow-300' :
-                          'bg-gray-800 text-gray-400'}`}>{model.status}</span>
+                          'ui-dark-chip'}`}>{model.status}</span>
                         {expandedModel === model.id ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
                       </div>
                     </div>

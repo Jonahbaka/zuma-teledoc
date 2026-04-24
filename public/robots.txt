@@ -1,30 +1,10 @@
-# DoctaRx Robots.txt
-# https://doctarx.com
-
-# Allow major search engine crawlers
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Slurp
-Allow: /
-
-User-agent: DuckDuckBot
-Allow: /
-
-User-agent: Baiduspider
-Allow: /
-
-User-agent: YandexBot
-Allow: /
-
-# Default rule for all other bots
 User-agent: *
 Allow: /
-
-# Block authenticated and internal routes
+Allow: /ng
+Allow: /ng/provider/register
+Allow: /ng/pharmacy/onboarding
+Allow: /ng/patient/search
+Allow: /ng/patient/track
 Disallow: /api/
 Disallow: /admin/
 Disallow: /patient/dashboard/
@@ -58,12 +38,52 @@ Disallow: /provider/notifications/
 Disallow: /provider/profile/
 Disallow: /provider/credentialing/
 Disallow: /provider/settings/
+Disallow: /ng/admin/
+Disallow: /ng/auth/
+Disallow: /ng/patient/appointments/
+Disallow: /ng/patient/call/
+Disallow: /ng/patient/messages/
+Disallow: /ng/patient/notifications/
+Disallow: /ng/patient/orders/
+Disallow: /ng/patient/prescriptions/
+Disallow: /ng/patient/profile/
+Disallow: /ng/patient/records/
+Disallow: /ng/patient/settings/
+Disallow: /ng/provider/analytics/
+Disallow: /ng/provider/appointments/
+Disallow: /ng/provider/call/
+Disallow: /ng/provider/claims/
+Disallow: /ng/provider/credentialing/
+Disallow: /ng/provider/dashboard/
+Disallow: /ng/provider/encounters/
+Disallow: /ng/provider/hospital-network/
+Disallow: /ng/provider/imaging/
+Disallow: /ng/provider/login/
+Disallow: /ng/provider/messages/
+Disallow: /ng/provider/notifications/
+Disallow: /ng/provider/patients/
+Disallow: /ng/provider/prescriptions/
+Disallow: /ng/provider/profile/
+Disallow: /ng/provider/referrals/
+Disallow: /ng/provider/schedule/
+Disallow: /ng/provider/settings/
+Disallow: /ng/provider/triage/
+Disallow: /ng/provider/triage-queue/
+Disallow: /ng/provider/visits/
+Disallow: /ng/pharmacy/dashboard/
+Disallow: /ng/pharmacy/inventory/
+Disallow: /ng/pharmacy/login/
+Disallow: /ng/pharmacy/notifications/
+Disallow: /ng/pharmacy/orders/
+Disallow: /ng/pharmacy/profile/
+Disallow: /ng/pharmacy/register/
+Disallow: /ng/pharmacy/settings/
+Disallow: /ng/pharmacy/wallet/
 Disallow: /secure/admin
 Disallow: /_next/
 Disallow: /test-payment/
 Disallow: /forgot-password/
 Disallow: /reset-password/
 Disallow: /verify-email/
-
-# Sitemap
 Sitemap: https://doctarx.com/sitemap.xml
+Host: https://doctarx.com

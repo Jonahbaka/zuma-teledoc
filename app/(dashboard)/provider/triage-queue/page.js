@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   BrainCircuit, AlertTriangle, Clock, User, Stethoscope, Activity,
   Loader2, RefreshCw, CheckCircle, Play, Pause, ArrowRight,
@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/components/ui/use-toast';
 import { formatRelativeTime } from '@/lib/utils';
+import { toProviderPortalPath } from '@/lib/providerPortal';
 
 // Triage level colors and info
 const TRIAGE_LEVELS = {
@@ -27,6 +28,7 @@ const TRIAGE_LEVELS = {
 
 export default function TriageQueuePage() {
   const router = useRouter();
+  const pathname = usePathname();
   
   // Queue state
   const [queue, setQueue] = useState([]);
@@ -629,7 +631,7 @@ export default function TriageQueuePage() {
                   <Button
                     variant="outline"
                     className="w-full"
-                    onClick={() => router.push(`/provider/appointments/book?patientId=${selectedCase.patientId}`)}
+                    onClick={() => router.push(toProviderPortalPath(`/patients/${selectedCase.patientId}`, { pathname }))}
                   >
                     <Calendar className="w-4 h-4 mr-2" />
                     Book Appointment
@@ -638,7 +640,7 @@ export default function TriageQueuePage() {
                   <Button
                     variant="outline"
                     className="w-full"
-                    onClick={() => router.push(`/provider/prescriptions?patientId=${selectedCase.patientId}`)}
+                    onClick={() => router.push(toProviderPortalPath(`/prescriptions?patientId=${selectedCase.patientId}`, { pathname }))}
                   >
                     <Pill className="w-4 h-4 mr-2" />
                     Write Prescription

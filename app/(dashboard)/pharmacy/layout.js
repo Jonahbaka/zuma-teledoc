@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, Pill, Package, ClipboardList,
-  Settings, LogOut, Menu, X, Bell, ChevronDown
+  Settings, LogOut, Menu, X, Bell
 } from 'lucide-react';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/pharmacy/dashboard', icon: LayoutDashboard },
@@ -20,10 +21,45 @@ const NAV_ITEMS = [
 
 export default function PharmacyLayout({ children }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, loading, isAuthenticated, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const activeItem = NAV_ITEMS.find((item) => pathname === item.href || pathname?.startsWith(item.href + '/')) || NAV_ITEMS[0];
+
+  const handleLogout = async () => {
+    await logout();
+  };
+
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      router.push('/pharmacy/login');
+      return;
+    }
+
+    if (!loading && isAuthenticated && user?.role !== 'pharmacy') {
+      if (user?.role === 'admin' || user?.role === 'super_admin') {
+        router.push('/admin/dashboard');
+        return;
+      }
+
+      router.push(`/${user?.role || 'patient'}/dashboard`);
+    }
+  }, [isAuthenticated, loading, router, user]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || user?.role !== 'pharmacy') {
+    return null;
+  }
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="app-shell-root flex min-h-[100dvh] overflow-x-clip bg-background">
       {/* Sidebar — desktop */}
       <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-card border-r border-border">
         <div className="p-6 border-b border-border">
@@ -53,18 +89,22 @@ export default function PharmacyLayout({ children }) {
         </nav>
 
         <div className="p-4 border-t border-border">
-          <Link href="/" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+          >
             <LogOut size={18} />
             Sign Out
-          </Link>
+          </button>
         </div>
       </aside>
 
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
-          <div className="absolute left-0 top-0 bottom-0 w-72 bg-card border-r border-border flex flex-col animate-in slide-in-from-left">
+          <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
+          <div className="app-safe-top absolute bottom-0 left-0 top-0 flex w-72 max-w-[86vw] flex-col border-r border-border bg-card/95 backdrop-blur-2xl animate-in slide-in-from-left">
             <div className="p-6 border-b border-border flex items-center justify-between">
               <Link href="/pharmacy/dashboard">
                 <span className="rounded-xl bg-slate-950/95 px-3 py-2 shadow-sm border border-slate-800">
@@ -85,38 +125,96 @@ export default function PharmacyLayout({ children }) {
                 </Link>
               ))}
             </nav>
+            <div className="border-t border-border p-4">
+              <button
+                type="button"
+                onClick={async () => {
+                  setSidebarOpen(false);
+                  await handleLogout();
+                }}
+                className="flex w-full items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+              >
+                <LogOut size={18} />
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex min-h-[100dvh] flex-col">
         {/* Top bar */}
-        <header className="h-16 border-b border-border bg-card/50 backdrop-blur-xl flex items-center justify-between px-6 sticky top-0 z-40">
-          <div className="flex items-center gap-4">
-            <button className="lg:hidden p-2 hover:bg-accent rounded-lg" onClick={() => setSidebarOpen(true)}>
-              <Menu size={20} />
-            </button>
-            <h1 className="text-lg font-bold text-foreground hidden sm:block">Pharmacy Dashboard</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <button className="relative p-2 hover:bg-accent rounded-lg">
-              <Bell size={20} className="text-muted-foreground" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-purple-500 rounded-full" />
-            </button>
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent border border-border">
-              <div className="w-8 h-8 bg-purple-500/10 rounded-full flex items-center justify-center">
-                <Pill size={16} className="text-purple-500" />
+        <header className="sticky top-0 z-40 border-b border-border/70 bg-background/88 backdrop-blur-2xl">
+          <div className="flex min-h-[4.5rem] items-center justify-between gap-3 px-4 py-3 sm:px-6 [padding-top:calc(0.75rem+env(safe-area-inset-top,0px))]">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                className="lg:hidden rounded-2xl border border-border/70 bg-card/80 p-2.5 hover:bg-accent"
+                onClick={() => setSidebarOpen(true)}
+                aria-label="Open pharmacy navigation"
+              >
+                <Menu size={20} />
+              </button>
+              <div className="min-w-0 lg:hidden">
+                <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                  Pharmacy Portal
+                </div>
+                <div className="truncate text-sm font-semibold text-foreground sm:text-base">
+                  {activeItem?.label || 'Dashboard'}
+                </div>
               </div>
-              <span className="text-sm font-medium text-foreground hidden sm:block">My Pharmacy</span>
+              <h1 className="hidden text-lg font-bold text-foreground lg:block">Pharmacy Dashboard</h1>
+            </div>
+            <div className="flex items-center gap-3">
+              <button className="relative rounded-xl p-2 hover:bg-accent">
+                <Bell size={20} className="text-muted-foreground" />
+                <span className="absolute top-1 right-1 w-2 h-2 bg-purple-500 rounded-full" />
+              </button>
+              <div className="flex items-center gap-2 rounded-2xl border border-border bg-accent px-3 py-1.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/10">
+                  <Pill size={16} className="text-purple-500" />
+                </div>
+                <span className="hidden text-sm font-medium text-foreground sm:block">My Pharmacy</span>
+              </div>
             </div>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
+        <main className="app-mobile-content-pad flex-1 overflow-auto p-4 pt-5 md:p-6 lg:p-8 lg:pb-8">
           {children}
         </main>
+
+        <nav className="app-mobile-dock lg:hidden" aria-label="Pharmacy quick navigation">
+          {NAV_ITEMS.slice(0, 4).map((item) => {
+            const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
+
+            return (
+              <div key={item.href} className="app-mobile-dock__item">
+                <Link href={item.href} className="app-mobile-dock__link" data-active={isActive}>
+                  <span className="app-mobile-dock__icon">
+                    <item.icon size={18} />
+                  </span>
+                  <span className="app-mobile-dock__label">{item.label}</span>
+                </Link>
+              </div>
+            );
+          })}
+          <div className="app-mobile-dock__item">
+            <button
+              type="button"
+              className="app-mobile-dock__link"
+              data-active={sidebarOpen}
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open pharmacy menu"
+            >
+              <span className="app-mobile-dock__icon">
+                <Menu size={18} />
+              </span>
+              <span className="app-mobile-dock__label">Menu</span>
+            </button>
+          </div>
+        </nav>
       </div>
     </div>
   );

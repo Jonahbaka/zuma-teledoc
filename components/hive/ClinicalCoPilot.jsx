@@ -98,7 +98,7 @@ export default function ClinicalCoPilot({ appointmentId, patientId, patientName,
   }
 
   return (
-    <div className="bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden flex flex-col h-full max-h-[600px]">
+    <div className="contrast-dark bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden flex flex-col h-full max-h-[600px]">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-emerald-900/40 to-teal-900/30 border-b border-gray-800">
         <div className="flex items-center gap-2.5">
@@ -113,7 +113,7 @@ export default function ClinicalCoPilot({ appointmentId, patientId, patientName,
         <div className="flex items-center gap-2">
           <button
             onClick={() => setListening(!listening)}
-            className={cn('p-1.5 rounded-lg transition-colors', listening ? 'bg-red-500/20 text-red-400' : 'bg-gray-800 text-gray-400 hover:text-white')}
+            className={cn('p-1.5 rounded-lg transition-colors', listening ? 'bg-red-500/20 text-red-400' : 'ui-dark-chip-action')}
             title={listening ? 'Stop listening' : 'Start live scribing'}
           >
             {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
@@ -198,7 +198,7 @@ export default function ClinicalCoPilot({ appointmentId, patientId, patientName,
               >
                 Copy
               </button>
-              <button onClick={() => setSoapDraft(null)} className="text-[10px] px-2 py-1 rounded bg-gray-800 text-gray-400 hover:bg-gray-700">
+              <button onClick={() => setSoapDraft(null)} className="ui-dark-chip-action text-[10px] px-2 py-1 rounded">
                 Dismiss
               </button>
             </div>
@@ -227,7 +227,7 @@ export default function ClinicalCoPilot({ appointmentId, patientId, patientName,
 
       <div className="px-3 pb-1.5 flex items-center gap-1.5">
         <Shield className="w-2.5 h-2.5 text-green-500" />
-        <p className="text-[9px] text-gray-600">Provider-only. HIPAA sandbox. NemoClaw OpenShell isolated. Not a substitute for clinical judgment.</p>
+        <p className="text-[9px] text-gray-600">Provider-only. Access controlled. Audited. Not a substitute for clinical judgment.</p>
       </div>
     </div>
   );
