@@ -3,7 +3,9 @@ import {
   Building2,
   Calendar,
   ClipboardList,
+  CreditCard,
   FileText,
+  Flag,
   LayoutDashboard,
   MessageSquare,
   Package,
@@ -11,7 +13,9 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Stethoscope,
   User,
+  Users,
   Wallet,
 } from 'lucide-react';
 
@@ -36,8 +40,13 @@ export const nigeriaPharmacyNavigation = [
 
 export const nigeriaAdminNavigation = [
   { name: 'Dashboard', href: '/ng/admin', icon: LayoutDashboard },
-  { name: 'Pharmacies', href: '/ng/admin/pharmacies', icon: Building2 },
+  { name: 'Providers', href: '/ng/admin/providers', icon: Stethoscope },
+  { name: 'Hospitals', href: '/ng/admin/hospitals', icon: Building2 },
+  { name: 'Pharmacies', href: '/ng/admin/pharmacies', icon: Pill },
+  { name: 'Organisations', href: '/ng/admin/organizations', icon: Users },
+  { name: 'Subscriptions', href: '/ng/admin/subscriptions', icon: CreditCard },
+  { name: 'Revenue', href: '/ng/admin/revenue', icon: Wallet },
   { name: 'Analytics', href: '/ng/admin/analytics', icon: BarChart3 },
   { name: 'Compliance', href: '/ng/admin/compliance', icon: ShieldCheck },
-  { name: 'Revenue', href: '/ng/admin/revenue', icon: Wallet },
+  { name: 'Feature Flags', href: '/ng/admin/features', icon: Flag },
 ];
