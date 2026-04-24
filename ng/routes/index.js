@@ -12,6 +12,10 @@ const pharmacyRoutes = require('./pharmacy');
 const patientRoutes = require('./patient');
 const adminRoutes = require('./admin');
 const webhookRoutes = require('./webhooks');
+const providerRoutes = require('./provider');
+const organizationRoutes = require('./organization');
+const hospitalRoutes = require('./hospital');
+const subscriptionRoutes = require('./subscriptions');
 
 // Health check for NG region
 router.get('/health', (req, res) => {
@@ -26,6 +30,12 @@ router.get('/health', (req, res) => {
       payments: { paystack: true, flutterwave: true },
       delivery: true,
       compliance: { pcn: true, ndpa: true, nafdac: true },
+      providers: true,
+      organizations: true,
+      hospitals: true,
+      subscriptions: true,
+      digitalPrescriptions: true,
+      appointments: true,
     },
   });
 });
@@ -64,5 +74,23 @@ router.use('/pharmacy', authenticate, pharmacyRoutes);
 router.use('/patient', authenticate, patientRoutes);
 router.use('/admin', authenticate, requireAdmin, adminRoutes);
 router.use('/webhooks', webhookRoutes); // No auth — signature verified per endpoint
+router.use('/providers', providerRoutes);          // public listing + protected profile
+router.use('/organizations', organizationRoutes);  // registration public; management protected
+router.use('/hospitals', hospitalRoutes);           // registration public; management protected
+router.use('/subscriptions', subscriptionRoutes);  // plan listing public; management protected
+
+// Feature flags endpoint
+router.get('/features', async (req, res) => {
+  try {
+    const { getPool } = require('../../server/db');
+    const pool = getPool();
+    const result = await pool.query(
+      'SELECT feature_key, display_name, status, required_plan, required_role FROM ng_feature_flags ORDER BY feature_key'
+    );
+    res.json({ flags: result.rows });
+  } catch (err) {
+    res.json({ flags: [], error: 'Feature flags unavailable' });
+  }
+});
 
 module.exports = router;
