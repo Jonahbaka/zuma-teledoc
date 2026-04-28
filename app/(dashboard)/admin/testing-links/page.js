@@ -1,17 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Link2, Copy, Plus, Trash2, RefreshCw, Clock, Users, Stethoscope, Heart,
-  ExternalLink, CheckCircle, XCircle, AlertTriangle, Eye, EyeOff, Share2,
-  Mail, Loader2, Calendar, Shield, Zap
+  CheckCircle, XCircle, AlertTriangle, Eye, Loader2, Zap, UserPlus, KeyRound
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -36,15 +34,33 @@ import { toast } from '@/components/ui/use-toast';
 import api from '@/lib/api';
 import { format, formatDistanceToNow } from 'date-fns';
 
+const DEFAULT_TEST_ACCOUNT = {
+  role: 'provider',
+  firstName: '',
+  lastName: '',
+  email: '',
+  temporaryPassword: '',
+  specialty: '',
+  country: 'USA',
+  forcePasswordChange: true,
+  bypassCredentialing: true,
+  activateTestingBypass: true,
+  testingBypassTier: 'gold',
+  testingBypassDays: 30
+};
+
 export default function TestingLinksPage() {
   const [links, setLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [creatingAccount, setCreatingAccount] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showCreateAccountDialog, setShowCreateAccountDialog] = useState(false);
   const [selectedLink, setSelectedLink] = useState(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [filterType, setFilterType] = useState('all');
   const [showActiveOnly, setShowActiveOnly] = useState(true);
+  const [newAccount, setNewAccount] = useState(DEFAULT_TEST_ACCOUNT);
 
   const [newLink, setNewLink] = useState({
     linkType: 'patient',
@@ -57,13 +73,7 @@ export default function TestingLinksPage() {
     grantTier: 'gold'
   });
 
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://doctarx.com';
-
-  useEffect(() => {
-    fetchLinks();
-  }, [filterType, showActiveOnly]);
-
-  const fetchLinks = async () => {
+  const fetchLinks = useCallback(async () => {
     try {
       setLoading(true);
       const params = {};
@@ -83,7 +93,11 @@ export default function TestingLinksPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterType, showActiveOnly]);
+
+  useEffect(() => {
+    fetchLinks();
+  }, [fetchLinks]);
 
   const createLink = async () => {
     try {
@@ -122,6 +136,30 @@ export default function TestingLinksPage() {
       });
     } finally {
       setCreating(false);
+    }
+  };
+
+  const createTestAccount = async () => {
+    try {
+      setCreatingAccount(true);
+      const res = await api.post('/admin/test-accounts', newAccount);
+
+      if (res.data.success) {
+        toast({
+          title: 'Provider Test Account Created',
+          description: 'The account will require a new password on first login',
+        });
+        setShowCreateAccountDialog(false);
+        setNewAccount({ ...DEFAULT_TEST_ACCOUNT });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.error || 'Failed to create test account',
+        variant: 'destructive'
+      });
+    } finally {
+      setCreatingAccount(false);
     }
   };
 
@@ -208,23 +246,215 @@ export default function TestingLinksPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
             <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl">
               <Zap className="w-6 h-6 text-white" />
             </div>
-            Testing Access Links
+            Testing Access
           </h1>
           <p className="text-muted-foreground mt-1">
-            Generate time-limited links for demos that bypass payment requirements
+            Create controlled test access for patient and provider QA workflows
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" onClick={fetchLinks} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
+          <Dialog
+            open={showCreateAccountDialog}
+            onOpenChange={(open) => {
+              setShowCreateAccountDialog(open);
+              if (!open) {
+                setNewAccount({ ...DEFAULT_TEST_ACCOUNT });
+              }
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <UserPlus className="w-4 h-4 mr-2" />
+                Create Test Account
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Create Test Account</DialogTitle>
+                <DialogDescription>
+                  Super-admin tool for QA accounts with first-login password creation.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Account Type</Label>
+                    <div className="flex h-10 items-center justify-between gap-3 rounded-md border bg-background px-3 text-sm">
+                      <span className="inline-flex items-center gap-2">
+                        <Stethoscope className="w-4 h-4 text-blue-500" />
+                        Provider
+                      </span>
+                      <Badge className={newAccount.bypassCredentialing ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-amber-100 text-amber-700 hover:bg-amber-100'}>
+                        {newAccount.bypassCredentialing ? 'Approved' : 'Pending'}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Operations Region</Label>
+                    <Select
+                      value={newAccount.country}
+                      onValueChange={(country) => setNewAccount({ ...newAccount, country })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="USA">United States</SelectItem>
+                        <SelectItem value="Nigeria">Nigeria</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>First Name</Label>
+                    <Input
+                      autoComplete="off"
+                      value={newAccount.firstName}
+                      onChange={(e) => setNewAccount({ ...newAccount, firstName: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Last Name</Label>
+                    <Input
+                      autoComplete="off"
+                      value={newAccount.lastName}
+                      onChange={(e) => setNewAccount({ ...newAccount, lastName: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    autoComplete="off"
+                    value={newAccount.email}
+                    onChange={(e) => setNewAccount({ ...newAccount, email: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Temporary Password</Label>
+                  <div className="relative">
+                    <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="pl-9"
+                      type="password"
+                      autoComplete="new-password"
+                      value={newAccount.temporaryPassword}
+                      onChange={(e) => setNewAccount({ ...newAccount, temporaryPassword: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                {newAccount.role === 'provider' && (
+                  <div className="space-y-2">
+                    <Label>Provider Specialty</Label>
+                    <Input
+                      placeholder="e.g., Family Medicine"
+                      autoComplete="off"
+                      value={newAccount.specialty}
+                      onChange={(e) => setNewAccount({ ...newAccount, specialty: e.target.value })}
+                    />
+                  </div>
+                )}
+
+                <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
+                  {newAccount.role === 'provider' && (
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <Label htmlFor="bypass-credentialing" className="cursor-pointer">Bypass Provider Credentialing</Label>
+                        <p className="text-xs text-muted-foreground">
+                          {newAccount.bypassCredentialing ? 'Provider status will be approved on creation.' : 'Provider status will remain pending.'}
+                        </p>
+                      </div>
+                      <Switch
+                        id="bypass-credentialing"
+                        checked={newAccount.bypassCredentialing}
+                        onCheckedChange={(bypassCredentialing) => setNewAccount({ ...newAccount, bypassCredentialing })}
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <Label className="cursor-default">Require New Password</Label>
+                      <p className="text-xs text-muted-foreground">Blocks protected provider access until changed.</p>
+                    </div>
+                    <Badge className="bg-green-100 text-green-700 hover:bg-green-100">On</Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <Label htmlFor="account-testing-bypass" className="cursor-pointer">Testing Access</Label>
+                      <p className="text-xs text-muted-foreground">Grants temporary subscription/payment bypass.</p>
+                    </div>
+                    <Switch
+                      id="account-testing-bypass"
+                      checked={newAccount.activateTestingBypass}
+                      onCheckedChange={(activateTestingBypass) => setNewAccount({ ...newAccount, activateTestingBypass })}
+                    />
+                  </div>
+                </div>
+
+                {newAccount.activateTestingBypass && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Testing Tier</Label>
+                      <Select
+                        value={newAccount.testingBypassTier}
+                        onValueChange={(testingBypassTier) => setNewAccount({ ...newAccount, testingBypassTier })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="basic">Basic</SelectItem>
+                          <SelectItem value="gold">Gold</SelectItem>
+                          <SelectItem value="platinum">Platinum</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Testing Access Days</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="365"
+                        value={newAccount.testingBypassDays}
+                        onChange={(e) => setNewAccount({
+                          ...newAccount,
+                          testingBypassDays: parseInt(e.target.value, 10) || 1
+                        })}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowCreateAccountDialog(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={createTestAccount} disabled={creatingAccount}>
+                  {creatingAccount ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
+                  Create Account
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
             <DialogTrigger asChild>
               <Button className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700">
@@ -363,12 +593,12 @@ export default function TestingLinksPage() {
           <div className="flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-amber-900 dark:text-amber-200">Testing Links Security</h3>
+              <h3 className="font-semibold text-amber-900 dark:text-amber-200">Testing Access Security</h3>
               <ul className="text-sm text-amber-800 dark:text-amber-300 mt-2 space-y-1">
-                <li>• These links bypass payment and subscription requirements</li>
-                <li>• Only share with trusted parties for demo/testing purposes</li>
-                <li>• Set appropriate expiration times and usage limits</li>
-                <li>• Monitor link activations and revoke if misused</li>
+                <li>- Testing links bypass payment and subscription requirements</li>
+                <li>- Provider test accounts are created as approved providers</li>
+                <li>- Temporary passwords must be changed on first login</li>
+                <li>- Monitor and revoke testing access when it is no longer needed</li>
               </ul>
             </div>
           </div>

@@ -50,6 +50,17 @@ const roleAliasMap = {
 };
 const canonicalRole = (role) => roleAliasMap[normalizeRole(role)] || normalizeRole(role);
 
+const PASSWORD_CHANGE_ALLOWED_PATHS = new Set([
+  '/api/auth/me',
+  '/api/auth/logout',
+  '/api/auth/password/change'
+]);
+
+function isPasswordChangeAllowedRequest(req) {
+  const path = String(req.originalUrl || '').split('?')[0].replace(/\/+$/, '');
+  return PASSWORD_CHANGE_ALLOWED_PATHS.has(path);
+}
+
 /**
  * Verify JWT access token
  */
@@ -79,7 +90,7 @@ const authenticate = async (req, res, next) => {
     // Get user from database
     const { rows } = await db.query(
       `SELECT id, email, role, first_name, last_name, is_active, mfa_enabled, provider_status, access_level,
-              testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
+              must_change_password, testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
        FROM users WHERE id = $1`,
       [decoded.userId]
     );
@@ -101,8 +112,11 @@ const authenticate = async (req, res, next) => {
       });
     }
     
-    // Check provider status
-    if (user.role === 'provider' && user.provider_status !== 'approved') {
+    const isPasswordChangeAllowed = isPasswordChangeAllowedRequest(req);
+
+    // Check provider status. Pending providers may still read their session and
+    // rotate a temporary password, but protected provider APIs stay blocked.
+    if (user.role === 'provider' && user.provider_status !== 'approved' && !isPasswordChangeAllowed) {
       return res.status(403).json({
         success: false,
         error: 'Provider account pending approval'
@@ -118,9 +132,22 @@ const authenticate = async (req, res, next) => {
       lastName: user.last_name,
       mfaEnabled: user.mfa_enabled,
       providerStatus: user.provider_status,
+      mustChangePassword: user.must_change_password === true,
       accessLevel: getEffectiveAccessLevel(user),
       ...getTestingBypassPayload(user)
     };
+
+    if (
+      req.user.role === 'provider' &&
+      req.user.mustChangePassword &&
+      !isPasswordChangeAllowed
+    ) {
+      return res.status(403).json({
+        success: false,
+        error: 'Password change required before accessing provider features.',
+        code: 'PASSWORD_CHANGE_REQUIRED'
+      });
+    }
     
     next();
   } catch (error) {

@@ -4,6 +4,7 @@
  */
 
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const db = require('../db');
 const logger = require('../middleware/logger');
 const { authenticate, requireRole, requireSuperAdmin, requireMfa } = require('../middleware/auth');
@@ -13,6 +14,25 @@ const { keysToCamel, parseQueryParams, getPaginationMeta } = require('../../lib/
 const notificationService = require('../services/notifications');
 
 const router = express.Router();
+
+const TEST_ACCOUNT_ROLES = new Set(['provider']);
+const TEST_ACCOUNT_TIERS = new Set(['basic', 'gold', 'platinum']);
+const TEST_ACCOUNT_COUNTRIES = new Set(['USA', 'Nigeria']);
+const TEST_ACCOUNT_ACCESS_LEVEL_BY_TIER = {
+  basic: 'basic_monthly',
+  gold: 'gold_monthly',
+  platinum: 'platinum_monthly'
+};
+
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+const parseTestingDays = (value) => {
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed)) return 30;
+  return Math.min(Math.max(parsed, 1), 365);
+};
 
 // All admin routes require admin or super_admin role
 router.use(authenticate, requireRole('admin', 'super_admin'));
@@ -253,6 +273,228 @@ router.get('/users', async (req, res) => {
       success: false,
       error: 'Failed to get users'
     });
+  }
+});
+
+/**
+ * POST /api/admin/test-accounts
+ * Create a real test account from the admin portal.
+ *
+ * Provider test accounts can optionally bypass credentialing for trusted QA/demo
+ * workflows; otherwise they are created as pending providers.
+ */
+router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
+  let client;
+  let transactionOpen = false;
+
+  try {
+    const email = normalizeEmail(req.body.email);
+    const role = String(req.body.role || 'provider').trim().toLowerCase();
+    const firstName = String(req.body.firstName || '').trim();
+    const lastName = String(req.body.lastName || '').trim();
+    const temporaryPassword = String(req.body.temporaryPassword || '');
+    const specialty = String(req.body.specialty || '').trim() || null;
+    const requestedCountry = String(req.body.country || 'USA').trim();
+    const country = TEST_ACCOUNT_COUNTRIES.has(requestedCountry) ? requestedCountry : 'USA';
+    const forcePasswordChange = true;
+    const bypassCredentialing = req.body.bypassCredentialing !== false;
+    const testingBypassActive = req.body.activateTestingBypass !== false;
+    const testingBypassTier = TEST_ACCOUNT_TIERS.has(req.body.testingBypassTier)
+      ? req.body.testingBypassTier
+      : 'gold';
+    const testingBypassDays = parseTestingDays(req.body.testingBypassDays);
+    const testingBypassExpiresAt = testingBypassActive
+      ? new Date(Date.now() + testingBypassDays * 24 * 60 * 60 * 1000)
+      : null;
+
+    if (!TEST_ACCOUNT_ROLES.has(role)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Admin-created test accounts are currently limited to provider roles'
+      });
+    }
+
+    if (!email || !isValidEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'A valid email address is required'
+      });
+    }
+
+    if (!firstName || !lastName) {
+      return res.status(400).json({
+        success: false,
+        error: 'First name and last name are required'
+      });
+    }
+
+    if (temporaryPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        error: 'Temporary password must be at least 8 characters'
+      });
+    }
+
+    if (role === 'provider' && !specialty) {
+      return res.status(400).json({
+        success: false,
+        error: 'Specialty is required for provider test accounts'
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+
+    client = await db.getClient();
+    await client.query('BEGIN');
+    transactionOpen = true;
+
+    const { rows: existingRows } = await client.query(
+      `SELECT id, email, role
+         FROM users
+        WHERE email = $1
+        LIMIT 1`,
+      [email]
+    );
+
+    if (existingRows.length > 0) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return res.status(409).json({
+        success: false,
+        error: `An account with this email already exists as ${existingRows[0].role}`
+      });
+    }
+
+    const providerStatus = bypassCredentialing ? 'approved' : 'pending';
+    const accessLevel = testingBypassActive
+      ? TEST_ACCOUNT_ACCESS_LEVEL_BY_TIER[testingBypassTier]
+      : 'read_only';
+
+    const { rows } = await client.query(
+      `INSERT INTO users (
+         email, password_hash, role, first_name, last_name,
+         country, specialty, credentials,
+         is_active, is_verified, email_verified_at,
+         provider_status, access_level,
+         failed_login_attempts, locked_until,
+         must_change_password, password_changed_at,
+         testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier,
+         hipaa_consent_at, terms_accepted_at,
+         created_at, updated_at
+       ) VALUES (
+         $1, $2, $3, $4, $5,
+         $6, $7, $8,
+         TRUE, TRUE, NOW(),
+         $9, $10,
+         0, NULL,
+         $11, $12,
+         $13, $14, $15,
+         NOW(), NOW(),
+         NOW(), NOW()
+       )
+       RETURNING id, email, role, first_name, last_name, provider_status,
+                 is_active, is_verified, must_change_password,
+                 testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier,
+                 country, specialty`,
+      [
+        email,
+        passwordHash,
+        role,
+        firstName,
+        lastName,
+        country,
+        role === 'provider' ? specialty : null,
+        role === 'provider' ? 'MD' : null,
+        providerStatus,
+        accessLevel,
+        forcePasswordChange,
+        forcePasswordChange ? null : new Date(),
+        testingBypassActive,
+        testingBypassExpiresAt,
+        testingBypassActive ? testingBypassTier : null
+      ]
+    );
+
+    const user = rows[0];
+
+    if (testingBypassActive) {
+      await client.query(
+        `INSERT INTO subscriptions (
+           user_id, tier, status, current_period_start, current_period_end, created_at, updated_at
+         ) VALUES ($1, $2, 'active', NOW(), $3, NOW(), NOW())`,
+        [user.id, testingBypassTier, testingBypassExpiresAt]
+      );
+    }
+
+    await client.query('COMMIT');
+    transactionOpen = false;
+
+    try {
+      await createAuditLog(req, 'create', 'user', user.id, {
+        description: 'Created test account from admin portal',
+        newValues: {
+          email: user.email,
+          role: user.role,
+          providerStatus: user.provider_status,
+          bypassCredentialing,
+          country: user.country,
+          specialty: user.specialty,
+          mustChangePassword: user.must_change_password,
+          testingBypassActive: user.testing_bypass_active,
+          testingBypassTier: user.testing_bypass_tier,
+          testingBypassExpiresAt: user.testing_bypass_expires_at
+        }
+      });
+    } catch (auditError) {
+      logger.error('Failed to audit test account creation', {
+        error: auditError.message,
+        userId: user.id,
+        adminId: req.user?.id
+      });
+    }
+
+    logger.info('Admin test account created', {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      providerStatus: user.provider_status,
+      createdBy: req.user.id
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Provider test account created',
+      user: keysToCamel(user)
+    });
+  } catch (error) {
+    if (transactionOpen && client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        logger.error('Rollback failed after test account creation error', { error: rollbackError.message });
+      }
+    }
+
+    logger.error('Create test account error', {
+      error: error.message,
+      adminId: req.user?.id
+    });
+
+    if (error.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        error: 'An account with this email already exists'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create test account'
+    });
+  } finally {
+    if (client) {
+      client.release();
+    }
   }
 });
 

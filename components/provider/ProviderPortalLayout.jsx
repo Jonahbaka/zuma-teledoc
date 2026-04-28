@@ -19,10 +19,20 @@ export default function ProviderPortalLayout({ children, market = 'US' }) {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const normalizedPathname = pathname?.replace(/\/$/, '') || '';
   const providerPrefix = market === 'NG' ? '/ng/provider' : '/provider';
+  const passwordChangePath = `${providerPrefix}/create-password`;
   const theme = getProviderPortalTheme(market);
+  const isPublicProviderPath =
+    normalizedPathname === LOGIN_PATHS[market] ||
+    normalizedPathname === `${providerPrefix}/register`;
+  const isPasswordChangePath = normalizedPathname === passwordChangePath;
 
   useEffect(() => {
+    if (isPublicProviderPath) {
+      return;
+    }
+
     if (!loading && !isAuthenticated) {
       router.push(LOGIN_PATHS[market] || LOGIN_PATHS.US);
       return;
@@ -30,8 +40,35 @@ export default function ProviderPortalLayout({ children, market = 'US' }) {
 
     if (!loading && isAuthenticated && user?.role !== 'provider') {
       router.push(getPortalBasePath({ pathname, user }));
+      return;
     }
-  }, [loading, isAuthenticated, user, router, market, pathname]);
+
+    if (!loading && isAuthenticated && user?.role === 'provider') {
+      if (user.mustChangePassword && !isPasswordChangePath) {
+        router.replace(passwordChangePath);
+        return;
+      }
+
+      if (!user.mustChangePassword && isPasswordChangePath) {
+        router.replace(`${providerPrefix}/dashboard`);
+      }
+    }
+  }, [
+    loading,
+    isAuthenticated,
+    user,
+    router,
+    market,
+    pathname,
+    isPublicProviderPath,
+    isPasswordChangePath,
+    passwordChangePath,
+    providerPrefix,
+  ]);
+
+  if (isPublicProviderPath) {
+    return children;
+  }
 
   if (loading) {
     return (
@@ -43,6 +80,10 @@ export default function ProviderPortalLayout({ children, market = 'US' }) {
 
   if (!isAuthenticated || user?.role !== 'provider') {
     return null;
+  }
+
+  if (isPasswordChangePath) {
+    return children;
   }
 
   return (
