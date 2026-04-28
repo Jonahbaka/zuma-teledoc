@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 const DISMISS_KEY = 'doctarx-install-dismissed-v1';
 const DISMISS_TTL_MS = 1000 * 60 * 60 * 24 * 7;
@@ -130,10 +131,81 @@ function bindServiceWorkerLifecycle() {
   }
 }
 
+function syncInstallMetadata(pathname = '') {
+  if (typeof document === 'undefined') return;
+
+  const isNigeriaPath = pathname.startsWith('/ng');
+  const manifestHref = isNigeriaPath ? '/ng/manifest.webmanifest' : '/manifest.webmanifest';
+  const appTitle = isNigeriaPath ? 'DoctaRx Nigeria' : 'DoctaRx';
+  const themeColor = isNigeriaPath ? '#047857' : '#0f172a';
+  const manifestLinks = Array.from(document.querySelectorAll('link[rel="manifest"]'));
+  const primaryManifest = manifestLinks[0] || document.createElement('link');
+
+  primaryManifest.setAttribute('rel', 'manifest');
+  primaryManifest.setAttribute('href', manifestHref);
+  if (!primaryManifest.parentNode) {
+    document.head.appendChild(primaryManifest);
+  }
+
+  manifestLinks.slice(1).forEach((link) => link.remove());
+
+  const ensureMeta = (name, content) => {
+    let tag = document.querySelector(`meta[name="${name}"]`);
+    if (!tag) {
+      tag = document.createElement('meta');
+      tag.setAttribute('name', name);
+      document.head.appendChild(tag);
+    }
+    tag.setAttribute('content', content);
+  };
+
+  ensureMeta('application-name', appTitle);
+  ensureMeta('apple-mobile-web-app-title', appTitle);
+  ensureMeta('apple-mobile-web-app-capable', 'yes');
+  ensureMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
+  ensureMeta('mobile-web-app-capable', 'yes');
+
+  let themeTag = document.querySelector('meta[name="theme-color"]:not([media])');
+  if (!themeTag) {
+    themeTag = document.createElement('meta');
+    themeTag.setAttribute('name', 'theme-color');
+    document.head.appendChild(themeTag);
+  }
+  themeTag.setAttribute('content', themeColor);
+
+  let appleIcon = document.querySelector('link[rel="apple-touch-icon"]');
+  if (!appleIcon) {
+    appleIcon = document.createElement('link');
+    appleIcon.setAttribute('rel', 'apple-touch-icon');
+    document.head.appendChild(appleIcon);
+  }
+  appleIcon.setAttribute('href', '/apple-touch-icon.png');
+  appleIcon.setAttribute('sizes', '180x180');
+}
+
+function isIOSLikeDevice() {
+  if (typeof window === 'undefined') return false;
+
+  const { userAgent = '', platform = '', maxTouchPoints = 0 } = window.navigator;
+  return /iphone|ipad|ipod/i.test(userAgent) || (platform === 'MacIntel' && maxTouchPoints > 1);
+}
+
+function isMobileSafari() {
+  if (typeof window === 'undefined') return false;
+
+  const userAgent = window.navigator.userAgent || '';
+  return /safari/i.test(userAgent) && !/crios|fxios|edgios|chrome|chromium|android/i.test(userAgent);
+}
+
 export default function PwaBootstrap() {
+  const pathname = usePathname() || '';
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [installMode, setInstallMode] = useState('hidden');
   const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    syncInstallMetadata(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -173,11 +245,7 @@ export default function PwaBootstrap() {
       return undefined;
     }
 
-    const userAgent = window.navigator.userAgent || '';
-    const isIOS = /iphone|ipad|ipod/i.test(userAgent);
-    const isSafari = /safari/i.test(userAgent) && !/crios|fxios|edgios|android/i.test(userAgent);
-
-    if (isIOS && isSafari) {
+    if (isIOSLikeDevice() && isMobileSafari()) {
       setInstallMode('ios');
     }
 
@@ -203,10 +271,11 @@ export default function PwaBootstrap() {
   }, [isStandalone]);
 
   let description = '';
+  const appName = pathname.startsWith('/ng') ? 'DoctaRx Nigeria' : 'DoctaRx';
   if (installMode === 'ios') {
-    description = 'Add DoctaRx to your home screen from Safari so visits and dashboards launch like a native app.';
+    description = `Add ${appName} to your home screen from Safari so visits and dashboards launch like a native app.`;
   } else if (installMode === 'prompt') {
-    description = 'Install DoctaRx for faster launch, offline shell caching, and standalone mobile navigation.';
+    description = `Install ${appName} for faster launch, offline shell caching, and standalone mobile navigation.`;
   }
 
   const dismissPrompt = () => {
@@ -239,7 +308,7 @@ export default function PwaBootstrap() {
 
   return (
     <aside className="app-install-banner" aria-live="polite">
-      <div className="app-install-banner__eyebrow">Install DoctaRx</div>
+      <div className="app-install-banner__eyebrow">Install {appName}</div>
       <p className="app-install-banner__copy">{description}</p>
       <div className="app-install-banner__actions">
         {installMode === 'prompt' ? (

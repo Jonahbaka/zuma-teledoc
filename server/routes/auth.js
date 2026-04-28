@@ -357,7 +357,12 @@ const loginHandler = async (req, res) => {
               is_active, mfa_enabled, mfa_secret, failed_login_attempts,
               locked_until, provider_status, access_level, must_change_password, is_verified,
               testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
-       FROM users ${whereClause}`,
+       FROM users ${whereClause}
+       ORDER BY CASE
+         WHEN role = 'super_admin' THEN 0
+         WHEN role = 'admin' THEN 1
+         ELSE 2
+       END, created_at DESC`,
       params
     );
     

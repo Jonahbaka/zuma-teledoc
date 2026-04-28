@@ -4,12 +4,12 @@ export default function manifest() {
     short_name: 'DoctaRx',
     description:
       'DoctaRx delivers secure virtual care, prescriptions, messaging, and pharmacy coordination in a mobile-ready experience.',
-    start_url: '/?source=pwa',
-    id: '/?source=pwa',
+    start_url: '/',
+    id: '/',
     scope: '/',
     display: 'standalone',
-    display_override: ['standalone', 'minimal-ui'],
-    orientation: 'portrait',
+    display_override: ['window-controls-overlay', 'standalone', 'minimal-ui'],
+    orientation: 'any',
     background_color: '#020617',
     theme_color: '#0f172a',
     dir: 'ltr',
@@ -36,7 +36,7 @@ export default function manifest() {
         src: '/icon-512.png',
         sizes: '512x512',
         type: 'image/png',
-        purpose: 'maskable'
+        purpose: 'any maskable'
       }
     ],
     shortcuts: [
@@ -46,9 +46,24 @@ export default function manifest() {
         url: '/patient/login'
       },
       {
+        name: 'Nigeria Patient Login',
+        short_name: 'NG Patient',
+        url: '/ng/patient/login'
+      },
+      {
         name: 'Provider Login',
         short_name: 'Provider',
         url: '/provider/login'
+      },
+      {
+        name: 'Nigeria Provider Login',
+        short_name: 'NG Provider',
+        url: '/ng/provider/login'
+      },
+      {
+        name: 'Nigeria Pharmacy Login',
+        short_name: 'NG Pharmacy',
+        url: '/ng/pharmacy/login'
       },
       {
         name: 'Nigeria',

@@ -1,9 +1,11 @@
-const CACHE_NAME = 'doctarx-app-shell-v2';
+const CACHE_VERSION = '2026-04-28-pwa-v7';
+const CACHE_NAME = `doctarx-app-shell-${CACHE_VERSION}`;
 const NAVIGATION_CACHE = `${CACHE_NAME}-pages`;
 const ASSET_CACHE = `${CACHE_NAME}-assets`;
 const ICON_CACHE = `${CACHE_NAME}-icons`;
 const OFFLINE_FALLBACK = '/offline.html';
 const TRACKING_PARAMS = ['source', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+const MANIFEST_PATHS = new Set(['/manifest.webmanifest', '/ng/manifest.webmanifest']);
 const ICON_PATHS = new Set([
   '/apple-touch-icon.png',
   '/favicon.ico',
@@ -11,7 +13,7 @@ const ICON_PATHS = new Set([
   '/icon-512.png',
   '/icon.svg'
 ]);
-const INSTALL_ASSETS = [OFFLINE_FALLBACK, '/manifest.webmanifest', ...ICON_PATHS];
+const INSTALL_ASSETS = [OFFLINE_FALLBACK, ...MANIFEST_PATHS, ...ICON_PATHS];
 const PUBLIC_NAVIGATION_PATHS = new Set([
   '/',
   '/accessibility',
@@ -24,6 +26,12 @@ const PUBLIC_NAVIGATION_PATHS = new Set([
   '/login',
   '/ng',
   '/ng/auth/login',
+  '/ng/auth/register',
+  '/ng/patient/login',
+  '/ng/pharmacy/login',
+  '/ng/pharmacy/onboarding',
+  '/ng/pharmacy/register',
+  '/ng/pricing',
   '/ng/provider',
   '/ng/provider/login',
   '/ng/provider/register',
@@ -38,6 +46,26 @@ const PUBLIC_NAVIGATION_PATHS = new Set([
   '/terms'
 ]);
 const LEGACY_CACHE_PREFIXES = ['doctarx-app-shell-', 'doctarx-shell-'];
+const SENSITIVE_PATH_PREFIXES = [
+  '/api/',
+  '/socket.io',
+  '/admin/',
+  '/patient/',
+  '/provider/',
+  '/pharmacy/',
+  '/ng/admin/',
+  '/ng/patient/',
+  '/ng/provider/',
+  '/ng/pharmacy/',
+  '/appointments/',
+  '/claims/',
+  '/encounters/',
+  '/medical-records/',
+  '/messages/',
+  '/prescriptions/',
+  '/uploads/',
+  '/visits/'
+];
 
 function normalizePathname(pathname) {
   if (!pathname) return '/';
@@ -77,11 +105,16 @@ function isNextDataRequest(request, url) {
 }
 
 function shouldBypassRequest(request, url) {
+  const sensitiveNonNavigation =
+    !isNavigationRequest(request) &&
+    SENSITIVE_PATH_PREFIXES.some((prefix) => url.pathname.startsWith(prefix));
+
   return (
     request.method !== 'GET' ||
     url.origin !== self.location.origin ||
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/socket.io') ||
+    sensitiveNonNavigation ||
     url.pathname.includes('hot-update') ||
     isNextDataRequest(request, url)
   );
@@ -93,7 +126,7 @@ function isIconRequest(url) {
 
 function isStaticAssetRequest(request, url) {
   if (isIconRequest(url)) return false;
-  if (url.pathname === '/manifest.webmanifest') return true;
+  if (MANIFEST_PATHS.has(url.pathname)) return true;
 
   return (
     ['font', 'image', 'style', 'audio', 'video'].includes(request.destination) ||
@@ -116,7 +149,13 @@ function isSafeNavigationToCache(url) {
 }
 
 function isCacheableResponse(response) {
-  return response?.ok && response.type === 'basic';
+  const cacheControl = response?.headers?.get('cache-control') || '';
+  return (
+    response?.ok &&
+    response.type === 'basic' &&
+    !response.headers.has('set-cookie') &&
+    !/(?:^|,)\s*(?:no-store|private)\b/i.test(cacheControl)
+  );
 }
 
 async function warmInstallCaches() {
@@ -275,6 +314,11 @@ self.addEventListener('fetch', (event) => {
 
   if (isIconRequest(url)) {
     event.respondWith(cacheFirst(request, ICON_CACHE, url.pathname));
+    return;
+  }
+
+  if (MANIFEST_PATHS.has(url.pathname)) {
+    event.respondWith(networkFirst(request, ASSET_CACHE, { cacheKey: url.pathname }));
     return;
   }
 
