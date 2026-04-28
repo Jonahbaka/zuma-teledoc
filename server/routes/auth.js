@@ -88,13 +88,13 @@ const REFRESH_TOKEN_EXPIRES = process.env.JWT_REFRESH_EXPIRES || '7d';
  */
 const generateTokens = (userId, role) => {
   const accessToken = jwt.sign(
-    { userId, role },
+    { userId, role, jti: crypto.randomUUID() },
     ACCESS_TOKEN_SECRET,
     { expiresIn: ACCESS_TOKEN_EXPIRES }
   );
   
   const refreshToken = jwt.sign(
-    { userId, type: 'refresh' },
+    { userId, type: 'refresh', jti: crypto.randomUUID() },
     REFRESH_TOKEN_SECRET,
     { expiresIn: REFRESH_TOKEN_EXPIRES }
   );
@@ -332,10 +332,10 @@ router.post('/register', async (req, res) => {
 });
 
 /**
- * POST /api/auth/login
- * Login user
+ * Shared login handler used by the primary auth route and legacy compatibility
+ * endpoints that still submit credentials to DoctaRx.
  */
-router.post('/login', async (req, res) => {
+const loginHandler = async (req, res) => {
   try {
     const data = validate(loginSchema, req.body);
     
@@ -355,7 +355,7 @@ router.post('/login', async (req, res) => {
     const { rows } = await db.query(
       `SELECT id, email, password_hash, role, first_name, last_name,
               is_active, mfa_enabled, mfa_secret, failed_login_attempts,
-              locked_until, provider_status, access_level,
+              locked_until, provider_status, access_level, must_change_password, is_verified,
               testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
        FROM users ${whereClause}`,
       params
@@ -520,6 +520,9 @@ router.post('/login', async (req, res) => {
         firstName: user.first_name,
         lastName: user.last_name,
         mfaEnabled: user.mfa_enabled,
+        isVerified: user.is_verified,
+        providerStatus: user.provider_status,
+        mustChangePassword: user.must_change_password === true,
         accessLevel: getEffectiveAccessLevel(user),
         ...getTestingBypassPayload(user)
       },
@@ -542,7 +545,13 @@ router.post('/login', async (req, res) => {
       error: 'Login failed'
     });
   }
-});
+};
+
+/**
+ * POST /api/auth/login
+ * Login user
+ */
+router.post('/login', loginHandler);
 
 /**
  * POST /api/auth/refresh
@@ -694,6 +703,7 @@ router.get('/me', authenticate, async (req, res) => {
               u.mfa_enabled, u.is_verified, u.provider_status,
               u.license_number, u.license_state, u.specialty,
               u.credentials, u.bio, u.created_at, u.access_level,
+              u.must_change_password,
               u.testing_bypass_active, u.testing_bypass_expires_at, u.testing_bypass_tier,
               s.tier as subscription_tier, s.status as subscription_status
        FROM users u
@@ -732,6 +742,7 @@ router.get('/me', authenticate, async (req, res) => {
         mfaEnabled: user.mfa_enabled,
         isVerified: user.is_verified,
         providerStatus: user.provider_status,
+        mustChangePassword: user.must_change_password === true,
         providerInfo: user.role === 'provider' ? {
           licenseNumber: user.license_number,
           licenseState: user.license_state,
@@ -991,7 +1002,10 @@ router.post('/password/change', authenticate, async (req, res) => {
     
     // Get user
     const { rows } = await db.query(
-      'SELECT password_hash, email, role FROM users WHERE id = $1',
+      `SELECT password_hash, email, role, first_name, last_name, mfa_enabled,
+              is_verified, provider_status, access_level, must_change_password,
+              testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
+         FROM users WHERE id = $1`,
       [req.user.id]
     );
     
@@ -1036,13 +1050,21 @@ router.post('/password/change', authenticate, async (req, res) => {
     // Hash new password
     const newPasswordHash = await bcrypt.hash(data.newPassword, BCRYPT_ROUNDS);
     
+    const user = rows[0];
+    const wasRequiredPasswordChange = user.must_change_password === true;
+
     // Update password
     await db.query(
-      `UPDATE users SET password_hash = $1, password_changed_at = NOW(), updated_at = NOW() WHERE id = $2`,
+      `UPDATE users
+          SET password_hash = $1,
+              password_changed_at = NOW(),
+              must_change_password = FALSE,
+              updated_at = NOW()
+        WHERE id = $2`,
       [newPasswordHash, req.user.id]
     );
     
-    // Revoke all refresh tokens (force re-login)
+    // Revoke all existing refresh tokens after a credential rotation.
     await db.query(
       'UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1',
       [req.user.id]
@@ -1057,8 +1079,8 @@ router.post('/password/change', authenticate, async (req, res) => {
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
       description: 'Password changed successfully',
-      oldValues: { passwordChanged: true },
-      newValues: { passwordChanged: true },
+      oldValues: { passwordChanged: true, mustChangePassword: wasRequiredPasswordChange },
+      newValues: { passwordChanged: true, mustChangePassword: false },
       success: true
     });
     
@@ -1068,6 +1090,39 @@ router.post('/password/change', authenticate, async (req, res) => {
       role: rows[0].role,
       ipAddress: req.ip
     });
+
+    if (wasRequiredPasswordChange) {
+      const { accessToken, refreshToken } = generateTokens(req.user.id, user.role);
+      const tokenHash = hash(refreshToken);
+
+      await db.query(
+        `INSERT INTO refresh_tokens (user_id, token_hash, ip_address, device_info, expires_at)
+         VALUES ($1, $2, $3, $4, NOW() + INTERVAL '7 days')`,
+        [req.user.id, tokenHash, req.ip, req.get('user-agent')]
+      );
+
+      setAuthCookies(res, accessToken, refreshToken);
+
+      return res.json({
+        success: true,
+        message: 'Password changed successfully.',
+        user: {
+          id: req.user.id,
+          email: user.email,
+          role: user.role,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          mfaEnabled: user.mfa_enabled,
+          isVerified: user.is_verified,
+          providerStatus: user.provider_status,
+          mustChangePassword: false,
+          accessLevel: getEffectiveAccessLevel(user),
+          ...getTestingBypassPayload(user)
+        },
+        accessToken,
+        refreshToken
+      });
+    }
     
     res.json({
       success: true,
@@ -1228,7 +1283,12 @@ router.post('/password/reset', async (req, res) => {
     
     // Update password
     await db.query(
-      `UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE id = $2`,
+      `UPDATE users
+          SET password_hash = $1,
+              password_changed_at = NOW(),
+              must_change_password = FALSE,
+              updated_at = NOW()
+        WHERE id = $2`,
       [newPasswordHash, resetToken.user_id]
     );
     
@@ -1405,4 +1465,4 @@ router.post('/resend-verification',
 );
 
 module.exports = router;
-
+module.exports.loginHandler = loginHandler;

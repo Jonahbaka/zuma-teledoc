@@ -41,6 +41,16 @@ function getCountryAwareLoginPath(role, pathname = '') {
   }
 }
 
+function getRequiredPasswordChangePath(role, pathname = '') {
+  const isNigeriaPath = pathname.startsWith('/ng');
+
+  if (role === 'provider') {
+    return isNigeriaPath ? '/ng/provider/create-password' : '/provider/create-password';
+  }
+
+  return isNigeriaPath ? '/ng/auth/login' : '/login';
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -208,6 +218,11 @@ export function AuthProvider({ children }) {
   const getRedirectPath = (u) => {
     const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
     const role = u?.role;
+
+    if (u?.mustChangePassword) {
+      return getRequiredPasswordChangePath(role, pathname);
+    }
+
     switch (role) {
       case 'admin':
       case 'super_admin':

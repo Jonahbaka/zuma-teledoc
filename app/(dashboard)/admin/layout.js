@@ -44,7 +44,7 @@ const navigationGroups = [
     icon: FolderCog,
     items: [
       { name: 'Access URLs', href: '/admin/access-urls', icon: Link2 },
-      { name: 'System Diagnostics', href: '/admin/testing-links', icon: Zap, superAdminOnly: true },
+      { name: 'Testing Access', href: '/admin/testing-links', icon: Zap, superAdminOnly: true },
       { name: 'Settings', href: '/admin/settings', icon: Settings },
     ]
   },
