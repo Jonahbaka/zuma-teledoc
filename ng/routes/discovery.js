@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
+  createMedicationAvailabilityRequest,
   createFallbackRequest,
   getDiscoveryHome,
   getPayers,
@@ -72,6 +73,49 @@ router.get('/medicines', async (req, res) => {
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/medication-requests', async (req, res) => {
+  try {
+    const request = await createMedicationAvailabilityRequest({
+      medicineCatalogId: req.body?.medicineCatalogId || null,
+      starterCatalogId: req.body?.starterCatalogId || null,
+      medicineName: req.body?.medicineName || null,
+      genericName: req.body?.genericName || null,
+      dosageStrength: req.body?.dosageStrength || null,
+      quantity: req.body?.quantity || req.body?.quantityRequested || null,
+      requiresPrescription: req.body?.requiresPrescription,
+      prescriptionAttached: req.body?.prescriptionAttached,
+      prescriptionAttachmentUrl: req.body?.prescriptionAttachmentUrl || null,
+      prescriptionNotes: req.body?.prescriptionNotes || null,
+      fulfillmentPreference: req.body?.fulfillmentPreference || null,
+      preferredPharmacyId: req.body?.preferredPharmacyId || null,
+      contactName: req.body?.contactName || null,
+      phone: req.body?.phone || null,
+      whatsappNumber: req.body?.whatsappNumber || null,
+      email: req.body?.email || null,
+      state: req.body?.state || null,
+      city: req.body?.city || null,
+      lga: req.body?.lga || null,
+      landmark: req.body?.landmark || null,
+      locationPermissionStatus: req.body?.locationPermissionStatus || null,
+      locationLatitude: parseNumber(req.body?.locationLatitude),
+      locationLongitude: parseNumber(req.body?.locationLongitude),
+      locationAccuracy: parseNumber(req.body?.locationAccuracy),
+      notes: req.body?.notes || null,
+      sessionId: req.body?.sessionId || null,
+    });
+
+    res.status(201).json({
+      success: true,
+      request,
+      statusMessage: 'Pending partner pharmacy confirmation.',
+      availabilityMessage: 'Availability will be confirmed by partner pharmacies.',
+      pricingMessage: 'Price will be confirmed by the selected pharmacy.',
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
