@@ -83,6 +83,10 @@ class InventoryService {
 
     if (!setClauses.length) throw new Error('No fields to update');
 
+    setClauses.push("availability_verification_status = 'unverified'");
+    setClauses.push('availability_verified_at = NULL');
+    setClauses.push('availability_verified_by = NULL');
+    setClauses.push("availability_source = 'pharmacy_update_pending_admin_review'");
     setClauses.push('updated_at = NOW()');
     values.push(inventoryId, pharmacyId);
 
@@ -146,6 +150,10 @@ class InventoryService {
             cost_price = EXCLUDED.cost_price,
             selling_price = EXCLUDED.selling_price,
             expiry_date = EXCLUDED.expiry_date,
+            availability_verification_status = 'unverified',
+            availability_verified_at = NULL,
+            availability_verified_by = NULL,
+            availability_source = 'pharmacy_import_pending_admin_review',
             updated_at = NOW()`,
           [
             pharmacyId, drugId, item.quantity || 0,

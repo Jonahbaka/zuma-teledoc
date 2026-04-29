@@ -42,12 +42,15 @@ class OrderService {
          FROM ng_pharmacy_inventory i
          JOIN ng_drug_catalog d ON d.id = i.drug_id
          WHERE i.pharmacy_id = $1 AND i.drug_id = $2
-           AND i.is_available = true AND i.quantity_available >= $3`,
+           AND i.is_available = true
+           AND i.quantity_available >= $3
+           AND i.availability_verification_status = 'verified'
+           AND i.availability_verified_at IS NOT NULL`,
         [pharmacyId, item.drugId, item.quantity]
       );
 
       if (!inv.rows.length) {
-        throw new Error(`Drug ${item.drugId} not available in requested quantity`);
+        throw new Error(`Drug ${item.drugId} does not have verified pharmacy availability in the requested quantity`);
       }
 
       const invItem = inv.rows[0];

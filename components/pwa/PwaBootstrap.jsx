@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
-const DISMISS_KEY = 'doctarx-install-dismissed-v1';
+const PWA_ASSET_VERSION = '2026-04-28-pwa-v9';
+const DISMISS_KEY = 'doctarx-install-dismissed-v2';
 const DISMISS_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const SW_RUNTIME_KEY = '__doctarxPwaRuntime';
 const SW_RELOAD_PREFIX = 'doctarx-sw-reloaded:';
@@ -135,7 +136,8 @@ function syncInstallMetadata(pathname = '') {
   if (typeof document === 'undefined') return;
 
   const isNigeriaPath = pathname.startsWith('/ng');
-  const manifestHref = isNigeriaPath ? '/ng/manifest.webmanifest' : '/manifest.webmanifest';
+  const runtimeVersion = window.__doctarxPwaAssetVersion || PWA_ASSET_VERSION;
+  const manifestHref = `${isNigeriaPath ? '/ng/manifest.webmanifest' : '/manifest.webmanifest'}?v=${runtimeVersion}`;
   const appTitle = isNigeriaPath ? 'DoctaRx Nigeria' : 'DoctaRx';
   const themeColor = isNigeriaPath ? '#047857' : '#0f172a';
   const manifestLinks = Array.from(document.querySelectorAll('link[rel="manifest"]'));
@@ -179,7 +181,7 @@ function syncInstallMetadata(pathname = '') {
     appleIcon.setAttribute('rel', 'apple-touch-icon');
     document.head.appendChild(appleIcon);
   }
-  appleIcon.setAttribute('href', '/apple-touch-icon.png');
+  appleIcon.setAttribute('href', `/apple-touch-icon.png?v=${runtimeVersion}`);
   appleIcon.setAttribute('sizes', '180x180');
 }
 
@@ -199,6 +201,7 @@ function isMobileSafari() {
 
 export default function PwaBootstrap() {
   const pathname = usePathname() || '';
+  const suppressInstallPrompt = pathname === '/ng/medicines' || pathname.startsWith('/ng/medicines/');
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [installMode, setInstallMode] = useState('hidden');
   const [isStandalone, setIsStandalone] = useState(false);
@@ -240,7 +243,7 @@ export default function PwaBootstrap() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
-    if (isStandalone || wasDismissedRecently()) {
+    if (suppressInstallPrompt || isStandalone || wasDismissedRecently()) {
       setInstallMode('hidden');
       return undefined;
     }
@@ -249,8 +252,16 @@ export default function PwaBootstrap() {
       setInstallMode('ios');
     }
 
+    const syncDeferredPrompt = () => {
+      if (window.__doctarxBeforeInstallPrompt) {
+        setDeferredPrompt(window.__doctarxBeforeInstallPrompt);
+        setInstallMode('prompt');
+      }
+    };
+
     const handleBeforeInstallPrompt = (event) => {
       event.preventDefault();
+      window.__doctarxBeforeInstallPrompt = event;
       setDeferredPrompt(event);
       setInstallMode('prompt');
     };
@@ -258,17 +269,21 @@ export default function PwaBootstrap() {
     const handleInstalled = () => {
       setDeferredPrompt(null);
       setInstallMode('hidden');
+      window.__doctarxBeforeInstallPrompt = null;
       window.localStorage.removeItem(DISMISS_KEY);
     };
 
+    syncDeferredPrompt();
+    window.addEventListener('doctarx:beforeinstallprompt', syncDeferredPrompt);
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleInstalled);
 
     return () => {
+      window.removeEventListener('doctarx:beforeinstallprompt', syncDeferredPrompt);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleInstalled);
     };
-  }, [isStandalone]);
+  }, [isStandalone, suppressInstallPrompt]);
 
   let description = '';
   const appName = pathname.startsWith('/ng') ? 'DoctaRx Nigeria' : 'DoctaRx';
@@ -299,10 +314,13 @@ export default function PwaBootstrap() {
       dismissPrompt();
     } finally {
       setDeferredPrompt(null);
+      if (typeof window !== 'undefined') {
+        window.__doctarxBeforeInstallPrompt = null;
+      }
     }
   };
 
-  if (isStandalone || installMode === 'hidden') {
+  if (suppressInstallPrompt || isStandalone || installMode === 'hidden') {
     return null;
   }
 

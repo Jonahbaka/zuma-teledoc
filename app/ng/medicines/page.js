@@ -1,17 +1,11 @@
-import NigeriaCareDiscoveryExperience from '@/components/ng/NigeriaCareDiscoveryExperience';
+import NigeriaMedicineSearchPage from '@/components/ng/NigeriaMedicineSearchPage';
 
 export const metadata = {
-  title: 'Medicine Discovery in Nigeria | DoctaRx',
+  title: 'Find Medicine in Nigeria | DoctaRx',
   description:
-    'Discover medicines, featured categories, access logic, and nearby pharmacy follow-through in Nigeria without using generic US-only medication assumptions.',
+    'Search medicines, illnesses, or symptoms in Nigeria and request partner pharmacy confirmation for availability and price.',
 };
 
 export default function NigeriaMedicinesPage() {
-  return (
-    <NigeriaCareDiscoveryExperience
-      initialTab="pharmacy"
-      pageTitle="Medicine discovery with safer Nigeria-first access logic"
-      pageBody="Search medicines, compare safer access paths, and continue to pharmacy or provider follow-through without casually advertising prescription or restricted items."
-    />
-  );
+  return <NigeriaMedicineSearchPage />;
 }
