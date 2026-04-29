@@ -19,6 +19,7 @@ import {
 
 const UNKNOWN_AVAILABILITY_MESSAGE = 'Availability will be confirmed by partner pharmacies.';
 const UNKNOWN_PRICE_MESSAGE = 'Price will be confirmed by the selected pharmacy.';
+const MEDICINE_SEARCH_API_TIMEOUT_MS = 4500;
 
 const REQUEST_DEFAULTS = {
   medicineCatalogId: '',
@@ -71,7 +72,7 @@ function MedicineImage({ imageKey, alt, className = '', eager = false, priority 
     : { loading: eager ? 'eager' : 'lazy' };
 
   return (
-    <div className={`relative overflow-hidden bg-slate-100 ${className}`}>
+    <div className={`relative w-full max-w-full overflow-hidden bg-slate-100 ${className}`}>
       <Image
         src={image.src}
         alt={alt || image.alt}
@@ -91,11 +92,11 @@ function QuickSearchCard({ imageKey, onSelect }) {
     <button
       type="button"
       onClick={() => onSelect(searchTerm)}
-      className="group min-w-[132px] overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-slate-950 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:min-w-0"
+      className="group min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-slate-950 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
     >
       <MedicineImage imageKey={imageKey} alt={image.alt} eager className="aspect-square w-full" />
       <div className="p-3">
-        <p className="text-sm font-bold text-slate-950">{image.label}</p>
+        <p className="break-words text-sm font-bold leading-5 text-slate-950">{image.label}</p>
         <p className="mt-1 text-xs leading-5 text-slate-600">Pharmacy will confirm</p>
       </div>
     </button>
@@ -108,11 +109,11 @@ function CategoryCard({ imageKey, onSelect }) {
     <button
       type="button"
       onClick={() => onSelect(image.category || image.label)}
-      className="group overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-slate-950 shadow-sm transition hover:border-emerald-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+      className="group min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-slate-950 shadow-sm transition hover:border-emerald-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
     >
       <MedicineImage imageKey={imageKey} alt={image.alt} className="aspect-[4/3] w-full" />
       <div className="p-4">
-        <p className="text-base font-bold text-slate-950">{image.label}</p>
+        <p className="break-words text-base font-bold leading-6 text-slate-950">{image.label}</p>
         <p className="mt-2 text-sm leading-6 text-slate-700">Search this medicine category. Stock and price still require partner pharmacy confirmation.</p>
       </div>
     </button>
@@ -124,39 +125,39 @@ function MedicineResultCard({ medicine, onRequest }) {
   const commonUse = medicine.commonUses?.[0] || medicine.productLogicNote || 'Medication reference for pharmacy availability request.';
 
   return (
-    <article className="overflow-hidden rounded-3xl border border-slate-200 bg-white text-slate-950 shadow-sm">
-      <div className="grid gap-0 md:grid-cols-[180px_1fr]">
+    <article className="w-full min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white text-slate-950 shadow-sm">
+      <div className="grid min-w-0 gap-0 md:grid-cols-[minmax(150px,180px)_minmax(0,1fr)]">
         <MedicineImage imageKey={medicine.imageKey || 'hero'} alt={`${medicine.name} medicine category visual`} className="aspect-[4/3] md:h-full md:min-h-[220px]" />
-        <div className="space-y-4 p-5">
+        <div className="min-w-0 space-y-4 p-4 sm:p-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-xl font-bold text-slate-950">{medicine.name}</p>
+            <div className="min-w-0">
+              <p className="break-words text-xl font-bold leading-7 text-slate-950">{medicine.name}</p>
               {medicine.genericName && medicine.genericName !== medicine.name ? (
-                <p className="mt-1 text-sm text-slate-700">Generic name: {medicine.genericName}</p>
+                <p className="mt-1 break-words text-sm text-slate-700">Generic name: {medicine.genericName}</p>
               ) : null}
               <p className="mt-2 text-sm leading-6 text-slate-700">{commonUse}</p>
             </div>
-            <span className="w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
+            <span className="max-w-full break-words rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold leading-5 text-emerald-800 lg:w-fit">
               {medicine.category || medicine.featuredCategory || 'Medicine'}
             </span>
           </div>
 
           <div className="flex flex-wrap gap-2 text-xs font-semibold">
             {(medicine.dosageForms || String(medicine.dosageForm || '').split(',')).filter(Boolean).slice(0, 4).map((form) => (
-              <span key={form} className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">{form}</span>
+              <span key={form} className="max-w-full break-words rounded-full bg-slate-100 px-3 py-1 leading-5 text-slate-700">{form}</span>
             ))}
             {medicine.requiresPrescription || medicine.requiresReview || medicine.controlled ? (
-              <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">Prescription may be required</span>
+              <span className="max-w-full break-words rounded-full bg-amber-100 px-3 py-1 leading-5 text-amber-800">Prescription may be required</span>
             ) : (
-              <span className="rounded-full bg-blue-100 px-3 py-1 text-blue-800">Pharmacist review</span>
+              <span className="max-w-full break-words rounded-full bg-blue-100 px-3 py-1 leading-5 text-blue-800">Pharmacist review</span>
             )}
             {medicine.controlled ? (
-              <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-800">Special handling</span>
+              <span className="max-w-full break-words rounded-full bg-rose-100 px-3 py-1 leading-5 text-rose-800">Special handling</span>
             ) : null}
           </div>
 
           {medicine.strength || medicine.commonStrengths?.length ? (
-            <p className="text-sm text-slate-700">
+            <p className="break-words text-sm leading-6 text-slate-700">
               Common forms/strengths searched: {medicine.strength || medicine.commonStrengths.slice(0, 4).join(', ')}
             </p>
           ) : null}
@@ -172,7 +173,7 @@ function MedicineResultCard({ medicine, onRequest }) {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
+          <div className="break-words rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
             Source: <span className="font-semibold text-slate-950">{medicine.sourceName || medicine.sourceLabel || NIGERIA_MEDICATION_STARTER_SOURCE_LABEL}</span>.
             {' '}This is not confirmed live pharmacy stock.
           </div>
@@ -195,10 +196,10 @@ function MedicineResultCard({ medicine, onRequest }) {
 function ManualRequestForm({ form, setForm, onSubmit, onClose, submitting, statusMessage, onUseLocation }) {
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
   return (
-    <section className="rounded-3xl border border-emerald-200 bg-white text-slate-950 shadow-sm">
-      <div className="grid gap-0 lg:grid-cols-[0.85fr_1.15fr]">
-        <MedicineImage imageKey="manualRequest" className="aspect-[4/3] lg:h-full" />
-        <div className="space-y-4 p-5 sm:p-6">
+    <section className="w-full min-w-0 rounded-3xl border border-emerald-200 bg-white text-slate-950 shadow-sm">
+      <div className="grid min-w-0 gap-0 lg:grid-cols-[0.85fr_minmax(0,1.15fr)]">
+        <MedicineImage imageKey="manualRequest" className="aspect-[16/10] lg:aspect-auto lg:h-full" />
+        <div className="min-w-0 space-y-4 p-4 sm:p-6">
           <div>
             <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-700">Medicine Request</p>
             <h2 className="mt-2 text-2xl font-bold text-slate-950">Request medicine availability</h2>
@@ -211,26 +212,26 @@ function ManualRequestForm({ form, setForm, onSubmit, onClose, submitting, statu
             </div>
           ) : null}
 
-          <form className="grid gap-3 md:grid-cols-2" onSubmit={onSubmit}>
-            <input value={form.medicineName} onChange={(event) => update('medicineName', event.target.value)} required placeholder="Medicine name" className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
-            <input value={form.dosageStrength} onChange={(event) => update('dosageStrength', event.target.value)} placeholder="Dosage/strength if known" className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
-            <input value={form.quantity} onChange={(event) => update('quantity', event.target.value)} placeholder="Quantity if known" className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
-            <select value={form.fulfillmentPreference} onChange={(event) => update('fulfillmentPreference', event.target.value)} className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950">
+          <form className="grid min-w-0 gap-3 md:grid-cols-2" onSubmit={onSubmit}>
+            <input value={form.medicineName} onChange={(event) => update('medicineName', event.target.value)} required placeholder="Medicine name" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
+            <input value={form.dosageStrength} onChange={(event) => update('dosageStrength', event.target.value)} placeholder="Dosage/strength if known" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
+            <input value={form.quantity} onChange={(event) => update('quantity', event.target.value)} placeholder="Quantity if known" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
+            <select value={form.fulfillmentPreference} onChange={(event) => update('fulfillmentPreference', event.target.value)} className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950">
               <option value="pickup_or_delivery">Pickup or delivery</option>
               <option value="pickup">Pickup preferred</option>
               <option value="delivery">Delivery preferred</option>
               <option value="pharmacy_confirmation">Let pharmacy confirm options</option>
             </select>
-            <input value={form.contactName} onChange={(event) => update('contactName', event.target.value)} placeholder="Your name" className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
-            <input value={form.phone} onChange={(event) => update('phone', event.target.value)} placeholder="Phone number" type="tel" className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
-            <input value={form.whatsappNumber} onChange={(event) => update('whatsappNumber', event.target.value)} placeholder="WhatsApp number if different" type="tel" className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
-            <input value={form.email} onChange={(event) => update('email', event.target.value)} placeholder="Email optional" type="email" className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
+            <input value={form.contactName} onChange={(event) => update('contactName', event.target.value)} placeholder="Your name" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
+            <input value={form.phone} onChange={(event) => update('phone', event.target.value)} placeholder="Phone number" type="tel" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
+            <input value={form.whatsappNumber} onChange={(event) => update('whatsappNumber', event.target.value)} placeholder="WhatsApp number if different" type="tel" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
+            <input value={form.email} onChange={(event) => update('email', event.target.value)} placeholder="Email optional" type="email" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
 
             <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 md:col-span-2">
               <input type="checkbox" checked={form.prescriptionAttached} onChange={(event) => update('prescriptionAttached', event.target.checked)} className="h-4 w-4" />
               I have a prescription or prescription reference
             </label>
-            <input value={form.prescriptionAttachmentUrl} onChange={(event) => update('prescriptionAttachmentUrl', event.target.value)} placeholder="Prescription upload link or reference if available" className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500 md:col-span-2" />
+            <input value={form.prescriptionAttachmentUrl} onChange={(event) => update('prescriptionAttachmentUrl', event.target.value)} placeholder="Prescription upload link or reference if available" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500 md:col-span-2" />
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -238,7 +239,7 @@ function ManualRequestForm({ form, setForm, onSubmit, onClose, submitting, statu
                   <p className="font-bold text-slate-950">Location</p>
                   <p className="text-sm text-slate-700">Share location or enter your area manually.</p>
                 </div>
-                <Button type="button" variant="outline" onClick={onUseLocation}>
+                <Button type="button" variant="outline" onClick={onUseLocation} className="w-full sm:w-auto">
                   <MapPin className="mr-2 h-4 w-4" />
                   Use my location
                 </Button>
@@ -246,17 +247,17 @@ function ManualRequestForm({ form, setForm, onSubmit, onClose, submitting, statu
               <p className="mt-2 text-xs font-semibold text-slate-600">Location status: {statusLabel(form.locationPermissionStatus)}</p>
             </div>
 
-            <input value={form.state} onChange={(event) => update('state', event.target.value)} placeholder="State / FCT" className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
-            <input value={form.city} onChange={(event) => update('city', event.target.value)} placeholder="City / Area" className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
-            <input value={form.lga} onChange={(event) => update('lga', event.target.value)} placeholder="LGA" className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
-            <input value={form.landmark} onChange={(event) => update('landmark', event.target.value)} placeholder="Landmark" className="h-12 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
-            <textarea value={form.notes} onChange={(event) => update('notes', event.target.value)} placeholder="Notes for the pharmacy or DoctaRx care team" className="min-h-[112px] rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 placeholder:text-slate-500 md:col-span-2" />
+            <input value={form.state} onChange={(event) => update('state', event.target.value)} placeholder="State / FCT" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
+            <input value={form.city} onChange={(event) => update('city', event.target.value)} placeholder="City / Area" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
+            <input value={form.lga} onChange={(event) => update('lga', event.target.value)} placeholder="LGA" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
+            <input value={form.landmark} onChange={(event) => update('landmark', event.target.value)} placeholder="Landmark" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
+            <textarea value={form.notes} onChange={(event) => update('notes', event.target.value)} placeholder="Notes for the pharmacy or DoctaRx care team" className="min-h-[112px] min-w-0 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 placeholder:text-slate-500 md:col-span-2" />
 
-            <div className="flex flex-wrap gap-3 md:col-span-2">
-              <Button type="submit" disabled={submitting || !form.medicineName || (!form.phone && !form.email && !form.whatsappNumber)} className="h-11 bg-emerald-600 text-white hover:bg-emerald-500">
+            <div className="flex flex-col gap-3 md:col-span-2 sm:flex-row">
+              <Button type="submit" disabled={submitting || !form.medicineName || (!form.phone && !form.email && !form.whatsappNumber)} className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-500 sm:w-auto">
                 {submitting ? 'Submitting...' : 'Submit Request'}
               </Button>
-              <Button type="button" variant="outline" onClick={onClose}>Close</Button>
+              <Button type="button" variant="outline" onClick={onClose} className="h-11 w-full sm:w-auto">Close</Button>
             </div>
           </form>
         </div>
@@ -300,6 +301,7 @@ export default function NigeriaMedicineSearchPage() {
         const response = await api.get('/ng/discovery/medicines', {
           params: { q: term, limit: 16 },
           signal: controller.signal,
+          timeout: MEDICINE_SEARCH_API_TIMEOUT_MS,
         });
         setApiResults(Array.isArray(response.data?.medicines) ? response.data.medicines : []);
       } catch (error) {
@@ -376,16 +378,16 @@ export default function NigeriaMedicineSearchPage() {
   }
 
   return (
-    <main className="space-y-8 text-slate-950">
-      <section className="overflow-hidden rounded-[2rem] border border-emerald-100 bg-white shadow-sm">
-        <div className="grid lg:grid-cols-[1.08fr_0.92fr]">
-          <div className="space-y-6 p-5 sm:p-7 lg:p-9">
+    <main className="mx-auto w-full max-w-[1440px] space-y-8 overflow-x-clip px-3 py-4 text-slate-950 sm:px-5 sm:py-6 lg:px-8">
+      <section className="min-w-0 overflow-hidden rounded-[1.5rem] border border-emerald-100 bg-white shadow-sm sm:rounded-[2rem]">
+        <div className="grid min-w-0 lg:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)]">
+          <div className="min-w-0 space-y-6 p-4 sm:p-7 lg:p-9">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-emerald-800">
               <ShieldCheck className="h-4 w-4" />
               Nigeria pharmacy confirmation
             </div>
             <div>
-              <h1 className="text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">Find Medicine</h1>
+              <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-5xl">Find Medicine</h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-slate-700">
                 Search by medicine name, illness, or symptom. Partner pharmacies will confirm availability and price.
               </p>
@@ -405,7 +407,7 @@ export default function NigeriaMedicineSearchPage() {
                 onChange={(event) => setQuery(event.target.value)}
                 onFocus={() => setFocused(true)}
                 placeholder="Search medicine, illness, or symptom"
-                className="h-16 w-full rounded-3xl border border-slate-300 bg-white pl-12 pr-4 text-lg font-semibold text-slate-950 shadow-sm placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-100"
+                className="h-14 w-full rounded-2xl border border-slate-300 bg-white pl-12 pr-4 text-base font-semibold text-slate-950 shadow-sm placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-100 sm:h-16 sm:rounded-3xl sm:text-lg"
                 aria-label="Search medicine, illness, or symptom"
               />
               {focused && query.trim() && suggestions.length > 0 ? (
@@ -429,7 +431,7 @@ export default function NigeriaMedicineSearchPage() {
               ) : null}
             </form>
 
-            <p className="text-sm leading-6 text-slate-700">
+            <p className="break-words text-sm leading-6 text-slate-700">
               Try: {EXAMPLE_SEARCHES.map((item, index) => (
                 <button key={item} type="button" onClick={() => selectSearch(item)} className="font-bold text-emerald-700 hover:text-emerald-600">
                   {index > 0 ? ', ' : ''}{item}
@@ -437,33 +439,39 @@ export default function NigeriaMedicineSearchPage() {
               ))}
             </p>
 
-            <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-700">
-              <span className="rounded-full bg-slate-100 px-3 py-1">{NIGERIA_MEDICATION_STARTER_CATALOG_COUNT}+ starter catalog records</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1">No fake prices</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1">No fake stock</span>
+            <div className="flex min-w-0 flex-wrap gap-2 text-xs font-semibold text-slate-700">
+              <span className="max-w-full break-words rounded-full bg-slate-100 px-3 py-1">{NIGERIA_MEDICATION_STARTER_CATALOG_COUNT}+ starter catalog records</span>
+              <span className="max-w-full break-words rounded-full bg-slate-100 px-3 py-1">No fake prices</span>
+              <span className="max-w-full break-words rounded-full bg-slate-100 px-3 py-1">No fake stock</span>
             </div>
           </div>
-          <MedicineImage imageKey="hero" alt={MEDICINE_SEARCH_IMAGES.hero.alt} priority className="min-h-[280px] lg:min-h-full" />
+          <MedicineImage imageKey="hero" alt={MEDICINE_SEARCH_IMAGES.hero.alt} priority className="aspect-[16/10] min-h-[220px] sm:min-h-[280px] lg:aspect-auto lg:min-h-full" />
         </div>
       </section>
 
       <section className="space-y-4">
-        <div className="flex items-end justify-between gap-4">
-          <div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
             <h2 className="text-2xl font-black text-slate-950">Quick searches</h2>
             <p className="mt-1 text-sm text-slate-700">Tap a common need to search medicines and request pharmacy confirmation.</p>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+        <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3 xl:grid-cols-8">
           {QUICK_SEARCH_IMAGE_KEYS.map((key) => <QuickSearchCard key={key} imageKey={key} onSelect={selectSearch} />)}
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="space-y-4">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="text-2xl font-black text-slate-950">{hasQuery ? `Results for "${query}"` : 'Popular medicine references'}</h2>
+            <div className="min-w-0">
+              <h2 className="text-2xl font-black leading-8 text-slate-950">
+                {hasQuery ? (
+                  <>
+                    Results for <span className="break-all">&quot;{query}&quot;</span>
+                  </>
+                ) : 'Popular medicine references'}
+              </h2>
               <p className="mt-1 text-sm text-slate-700">Every result still requires pharmacy confirmation for availability and price.</p>
             </div>
             {loading ? <span className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-700"><Loader2 className="h-4 w-4 animate-spin" /> Checking</span> : null}
@@ -480,15 +488,15 @@ export default function NigeriaMedicineSearchPage() {
               {results.map((medicine) => <MedicineResultCard key={`${medicine.sourceRank}-${medicine.id}`} medicine={medicine} onRequest={openRequest} />)}
             </div>
           ) : noUsefulMatch ? (
-            <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white text-slate-950 shadow-sm">
-              <div className="grid gap-0 lg:grid-cols-[0.8fr_1.2fr]">
-                <MedicineImage imageKey="noExactMatch" className="aspect-[4/3] lg:h-full" />
-                <div className="space-y-4 p-6">
+            <section className="min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white text-slate-950 shadow-sm">
+              <div className="grid min-w-0 gap-0 lg:grid-cols-[0.8fr_minmax(0,1.2fr)]">
+                <MedicineImage imageKey="noExactMatch" className="aspect-[16/10] lg:aspect-auto lg:h-full" />
+                <div className="min-w-0 space-y-4 p-5 sm:p-6">
                   <h3 className="text-2xl font-black text-slate-950">No exact match found.</h3>
                   <p className="text-sm leading-7 text-slate-700">
                     You can still request this medicine and partner pharmacies will confirm availability.
                   </p>
-                  <Button onClick={openManualRequest} className="bg-emerald-600 text-white hover:bg-emerald-500">
+                  <Button onClick={openManualRequest} className="w-full bg-emerald-600 text-white hover:bg-emerald-500 sm:w-auto">
                     Request Medicine
                   </Button>
                 </div>
@@ -511,8 +519,8 @@ export default function NigeriaMedicineSearchPage() {
           ) : null}
         </div>
 
-        <aside className="space-y-4">
-          <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white text-slate-950 shadow-sm">
+        <aside className="min-w-0 space-y-4">
+          <section className="min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white text-slate-950 shadow-sm">
             <MedicineImage imageKey="pharmacyConfirmation" alt={MEDICINE_SEARCH_IMAGES.pharmacyConfirmation.alt} className="aspect-video" />
             <div className="space-y-3 p-5">
               <h2 className="text-xl font-black text-slate-950">How confirmation works</h2>
@@ -549,7 +557,7 @@ export default function NigeriaMedicineSearchPage() {
           <h2 className="text-2xl font-black text-slate-950">Browse categories</h2>
           <p className="mt-1 text-sm text-slate-700">Category images are visual guides only. They do not show confirmed pharmacy stock.</p>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {CATEGORY_IMAGE_KEYS.map((key) => <CategoryCard key={key} imageKey={key} onSelect={selectSearch} />)}
         </div>
       </section>

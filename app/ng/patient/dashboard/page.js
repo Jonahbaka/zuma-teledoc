@@ -90,7 +90,7 @@ export default function NgPatientDashboard() {
                   <div className="text-sm text-muted-foreground">Get 1 free consultation/month from ₦2,500/mo</div>
                 </div>
               </div>
-              <Link href="/ng/patient/subscription">
+              <Link href="/ng/pricing">
                 <Button className="bg-green-600 hover:bg-green-500 text-white shrink-0">View Plans</Button>
               </Link>
             </div>

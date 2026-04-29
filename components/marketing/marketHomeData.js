@@ -488,7 +488,7 @@ export const MARKET_HOME_DATA = {
       },
       tertiaryCta: {
         label: 'View Plans',
-        href: '/ng/provider/register',
+        href: '/ng/pricing',
       },
       trustItems: [
         { icon: Video, text: '24/7 virtual care' },
