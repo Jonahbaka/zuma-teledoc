@@ -379,7 +379,7 @@ export const MARKET_HOME_DATA = {
             { label: 'Pharmacy Portal', href: '/pharmacy/login' },
             { label: 'DoctaRx Nigeria', href: '/ng' },
             { label: 'Nigeria Provider Registration', href: '/ng/provider/register' },
-            { label: 'Contact', href: 'mailto:hello@doctarx.ng' },
+            { label: 'Contact', href: '/contact' },
           ],
         },
         {
@@ -756,7 +756,7 @@ export const MARKET_HOME_DATA = {
           links: [
             { label: 'Provider Login', href: '/ng/provider/login' },
             { label: 'Provider Registration', href: '/ng/provider/register' },
-            { label: 'Contact', href: '/contact' },
+            { label: 'Contact', href: 'mailto:hello@doctarx.ng' },
             { label: 'US Experience', href: '/' },
           ],
         },
