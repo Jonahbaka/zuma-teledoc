@@ -16,12 +16,15 @@ import {
   Stethoscope,
   User,
   Users,
+  Video,
   Wallet,
 } from 'lucide-react';
 
 export const nigeriaPatientNavigation = [
   { name: 'Dashboard', href: '/ng/patient', icon: LayoutDashboard },
+  { name: 'Book Consultation', href: '/ng/patient/appointments/book', icon: Stethoscope },
   { name: 'Appointments', href: '/ng/patient/appointments', icon: Calendar },
+  { name: 'Video Visits', href: '/ng/patient/call', icon: Video },
   { name: 'Prescriptions', href: '/ng/patient/prescriptions', icon: Pill },
   { name: 'Orders', href: '/ng/patient/orders', icon: Package },
   { name: 'Find Care', href: '/ng/patient/search', icon: Search },

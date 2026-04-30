@@ -35,7 +35,7 @@ const PORTALS = [
     desc: 'Consultations, prescriptions & records',
     links: [
       { label: 'Patient Dashboard', href: '/ng/patient/dashboard', icon: LayoutDashboard },
-      { label: 'Book Appointment', href: '/ng/patient/appointments', icon: Calendar },
+      { label: 'Book Consultation', href: '/ng/patient/appointments/book', icon: Calendar },
       { label: 'My Prescriptions', href: '/ng/patient/prescriptions', icon: FileText },
       { label: 'Search Medications', href: '/ng/patient/search', icon: Pill },
       { label: 'My Records', href: '/ng/patient/records', icon: FileText },

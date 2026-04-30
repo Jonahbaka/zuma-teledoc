@@ -213,7 +213,7 @@ export default function NgPatientSubscription() {
                   <span>Specialist: <strong className="text-foreground">₦5,000–₦15,000</strong></span>
                 </div>
               </div>
-              <Link href="/ng/patient/appointments">
+              <Link href="/ng/patient/appointments/book">
                 <Button variant="outline" className="rounded-xl">Book Now</Button>
               </Link>
             </div>

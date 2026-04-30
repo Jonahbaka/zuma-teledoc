@@ -46,7 +46,7 @@ export default function PatientBilling() {
             <p className="font-bold text-foreground text-sm">Manage Subscription</p>
             <p className="text-xs text-muted-foreground mt-0.5">Upgrade, downgrade or cancel your plan</p>
           </Link>
-          <Link href="/ng/patient/appointments" className="flex-1 bg-card border border-border rounded-2xl p-4 hover:border-green-500/30 transition-all">
+          <Link href="/ng/patient/appointments/book" className="flex-1 bg-card border border-border rounded-2xl p-4 hover:border-green-500/30 transition-all">
             <Receipt size={20} className="text-green-500 mb-2" />
             <p className="font-bold text-foreground text-sm">Pay-as-you-go</p>
             <p className="text-xs text-muted-foreground mt-0.5">Book a single consultation</p>

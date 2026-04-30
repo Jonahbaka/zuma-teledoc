@@ -30,6 +30,71 @@ const STEPS = [
   { id: 6, title: 'Confirm', icon: CheckCircle2 }
 ];
 
+const MARKET_CONFIG = {
+  US: {
+    isNigeria: false,
+    appointmentHomePath: '/patient/appointments',
+    dateLocale: 'en-US',
+    title: 'Book Appointment',
+    subtitle: "We'll match you with the right provider",
+    healthPrompt: "What brings you in today?",
+    healthHelp: "Select the category that best describes your health concern. We'll match you with the right specialist.",
+    symptomPrompt: 'Tell us more about your symptoms',
+    symptomHelp: 'This helps us prepare for your visit and match you with the right provider.',
+    schedulePrompt: 'Choose your appointment time',
+    scheduleHelp: "Choose your doctor, then pick a slot. For testing, you can also book the current minute on today's date.",
+    coverageTitle: 'Insurance Information',
+    coverageHelp: 'Provide your insurance details for billing.',
+    coverageOptional: 'This step is optional.',
+    coverageNotice: 'You can skip insurance for now and provide it later, or pay out-of-pocket. You can always add or update insurance information in your profile.',
+    providerLabel: 'Choose Doctor',
+    providerLoading: 'Loading available providers...',
+    noProviderTitle: 'We could not load the provider list.',
+    noProviderHelp: 'You can continue and we will assign the next available approved provider.',
+    confirmTitle: 'Review & Confirm',
+    confirmHelp: 'Please review your appointment details.',
+    toastTitle: 'Appointment Booked!',
+    bookingLabel: 'Appointment',
+    stepFiveTitle: 'Insurance',
+    pricing: null,
+  },
+  NG: {
+    isNigeria: true,
+    appointmentHomePath: '/ng/patient/appointments',
+    dateLocale: 'en-NG',
+    title: 'Book Consultation',
+    subtitle: 'Choose a Nigeria consultation type, provider, time, and care context',
+    healthPrompt: 'What do you need help with today?',
+    healthHelp: 'Select the health concern that best matches your symptoms. DoctaRx Nigeria will route you to an appropriate provider.',
+    symptomPrompt: 'Tell us about the illness or symptom',
+    symptomHelp: 'Use plain language. This helps the provider prepare for your consultation.',
+    schedulePrompt: 'Choose your consultation time',
+    scheduleHelp: 'Choose a provider where available, then pick a convenient Nigeria consultation slot.',
+    coverageTitle: 'Payment and Coverage',
+    coverageHelp: 'Nigeria consultation fees are shown as guidance. Final fee and any HMO or organisation coverage will be confirmed before care is completed.',
+    coverageOptional: 'This step is optional.',
+    coverageNotice: 'You can continue without entering coverage details. DoctaRx Nigeria will show the consultation request and partner/provider confirmation flow; do not upload private documents unless needed for this visit.',
+    providerLabel: 'Choose Provider',
+    providerLoading: 'Loading Nigeria providers...',
+    noProviderTitle: 'We could not load providers right now.',
+    noProviderHelp: 'You can continue and the care team will assign the next available approved provider.',
+    confirmTitle: 'Review & Request Consultation',
+    confirmHelp: 'Review your consultation request. Availability, fee, and any coverage will be confirmed by DoctaRx Nigeria.',
+    toastTitle: 'Consultation Requested!',
+    bookingLabel: 'Consultation',
+    stepFiveTitle: 'Payment',
+    pricing: {
+      title: 'Nigeria consultation pricing',
+      items: [
+        { label: 'General consultation', value: '₦2,000-₦5,000' },
+        { label: 'Specialist consultation', value: '₦5,000-₦15,000' },
+        { label: 'Follow-up review', value: '₦1,500-₦4,000' },
+      ],
+      note: 'Final fee depends on provider type, visit context, and partner confirmation. No US pricing is used here.',
+    },
+  },
+};
+
 // Health categories with icons
 const HEALTH_CATEGORIES = [
   { id: 'general', name: 'General Health', icon: Stethoscope, description: 'Routine checkups, general concerns', specialties: ['General Practice', 'Internal Medicine', 'Family Medicine'] },
@@ -196,8 +261,12 @@ function getProviderLabel(provider) {
   return `Dr. ${provider.firstName} ${provider.lastName}`;
 }
 
-export default function BookAppointmentPage() {
+export default function BookAppointmentPage({ market = 'US' }) {
   const router = useRouter();
+  const config = MARKET_CONFIG[market] || MARKET_CONFIG.US;
+  const steps = config.isNigeria
+    ? STEPS.map((step) => step.id === 5 ? { ...step, title: config.stepFiveTitle } : step)
+    : STEPS;
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -572,15 +641,15 @@ export default function BookAppointmentPage() {
         }
         
         toast({ 
-          title: 'Appointment Booked!', 
-          description: `Your appointment has been scheduled with ${appointmentResponse.data.provider?.name || getProviderLabel(selectedProvider)}` 
+          title: config.toastTitle,
+          description: `${config.bookingLabel} scheduled with ${appointmentResponse.data.provider?.name || getProviderLabel(selectedProvider)}`
         });
         
         // Small delay to ensure database is updated, then redirect
         await new Promise(resolve => setTimeout(resolve, 500));
         
         // Redirect to appointments list with refresh parameter to force reload
-        router.push(`/patient/appointments?refresh=${Date.now()}`);
+        router.push(`${config.appointmentHomePath}?refresh=${Date.now()}`);
       } else {
         const errorMsg = appointmentResponse.data?.error || 'Failed to book appointment';
         throw new Error(errorMsg);
@@ -614,7 +683,7 @@ export default function BookAppointmentPage() {
     try {
       const date = new Date(dateStr + 'T00:00:00');
       if (isNaN(date.getTime())) return 'Invalid Date';
-      return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      return date.toLocaleDateString(config.dateLocale, { weekday: 'short', month: 'short', day: 'numeric' });
     } catch (e) {
       return 'Invalid Date';
     }
@@ -636,22 +705,25 @@ export default function BookAppointmentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950">
+    <div className={config.isNigeria
+      ? 'min-h-screen bg-gradient-to-br from-background via-emerald-50/40 to-background dark:from-slate-950 dark:via-emerald-950/20 dark:to-slate-950'
+      : 'min-h-screen bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950'
+    }>
       {/* Header */}
       <div className="bg-card border-b border-border sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="bg-purple-700 dark:bg-purple-600 h-10 w-10 rounded-full flex items-center justify-center relative">
+              <div className={`${config.isNigeria ? 'bg-emerald-700 dark:bg-emerald-600' : 'bg-purple-700 dark:bg-purple-600'} h-10 w-10 rounded-full flex items-center justify-center relative`}>
                 <span className="text-white font-bold italic">D</span>
-                <div className="absolute bottom-1 right-1 w-2 h-2 bg-amber-400 rounded-full border border-purple-700 dark:border-purple-600"></div>
+                <div className={`absolute bottom-1 right-1 w-2 h-2 bg-amber-400 rounded-full border ${config.isNigeria ? 'border-emerald-700 dark:border-emerald-600' : 'border-purple-700 dark:border-purple-600'}`}></div>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">Book Appointment</h1>
-                <p className="text-sm text-muted-foreground">We'll match you with the right provider</p>
+                <h1 className="text-xl font-bold text-foreground">{config.title}</h1>
+                <p className="text-sm text-muted-foreground">{config.subtitle}</p>
               </div>
             </div>
-            <Button variant="ghost" onClick={() => router.push('/patient/appointments')}>Cancel</Button>
+            <Button variant="ghost" onClick={() => router.push(config.appointmentHomePath)}>Cancel</Button>
           </div>
         </div>
       </div>
@@ -659,20 +731,41 @@ export default function BookAppointmentPage() {
       {/* Progress Steps */}
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-8">
-          {STEPS.map((step, index) => (
+          {steps.map((step, index) => (
             <div key={step.id} className="flex items-center">
               <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${
-                currentStep >= step.id ? 'bg-purple-500 border-purple-500 text-white' : 'border-muted-foreground/30 text-muted-foreground'
+                currentStep >= step.id
+                  ? config.isNigeria ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-purple-500 border-purple-500 text-white'
+                  : 'border-muted-foreground/30 text-muted-foreground'
               }`}>
                 {currentStep > step.id ? <CheckCircle2 className="w-5 h-5" /> : <step.icon className="w-5 h-5" />}
               </div>
               <span className={`hidden sm:block ml-2 text-sm font-medium ${
                 currentStep >= step.id ? 'text-foreground' : 'text-muted-foreground'
               }`}>{step.title}</span>
-              {index < STEPS.length - 1 && <ChevronRight className="w-5 h-5 text-muted-foreground/50 mx-2" />}
+              {index < steps.length - 1 && <ChevronRight className="w-5 h-5 text-muted-foreground/50 mx-2" />}
             </div>
           ))}
         </div>
+
+        {config.pricing ? (
+          <div className="mb-6 rounded-2xl border border-emerald-200 bg-white/90 p-4 shadow-sm dark:border-emerald-900/50 dark:bg-slate-950/70">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">{config.pricing.title}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{config.pricing.note}</p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {config.pricing.items.map((item) => (
+                  <div key={item.label} className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 dark:border-emerald-900/50 dark:bg-emerald-950/30">
+                    <p className="text-[11px] text-emerald-800/80 dark:text-emerald-200/80">{item.label}</p>
+                    <p className="text-sm font-bold text-emerald-950 dark:text-emerald-100">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Step Content */}
         <div className="bg-card rounded-2xl shadow-xl border border-border overflow-hidden">
@@ -680,8 +773,8 @@ export default function BookAppointmentPage() {
           {/* Step 1: Health Issue Selection */}
           {currentStep === 1 && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-foreground mb-2">What brings you in today?</h2>
-              <p className="text-muted-foreground mb-6">Select the category that best describes your health concern. We'll match you with the right specialist.</p>
+              <h2 className="text-2xl font-bold text-foreground mb-2">{config.healthPrompt}</h2>
+              <p className="text-muted-foreground mb-6">{config.healthHelp}</p>
               
               <div className="grid md:grid-cols-3 gap-3">
                 {HEALTH_CATEGORIES.map((category) => (
@@ -690,13 +783,15 @@ export default function BookAppointmentPage() {
                     onClick={() => setSelectedCategory(category)}
                     className={`p-4 rounded-xl border-2 text-left transition-all hover:shadow-md ${
                       selectedCategory?.id === category.id
-                        ? 'border-purple-500 bg-purple-500/10 ring-2 ring-purple-500/30'
-                        : 'border-border hover:border-purple-400 dark:hover:border-purple-500'
+                        ? config.isNigeria ? 'border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/30' : 'border-purple-500 bg-purple-500/10 ring-2 ring-purple-500/30'
+                        : config.isNigeria ? 'border-border hover:border-emerald-400 dark:hover:border-emerald-500' : 'border-border hover:border-purple-400 dark:hover:border-purple-500'
                     }`}
                   >
                     <div className="flex items-start gap-3">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        selectedCategory?.id === category.id ? 'bg-purple-500 text-white' : 'bg-muted text-muted-foreground'
+                        selectedCategory?.id === category.id
+                          ? config.isNigeria ? 'bg-emerald-600 text-white' : 'bg-purple-500 text-white'
+                          : 'bg-muted text-muted-foreground'
                       }`}>
                         <category.icon className="w-5 h-5" />
                       </div>
@@ -715,22 +810,28 @@ export default function BookAppointmentPage() {
           {currentStep === 3 && (
             <div className="p-6">
               <h2 className="text-2xl font-bold text-foreground mb-2 flex items-center gap-2">
-                <Brain className="w-6 h-6 text-purple-500" />
+                <Brain className={`w-6 h-6 ${config.isNigeria ? 'text-emerald-600' : 'text-purple-500'}`} />
                 AI Symptom Analysis
               </h2>
-              <p className="text-muted-foreground mb-6">Powered by Med-Gemini. Analyzing your symptoms to help match you with the right provider.</p>
+              <p className="text-muted-foreground mb-6">
+                Analyzing your symptoms to help match you with the right provider. This does not replace clinical advice.
+              </p>
               
               {isAnalyzing ? (
                 <div className="flex flex-col items-center justify-center py-12">
-                  <Loader2 className="w-12 h-12 animate-spin text-purple-500 mb-4" />
+                  <Loader2 className={`w-12 h-12 animate-spin mb-4 ${config.isNigeria ? 'text-emerald-600' : 'text-purple-500'}`} />
                   <p className="text-muted-foreground">Analyzing your symptoms...</p>
                 </div>
               ) : triageResult ? (
                 <div className="space-y-4">
-                  <div className="p-4 bg-gradient-to-br from-purple-500/10 to-indigo-500/10 rounded-xl border border-purple-500/30">
+                  <div className={`p-4 rounded-xl border ${
+                    config.isNigeria
+                      ? 'bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border-emerald-500/30'
+                      : 'bg-gradient-to-br from-purple-500/10 to-indigo-500/10 border-purple-500/30'
+                  }`}>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-purple-500" />
+                        <Sparkles className={`w-5 h-5 ${config.isNigeria ? 'text-emerald-600' : 'text-purple-500'}`} />
                         <h3 className="font-semibold text-foreground">AI Assessment</h3>
                       </div>
                       <div className="flex items-center gap-2">
@@ -743,7 +844,11 @@ export default function BookAppointmentPage() {
                         }`}>
                           Severity: {triageResult.severity}/5
                         </span>
-                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-500/20 text-purple-700 dark:text-purple-400">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          config.isNigeria
+                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-purple-500/20 text-purple-700 dark:text-purple-400'
+                        }`}>
                           {triageResult.triageLevel}
                         </span>
                       </div>
@@ -751,7 +856,7 @@ export default function BookAppointmentPage() {
                     
                     <div className="mb-4">
                       <p className="text-sm font-medium text-muted-foreground mb-2">Recommended Specialty:</p>
-                      <p className="font-semibold text-purple-700 dark:text-purple-400">{triageResult.suggestedSpecialty}</p>
+                      <p className={`font-semibold ${config.isNigeria ? 'text-emerald-700 dark:text-emerald-300' : 'text-purple-700 dark:text-purple-400'}`}>{triageResult.suggestedSpecialty}</p>
                     </div>
                     
                     {triageResult.flags && triageResult.flags.length > 0 && (
@@ -818,8 +923,8 @@ export default function BookAppointmentPage() {
           {/* Step 2: Symptoms & Details */}
           {currentStep === 2 && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-foreground mb-2">Tell us more about your symptoms</h2>
-              <p className="text-muted-foreground mb-6">This helps us prepare for your visit and match you with the right provider.</p>
+              <h2 className="text-2xl font-bold text-foreground mb-2">{config.symptomPrompt}</h2>
+              <p className="text-muted-foreground mb-6">{config.symptomHelp}</p>
               
               <div className="space-y-6">
                 {/* Visit Type */}
@@ -835,10 +940,12 @@ export default function BookAppointmentPage() {
                         key={type.value}
                         onClick={() => setVisitType(type.value)}
                         className={`p-4 rounded-xl border-2 transition-all ${
-                          visitType === type.value ? 'border-purple-500 bg-purple-500/10' : 'border-border hover:border-purple-400'
+                          visitType === type.value
+                            ? config.isNigeria ? 'border-emerald-500 bg-emerald-500/10' : 'border-purple-500 bg-purple-500/10'
+                            : config.isNigeria ? 'border-border hover:border-emerald-400' : 'border-border hover:border-purple-400'
                         }`}
                       >
-                        <type.icon className={`w-6 h-6 mb-2 ${visitType === type.value ? 'text-purple-600 dark:text-purple-400' : 'text-muted-foreground'}`} />
+                        <type.icon className={`w-6 h-6 mb-2 ${visitType === type.value ? config.isNigeria ? 'text-emerald-600 dark:text-emerald-400' : 'text-purple-600 dark:text-purple-400' : 'text-muted-foreground'}`} />
                         <div className="font-medium text-foreground">{type.label}</div>
                         <div className="text-xs text-muted-foreground">{type.desc}</div>
                       </button>
@@ -853,8 +960,8 @@ export default function BookAppointmentPage() {
                     id="symptoms"
                     value={symptoms}
                     onChange={(e) => setSymptoms(e.target.value)}
-                    placeholder="Please describe what you're experiencing in detail..."
-                    className="w-full mt-2 p-3 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-purple-500 focus:border-purple-500 min-h-[120px]"
+                    placeholder={config.isNigeria ? 'Example: fever and body pains for 2 days, cough, headache, stomach pain...' : "Please describe what you're experiencing in detail..."}
+                    className={`w-full mt-2 p-3 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 min-h-[120px] ${config.isNigeria ? 'focus:ring-emerald-500 focus:border-emerald-500' : 'focus:ring-purple-500 focus:border-purple-500'}`}
                   />
                 </div>
                 
@@ -924,14 +1031,14 @@ export default function BookAppointmentPage() {
           {/* Step 4: Schedule */}
           {currentStep === 4 && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-foreground mb-2">Choose your appointment time</h2>
-              <p className="text-muted-foreground mb-6">Choose your doctor, then pick a slot. For testing, you can also book the current minute on today&apos;s date.</p>
+              <h2 className="text-2xl font-bold text-foreground mb-2">{config.schedulePrompt}</h2>
+              <p className="text-muted-foreground mb-6">{config.scheduleHelp}</p>
 
               <div className="mb-6 space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <Label className="text-sm font-medium text-foreground">Choose Doctor</Label>
+                  <Label className="text-sm font-medium text-foreground">{config.providerLabel}</Label>
                   {matchedProvider && (
-                    <p className="text-xs text-purple-700 dark:text-purple-300">
+                    <p className={`text-xs ${config.isNigeria ? 'text-emerald-700 dark:text-emerald-300' : 'text-purple-700 dark:text-purple-300'}`}>
                       Recommended: {getProviderLabel(matchedProvider)}
                     </p>
                   )}
@@ -941,7 +1048,7 @@ export default function BookAppointmentPage() {
                   <div className="flex h-28 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted">
                     <p className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading available providers...
+                      {config.providerLoading}
                     </p>
                   </div>
                 ) : displayProviders.length > 0 ? (
@@ -957,19 +1064,19 @@ export default function BookAppointmentPage() {
                           onClick={() => setSelectedProviderId(provider.id)}
                           className={`rounded-xl border-2 p-4 text-left transition-all ${
                             isSelected
-                              ? 'border-purple-500 bg-purple-500/10 shadow-sm'
-                              : 'border-border hover:border-purple-400 hover:bg-purple-500/5'
+                              ? config.isNigeria ? 'border-emerald-500 bg-emerald-500/10 shadow-sm' : 'border-purple-500 bg-purple-500/10 shadow-sm'
+                              : config.isNigeria ? 'border-border hover:border-emerald-400 hover:bg-emerald-500/5' : 'border-border hover:border-purple-400 hover:bg-purple-500/5'
                           }`}
                         >
                           <div className="flex items-start gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-purple-700 text-sm font-semibold text-white">
+                            <div className={`flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold text-white ${config.isNigeria ? 'bg-gradient-to-br from-emerald-500 to-teal-700' : 'bg-gradient-to-br from-purple-500 to-purple-700'}`}>
                               {provider.firstName?.[0]}{provider.lastName?.[0]}
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="font-semibold text-foreground">{getProviderLabel(provider)}</p>
                                 {isRecommended && (
-                                  <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-[11px] font-medium text-purple-700 dark:text-purple-300">
+                                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${config.isNigeria ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-purple-500/15 text-purple-700 dark:text-purple-300'}`}>
                                     Recommended
                                   </span>
                                 )}
@@ -981,7 +1088,7 @@ export default function BookAppointmentPage() {
                                 </p>
                               )}
                             </div>
-                            {isSelected && <CheckCircle2 className="mt-1 h-5 w-5 text-purple-500" />}
+                            {isSelected && <CheckCircle2 className={`mt-1 h-5 w-5 ${config.isNigeria ? 'text-emerald-500' : 'text-purple-500'}`} />}
                           </div>
                         </button>
                       );
@@ -991,9 +1098,9 @@ export default function BookAppointmentPage() {
                   <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <p className="font-medium text-amber-700 dark:text-amber-300">We could not load the provider list.</p>
+                        <p className="font-medium text-amber-700 dark:text-amber-300">{config.noProviderTitle}</p>
                         <p className="mt-1 text-sm text-amber-700/90 dark:text-amber-300/90">
-                          {providersError || 'You can continue and we will assign the next available approved provider.'}
+                          {providersError || config.noProviderHelp}
                         </p>
                       </div>
                       <Button type="button" variant="outline" onClick={loadProviders}>
@@ -1020,8 +1127,12 @@ export default function BookAppointmentPage() {
                         onClick={() => { setSelectedDate(date); setSelectedTime(null); }}
                         className={`p-3 rounded-lg border-2 text-center transition-all ${
                           selectedDate === date
-                            ? 'border-purple-500 bg-purple-500/10 text-purple-700 dark:text-purple-400'
-                            : 'border-border hover:border-purple-400'
+                            ? config.isNigeria
+                              ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                              : 'border-purple-500 bg-purple-500/10 text-purple-700 dark:text-purple-400'
+                            : config.isNigeria
+                              ? 'border-border hover:border-emerald-400'
+                              : 'border-border hover:border-purple-400'
                         }`}
                       >
                         {(() => {
@@ -1030,14 +1141,14 @@ export default function BookAppointmentPage() {
                             if (isNaN(dateObj.getTime())) return <div>Invalid</div>;
                             return (
                               <>
-                                <div className={`text-xs ${selectedDate === date ? 'text-purple-600 dark:text-purple-300' : 'text-muted-foreground'}`}>
-                                  {dateObj.toLocaleDateString('en-US', { weekday: 'short' })}
+                                <div className={`text-xs ${selectedDate === date ? config.isNigeria ? 'text-emerald-700 dark:text-emerald-300' : 'text-purple-600 dark:text-purple-300' : 'text-muted-foreground'}`}>
+                                  {dateObj.toLocaleDateString(config.dateLocale, { weekday: 'short' })}
                                 </div>
                                 <div className={`font-semibold text-lg ${selectedDate === date ? '' : 'text-foreground'}`}>
                                   {dateObj.getDate()}
                                 </div>
-                                <div className={`text-xs ${selectedDate === date ? 'text-purple-600 dark:text-purple-300' : 'text-muted-foreground'}`}>
-                                  {dateObj.toLocaleDateString('en-US', { month: 'short' })}
+                                <div className={`text-xs ${selectedDate === date ? config.isNigeria ? 'text-emerald-700 dark:text-emerald-300' : 'text-purple-600 dark:text-purple-300' : 'text-muted-foreground'}`}>
+                                  {dateObj.toLocaleDateString(config.dateLocale, { month: 'short' })}
                                 </div>
                               </>
                             );
@@ -1070,13 +1181,13 @@ export default function BookAppointmentPage() {
                                   onClick={() => setSelectedTime(slot.time)}
                                   className={`p-2 rounded-lg border-2 text-sm transition-all ${
                                     selectedTime === slot.time
-                                      ? 'border-purple-500 bg-purple-500/10 text-purple-700 dark:text-purple-400 font-medium'
-                                      : 'border-border hover:border-purple-400 text-foreground'
+                                      ? config.isNigeria ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium' : 'border-purple-500 bg-purple-500/10 text-purple-700 dark:text-purple-400 font-medium'
+                                      : config.isNigeria ? 'border-border hover:border-emerald-400 text-foreground' : 'border-border hover:border-purple-400 text-foreground'
                                   }`}
                                 >
                                   <span className="block">{formatTime(slot.time)}</span>
                                   {slot.isImmediate && (
-                                    <span className="mt-1 block text-[11px] uppercase tracking-wide text-purple-700/80 dark:text-purple-300/80">
+                                    <span className={`mt-1 block text-[11px] uppercase tracking-wide ${config.isNigeria ? 'text-emerald-700/80 dark:text-emerald-300/80' : 'text-purple-700/80 dark:text-purple-300/80'}`}>
                                       Start now
                                     </span>
                                   )}
@@ -1104,16 +1215,16 @@ export default function BookAppointmentPage() {
                   const localHour = isNaN(dt.getTime()) ? null : dt.getHours();
                   const isOddHour = localHour !== null && (localHour <= 5 || localHour >= 23);
                   return (
-                    <div className="mt-6 p-4 bg-purple-500/10 rounded-xl border border-purple-500/30">
+                    <div className={`mt-6 p-4 rounded-xl border ${config.isNigeria ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-purple-500/30 bg-purple-500/10'}`}>
                       <div className="flex items-center gap-3">
-                        <Calendar className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                        <Calendar className={`w-5 h-5 ${config.isNigeria ? 'text-emerald-600 dark:text-emerald-400' : 'text-purple-600 dark:text-purple-400'}`} />
                         <div>
-                          <p className="font-medium text-purple-700 dark:text-purple-400">{formattedDate} at {formattedTime}</p>
-                          <p className="text-sm text-purple-600 dark:text-purple-300">30 minute {visitType} consultation</p>
-                          <p className="text-sm text-purple-700/90 dark:text-purple-300/90 mt-1">
+                          <p className={`font-medium ${config.isNigeria ? 'text-emerald-700 dark:text-emerald-400' : 'text-purple-700 dark:text-purple-400'}`}>{formattedDate} at {formattedTime}</p>
+                          <p className={`text-sm ${config.isNigeria ? 'text-emerald-600 dark:text-emerald-300' : 'text-purple-600 dark:text-purple-300'}`}>30 minute {visitType} consultation</p>
+                          <p className={`text-sm mt-1 ${config.isNigeria ? 'text-emerald-700/90 dark:text-emerald-300/90' : 'text-purple-700/90 dark:text-purple-300/90'}`}>
                             Provider: {selectedProvider ? getProviderLabel(selectedProvider) : 'Next available approved provider'}
                           </p>
-                          <p className="text-xs text-purple-700/70 dark:text-purple-300/70 mt-1">Timezone: {timeZone}</p>
+                          <p className={`text-xs mt-1 ${config.isNigeria ? 'text-emerald-700/70 dark:text-emerald-300/70' : 'text-purple-700/70 dark:text-purple-300/70'}`}>Timezone: {timeZone}</p>
                           {isOddHour && (
                             <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 flex items-center gap-1">
                               <AlertTriangle className="w-3.5 h-3.5" />
@@ -1134,14 +1245,14 @@ export default function BookAppointmentPage() {
           {/* Step 5: Insurance */}
           {currentStep === 5 && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-foreground mb-2">Insurance Information</h2>
-              <p className="text-muted-foreground mb-6">Provide your insurance details for billing. <span className="font-medium text-foreground">This step is optional.</span></p>
+              <h2 className="text-2xl font-bold text-foreground mb-2">{config.coverageTitle}</h2>
+              <p className="text-muted-foreground mb-6">{config.coverageHelp} <span className="font-medium text-foreground">{config.coverageOptional}</span></p>
               
               {hasExistingInsurance && (
                 <div className="mb-6 p-4 bg-blue-500/10 rounded-xl border border-blue-500/30">
                   <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
                     <Shield className="w-5 h-5" />
-                    <span className="font-medium">We have your insurance on file</span>
+                    <span className="font-medium">{config.isNigeria ? 'We have your coverage details on file' : 'We have your insurance on file'}</span>
                   </div>
                 </div>
               )}
@@ -1151,7 +1262,7 @@ export default function BookAppointmentPage() {
                   <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p className="text-sm text-amber-700 dark:text-amber-300">
-                      <strong>Note:</strong> You can skip insurance for now and provide it later, or pay out-of-pocket. You can always add or update insurance information in your profile.
+                      <strong>Note:</strong> {config.coverageNotice}
                     </p>
                   </div>
                 </div>
@@ -1160,43 +1271,45 @@ export default function BookAppointmentPage() {
               <div className="space-y-6">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="insuranceProvider" className="text-foreground">Insurance Provider</Label>
-                    <Input {...insuranceForm.register('insuranceProvider')} placeholder="e.g., Blue Cross" className="mt-2 bg-background" />
+                    <Label htmlFor="insuranceProvider" className="text-foreground">{config.isNigeria ? 'HMO, NHIS, or Insurer' : 'Insurance Provider'}</Label>
+                    <Input {...insuranceForm.register('insuranceProvider')} placeholder={config.isNigeria ? 'e.g., NHIS, Reliance HMO, Leadway Health' : 'e.g., Blue Cross'} className="mt-2 bg-background" />
                   </div>
                   <div>
-                    <Label htmlFor="policyNumber" className="text-foreground">Policy Number</Label>
-                    <Input {...insuranceForm.register('policyNumber')} placeholder="e.g., ABC123456" className="mt-2 bg-background" />
+                    <Label htmlFor="policyNumber" className="text-foreground">{config.isNigeria ? 'Coverage or ID Number' : 'Policy Number'}</Label>
+                    <Input {...insuranceForm.register('policyNumber')} placeholder={config.isNigeria ? 'If known' : 'e.g., ABC123456'} className="mt-2 bg-background" />
                   </div>
                   <div>
-                    <Label htmlFor="groupNumber" className="text-foreground">Group Number</Label>
-                    <Input {...insuranceForm.register('groupNumber')} placeholder="e.g., GRP001" className="mt-2 bg-background" />
+                    <Label htmlFor="groupNumber" className="text-foreground">{config.isNigeria ? 'Organisation or Group' : 'Group Number'}</Label>
+                    <Input {...insuranceForm.register('groupNumber')} placeholder={config.isNigeria ? 'If this is through an employer or group' : 'e.g., GRP001'} className="mt-2 bg-background" />
                   </div>
                   <div>
-                    <Label htmlFor="subscriberName" className="text-foreground">Subscriber Name</Label>
-                    <Input {...insuranceForm.register('subscriberName')} placeholder="Name on card" className="mt-2 bg-background" />
+                    <Label htmlFor="subscriberName" className="text-foreground">{config.isNigeria ? 'Covered Person Name' : 'Subscriber Name'}</Label>
+                    <Input {...insuranceForm.register('subscriberName')} placeholder={config.isNigeria ? 'Name on coverage record, if applicable' : 'Name on card'} className="mt-2 bg-background" />
                   </div>
                 </div>
                 
                 {/* Card Upload */}
                 <div className="border-t border-border pt-6">
                   <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                    <Camera className="w-5 h-5" /> Upload Insurance Card
+                    <Camera className="w-5 h-5" /> {config.isNigeria ? 'Upload Coverage Card or Note' : 'Upload Insurance Card'}
                   </h3>
                   <div className="grid md:grid-cols-2 gap-4">
                     {[{ type: 'front', label: 'Front', state: insuranceFront, setState: setInsuranceFront },
                       { type: 'back', label: 'Back', state: insuranceBack, setState: setInsuranceBack }].map(({ type, label, state, setState }) => (
                       <div key={type}>
-                        <Label className="text-sm text-foreground">Card {label}</Label>
+                        <Label className="text-sm text-foreground">{config.isNigeria ? `Coverage document ${label.toLowerCase()}` : `Card ${label}`}</Label>
                         <div className="mt-2">
                           {state ? (
                             <div className="relative">
-                              <img src={state.preview} alt={`Insurance ${label}`} className="w-full h-32 object-cover rounded-lg border border-border" />
+                              <img src={state.preview} alt={config.isNigeria ? `Coverage document ${label.toLowerCase()}` : `Insurance ${label}`} className="w-full h-32 object-cover rounded-lg border border-border" />
                               <button onClick={() => setState(null)} className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center">
                                 <X className="w-4 h-4" />
                               </button>
                             </div>
                           ) : (
-                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-purple-400 hover:bg-purple-500/5">
+                            <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-lg cursor-pointer ${
+                              config.isNigeria ? 'hover:border-emerald-400 hover:bg-emerald-500/5' : 'hover:border-purple-400 hover:bg-purple-500/5'
+                            }`}>
                               <Upload className="w-8 h-8 text-muted-foreground" />
                               <span className="text-sm text-muted-foreground mt-2">Upload {label.toLowerCase()}</span>
                               <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, type)} className="hidden" />
@@ -1214,8 +1327,8 @@ export default function BookAppointmentPage() {
           {/* Step 6: Confirm */}
           {currentStep === 6 && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-foreground mb-2">Review & Confirm</h2>
-              <p className="text-muted-foreground mb-6">Please review your appointment details.</p>
+              <h2 className="text-2xl font-bold text-foreground mb-2">{config.confirmTitle}</h2>
+              <p className="text-muted-foreground mb-6">{config.confirmHelp}</p>
               
               <div className="space-y-4">
                 <div className="p-4 bg-muted rounded-xl">
@@ -1225,9 +1338,13 @@ export default function BookAppointmentPage() {
                 </div>
                 
                 {triageResult && (
-                  <div className="p-4 bg-gradient-to-br from-purple-500/10 to-indigo-500/10 rounded-xl border border-purple-500/30">
+                  <div className={`p-4 rounded-xl border ${
+                    config.isNigeria
+                      ? 'bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border-emerald-500/30'
+                      : 'bg-gradient-to-br from-purple-500/10 to-indigo-500/10 border-purple-500/30'
+                  }`}>
                     <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2">
-                      <Brain className="w-4 h-4 text-purple-500" /> AI Analysis
+                      <Brain className={`w-4 h-4 ${config.isNigeria ? 'text-emerald-600' : 'text-purple-500'}`} /> AI Analysis
                     </h3>
                     <div className="flex items-center gap-2 mb-2">
                       <span className={`px-2 py-1 rounded text-xs font-bold ${
@@ -1237,21 +1354,25 @@ export default function BookAppointmentPage() {
                       }`}>
                         Severity: {triageResult.severity}/5
                       </span>
-                      <span className="px-2 py-1 rounded text-xs font-bold bg-purple-500/20 text-purple-700 dark:text-purple-400">
+                      <span className={`px-2 py-1 rounded text-xs font-bold ${
+                        config.isNigeria
+                          ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-purple-500/20 text-purple-700 dark:text-purple-400'
+                      }`}>
                         {triageResult.triageLevel}
                       </span>
                     </div>
-                    <p className="text-sm font-medium text-purple-700 dark:text-purple-400">Recommended: {triageResult.suggestedSpecialty}</p>
+                    <p className={`text-sm font-medium ${config.isNigeria ? 'text-emerald-700 dark:text-emerald-300' : 'text-purple-700 dark:text-purple-400'}`}>Recommended: {triageResult.suggestedSpecialty}</p>
                     {triageResult.flags && triageResult.flags.length > 0 && (
                       <p className="text-xs text-red-700 dark:text-red-400 mt-2">
-                        ⚠️ {triageResult.flags.join(', ')}
+                        Warning: {triageResult.flags.join(', ')}
                       </p>
                     )}
                   </div>
                 )}
                 
                 <div className="p-4 bg-muted rounded-xl">
-                  <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2"><Calendar className="w-4 h-4" /> Appointment</h3>
+                  <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2"><Calendar className="w-4 h-4" /> {config.bookingLabel}</h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div><span className="text-muted-foreground">Date:</span><p className="font-medium text-foreground">{selectedDate ? formatDate(selectedDate) : 'Not selected'}</p></div>
                     <div><span className="text-muted-foreground">Time:</span><p className="font-medium text-foreground">{selectedTime ? formatTime(selectedTime) : 'Not selected'}</p></div>
@@ -1262,7 +1383,7 @@ export default function BookAppointmentPage() {
                 </div>
                 
                 <div className="p-4 bg-muted rounded-xl">
-                  <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2"><CreditCard className="w-4 h-4" /> Insurance</h3>
+                  <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2"><CreditCard className="w-4 h-4" /> {config.coverageTitle}</h3>
                   {(() => {
                     const insuranceData = insuranceForm.getValues();
                     const hasInsurance = insuranceData.insuranceProvider && 
@@ -1274,13 +1395,17 @@ export default function BookAppointmentPage() {
                         <>
                           <p className="font-medium text-foreground">{insuranceData.insuranceProvider || 'On file'}</p>
                           {insuranceData.policyNumber && (
-                            <p className="text-sm text-muted-foreground">Policy: {insuranceData.policyNumber}</p>
+                            <p className="text-sm text-muted-foreground">{config.isNigeria ? 'Coverage ID' : 'Policy'}: {insuranceData.policyNumber}</p>
                           )}
                         </>
                       );
                     }
                     return (
-                      <p className="text-muted-foreground italic">No insurance provided. You can add insurance later in your profile.</p>
+                      <p className="text-muted-foreground italic">
+                        {config.isNigeria
+                          ? 'No coverage details provided. The consultation fee or coverage will be confirmed by DoctaRx Nigeria.'
+                          : 'No insurance provided. You can add insurance later in your profile.'}
+                      </p>
                     );
                   })()}
                 </div>
@@ -1311,16 +1436,16 @@ export default function BookAppointmentPage() {
                     onClick={nextStep} 
                     className="flex items-center gap-2"
                   >
-                    Skip Insurance <ChevronRight className="w-4 h-4" />
+                    {config.isNigeria ? 'Skip Coverage' : 'Skip Insurance'} <ChevronRight className="w-4 h-4" />
                   </Button>
                 )}
-                <Button onClick={nextStep} className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white flex items-center gap-2">
+                <Button onClick={nextStep} className={`${config.isNigeria ? 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800' : 'bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800'} text-white flex items-center gap-2`}>
                   Continue <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
             ) : (
-              <Button onClick={submitBooking} disabled={isLoading} className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white flex items-center gap-2">
-                {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Booking...</> : <><CheckCircle2 className="w-4 h-4" /> Confirm Booking</>}
+              <Button onClick={submitBooking} disabled={isLoading} className={`${config.isNigeria ? 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800' : 'bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800'} text-white flex items-center gap-2`}>
+                {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> {config.isNigeria ? 'Requesting...' : 'Booking...'}</> : <><CheckCircle2 className="w-4 h-4" /> {config.isNigeria ? 'Request Consultation' : 'Confirm Booking'}</>}
               </Button>
             )}
           </div>

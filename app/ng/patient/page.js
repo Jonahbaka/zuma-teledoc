@@ -21,9 +21,9 @@ import { formatDateTime } from '@/lib/utils';
 
 const QUICK_ACTIONS = [
   {
-    title: 'Appointments',
-    description: 'Review consultations and care follow-up.',
-    href: '/ng/patient/appointments',
+    title: 'Book Consultation',
+    description: 'Choose consultation type, provider, time, and care context.',
+    href: '/ng/patient/appointments/book',
     icon: Calendar,
   },
   {
@@ -139,10 +139,10 @@ export default function NigeriaPatientPortalPage() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Link href="/ng/patient/appointments" className="inline-flex">
+            <Link href="/ng/patient/appointments/book" className="inline-flex">
               <Button className="w-full bg-emerald-600 text-white hover:bg-emerald-500">
                 <Calendar className="mr-2 h-4 w-4" />
-                Open Appointments
+                Book Consultation
               </Button>
             </Link>
             <Link href="/ng/patient/search" className="inline-flex">

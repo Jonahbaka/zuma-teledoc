@@ -64,6 +64,34 @@ const getBgPreviewStyle = (preset) => {
   return null;
 };
 
+const MEDIA_PERMISSION_TIPS = [
+  'Chrome on desktop or Android: open the lock icon beside the address bar, allow Camera and Microphone, then retry.',
+  'iPhone or iPad Safari: open iOS Settings, Safari, Camera and Microphone, then allow access for this site.',
+  'Close Zoom, Teams, WhatsApp, or any other app that may already be using the camera.',
+  'Use HTTPS and refresh the page after changing browser permissions.',
+];
+
+const MediaPermissionHelp = ({ message, compact = false }) => {
+  if (!message) {
+    return null;
+  }
+
+  return (
+    <div className={`rounded-2xl border border-amber-400/25 bg-amber-400/10 text-amber-50 ${compact ? 'p-3' : 'p-4'}`}>
+      <p className="text-sm font-semibold">Camera or microphone access needs attention</p>
+      <p className="mt-1 text-xs leading-5 text-amber-100/90">{message}</p>
+      <ul className="mt-3 space-y-1.5 text-left text-xs leading-5 text-amber-100/80">
+        {MEDIA_PERMISSION_TIPS.map((tip) => (
+          <li key={tip} className="flex gap-2">
+            <span aria-hidden="true">-</span>
+            <span>{tip}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
 export default function PatientVideoCallPage() {
   const params = useParams();
   const pathname = usePathname();
@@ -139,6 +167,13 @@ export default function PatientVideoCallPage() {
       return;
     }
 
+    if (isNigeriaPortal) {
+      // Nigeria consultations use Nigeria pricing and partner confirmation flows.
+      // Do not block the video room with the US Stripe pay-per-visit gate.
+      setPaymentChecked(true);
+      return;
+    }
+
     try {
       const response = await paymentsAPI.getAppointmentPayment(appointmentId);
       if (response.data.success) {
@@ -193,10 +228,10 @@ export default function PatientVideoCallPage() {
     try {
       if (isStandalone) {
         if (camOn || micOn) {
-          await ensureLocalStream();
+          await ensureLocalStream({ video: camOn, audio: micOn });
         }
       } else {
-        await joinCall({ displayName: userName });
+        await joinCall({ displayName: userName, mediaOptions: { video: camOn, audio: micOn } });
       }
     } catch (error) {
       setIsInCall(false);
@@ -213,6 +248,40 @@ export default function PatientVideoCallPage() {
     setIsInCall(false);
     setActiveEffect(null);
     router.push(appointmentReturnPath);
+  };
+
+  const toggleMic = async () => {
+    const nextValue = !micOn;
+    if (nextValue) {
+      try {
+        await ensureLocalStream({ video: camOn, audio: true });
+      } catch (error) {
+        toast({
+          title: 'Microphone unavailable',
+          description: error.message || 'Please allow microphone access in your browser settings.',
+          variant: 'destructive'
+        });
+        return;
+      }
+    }
+    setMicOn(nextValue);
+  };
+
+  const toggleCam = async () => {
+    const nextValue = !camOn;
+    if (nextValue) {
+      try {
+        await ensureLocalStream({ video: true, audio: micOn });
+      } catch (error) {
+        toast({
+          title: 'Camera unavailable',
+          description: error.message || 'Please allow camera access in your browser settings.',
+          variant: 'destructive'
+        });
+        return;
+      }
+    }
+    setCamOn(nextValue);
   };
 
   useEffect(() => {
@@ -325,8 +394,8 @@ export default function PatientVideoCallPage() {
         ) : (
           <ActiveCallRoom
             appointment={appointment}
-            micOn={micOn} toggleMic={() => setMicOn(!micOn)}
-            camOn={camOn} toggleCam={() => setCamOn(!camOn)}
+            micOn={micOn} toggleMic={toggleMic}
+            camOn={camOn} toggleCam={toggleCam}
             activeEffect={activeEffect}
             setActiveEffect={setActiveEffect}
             onEndCall={endCall}
@@ -422,6 +491,8 @@ const Lobby = ({
               <span>{getWaitingRoomCopy(appointment)}</span>
             </div>
           </div>
+
+          <MediaPermissionHelp message={mediaError} />
 
           <div className="rounded-[1.6rem] border border-white/10 bg-slate-950/40 p-4 shadow-[0_18px_44px_rgba(2,6,23,0.22)] backdrop-blur-xl">
             <div className="space-y-4">
@@ -1096,7 +1167,7 @@ const SelfieCamera = ({
         }
 
         if (ensureLocalStream) {
-          const sharedStream = await ensureLocalStream();
+          const sharedStream = await ensureLocalStream({ video: true, audio: false });
           attachResolvedStream(sharedStream, false);
           return;
         }
@@ -1405,13 +1476,16 @@ const SelfieCamera = ({
         <VideoOff size={48} className="mb-3 text-red-400" />
         <p className="text-sm font-medium text-white mb-2">Camera Access Required</p>
         <p className="text-xs text-slate-400 mb-4 px-2">{cameraError}</p>
+        <div className="mb-4 w-full max-w-sm">
+          <MediaPermissionHelp message={cameraError} compact />
+        </div>
         <button
           onClick={async () => {
             setCameraError(null);
             setCameraLoading(true);
             try {
               const nextStream = ensureLocalStream
-                ? await ensureLocalStream()
+                ? await ensureLocalStream({ video: true, audio: false })
                 : await navigator.mediaDevices.getUserMedia({
                     video: {
                       width: { ideal: 1280 },
@@ -1528,7 +1602,7 @@ const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
         }
 
         if (ensureLocalStream) {
-          const sharedStream = await ensureLocalStream();
+          const sharedStream = await ensureLocalStream({ video: true, audio: false });
           ownsStreamRef.current = false;
           streamRef.current = sharedStream;
           setHasPermission(true);
@@ -1584,13 +1658,13 @@ const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
             }
           }
           resolve(stream);
-        } catch (mediaError) {
+        } catch (mediaAccessError) {
           // Handle getUserMedia errors
-          const errorObj = mediaError instanceof Error ? mediaError : new Error(String(mediaError));
+          const errorObj = mediaAccessError instanceof Error ? mediaAccessError : new Error(String(mediaAccessError));
           setIsLoading(false);
           setHasPermission(false);
           
-          let errorMessage = mediaError || 'Camera access denied';
+          let errorMessage = mediaError || errorObj.message || 'Camera access denied';
           let toastTitle = 'Camera Permission Denied';
           
           if (!ensureLocalStream && (errorObj.name === 'NotAllowedError' || errorObj.name === 'PermissionDeniedError')) {
@@ -1731,9 +1805,10 @@ const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
         <div className="text-center p-4">
           <VideoOff size={32} className="mx-auto mb-2 text-red-400" />
           <p className="text-xs text-slate-300 mb-4">{error.message}</p>
+          <MediaPermissionHelp message={error.message} compact />
           <button
             onClick={handleRequestCamera}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs"
+            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs"
           >
             Try Again
           </button>

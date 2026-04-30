@@ -10,12 +10,14 @@ import {
   CheckCircle2, Package, MapPin, Truck, X, User
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { appointmentsAPI } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
 import { FeatureGate } from '../../components/FeatureGate';
 import NgNav from '../../components/NgNav';
 import { formatNaira } from '../../lib/ngUtils';
 
 const QUICK_ACTIONS = [
-  { label: 'Book Consultation', href: '/ng/patient/appointments', icon: Stethoscope, color: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
+  { label: 'Book Consultation', href: '/ng/patient/appointments/book', icon: Stethoscope, color: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
   { label: 'Search Medications', href: '/ng/patient/search', icon: Pill, color: 'bg-green-500/10 text-green-600 border-green-500/20' },
   { label: 'Upload Prescription', href: '/ng/patient/prescriptions', icon: FileText, color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' },
   { label: 'Track Order', href: '/ng/patient/orders', icon: Truck, color: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
@@ -26,6 +28,7 @@ const QUICK_ACTIONS = [
 export default function NgPatientDashboard() {
   const [greeting, setGreeting] = useState('Good day');
   const [subscription, setSubscription] = useState(null);
+  const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,13 +37,18 @@ export default function NgPatientDashboard() {
     else if (hour < 17) setGreeting('Good afternoon');
     else setGreeting('Good evening');
 
-    // Fetch subscription status
+    // Fetch portal status
     const token = localStorage.getItem('accessToken');
     if (token) {
-      fetch('/api/ng/subscriptions/me', { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json())
-        .then(d => setSubscription(d.subscription))
-        .catch(() => {})
+      Promise.all([
+        fetch('/api/ng/subscriptions/me', { headers: { Authorization: `Bearer ${token}` } })
+          .then(r => r.json())
+          .then(d => setSubscription(d.subscription))
+          .catch(() => {}),
+        appointmentsAPI.getUpcoming(3)
+          .then((response) => setAppointments(response.data?.success ? response.data.appointments || [] : []))
+          .catch(() => setAppointments([])),
+      ])
         .finally(() => setLoading(false));
     } else {
       setLoading(false);
@@ -66,7 +74,7 @@ export default function NgPatientDashboard() {
                 <p className="text-muted-foreground text-sm mt-1">Your health, all in one place.</p>
               </div>
               <div className="flex gap-2">
-                <Link href="/ng/patient/appointments">
+                <Link href="/ng/patient/appointments/book">
                   <Button className="bg-green-600 hover:bg-green-500 text-white">
                     <Plus size={16} className="mr-1.5" /> Book Consultation
                   </Button>
@@ -141,12 +149,50 @@ export default function NgPatientDashboard() {
                   </h3>
                   <Link href="/ng/patient/appointments" className="text-sm text-green-600 font-medium hover:underline">View all</Link>
                 </div>
-                <FeatureGate type="nigeria_pending" available={false}>
+                {loading ? (
                   <div className="space-y-3">
-                    {/* Placeholder — real data when appointments are booked */}
-                    <div className="bg-accent rounded-xl p-4">Loading…</div>
+                    <div className="h-20 animate-pulse rounded-xl bg-accent" />
+                    <div className="h-20 animate-pulse rounded-xl bg-accent" />
                   </div>
-                </FeatureGate>
+                ) : appointments.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border p-5 text-center">
+                    <Calendar size={28} className="mx-auto text-green-500/70" />
+                    <p className="mt-3 text-sm text-muted-foreground">No upcoming consultations yet.</p>
+                    <Link href="/ng/patient/appointments/book" className="mt-4 inline-flex">
+                      <Button size="sm" className="bg-green-600 text-white hover:bg-green-500">Book Consultation</Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {appointments.map((appointment) => (
+                      <div key={appointment.id} className="rounded-xl border border-border bg-background p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="font-semibold text-foreground">
+                              Dr. {appointment.providerFirstName} {appointment.providerLastName}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {appointment.providerSpecialty || 'Consultation'} - {formatDateTime(appointment.scheduledAt)}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {appointment.type === 'video' ? (
+                              <Link href={`/ng/patient/appointments/${appointment.id}/call`}>
+                                <Button size="sm" className="bg-green-600 text-white hover:bg-green-500">
+                                  <Video className="mr-2 h-4 w-4" />
+                                  Join Call
+                                </Button>
+                              </Link>
+                            ) : null}
+                            <Link href={`/ng/patient/appointments/${appointment.id}`}>
+                              <Button size="sm" variant="outline">View</Button>
+                            </Link>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Recent orders */}
@@ -169,7 +215,7 @@ export default function NgPatientDashboard() {
 
             {/* Right sidebar */}
             <div className="space-y-5">
-              {/* Health vitals — gated */}
+              {/* Health vitals - gated */}
               <div className="bg-card border border-border rounded-2xl p-5">
                 <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
                   <Activity size={16} className="text-green-500" /> Health Vitals
@@ -184,9 +230,12 @@ export default function NgPatientDashboard() {
                 <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
                   <MessageSquare size={16} className="text-green-500" /> Messages
                 </h3>
-                <FeatureGate type="nigeria_pending" available={false} compact={false}>
-                  <div />
-                </FeatureGate>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Message care coordination about appointments, prescriptions, or pharmacy requests.
+                </p>
+                <Link href="/ng/patient/messages" className="mt-4 inline-flex">
+                  <Button size="sm" variant="outline">Open Messages</Button>
+                </Link>
               </div>
 
               {/* Prescriptions */}
@@ -213,7 +262,7 @@ export default function NgPatientDashboard() {
             <h2 className="text-lg font-bold text-foreground mb-4">Your Health Portal</h2>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {[
-                { label: 'Appointments', desc: 'Book & manage consultations', href: '/ng/patient/appointments', icon: Calendar, available: true },
+                { label: 'Book Consultation', desc: 'Choose provider, time, and visit type', href: '/ng/patient/appointments/book', icon: Calendar, available: true },
                 { label: 'Prescriptions', desc: 'Digital & uploaded prescriptions', href: '/ng/patient/prescriptions', icon: FileText, available: true },
                 { label: 'Health Records', desc: 'Your complete medical history', href: '/ng/patient/records', icon: Shield, available: false, gate: 'nigeria_pending' },
                 { label: 'Billing', desc: 'Invoices & payment history', href: '/ng/patient/billing', icon: CreditCard, available: true },

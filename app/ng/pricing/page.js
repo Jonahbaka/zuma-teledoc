@@ -480,7 +480,7 @@ export default function NgPricingPage() {
                   </div>
                 </div>
                 <Link
-                  href="/ng/patient/appointments"
+                  href="/ng/patient/appointments/book"
                   className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-background px-5 py-3 text-sm font-bold text-foreground transition-colors hover:bg-accent"
                 >
                   Book a Consultation

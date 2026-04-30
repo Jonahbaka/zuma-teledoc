@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Calendar, Clock, MessageSquare, Video } from 'lucide-react';
+import { Calendar, Clock, MessageSquare, Plus, Video } from 'lucide-react';
 import { appointmentsAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -65,8 +65,14 @@ export default function NigeriaPatientAppointmentsPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <Link href="/ng/patient/appointments/book">
+              <Button className="bg-emerald-600 text-white hover:bg-emerald-500">
+                <Plus className="mr-2 h-4 w-4" />
+                Book Consultation
+              </Button>
+            </Link>
             <Link href="/ng/patient/messages">
-              <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Request Consultation Support</Button>
+              <Button variant="outline">Request Consultation Support</Button>
             </Link>
             <Link href="/ng/patient/records">
               <Button variant="outline">Open Visit History</Button>
@@ -120,7 +126,13 @@ export default function NigeriaPatientAppointmentsPage() {
             <CardContent className="p-8 text-center">
               <Calendar className="mx-auto h-10 w-10 text-emerald-500/60" />
               <p className="mt-4 font-semibold text-foreground">No consultations matched this view.</p>
-              <p className="mt-2 text-sm text-muted-foreground">Use Messages for care coordination if you need help creating a new booking.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Book a Nigeria consultation to choose a type, provider, time, and care context.</p>
+              <Link href="/ng/patient/appointments/book" className="mt-5 inline-flex">
+                <Button className="bg-emerald-600 text-white hover:bg-emerald-500">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Book Consultation
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         ) : (
@@ -154,6 +166,9 @@ export default function NigeriaPatientAppointmentsPage() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
+                    <Link href={`/ng/patient/appointments/${appointment.id}`}>
+                      <Button variant="outline">View Details</Button>
+                    </Link>
                     {appointment.type === 'video' && ['scheduled', 'confirmed'].includes(String(appointment.status || '').toLowerCase()) ? (
                       <Link href={`/ng/patient/appointments/${appointment.id}/call`}>
                         <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Join Call</Button>

@@ -267,7 +267,7 @@ export default function NigeriaCareDiscoveryExperience({
     notes: '',
   });
 
-  const registerHref = embeddedInPortal ? '/ng/patient/appointments' : '/ng/auth/register';
+  const registerHref = embeddedInPortal ? '/ng/patient/appointments/book' : '/ng/auth/register';
   const whatsappHref = buildWhatsAppHref(
     support.whatsappNumber,
     `Hello DoctaRx Nigeria. I need help continuing care for ${query || symptom || 'a new request'}.`
