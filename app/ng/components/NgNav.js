@@ -10,16 +10,17 @@ import {
   MessageSquare, User, Package, BarChart3, Settings,
   Clock
 } from 'lucide-react';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import { cn } from '@/lib/utils';
 
-const DoctaRxNgLogo = () => (
-  <Link href="/ng" className="flex items-center gap-2.5 shrink-0">
-    <div className="w-9 h-9 bg-green-600 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(22,163,74,0.35)]">
-      <span className="text-white font-black text-sm tracking-tighter">Rx</span>
-    </div>
-    <div>
-      <span className="text-xl font-bold text-foreground tracking-tight">DoctaRx</span>
-      <span className="ml-1.5 text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full font-bold tracking-wide uppercase border border-green-200 dark:border-green-800">NG</span>
+const DoctaRxNigeriaLogo = () => (
+  <Link href="/ng" className="flex items-center gap-2.5 shrink-0" aria-label="DoctaRx Nigeria home">
+    <span className="rounded-2xl border border-slate-800 bg-slate-950/95 px-2.5 py-1.5 shadow-[0_0_24px_rgba(34,211,238,0.14)]">
+      <DoctaRxLogo className="h-6 w-auto" />
+    </span>
+    <div className="hidden sm:block leading-tight">
+      <span className="block text-sm font-semibold text-foreground tracking-tight">DoctaRx Nigeria</span>
+      <span className="block text-[11px] text-muted-foreground">Healthcare access</span>
     </div>
   </Link>
 );
@@ -121,7 +122,7 @@ export default function NgNav({ role, userName }) {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-xl border-b border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
-        <DoctaRxNgLogo />
+        <DoctaRxNigeriaLogo />
 
         {/* Desktop portal links */}
         <div className="hidden lg:flex items-center gap-1">

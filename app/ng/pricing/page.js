@@ -3,290 +3,733 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import {
-  CheckCircle, ArrowRight, Sparkles, Zap, Users, Hospital,
-  Package, Stethoscope, Phone, Mail, Shield, Star,
-  Building2, Globe
+  ArrowRight,
+  BadgeCheck,
+  Building2,
+  CheckCircle2,
+  CreditCard,
+  HeartPulse,
+  Hospital,
+  Mail,
+  Menu,
+  Package,
+  Pill,
+  ShieldCheck,
+  Sparkles,
+  Stethoscope,
+  Users,
+  X,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import NgNav from '../components/NgNav';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
+import { cn } from '@/lib/utils';
 import { SUBSCRIPTION_PLANS, formatNaira } from '../lib/ngUtils';
 
-const FAQs = [
-  { q: 'Is there a free tier for patients?', a: 'Yes. Patients can use the platform at no cost — searching medications, uploading prescriptions, and ordering from pharmacies. Subscriptions unlock included consultations and discounts.' },
-  { q: 'How is organisation billing calculated?', a: 'You can choose between per-member pricing (₦1,000–₦2,000/member/month based on size) or bundle pricing (Starter, Growth, Enterprise). Annual billing saves 20%.' },
-  { q: 'What payment methods are accepted?', a: 'We accept card (Visa, Mastercard, Verve), bank transfer, and USSD via Paystack and Flutterwave.' },
-  { q: 'Can organisations get custom contracts?', a: 'Yes. Enterprise organisations — HMOs, government bodies, hospitals with 100+ staff — can contact our sales team for custom pricing and SLA.' },
-  { q: 'What happens if a payment fails?', a: 'We retry failed payments and notify you by email and SMS. Subscriptions enter a grace period before being downgraded.' },
-  { q: 'Are provider subscriptions required?', a: 'Providers can also work on a per-consult commission model (10–20% platform fee). Subscriptions unlock featured listings and reduced commission rates.' },
+const AUDIENCES = [
+  { id: 'patients', label: 'Patients', icon: HeartPulse },
+  { id: 'organisations', label: 'Organisations', icon: Users },
+  { id: 'providers', label: 'Providers', icon: Stethoscope },
+  { id: 'hospitals', label: 'Hospitals', icon: Hospital },
+  { id: 'pharmacies', label: 'Pharmacies', icon: Package },
 ];
+
+const HEADER_LINKS = [
+  { label: 'Home', href: '/ng' },
+  { label: 'Medicines', href: '/ng/medicines' },
+  { label: 'Pricing', href: '/ng/pricing' },
+  { label: 'Providers', href: '/ng/provider/register' },
+  { label: 'Pharmacies', href: '/ng/pharmacy/onboarding' },
+];
+
+const TONES = {
+  green: {
+    check: 'text-green-600',
+    button: 'bg-green-600 text-white hover:bg-green-500',
+    highlight: 'border-green-500/50 shadow-[0_22px_60px_rgba(22,163,74,0.14)]',
+    badge: 'bg-green-600 text-white',
+  },
+  blue: {
+    check: 'text-blue-600',
+    button: 'bg-blue-600 text-white hover:bg-blue-500',
+    highlight: 'border-blue-500/50 shadow-[0_22px_60px_rgba(37,99,235,0.14)]',
+    badge: 'bg-blue-600 text-white',
+  },
+  rose: {
+    check: 'text-rose-600',
+    button: 'bg-rose-600 text-white hover:bg-rose-500',
+    highlight: 'border-rose-500/50 shadow-[0_22px_60px_rgba(225,29,72,0.14)]',
+    badge: 'bg-rose-600 text-white',
+  },
+  teal: {
+    check: 'text-teal-600',
+    button: 'bg-teal-600 text-white hover:bg-teal-500',
+    highlight: 'border-teal-500/50 shadow-[0_22px_60px_rgba(13,148,136,0.14)]',
+    badge: 'bg-teal-600 text-white',
+  },
+  indigo: {
+    check: 'text-indigo-600',
+    button: 'bg-indigo-600 text-white hover:bg-indigo-500',
+    highlight: 'border-indigo-500/50 shadow-[0_22px_60px_rgba(79,70,229,0.14)]',
+    badge: 'bg-indigo-600 text-white',
+  },
+};
+
+const consultationExamples = [
+  { label: 'General consultation', value: '₦2,000-₦5,000' },
+  { label: 'Specialist consultation', value: '₦5,000-₦15,000' },
+  { label: 'Follow-up review', value: '₦1,500-₦4,000' },
+];
+
+const organisationTiers = [
+  { range: '1-50 members', price: '₦2,000', per: '/member/month' },
+  { range: '51-200 members', price: '₦1,500', per: '/member/month' },
+  { range: '200+ members', price: '₦1,000', per: '/member/month' },
+];
+
+const organisationAddOns = [
+  { label: 'Priority doctor access', price: '+₦500/member/month' },
+  { label: 'Chronic care support', price: '+₦1,000/member/month' },
+  { label: 'Health analytics reporting', price: 'Quoted after needs review' },
+  { label: 'On-site health campaign', price: '₦100,000-₦1,000,000/event' },
+];
+
+const hospitalPlans = [
+  {
+    id: 'hospital-revenue-share',
+    name: 'Revenue Share Partnership',
+    price: 'No monthly platform fee',
+    description: 'For facilities that want to start receiving DoctaRx Nigeria referrals before committing to a monthly plan.',
+    features: [
+      'Facility profile and service routing',
+      'Patient referral and booking queue',
+      'Agreed revenue share on completed consultations or services',
+      'Provider and pharmacy handoff workflow',
+      'Basic activity reporting',
+    ],
+    cta: 'Register Hospital',
+    href: '/ng/hospital/register',
+  },
+  {
+    id: 'hospital-platform',
+    name: 'Platform Partnership',
+    price: '₦750,000/month',
+    description: 'For hospitals and clinics that want an operating workspace for digital care, bookings, and partner workflows.',
+    features: [
+      'Hospital workspace for admin and care teams',
+      'Provider onboarding and scheduling support',
+      'Appointment, consultation, prescription, and referral workflows',
+      'Patient intake and follow-up coordination',
+      'Pharmacy request and dispensing handoff',
+      'Monthly operational reporting and launch support',
+    ],
+    cta: 'Start Partnership',
+    href: '/ng/hospital/register',
+    highlight: true,
+  },
+  {
+    id: 'hospital-enterprise',
+    name: 'Enterprise Network',
+    price: 'Custom',
+    description: 'For hospital groups, HMOs, government programs, and multi-location healthcare networks.',
+    features: [
+      'Multi-location account structure',
+      'Custom service-level agreement',
+      'Dedicated onboarding plan',
+      'Reporting for leadership and operations teams',
+      'Commercial terms agreed before launch',
+    ],
+    cta: 'Discuss Partnership',
+    href: '/ng/hospital/register',
+  },
+];
+
+const partnershipCoverage = [
+  'A branded DoctaRx Nigeria facility workspace for care operations',
+  'Provider, admin, appointment, prescription, and referral workflows',
+  'Patient request routing for virtual and facility-based care',
+  'Pharmacy coordination for prescriptions and medication availability requests',
+  'Operational reporting, launch support, and staff enablement',
+  'Nigeria-focused payment and patient communication flow visibility',
+];
+
+const pharmacyRevenueItems = [
+  { label: 'Dispensing fee', value: '₦200-₦500/order' },
+  { label: 'Featured placement', value: '₦20,000-₦200,000/month' },
+  { label: 'Settlement window', value: 'T+1 to T+5' },
+  { label: 'Inventory status', value: 'Pharmacy confirmed only' },
+];
+
+const FAQs = [
+  {
+    q: 'Is there a free tier for patients?',
+    a: 'Patients can search medicines, upload prescriptions, and request pharmacy confirmation without a paid plan. Subscriptions add included consultations and care benefits.',
+  },
+  {
+    q: 'How is organisation billing calculated?',
+    a: 'Organisations can use bundle pricing or per-member pricing. Larger groups can agree custom terms before activation.',
+  },
+  {
+    q: 'Can providers work without a monthly subscription?',
+    a: 'Yes. Providers can start with a revenue share model. Monthly plans are available for enhanced visibility, analytics, and reduced commission terms.',
+  },
+  {
+    q: 'What does the ₦750,000/month platform partnership cover?',
+    a: 'It covers the operating workspace, onboarding support, core digital care workflows, reporting, and partner coordination needed for a hospital or clinic partnership.',
+  },
+  {
+    q: 'Are prices final?',
+    a: 'Public prices are standard models and examples. Organisation, provider, hospital, and pharmacy contracts are confirmed with the Nigeria partnerships team before activation.',
+  },
+  {
+    q: 'Are pharmacy prices or medicine stock included here?',
+    a: 'No. Pharmacy stock and medicine prices are confirmed by partner pharmacies during the medication request flow.',
+  },
+];
+
+function priceForCycle(price, billingCycle) {
+  if (price == null) return null;
+  return billingCycle === 'annual' ? Math.round(price * 0.8) : price;
+}
+
+function NigeriaPricingHeader() {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  return (
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-border bg-background/95 backdrop-blur-xl shadow-[0_10px_40px_rgba(15,23,42,0.06)]">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
+        <Link href="/ng" className="flex min-w-0 items-center gap-3" aria-label="DoctaRx Nigeria home">
+          <span className="shrink-0 rounded-2xl border border-slate-800 bg-slate-950/95 px-3 py-2 shadow-[0_0_28px_rgba(34,211,238,0.16)]">
+            <DoctaRxLogo className="h-7 w-auto" />
+          </span>
+          <span className="hidden min-w-0 sm:block">
+            <span className="block truncate text-sm font-semibold text-foreground">DoctaRx Nigeria</span>
+            <span className="block truncate text-xs text-muted-foreground">Premium healthcare experience</span>
+          </span>
+        </Link>
+
+        <nav className="hidden items-center gap-6 lg:flex" aria-label="Nigeria site navigation">
+          {HEADER_LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {link.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="hidden items-center gap-2 lg:flex">
+          <Link
+            href="/ng/auth/login"
+            className="rounded-full border border-border bg-background/80 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            Sign In
+          </Link>
+          <Link
+            href="/ng/auth/register"
+            className="rounded-full bg-green-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-500"
+          >
+            Get Started
+          </Link>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setMobileOpen((value) => !value)}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-accent lg:hidden"
+          aria-expanded={mobileOpen}
+          aria-label="Toggle navigation"
+        >
+          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
+      </div>
+
+      {mobileOpen ? (
+        <div className="border-t border-border bg-background px-4 py-4 shadow-lg lg:hidden">
+          <div className="grid gap-2">
+            {HEADER_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMobileOpen(false)}
+                className="rounded-xl px-3 py-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                {link.label}
+              </Link>
+            ))}
+            <div className="grid gap-2 pt-2 sm:grid-cols-2">
+              <Link
+                href="/ng/auth/login"
+                onClick={() => setMobileOpen(false)}
+                className="rounded-xl border border-border px-4 py-3 text-center text-sm font-semibold text-foreground"
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/ng/auth/register"
+                onClick={() => setMobileOpen(false)}
+                className="rounded-xl bg-green-600 px-4 py-3 text-center text-sm font-semibold text-white"
+              >
+                Get Started
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </header>
+  );
+}
+
+function BillingToggle({ billingCycle, setBillingCycle }) {
+  return (
+    <div className="mx-auto grid w-full max-w-sm grid-cols-2 rounded-2xl border border-border bg-card p-1 shadow-sm">
+      {['monthly', 'annual'].map((cycle) => (
+        <button
+          key={cycle}
+          type="button"
+          onClick={() => setBillingCycle(cycle)}
+          className={cn(
+            'rounded-xl px-4 py-2.5 text-sm font-semibold capitalize transition-colors',
+            billingCycle === cycle
+              ? 'bg-green-600 text-white shadow-sm'
+              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+          )}
+        >
+          {cycle}
+          {cycle === 'annual' ? (
+            <span className={cn('ml-2 rounded-full px-2 py-0.5 text-[10px]', billingCycle === cycle ? 'bg-white/20 text-white' : 'bg-green-50 text-green-700')}>
+              Save 20%
+            </span>
+          ) : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SectionHeader({ eyebrow, title, description }) {
+  return (
+    <div className="mx-auto mb-8 max-w-3xl text-center sm:mb-10">
+      <p className="text-xs font-bold uppercase tracking-[0.2em] text-green-700 dark:text-green-300">{eyebrow}</p>
+      <h2 className="mt-3 text-2xl font-bold tracking-tight text-foreground sm:text-3xl md:text-4xl">{title}</h2>
+      <p className="mt-3 text-base leading-7 text-muted-foreground sm:text-lg">{description}</p>
+    </div>
+  );
+}
+
+function FeatureList({ features, tone = 'green' }) {
+  const color = TONES[tone]?.check || TONES.green.check;
+
+  return (
+    <ul className="space-y-3">
+      {features.map((feature) => (
+        <li key={feature} className="flex items-start gap-3 text-sm leading-6 text-muted-foreground">
+          <CheckCircle2 className={cn('mt-0.5 h-4 w-4 shrink-0', color)} />
+          <span>{feature}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function PlanCard({ plan, billingCycle, tone = 'green', href, cta }) {
+  const theme = TONES[tone] || TONES.green;
+  const price = priceForCycle(plan.price, billingCycle);
+  const highlighted = Boolean(plan.highlight);
+
+  return (
+    <article className={cn(
+      'relative flex min-w-0 flex-col rounded-3xl border bg-background p-6 shadow-sm sm:p-7',
+      highlighted ? theme.highlight : 'border-border'
+    )}>
+      {highlighted ? (
+        <div className={cn('absolute -top-3 left-6 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide', theme.badge)}>
+          Recommended
+        </div>
+      ) : null}
+      <div className="text-sm font-semibold text-muted-foreground">{plan.name}</div>
+      <div className="mt-3 flex flex-wrap items-end gap-x-2 gap-y-1">
+        <span className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+          {price == null ? 'Custom' : formatNaira(price)}
+        </span>
+        {price == null ? null : <span className="pb-1 text-sm font-medium text-muted-foreground">/month</span>}
+      </div>
+      {price != null && billingCycle === 'annual' ? (
+        <p className="mt-1 text-xs font-semibold text-green-700 dark:text-green-300">Billed annually after 20% discount</p>
+      ) : null}
+      {plan.consultations > 0 ? (
+        <p className="mt-3 rounded-xl bg-green-50 px-3 py-2 text-xs font-semibold text-green-800 dark:bg-green-950/40 dark:text-green-200">
+          {plan.consultations === -1 ? 'Unlimited general consultations with fair-use review' : `${plan.consultations} consultation/month included`}
+        </p>
+      ) : null}
+      <div className="mt-6 flex-1">
+        <FeatureList features={plan.features} tone={tone} />
+      </div>
+      <Link
+        href={href}
+        className={cn(
+          'mt-7 inline-flex min-h-11 items-center justify-center rounded-xl px-4 py-3 text-center text-sm font-bold transition-colors',
+          highlighted ? theme.button : 'border border-border bg-background text-foreground hover:bg-accent'
+        )}
+      >
+        {cta}
+      </Link>
+    </article>
+  );
+}
+
+function InfoTile({ label, value, icon: Icon }) {
+  return (
+    <div className="min-w-0 rounded-2xl border border-border bg-background p-4">
+      {Icon ? <Icon className="mb-3 h-5 w-5 text-green-600" /> : null}
+      <div className="text-sm text-muted-foreground">{label}</div>
+      <div className="mt-1 text-lg font-bold text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function AudienceSection({ id, eyebrow, title, description, children }) {
+  return (
+    <section id={id} className="scroll-mt-32">
+      <SectionHeader eyebrow={eyebrow} title={title} description={description} />
+      {children}
+    </section>
+  );
+}
 
 export default function NgPricingPage() {
   const [billingCycle, setBillingCycle] = useState('monthly');
-  const [activeTab, setActiveTab] = useState('patients');
-
-  const tabs = [
-    { key: 'patients', label: 'Patients', icon: Stethoscope },
-    { key: 'organizations', label: 'Organisations', icon: Users },
-    { key: 'providers', label: 'Providers', icon: Stethoscope },
-    { key: 'pharmacies', label: 'Pharmacies', icon: Package },
-  ];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <NgNav />
-      <div className="pt-14">
+      <NigeriaPricingHeader />
 
-        {/* Hero */}
-        <section className="py-20 px-6 text-center bg-gradient-to-b from-background via-green-50/10 to-background dark:via-green-950/10">
-          <div className="max-w-4xl mx-auto space-y-5">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/10 text-green-600 text-xs font-semibold border border-green-500/20">
-              <Sparkles size={10} /> Nigeria Pricing
+      <main className="pt-16">
+        <section className="relative overflow-hidden border-b border-border bg-gradient-to-b from-emerald-50 via-background to-background px-4 py-16 dark:from-emerald-950/20 sm:px-6 sm:py-20 lg:py-24">
+          <div className="mx-auto max-w-5xl text-center">
+            <span className="inline-flex items-center gap-2 rounded-full border border-green-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-green-700 shadow-sm dark:border-green-800 dark:bg-green-950/40 dark:text-green-200">
+              <Sparkles className="h-3.5 w-3.5" />
+              DoctaRx Nigeria pricing
             </span>
-            <h1 className="text-4xl md:text-6xl font-bold text-foreground tracking-tight">Simple, transparent pricing</h1>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Every account type has a pricing model built for Nigeria — from individual patients to large enterprises.
+            <h1 className="mx-auto mt-6 max-w-4xl text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
+              Simple pricing for patients and healthcare partners
+            </h1>
+            <p className="mx-auto mt-5 max-w-3xl text-base leading-8 text-muted-foreground sm:text-xl">
+              Compare patient subscriptions, organisation coverage, provider participation, hospital partnerships, and pharmacy network plans inside the existing DoctaRx Nigeria experience.
             </p>
-            <div className="flex items-center bg-card border border-border rounded-2xl p-1 gap-1 w-fit mx-auto">
-              {['monthly', 'annual'].map(cycle => (
-                <button key={cycle} onClick={() => setBillingCycle(cycle)} className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all capitalize ${billingCycle === cycle ? 'bg-green-600 text-white' : 'text-muted-foreground hover:text-foreground'}`}>
-                  {cycle}
-                  {cycle === 'annual' && <span className="ml-1.5 text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full">Save 20%</span>}
-                </button>
-              ))}
+            <div className="mt-8">
+              <BillingToggle billingCycle={billingCycle} setBillingCycle={setBillingCycle} />
+            </div>
+            <div className="mt-7 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+              <Link
+                href="/ng/auth/register"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-green-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-green-500"
+              >
+                Get Started <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/ng/provider/register"
+                className="inline-flex min-h-12 items-center justify-center rounded-full border border-border bg-background px-6 py-3 text-sm font-bold text-foreground transition-colors hover:bg-accent"
+              >
+                Partner as a Provider
+              </Link>
             </div>
           </div>
         </section>
 
-        {/* Tab selector */}
-        <div className="sticky top-14 z-30 bg-background/90 backdrop-blur-xl border-b border-border px-6 py-3">
-          <div className="max-w-6xl mx-auto flex gap-2 overflow-x-auto">
-            {tabs.map(tab => {
-              const Icon = tab.icon;
+        <nav className="sticky top-16 z-40 border-b border-border bg-background/95 px-4 py-3 backdrop-blur-xl sm:px-6" aria-label="Pricing sections">
+          <div className="mx-auto flex max-w-7xl flex-wrap gap-2 sm:justify-center">
+            {AUDIENCES.map((audience) => {
+              const Icon = audience.icon;
               return (
-                <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all shrink-0 ${activeTab === tab.key ? 'bg-green-600 text-white border-green-600' : 'bg-card border-border text-muted-foreground hover:border-green-500/30'}`}>
-                  <Icon size={14} />{tab.label}
-                </button>
+                <a
+                  key={audience.id}
+                  href={`#${audience.id}`}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:border-green-300 hover:bg-green-50 dark:hover:bg-green-950/30"
+                >
+                  <Icon className="h-4 w-4 text-green-600" />
+                  {audience.label}
+                </a>
               );
             })}
           </div>
-        </div>
+        </nav>
 
-        <div className="max-w-6xl mx-auto px-6 py-16 space-y-20">
-
-          {/* PATIENTS */}
-          {activeTab === 'patients' && (
-            <div id="patients">
-              <div className="text-center mb-10">
-                <h2 className="text-3xl font-bold text-foreground">Patient Plans</h2>
-                <p className="text-muted-foreground mt-2">Free to start. Upgrade for included consultations and discounts.</p>
-              </div>
-
-              {/* Pay as you go */}
-              <div className="bg-card border border-border rounded-2xl p-6 mb-6 flex items-center justify-between gap-4 flex-wrap">
-                <div>
-                  <div className="font-bold text-foreground text-lg">Pay-as-You-Go</div>
-                  <div className="text-muted-foreground text-sm mt-1">No subscription. Pay per consultation only.</div>
-                  <div className="flex flex-wrap gap-4 mt-3 text-sm">
-                    <div className="flex items-center gap-1.5"><CheckCircle size={14} className="text-green-500" /> General Consultation: <strong>₦2,000–₦5,000</strong></div>
-                    <div className="flex items-center gap-1.5"><CheckCircle size={14} className="text-green-500" /> Specialist: <strong>₦5,000–₦15,000</strong></div>
-                    <div className="flex items-center gap-1.5"><CheckCircle size={14} className="text-green-500" /> Medication Search: <strong>Free</strong></div>
-                    <div className="flex items-center gap-1.5"><CheckCircle size={14} className="text-green-500" /> Prescription Upload: <strong>Free</strong></div>
+        <div className="mx-auto max-w-7xl space-y-16 px-4 py-12 sm:px-6 sm:py-16 lg:space-y-24">
+          <AudienceSection
+            id="patients"
+            eyebrow="Patients"
+            title="Patient plans"
+            description="Free to start, with optional subscriptions for included consultations and care benefits."
+          >
+            <div className="mb-6 rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6 lg:p-8">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-3">
+                    <Pill className="h-6 w-6 text-green-600" />
+                    <h3 className="text-xl font-bold text-foreground">Pay as you go</h3>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    No subscription required. Patients can use DoctaRx Nigeria and pay only for booked consultations or confirmed services.
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <InfoTile label="General consult" value="₦2,000-₦5,000" />
+                    <InfoTile label="Specialist consult" value="₦5,000-₦15,000" />
+                    <InfoTile label="Medicine search" value="Free" />
+                    <InfoTile label="Prescription upload" value="Free" />
                   </div>
                 </div>
-                <Link href="/ng/patient/appointments"><Button variant="outline" className="rounded-xl shrink-0">Book Now</Button></Link>
-              </div>
-
-              <div className="grid md:grid-cols-3 gap-5">
-                {SUBSCRIPTION_PLANS.patient.map((plan) => {
-                  const price = billingCycle === 'annual' ? Math.round(plan.price * 0.8) : plan.price;
-                  return (
-                    <div key={plan.id} className={`relative bg-background rounded-3xl p-8 border flex flex-col ${plan.highlight ? 'border-green-500/40 shadow-[0_0_30px_rgba(22,163,74,0.1)]' : 'border-border'}`}>
-                      {plan.highlight && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-[10px] font-bold px-4 py-1 rounded-full uppercase tracking-wider">Most Popular</div>}
-                      <div className="text-sm font-semibold text-muted-foreground mb-2">{plan.name}</div>
-                      <div className="text-4xl font-bold text-foreground">{formatNaira(price)}<span className="text-muted-foreground text-lg">/mo</span></div>
-                      {billingCycle === 'annual' && <div className="text-xs text-green-600 font-medium mt-1">Billed annually</div>}
-                      {plan.consultations > 0 && <div className="text-xs text-green-600 font-semibold mt-2 mb-4">{plan.consultations === -1 ? 'Unlimited consultations (fair use)' : `${plan.consultations} consultation/month included`}</div>}
-                      <ul className="space-y-2.5 flex-1 mt-4 mb-6">
-                        {plan.features.map((f, i) => <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground"><CheckCircle size={14} className="text-green-500 mt-0.5 shrink-0" />{f}</li>)}
-                      </ul>
-                      <Link href="/ng/patient/subscription" className={`block text-center py-3 rounded-xl font-bold transition-colors ${plan.highlight ? 'bg-green-600 hover:bg-green-500 text-white' : 'border border-border hover:bg-accent text-foreground'}`}>{plan.cta}</Link>
-                    </div>
-                  );
-                })}
+                <Link
+                  href="/ng/patient/appointments"
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-background px-5 py-3 text-sm font-bold text-foreground transition-colors hover:bg-accent"
+                >
+                  Book a Consultation
+                </Link>
               </div>
             </div>
-          )}
 
-          {/* ORGANISATIONS */}
-          {activeTab === 'organizations' && (
-            <div id="organisations">
-              <div className="text-center mb-10">
-                <h2 className="text-3xl font-bold text-foreground">Organisation Plans</h2>
-                <p className="text-muted-foreground mt-2">For companies, churches, schools, NGOs, government bodies, and more.</p>
-              </div>
-
-              {/* Per-member pricing */}
-              <div className="bg-card border border-border rounded-2xl p-6 mb-8">
-                <div className="font-bold text-foreground text-lg mb-3">Per-Member Pricing</div>
-                <div className="grid sm:grid-cols-3 gap-4">
-                  {[
-                    { range: '1–50 members', price: '₦2,000', per: '/member/month' },
-                    { range: '51–200 members', price: '₦1,500', per: '/member/month' },
-                    { range: '200+ members', price: '₦1,000', per: '/member/month' },
-                  ].map(tier => (
-                    <div key={tier.range} className="bg-background rounded-xl border border-border p-4 text-center">
-                      <div className="text-sm text-muted-foreground mb-1">{tier.range}</div>
-                      <div className="text-2xl font-bold text-foreground">{tier.price}</div>
-                      <div className="text-xs text-muted-foreground">{tier.per}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-3 gap-5 mb-8">
-                {SUBSCRIPTION_PLANS.organization.map((plan) => {
-                  const price = plan.price ? (billingCycle === 'annual' ? Math.round(plan.price * 0.8) : plan.price) : null;
-                  return (
-                    <div key={plan.id} className={`relative bg-background rounded-3xl p-8 border flex flex-col ${plan.highlight ? 'border-green-500/40 shadow-[0_0_30px_rgba(22,163,74,0.1)]' : 'border-border'}`}>
-                      {plan.highlight && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-[10px] font-bold px-4 py-1 rounded-full uppercase tracking-wider">Most Popular</div>}
-                      <div className="text-sm font-semibold text-muted-foreground mb-2">{plan.name}</div>
-                      <div className="text-4xl font-bold text-foreground">{price ? formatNaira(price) : 'Custom'}<span className="text-muted-foreground text-lg">{price ? '/mo' : ''}</span></div>
-                      {plan.members && <div className="text-sm text-green-600 font-semibold mt-1">Up to {plan.members} members</div>}
-                      <ul className="space-y-2.5 flex-1 mt-4 mb-6">
-                        {plan.features.map((f, i) => <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground"><CheckCircle size={14} className="text-green-500 mt-0.5 shrink-0" />{f}</li>)}
-                      </ul>
-                      <Link href={plan.id === 'org_enterprise' ? '/contact' : '/ng/organization/register'} className={`block text-center py-3 rounded-xl font-bold transition-colors ${plan.highlight ? 'bg-green-600 hover:bg-green-500 text-white' : 'border border-border hover:bg-accent text-foreground'}`}>
-                        {plan.id === 'org_enterprise' ? 'Contact Sales' : `Get ${plan.name}`}
-                      </Link>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Add-ons */}
-              <div id="enterprise" className="bg-card border border-border rounded-2xl p-6">
-                <h3 className="font-bold text-foreground text-lg mb-4">Organisation Add-ons</h3>
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[
-                    { label: 'Priority Doctor Access', price: '+₦500/member/mo' },
-                    { label: 'Chronic Care Plan', price: '+₦1,000/member/mo' },
-                    { label: 'AI Health Analytics', price: 'Premium add-on' },
-                    { label: 'On-site Health Campaign', price: '₦100K–₦1M/event' },
-                  ].map(addon => (
-                    <div key={addon.label} className="bg-background rounded-xl border border-border p-4">
-                      <div className="text-sm font-semibold text-foreground">{addon.label}</div>
-                      <div className="text-xs text-green-600 font-medium mt-1">{addon.price}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* PROVIDERS */}
-          {activeTab === 'providers' && (
-            <div>
-              <div className="text-center mb-10">
-                <h2 className="text-3xl font-bold text-foreground">Provider Plans</h2>
-                <p className="text-muted-foreground mt-2">For doctors and healthcare providers on DoctaRx Nigeria.</p>
-              </div>
-
-              {/* Commission model */}
-              <div className="bg-card border border-border rounded-2xl p-6 mb-6">
-                <div className="font-bold text-foreground text-lg mb-2">Commission Model (No Subscription)</div>
-                <p className="text-muted-foreground text-sm mb-3">No monthly fee. Pay 10–20% platform commission per consultation.</p>
-                <div className="flex flex-wrap gap-4 text-sm">
-                  <div><span className="text-muted-foreground">General Consult: </span><strong className="text-foreground">15% commission</strong></div>
-                  <div><span className="text-muted-foreground">Specialist Consult: </span><strong className="text-foreground">10% commission</strong></div>
-                  <div><span className="text-muted-foreground">Payout schedule: </span><strong className="text-foreground">T+3</strong></div>
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-5">
-                {SUBSCRIPTION_PLANS.provider.map((plan) => {
-                  const price = billingCycle === 'annual' ? Math.round(plan.price * 0.8) : plan.price;
-                  return (
-                    <div key={plan.id} className="bg-background rounded-3xl p-8 border border-border flex flex-col">
-                      <div className="text-sm font-semibold text-muted-foreground mb-2">{plan.name}</div>
-                      <div className="text-4xl font-bold text-foreground">{formatNaira(price)}<span className="text-muted-foreground text-lg">/mo</span></div>
-                      <ul className="space-y-2.5 flex-1 mt-4 mb-6">
-                        {plan.features.map((f, i) => <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground"><CheckCircle size={14} className="text-blue-500 mt-0.5 shrink-0" />{f}</li>)}
-                      </ul>
-                      <Link href="/ng/provider/auth/register" className="block text-center py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-colors">Register as Provider</Link>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* PHARMACIES */}
-          {activeTab === 'pharmacies' && (
-            <div>
-              <div className="text-center mb-10">
-                <h2 className="text-3xl font-bold text-foreground">Pharmacy Plans</h2>
-                <p className="text-muted-foreground mt-2">Join Nigeria's largest digital prescription network.</p>
-              </div>
-
-              <div className="grid md:grid-cols-3 gap-5">
-                {SUBSCRIPTION_PLANS.pharmacy.map((plan) => {
-                  const price = billingCycle === 'annual' ? Math.round(plan.price * 0.8) : plan.price;
-                  return (
-                    <div key={plan.id} className="bg-background rounded-3xl p-8 border border-border flex flex-col">
-                      <div className="text-sm font-semibold text-muted-foreground mb-2">{plan.name}</div>
-                      <div className="text-4xl font-bold text-foreground">{formatNaira(price)}<span className="text-muted-foreground text-lg">/mo</span></div>
-                      <ul className="space-y-2.5 flex-1 mt-4 mb-6">
-                        {plan.features.map((f, i) => <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground"><CheckCircle size={14} className="text-teal-500 mt-0.5 shrink-0" />{f}</li>)}
-                      </ul>
-                      <Link href="/ng/pharmacy/onboarding" className="block text-center py-3 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold transition-colors">Register Pharmacy</Link>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-6 bg-card border border-border rounded-2xl p-6">
-                <h3 className="font-bold text-foreground mb-3">Pharmacy Revenue Model</h3>
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                  <div className="bg-background rounded-xl border border-border p-4"><div className="text-muted-foreground">Pharmacy Margin</div><div className="font-bold text-foreground mt-1">5%–20%</div></div>
-                  <div className="bg-background rounded-xl border border-border p-4"><div className="text-muted-foreground">Dispense Fee</div><div className="font-bold text-foreground mt-1">₦200–₦500/order</div></div>
-                  <div className="bg-background rounded-xl border border-border p-4"><div className="text-muted-foreground">Featured Placement</div><div className="font-bold text-foreground mt-1">₦20K–₦200K/mo</div></div>
-                  <div className="bg-background rounded-xl border border-border p-4"><div className="text-muted-foreground">Settlement</div><div className="font-bold text-foreground mt-1">T+1 to T+5</div></div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Enterprise CTA */}
-          <div className="bg-gradient-to-r from-green-700 to-emerald-600 rounded-3xl p-10 text-center">
-            <h2 className="text-3xl font-bold text-white mb-3">Enterprise & Institutional Pricing</h2>
-            <p className="text-green-100 mb-6 max-w-xl mx-auto">
-              HMOs, government bodies, hospitals with 100+ staff, and large schools or churches can get custom contracts starting from ₦500,000/month.
-            </p>
-            <div className="flex flex-wrap gap-4 justify-center">
-              <a href="mailto:ng@doctarx.com" className="inline-flex items-center gap-2 bg-white text-green-700 font-bold px-6 py-3 rounded-xl hover:bg-green-50 transition-colors">
-                <Mail size={16} /> Contact Enterprise Sales
-              </a>
-              <a href="tel:+2349000000000" className="inline-flex items-center gap-2 bg-white/10 text-white font-bold px-6 py-3 rounded-xl hover:bg-white/20 transition-colors border border-white/20">
-                <Phone size={16} /> Call Us
-              </a>
-            </div>
-          </div>
-
-          {/* FAQ */}
-          <div>
-            <h2 className="text-3xl font-bold text-foreground text-center mb-10">Frequently Asked Questions</h2>
-            <div className="grid md:grid-cols-2 gap-5">
-              {FAQs.map((faq) => (
-                <div key={faq.q} className="bg-card border border-border rounded-2xl p-6">
-                  <h4 className="font-bold text-foreground mb-2">{faq.q}</h4>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{faq.a}</p>
-                </div>
+            <div className="grid gap-5 md:grid-cols-3">
+              {SUBSCRIPTION_PLANS.patient.map((plan) => (
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  billingCycle={billingCycle}
+                  tone="green"
+                  href="/ng/patient/subscription"
+                  cta={plan.cta || `Choose ${plan.name}`}
+                />
               ))}
             </div>
-          </div>
+          </AudienceSection>
 
+          <AudienceSection
+            id="organisations"
+            eyebrow="Organisations"
+            title="Organisation plans"
+            description="For companies, schools, NGOs, churches, mosques, government teams, associations, and staff health programs."
+          >
+            <div className="mb-6 rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6 lg:p-8">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-foreground">Per-member pricing</h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">Use bundle pricing below or choose per-member billing for larger groups.</p>
+                </div>
+                <Link href="/ng/organization/register" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-500">
+                  Register Organisation
+                </Link>
+              </div>
+              <div className="mt-5 grid gap-4 sm:grid-cols-3">
+                {organisationTiers.map((tier) => (
+                  <InfoTile key={tier.range} label={tier.range} value={`${tier.price}${tier.per}`} icon={Users} />
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-3">
+              {SUBSCRIPTION_PLANS.organization.map((plan) => (
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  billingCycle={billingCycle}
+                  tone="indigo"
+                  href="/ng/organization/register"
+                  cta={plan.price == null ? 'Discuss Organisation Plan' : `Choose ${plan.name}`}
+                />
+              ))}
+            </div>
+
+            <div className="mt-6 rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6 lg:p-8">
+              <h3 className="text-xl font-bold text-foreground">Organisation add-ons</h3>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {organisationAddOns.map((addon) => (
+                  <InfoTile key={addon.label} label={addon.label} value={addon.price} icon={BadgeCheck} />
+                ))}
+              </div>
+            </div>
+          </AudienceSection>
+
+          <AudienceSection
+            id="providers"
+            eyebrow="Providers"
+            title="Provider participation"
+            description="Doctors and healthcare providers can start with revenue share or use monthly plans for a stronger DoctaRx Nigeria operating presence."
+          >
+            <div className="mb-6 grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+              <div className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6 lg:p-8">
+                <div className="flex items-center gap-3">
+                  <CreditCard className="h-6 w-6 text-blue-600" />
+                  <h3 className="text-xl font-bold text-foreground">Revenue share option</h3>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  Providers can join without a monthly subscription and pay an agreed platform share on completed DoctaRx Nigeria consultations.
+                </p>
+                <div className="mt-5 grid gap-4 sm:grid-cols-3">
+                  <InfoTile label="General consult share" value="15% example" />
+                  <InfoTile label="Specialist consult share" value="10% example" />
+                  <InfoTile label="Payout schedule" value="T+1 to T+3" />
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6 lg:p-8">
+                <div className="flex items-center gap-3">
+                  <Stethoscope className="h-6 w-6 text-blue-600" />
+                  <h3 className="text-xl font-bold text-foreground">Consultation fee examples</h3>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  Final fees are confirmed before patients book. These examples help providers and patients understand typical ranges.
+                </p>
+                <div className="mt-5 space-y-3">
+                  {consultationExamples.map((item) => (
+                    <div key={item.label} className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-background px-4 py-3">
+                      <span className="text-sm text-muted-foreground">{item.label}</span>
+                      <span className="text-sm font-bold text-foreground">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              {SUBSCRIPTION_PLANS.provider.map((plan) => (
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  billingCycle={billingCycle}
+                  tone="blue"
+                  href="/ng/provider/register"
+                  cta="Register as Provider"
+                />
+              ))}
+            </div>
+          </AudienceSection>
+
+          <AudienceSection
+            id="hospitals"
+            eyebrow="Hospitals"
+            title="Hospital and clinic partnerships"
+            description="Clear options for facilities that want referral flow, digital care operations, and a DoctaRx Nigeria partnership without creating a separate product identity."
+          >
+            <div className="grid gap-5 lg:grid-cols-3">
+              {hospitalPlans.map((plan) => (
+                <article
+                  key={plan.id}
+                  className={cn(
+                    'flex min-w-0 flex-col rounded-3xl border bg-background p-6 shadow-sm sm:p-7',
+                    plan.highlight ? TONES.rose.highlight : 'border-border'
+                  )}
+                >
+                  {plan.highlight ? (
+                    <div className="mb-4 w-fit rounded-full bg-rose-600 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
+                      Platform option
+                    </div>
+                  ) : null}
+                  <h3 className="text-lg font-bold text-foreground">{plan.name}</h3>
+                  <div className="mt-3 text-3xl font-bold tracking-tight text-foreground">{plan.price}</div>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">{plan.description}</p>
+                  <div className="mt-6 flex-1">
+                    <FeatureList features={plan.features} tone="rose" />
+                  </div>
+                  <Link
+                    href={plan.href}
+                    className={cn(
+                      'mt-7 inline-flex min-h-11 items-center justify-center rounded-xl px-4 py-3 text-center text-sm font-bold transition-colors',
+                      plan.highlight ? TONES.rose.button : 'border border-border bg-background text-foreground hover:bg-accent'
+                    )}
+                  >
+                    {plan.cta}
+                  </Link>
+                </article>
+              ))}
+            </div>
+
+            <div className="mt-6 rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6 lg:p-8">
+              <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+                <div>
+                  <h3 className="text-xl font-bold text-foreground">What ₦750,000/month covers</h3>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                    This is a monthly platform partnership for hospitals or clinics. It is not a promise of patient volume, medicine stock, or clinical revenue.
+                  </p>
+                </div>
+                <FeatureList features={partnershipCoverage} tone="rose" />
+              </div>
+            </div>
+          </AudienceSection>
+
+          <AudienceSection
+            id="pharmacies"
+            eyebrow="Pharmacies"
+            title="Pharmacy network plans"
+            description="For pharmacies that want prescription queues, medication request handling, pharmacy confirmation workflows, and dispensing operations."
+          >
+            <div className="grid gap-5 md:grid-cols-3">
+              {SUBSCRIPTION_PLANS.pharmacy.map((plan) => (
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  billingCycle={billingCycle}
+                  tone="teal"
+                  href="/ng/pharmacy/onboarding"
+                  cta="Register Pharmacy"
+                />
+              ))}
+            </div>
+
+            <div className="mt-6 rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6 lg:p-8">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-foreground">Pharmacy operating model</h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    Medicine stock and price are never shown as confirmed until a partner pharmacy confirms them.
+                  </p>
+                </div>
+                <Link href="/ng/medicines" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-background px-5 py-3 text-sm font-bold text-foreground transition-colors hover:bg-accent">
+                  View Medicine Search
+                </Link>
+              </div>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {pharmacyRevenueItems.map((item) => (
+                  <InfoTile key={item.label} label={item.label} value={item.value} icon={ShieldCheck} />
+                ))}
+              </div>
+            </div>
+          </AudienceSection>
+
+          <section className="rounded-[2rem] bg-slate-950 px-5 py-10 text-center text-white shadow-[0_24px_80px_rgba(15,23,42,0.22)] sm:px-8 lg:px-12">
+            <div className="mx-auto max-w-3xl">
+              <Building2 className="mx-auto h-10 w-10 text-green-300" />
+              <h2 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">Need a Nigeria partnership quote?</h2>
+              <p className="mt-4 text-sm leading-7 text-slate-300 sm:text-base">
+                HMOs, government bodies, hospital groups, schools, churches, mosques, and large organisations can agree custom Nigeria contracts before rollout.
+              </p>
+              <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+                <Link href="/ng/organization/register" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-bold text-slate-950 transition-colors hover:bg-green-50">
+                  Start Nigeria Partnership <ArrowRight className="h-4 w-4" />
+                </Link>
+                <a href="mailto:ng@doctarx.com" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/20 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-white/10">
+                  <Mail className="h-4 w-4" />
+                  Email Nigeria Team
+                </a>
+              </div>
+            </div>
+          </section>
+
+          <section className="scroll-mt-32">
+            <SectionHeader
+              eyebrow="Questions"
+              title="Frequently asked questions"
+              description="Plain answers for patients, organisations, providers, hospitals, and pharmacies."
+            />
+            <div className="grid gap-5 md:grid-cols-2">
+              {FAQs.map((faq) => (
+                <article key={faq.q} className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6">
+                  <h3 className="text-base font-bold text-foreground">{faq.q}</h3>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">{faq.a}</p>
+                </article>
+              ))}
+            </div>
+          </section>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

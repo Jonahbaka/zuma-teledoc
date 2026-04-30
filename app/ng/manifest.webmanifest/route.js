@@ -1,6 +1,6 @@
 const manifest = {
   name: 'DoctaRx Nigeria',
-  short_name: 'DoctaRx NG',
+  short_name: 'DoctaRx Nigeria',
   description:
     'DoctaRx Nigeria delivers mobile-ready virtual care, subscriptions, prescriptions, pharmacy coordination, and provider access.',
   start_url: '/ng',
