@@ -379,7 +379,7 @@ export const MARKET_HOME_DATA = {
             { label: 'Pharmacy Portal', href: '/pharmacy/login' },
             { label: 'DoctaRx Nigeria', href: '/ng' },
             { label: 'Nigeria Provider Registration', href: '/ng/provider/register' },
-            { label: 'Contact', href: '/contact' },
+            { label: 'Contact', href: 'mailto:hello@doctarx.ng' },
           ],
         },
         {
