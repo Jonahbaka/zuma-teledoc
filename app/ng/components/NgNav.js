@@ -43,7 +43,7 @@ const PORTALS = [
       { label: 'Billing & Payments', href: '/ng/patient/billing', icon: CreditCard },
       { label: 'Subscription Plan', href: '/ng/patient/subscription', icon: ShieldCheck },
     ],
-    authLink: '/ng/auth/login?role=patient',
+    authLink: '/ng/patient/login',
     registerLink: '/ng/auth/register?role=patient',
   },
   {
@@ -60,7 +60,7 @@ const PORTALS = [
       { label: 'Prescriptions', href: '/ng/provider/prescriptions', icon: FileText },
       { label: 'My Earnings', href: '/ng/provider/earnings', icon: CreditCard },
     ],
-    authLink: '/ng/auth/login?role=provider',
+    authLink: '/ng/provider/login',
     registerLink: '/ng/provider/auth/register',
   },
   {
@@ -107,7 +107,7 @@ const PORTALS = [
       { label: 'Analytics', href: '/ng/pharmacy/dashboard#analytics', icon: BarChart3 },
       { label: 'Register Pharmacy', href: '/ng/pharmacy/onboarding', icon: Building2 },
     ],
-    authLink: '/ng/auth/login?role=pharmacy',
+    authLink: '/ng/pharmacy/login',
     registerLink: '/ng/pharmacy/onboarding',
   },
 ];

@@ -120,7 +120,7 @@ export default function ProviderRegisterPage() {
           </div>
         </div>
         <div className="text-slate-500 text-xs">
-          Already registered? <Link href="/ng/auth/login?role=provider" className="text-blue-400">Sign in</Link>
+          Already registered? <Link href="/ng/provider/login" className="text-blue-400">Sign in</Link>
         </div>
       </div>
 

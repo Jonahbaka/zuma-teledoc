@@ -1,18 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
   Building2,
+  Loader2,
   Lock,
   Mail,
   Pill,
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
-import { authAPI } from '@/lib/api';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,8 +25,72 @@ const STORY_POINTS = [
   'Keep every step readable on phone, tablet, and desktop.',
 ];
 
-export default function NigeriaLogin() {
-  const router = useRouter();
+const LOGIN_ROLE_COPY = {
+  patient: {
+    badge: 'Nigeria Patient Access',
+    heroTitle: 'Prescription access built for a faster Nigeria patient journey.',
+    heroDescription:
+      'Move from medicine search to provider review and pharmacy confirmation inside one responsive experience with fewer taps and no horizontal breakpoints.',
+    icon: Pill,
+    formTitle: 'Sign in to your Nigeria patient portal',
+    formDescription: 'Continue into prescription search, order tracking, and pharmacy-ready handoff.',
+    submitLabel: 'Open Patient Portal',
+  },
+  provider: {
+    badge: 'Nigeria Provider Access',
+    heroTitle: 'Clinical access for Nigeria provider operations.',
+    heroDescription:
+      'Sign in to review patients, consultations, prescriptions, and care coordination from the Nigeria provider workspace.',
+    icon: Building2,
+    formTitle: 'Sign in to your Nigeria provider portal',
+    formDescription: 'Continue into appointments, patient review, prescriptions, and provider operations.',
+    submitLabel: 'Open Provider Portal',
+  },
+  pharmacy: {
+    badge: 'Nigeria Pharmacy Access',
+    heroTitle: 'Pharmacy operations access for Nigeria fulfillment.',
+    heroDescription:
+      'Sign in to manage prescription requests, confirmation workflows, pharmacy profile details, and fulfillment activity.',
+    icon: Building2,
+    formTitle: 'Sign in to your Nigeria pharmacy portal',
+    formDescription: 'Continue into order review, inventory, profile, and pharmacy confirmation tools.',
+    submitLabel: 'Open Pharmacy Portal',
+  },
+  admin: {
+    badge: 'Nigeria Admin Access',
+    heroTitle: 'Administrative access for Nigeria operations.',
+    heroDescription:
+      'Sign in with an approved admin account to manage Nigeria providers, pharmacies, subscriptions, and operational workflows.',
+    icon: ShieldCheck,
+    formTitle: 'Sign in to the Nigeria admin console',
+    formDescription: 'Continue into the protected Nigeria administration workspace.',
+    submitLabel: 'Open Admin Console',
+  },
+  super_admin: {
+    badge: 'Nigeria Admin Access',
+    heroTitle: 'Administrative access for Nigeria operations.',
+    heroDescription:
+      'Sign in with an approved admin account to manage Nigeria providers, pharmacies, subscriptions, and operational workflows.',
+    icon: ShieldCheck,
+    formTitle: 'Sign in to the Nigeria admin console',
+    formDescription: 'Continue into the protected Nigeria administration workspace.',
+    submitLabel: 'Open Admin Console',
+  },
+};
+
+const SUPPORTED_LOGIN_ROLES = new Set(Object.keys(LOGIN_ROLE_COPY));
+
+function getLoginRole(searchParams) {
+  const requestedRole = String(searchParams.get('role') || 'patient').toLowerCase();
+  return SUPPORTED_LOGIN_ROLES.has(requestedRole) ? requestedRole : 'patient';
+}
+
+function NigeriaLoginContent() {
+  const searchParams = useSearchParams();
+  const loginRole = useMemo(() => getLoginRole(searchParams), [searchParams]);
+  const copy = LOGIN_ROLE_COPY[loginRole] || LOGIN_ROLE_COPY.patient;
+  const PortalIcon = copy.icon;
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -44,12 +109,15 @@ export default function NigeriaLogin() {
     setError('');
 
     try {
-      const res = await authAPI.login({ email, password, role: 'patient' });
+      const result = await login(email.trim(), password, null, loginRole);
 
-      if (res.data.success) {
-        if (res.data.accessToken) localStorage.setItem('accessToken', res.data.accessToken);
-        if (res.data.refreshToken) localStorage.setItem('refreshToken', res.data.refreshToken);
-        router.push('/ng/patient');
+      if (result?.mfaRequired) {
+        setError('Additional verification is required for this account. Please use the dedicated secure login page.');
+        return;
+      }
+
+      if (result?.error) {
+        setError(result.error);
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
@@ -73,7 +141,7 @@ export default function NigeriaLogin() {
           </Link>
           <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-white/75 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700 shadow-sm backdrop-blur-xl">
             <Sparkles className="h-3.5 w-3.5" />
-            Nigeria Patient Access
+            {copy.badge}
           </div>
         </header>
 
@@ -84,10 +152,10 @@ export default function NigeriaLogin() {
               Mobile-ready care journey
             </div>
             <h1 className="mt-4 max-w-2xl text-4xl leading-tight text-foreground sm:text-5xl">
-              Prescription access built for a faster Nigeria patient journey.
+              {copy.heroTitle}
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-              Move from medicine search to provider review and pharmacy confirmation inside one responsive experience with fewer taps and no horizontal breakpoints.
+              {copy.heroDescription}
             </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -119,11 +187,11 @@ export default function NigeriaLogin() {
           <section className="rounded-[2rem] border border-slate-800 bg-[linear-gradient(160deg,rgba(2,6,23,0.98),rgba(15,23,42,0.95))] p-5 text-white shadow-[0_28px_80px_rgba(15,23,42,0.28)] sm:p-7">
             <div className="text-center">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-lg shadow-emerald-900/20">
-                <Building2 className="h-8 w-8 text-white" />
+                <PortalIcon className="h-8 w-8 text-white" />
               </div>
-              <h2 className="mt-4 text-2xl font-bold">Sign in to your Nigeria portal</h2>
+              <h2 className="mt-4 text-2xl font-bold">{copy.formTitle}</h2>
               <p className="mt-2 text-sm leading-6 text-slate-300">
-                Continue into prescription search, order tracking, and pharmacy-ready handoff.
+                {copy.formDescription}
               </p>
             </div>
 
@@ -173,7 +241,7 @@ export default function NigeriaLogin() {
                 disabled={loading}
                 className="h-12 w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-500 hover:to-teal-500"
               >
-                {loading ? 'Signing in...' : 'Open Patient Portal'}
+                {loading ? 'Signing in...' : copy.submitLabel}
               </Button>
             </form>
 
@@ -203,5 +271,26 @@ export default function NigeriaLogin() {
         </main>
       </div>
     </div>
+  );
+}
+
+function NigeriaLoginFallback() {
+  return (
+    <div className="min-h-screen bg-[linear-gradient(160deg,#ecfdf5,#f8fafc_55%,#ecfeff)] px-4 py-6 text-foreground sm:px-6 sm:py-8">
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <div className="flex items-center gap-2 rounded-2xl border border-emerald-500/20 bg-white/80 px-4 py-3 text-sm font-semibold text-emerald-700 shadow-sm">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading secure login...
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function NigeriaLogin() {
+  return (
+    <Suspense fallback={<NigeriaLoginFallback />}>
+      <NigeriaLoginContent />
+    </Suspense>
   );
 }

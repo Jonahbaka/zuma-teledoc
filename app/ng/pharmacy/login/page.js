@@ -2,16 +2,15 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Building2, Loader2, Lock, Mail, ShieldCheck } from 'lucide-react';
-import { authAPI } from '@/lib/api';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 export default function NigeriaPharmacyLoginPage() {
-  const router = useRouter();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,11 +22,15 @@ export default function NigeriaPharmacyLoginPage() {
     setError('');
 
     try {
-      const response = await authAPI.login({ email, password, role: 'pharmacy' });
-      if (response.data?.success) {
-        if (response.data.accessToken) localStorage.setItem('accessToken', response.data.accessToken);
-        if (response.data.refreshToken) localStorage.setItem('refreshToken', response.data.refreshToken);
-        router.push('/ng/pharmacy/dashboard');
+      const result = await login(email.trim(), password, null, 'pharmacy');
+
+      if (result?.mfaRequired) {
+        setError('Additional verification is required for this account. Please contact support for pharmacy access.');
+        return;
+      }
+
+      if (result?.error) {
+        setError(result.error);
       }
     } catch (authError) {
       setError(authError.response?.data?.error || 'Unable to sign in.');
