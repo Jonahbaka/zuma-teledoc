@@ -5,16 +5,38 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger deploy webhook
+        env:
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
         run: |
+          auth_header=()
+
+          if [ -n "$DEPLOY_SECRET" ]; then
+            auth_header=(-H "x-deploy-token: $DEPLOY_SECRET")
+          else
+            oidc_response=$(curl -sS \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doctarx-deploy")
+            oidc_token=$(printf '%s' "$oidc_response" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("value",""))')
+            if [ -z "$oidc_token" ]; then
+              echo "::error::Unable to obtain GitHub OIDC deploy token."
+              exit 1
+            fi
+            auth_header=(-H "Authorization: Bearer $oidc_token")
+          fi
+
           response=$(curl -s -o /tmp/deploy_response.json -w "%{http_code}" \
             -X POST https://doctarx.com/api/deploy \
             -H "Content-Type: application/json" \
-            -H "x-deploy-token: ${{ secrets.DEPLOY_SECRET }}" \
+            "${auth_header[@]}" \
             --max-time 30)
           cat /tmp/deploy_response.json
           if [ "$response" != "200" ]; then
