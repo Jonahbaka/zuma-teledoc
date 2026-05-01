@@ -462,7 +462,7 @@ const ActiveCall = ({
       <div className={`flex h-full min-h-0 transition-all duration-300 ${(showAI || isSidebarOpen) ? 'lg:pr-[22rem]' : ''}`}>
 
         {/* Main Stage Grid */}
-        <div className="relative flex-1 min-h-0 px-3 pb-[calc(8.2rem+env(safe-area-inset-bottom,0px))] pt-3 sm:px-4 sm:pt-4">
+        <div className="relative flex-1 min-h-0 px-3 pb-[calc(10rem+env(safe-area-inset-bottom,0px))] pt-3 sm:px-4 sm:pb-[calc(8.2rem+env(safe-area-inset-bottom,0px))] sm:pt-4">
 
           {/* Patient Feed (main, large) */}
           <div className="relative h-full overflow-hidden rounded-[1.9rem] border border-white/10 bg-black shadow-[0_34px_90px_rgba(2,6,23,0.52)]">
@@ -571,7 +571,7 @@ const ActiveCall = ({
 
       {/* ── Bottom Control Bar ── */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.9rem+env(safe-area-inset-bottom,0px))] pt-6 sm:px-4">
-        <div className="pointer-events-auto mx-auto flex w-full max-w-[31rem] flex-wrap items-center justify-center gap-2 rounded-[1.9rem] border border-white/10 bg-slate-950/82 px-3 py-3 shadow-[0_26px_60px_rgba(2,6,23,0.54)] backdrop-blur-2xl sm:gap-3 sm:px-4">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-[42rem] flex-wrap items-center justify-center gap-2 rounded-[1.9rem] border border-white/10 bg-slate-950/82 px-3 py-3 shadow-[0_26px_60px_rgba(2,6,23,0.54)] backdrop-blur-2xl sm:flex-nowrap sm:gap-3 sm:px-4">
           <ControlBtn icon={micOn ? Mic : MicOff} active={micOn} onClick={toggleMic} label={micOn ? 'Mute' : 'Unmute'} color={micOn ? 'primary' : 'danger'} />
           <ControlBtn icon={camOn ? VideoIcon : VideoOff} active={camOn} onClick={toggleCam} label={camOn ? 'Stop Video' : 'Start Video'} color={camOn ? 'primary' : 'danger'} />
           <ControlBtn icon={FileText} label="Captions" color={showCaptions ? 'primary' : 'glass'} onClick={() => setShowCaptions(!showCaptions)} />
@@ -580,9 +580,11 @@ const ActiveCall = ({
           <ControlBtn icon={Bot} label="AI Assistant" color={showAI ? 'primary' : 'glass'} onClick={toggleAiPanel} />
           <ControlBtn icon={Sparkles} active={showEffects} onClick={toggleEffectsPanel} label="Effects" color={showEffects ? 'primary' : 'glass'} />
           <button
+            type="button"
             onClick={onEndCall}
             className="flex h-14 w-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-[0_18px_42px_rgba(244,63,94,0.42)] transition-all hover:bg-rose-400"
             title="Leave call"
+            aria-label="Leave call"
           >
             <PhoneOff size={20} />
           </button>
