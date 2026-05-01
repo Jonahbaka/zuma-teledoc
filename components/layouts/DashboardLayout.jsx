@@ -600,7 +600,7 @@ export default function DashboardLayout({
         {/* Page content */}
         <main className={cn(
           useImmersiveVideoLayout
-            ? 'min-h-[100dvh] p-0'
+            ? 'h-[100dvh] overflow-hidden p-0'
             : 'app-mobile-content-pad p-4 pt-5 lg:p-8 lg:pb-8'
         )}>
           {children}
