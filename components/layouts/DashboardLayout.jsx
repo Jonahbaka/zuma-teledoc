@@ -68,6 +68,11 @@ function pickMobileNavigation(portalName, items) {
   return selected.slice(0, 4);
 }
 
+function isVideoCallRoute(pathname) {
+  const normalizedPath = (pathname || '').replace(/\/$/, '').replace(/^\/ng(?=\/)/, '');
+  return /^\/(patient|provider)(\/appointments\/[^/]+)?\/call$/.test(normalizedPath);
+}
+
 export default function DashboardLayout({ 
   children, 
   navigation, 
@@ -87,6 +92,7 @@ export default function DashboardLayout({
   const { user, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const useImmersiveVideoLayout = isVideoCallRoute(pathname);
 
   // Initialize expanded groups based on current path
   useEffect(() => {
@@ -297,7 +303,7 @@ export default function DashboardLayout({
   return (
     <div className="app-shell-root min-h-[100dvh] bg-background text-foreground">
       {/* Mobile sidebar backdrop */}
-      {sidebarOpen && (
+      {!useImmersiveVideoLayout && sidebarOpen && (
         <div 
           className="fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
@@ -305,6 +311,7 @@ export default function DashboardLayout({
       )}
 
       {/* Sidebar */}
+      {!useImmersiveVideoLayout && (
       <aside className={cn(
         'app-safe-top fixed inset-y-0 left-0 z-50 flex h-full w-64 max-w-[86vw] flex-col border-r border-border/80 bg-card/92 shadow-2xl backdrop-blur-2xl transition-transform duration-300 lg:max-w-none lg:translate-x-0',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
@@ -373,10 +380,12 @@ export default function DashboardLayout({
           </div>
         </div>
       </aside>
+      )}
 
       {/* Main content */}
-      <div className="min-h-[100dvh] lg:pl-64">
+      <div className={cn('min-h-[100dvh]', !useImmersiveVideoLayout && 'lg:pl-64')}>
         {/* Top header */}
+        {!useImmersiveVideoLayout && (
         <header className="sticky top-0 z-30 border-b border-border/70 bg-background/88 backdrop-blur-2xl">
           <div className="flex min-h-[4.5rem] items-center justify-between gap-3 px-4 py-3 md:px-6 lg:min-h-20 lg:px-8 [padding-top:calc(0.75rem+env(safe-area-inset-top,0px))]">
             <div className="flex min-w-0 items-center gap-3">
@@ -586,13 +595,18 @@ export default function DashboardLayout({
           </div>
           </div>
         </header>
+        )}
 
         {/* Page content */}
-        <main className="app-mobile-content-pad p-4 pt-5 lg:p-8 lg:pb-8">
+        <main className={cn(
+          useImmersiveVideoLayout
+            ? 'min-h-[100dvh] p-0'
+            : 'app-mobile-content-pad p-4 pt-5 lg:p-8 lg:pb-8'
+        )}>
           {children}
         </main>
 
-        {mobileNavigation.length > 0 ? (
+        {!useImmersiveVideoLayout && mobileNavigation.length > 0 ? (
           <nav className="app-mobile-dock lg:hidden" aria-label={`${portalName} quick navigation`}>
             {mobileNavigation.map((item) => (
               <div key={item.href} className="app-mobile-dock__item">
