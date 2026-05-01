@@ -6,6 +6,7 @@ const { exec } = require('child_process');
 const multer = require('multer');
 
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
+const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
 const CHUNK_DIR = '/tmp/build-chunks';
 
 // Ensure chunk directory exists
@@ -86,7 +87,7 @@ router.post('/assemble', (req, res) => {
     `cd ${projectRoot}`,
     `tar -xzf ${tmpFile}`,
     `rm ${tmpFile} ${chunkPaths}`,
-    `pm2 restart doctarx cronops`
+    `pm2 restart ${PM2_APP_NAME} cronops`
   ].join(' && ');
 
   exec(cmd, { timeout: 300000 }, (err, stdout, stderr) => {

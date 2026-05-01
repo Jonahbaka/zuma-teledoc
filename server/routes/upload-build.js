@@ -23,6 +23,7 @@ const { exec } = require('child_process');
  */
 
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
+const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
 
 router.post('/', (req, res) => {
   const token = req.headers['x-deploy-token'];
@@ -47,7 +48,7 @@ router.post('/', (req, res) => {
       
       // Extract to project root
       const projectRoot = '/home/ec2-user/zuma-teledoc';
-      const cmd = `cd ${projectRoot} && tar -xzf ${tmpFile} && rm ${tmpFile} && pm2 restart doctarx`;
+      const cmd = `cd ${projectRoot} && tar -xzf ${tmpFile} && rm ${tmpFile} && pm2 restart ${PM2_APP_NAME}`;
       
       exec(cmd, (err, stdout, stderr) => {
         if (err) {

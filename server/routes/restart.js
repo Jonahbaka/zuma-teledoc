@@ -4,6 +4,7 @@ const { runDetachedCommand } = require('./run-detached-command');
 
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
 const CRONOPS_ROOT = '/home/ec2-user/zuma-teledoc/cronops';
+const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
 
 /**
  * Emergency restart endpoint
@@ -26,9 +27,9 @@ router.post('/', (req, res) => {
     'pkill -9 -f "pm2" || true',
     'sleep 2',
     'cd /home/ec2-user/zuma-teledoc',
-    'pm2 delete all 2>/dev/null || true',
+    'pm2 delete doctarx zuma-teledoc cronops 2>/dev/null || true',
     'sleep 1',
-    'pm2 start npm --name doctarx -- start',
+    `pm2 start npm --name ${PM2_APP_NAME} -- start`,
     `pm2 start npm --name cronops --cwd ${CRONOPS_ROOT} -- run start:prod`,
   ].join(' && ');
 
