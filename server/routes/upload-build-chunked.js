@@ -7,6 +7,7 @@ const multer = require('multer');
 
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
 const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
+const CRONOPS_ROOT = '/home/ec2-user/zuma-teledoc/cronops';
 const CHUNK_DIR = '/tmp/build-chunks';
 
 // Ensure chunk directory exists
@@ -87,7 +88,8 @@ router.post('/assemble', (req, res) => {
     `cd ${projectRoot}`,
     `tar -xzf ${tmpFile}`,
     `rm ${tmpFile} ${chunkPaths}`,
-    `pm2 restart ${PM2_APP_NAME} cronops`
+    `(pm2 restart ${PM2_APP_NAME} --update-env || pm2 start npm --name ${PM2_APP_NAME} -- start)`,
+    `(pm2 restart cronops --update-env || pm2 start npm --name cronops --cwd ${CRONOPS_ROOT} -- run start:prod)`
   ].join(' && ');
 
   exec(cmd, { timeout: 300000 }, (err, stdout, stderr) => {

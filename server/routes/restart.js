@@ -10,8 +10,8 @@ const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
  * Emergency restart endpoint
  * POST /api/restart?token=<secret>
  *
- * Hard kills and restarts PM2 apps immediately.
- * Useful when stuck (no git pull, no build, just restart).
+ * Restarts the app under PM2 without pulling or building.
+ * Useful when the app is stuck but the checked-out build is valid.
  */
 
 router.post('/', (req, res) => {
@@ -23,14 +23,11 @@ router.post('/', (req, res) => {
   res.json({ success: true, message: 'Restart initiated' });
 
   const cmd = [
-    'pkill -9 -f "node server" || true',
-    'pkill -9 -f "pm2" || true',
-    'sleep 2',
     'cd /home/ec2-user/zuma-teledoc',
-    'pm2 delete doctarx zuma-teledoc cronops 2>/dev/null || true',
+    '(pm2 delete doctarx 2>/dev/null || true)',
     'sleep 1',
-    `pm2 start npm --name ${PM2_APP_NAME} -- start`,
-    `pm2 start npm --name cronops --cwd ${CRONOPS_ROOT} -- run start:prod`,
+    `(pm2 restart ${PM2_APP_NAME} --update-env || pm2 start npm --name ${PM2_APP_NAME} -- start)`,
+    `(pm2 restart cronops --update-env || pm2 start npm --name cronops --cwd ${CRONOPS_ROOT} -- run start:prod)`,
   ].join(' && ');
 
   const job = runDetachedCommand(cmd, {

@@ -138,7 +138,8 @@ router.post('/', async (req, res) => {
   const interval = setInterval(() => {
     try {
       const log = fs.existsSync(DEPLOY_LOG) ? fs.readFileSync(DEPLOY_LOG, 'utf8') : '';
-      const done = log.includes('pm2 start') && (log.includes('[PM2]') || log.includes('online'));
+      const done = log.includes('[deploy] complete')
+        || ((log.includes('pm2 start') || log.includes('pm2 restart')) && (log.includes('[PM2]') || log.includes('online')));
       const failed = log.includes('npm ERR!') || log.includes('Build failed');
       if (done || failed || isDeployStuck()) {
         deploying = false;

@@ -7,6 +7,7 @@ const multer = require('multer');
 
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
 const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
+const CRONOPS_ROOT = '/home/ec2-user/zuma-teledoc/cronops';
 
 // Setup multer for file upload (no size limit)
 const upload = multer({
@@ -43,7 +44,13 @@ router.post('/', upload.single('tarball'), (req, res) => {
 
   // Extract in background
   const projectRoot = '/home/ec2-user/zuma-teledoc';
-  const cmd = `cd ${projectRoot} && tar -xzf ${tmpFile} && rm ${tmpFile} && pm2 restart ${PM2_APP_NAME} cronops`;
+  const cmd = [
+    `cd ${projectRoot}`,
+    `tar -xzf ${tmpFile}`,
+    `rm ${tmpFile}`,
+    `(pm2 restart ${PM2_APP_NAME} --update-env || pm2 start npm --name ${PM2_APP_NAME} -- start)`,
+    `(pm2 restart cronops --update-env || pm2 start npm --name cronops --cwd ${CRONOPS_ROOT} -- run start:prod)`,
+  ].join(' && ');
 
   exec(cmd, { timeout: 300000 /* 5 min */ }, (err, stdout, stderr) => {
     if (err) {

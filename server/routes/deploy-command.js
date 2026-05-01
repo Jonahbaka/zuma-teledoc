@@ -20,12 +20,11 @@ function buildDeployCommand() {
     'ln -sfn .next _next || true',
     "sudo find /etc/nginx -name '*.conf' -exec grep -l '_next' {} \\; 2>/dev/null | xargs -r sudo sed -i 's|/home/ubuntu/zuma-teledoc|/home/ec2-user/zuma-teledoc|g' 2>/dev/null || true",
     'sudo nginx -t 2>&1 && sudo nginx -s reload 2>&1 || true',
-    'pm2 delete doctarx zuma-teledoc cronops 2>/dev/null || true',
-    // The bracketed pattern avoids killing this deploy shell while matching stale node server processes.
-    'pkill -9 -f "[n]ode server" || true',
+    '(pm2 delete doctarx 2>/dev/null || true)',
     'sleep 1',
-    `pm2 start npm --name ${PM2_APP_NAME} -- start`,
-    `pm2 start npm --name cronops --cwd ${CRONOPS_ROOT} -- run start:prod`,
+    `(pm2 restart ${PM2_APP_NAME} --update-env || pm2 start npm --name ${PM2_APP_NAME} -- start)`,
+    `(pm2 restart cronops --update-env || pm2 start npm --name cronops --cwd ${CRONOPS_ROOT} -- run start:prod)`,
+    'echo "[deploy] complete"',
   ].join(' && ');
 }
 
