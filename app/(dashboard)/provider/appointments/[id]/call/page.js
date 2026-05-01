@@ -1091,7 +1091,14 @@ const ControlBtn = ({ icon: Icon, active, onClick, label, color = 'default' }) =
 
   return (
     <div className="relative group">
-      <button onClick={onClick} className={`${base} ${colors[color]}`} title={label}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={`${base} ${colors[color]}`}
+        title={label}
+        aria-label={label}
+        aria-pressed={active !== undefined ? active : undefined}
+      >
         <Icon size={20} />
       </button>
       <span className="absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-800 text-xs text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">

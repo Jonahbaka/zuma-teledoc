@@ -1857,8 +1857,11 @@ const ControlBtn = ({ active, onClick, onIcon: OnIcon, offIcon: OffIcon, tooltip
 
   return (
     <button
+      type="button"
       onClick={onClick}
       title={tooltip}
+      aria-label={tooltip}
+      aria-pressed={active}
       className={`flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-200 sm:h-[3.25rem] sm:w-[3.25rem] ${stateClasses}`}
     >
       <Icon size={19} />
