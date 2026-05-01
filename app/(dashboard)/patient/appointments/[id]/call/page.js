@@ -11,12 +11,13 @@ import {
 import api, { paymentsAPI } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
-import { formatDateTime, formatTime } from '@/lib/utils';
+import { formatDateTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import { VIDEO_BG_PRESETS } from '@/lib/videoBackgrounds';
 import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import useTelehealthSession from '@/lib/useTelehealthSession';
+import ConsultationChatPanel from '@/components/video/ConsultationChatPanel';
 
 // --- Assets & Constants ---
 const DOCTOR_VIDEO_URL = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
@@ -37,9 +38,6 @@ const getWaitingRoomCopy = (appointment) =>
   appointment?.isStandaloneTest
     ? 'The care team can join this testing room at any time'
     : `${getProviderLabel(appointment)} can join the waiting room at any time`;
-
-const getChatSenderLabel = (appointment) =>
-  appointment?.isStandaloneTest ? 'Care Team' : `Dr. ${appointment?.providerLastName || appointment?.providerFirstName || 'Care Team'}`;
 
 const getBgPreviewStyle = (preset) => {
   if (preset.type === 'gradient') {
@@ -796,14 +794,8 @@ const ActiveCallRoom = ({
               <X size={16} />
             </button>
           </div>
-          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-            <div className="max-w-[88%] rounded-2xl rounded-tl-sm border border-cyan-400/15 bg-cyan-500/10 p-3">
-              <p className="text-sm leading-6 text-cyan-50">Hello! I&apos;m reviewing your latest lab results. I&apos;ll be with you in a moment.</p>
-              <span className="text-[10px] text-blue-700/60 block mt-1">{getChatSenderLabel(appointment)} • {formatTime(new Date())}</span>
-            </div>
-          </div>
-          <div className="border-t border-white/10 px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-4">
-            <input type="text" placeholder="Type a secure message..." className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-400/60 focus:bg-white/10" />
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <ConsultationChatPanel appointment={appointment} />
           </div>
         </div>
       )}

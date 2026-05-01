@@ -445,6 +445,7 @@ router.get('/conversation/:recipientId', authenticate, async (req, res) => {
     
     res.json({
       success: true,
+      conversationId,
       messages: messages.reverse(), // Oldest first for display
       pagination: getPaginationMeta(total, page, limit)
     });

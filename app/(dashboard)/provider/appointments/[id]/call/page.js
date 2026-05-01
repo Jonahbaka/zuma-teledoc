@@ -7,18 +7,19 @@ import {
   PhoneOff, ShieldCheck, User,
   MessageSquare, Sparkles, X, Calendar, Clock,
   ArrowLeft, FileText, Save, Loader2, ClipboardList, Brain,
-  Bot, HeartPulse
+  Bot
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
-import { formatDateTime, formatTime } from '@/lib/utils';
+import { formatDateTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import ClinicalCoPilot from '@/components/hive/ClinicalCoPilot';
 import { resolveProviderMarket, toProviderPortalPath } from '@/lib/providerPortal';
 import useTelehealthSession from '@/lib/useTelehealthSession';
+import ConsultationChatPanel from '@/components/video/ConsultationChatPanel';
 
 /* ─────────────────── constants ─────────────────── */
 
@@ -647,14 +648,6 @@ const PatientVideoArea = ({ appointment, stream, participant, connectionStatus, 
       </div>
     )}
 
-    {/* AI Vitals Overlay (for when patient joins — decorative for now) */}
-    <div className="absolute top-4 left-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-      <div className="bg-black/40 backdrop-blur-md p-2 rounded-lg border border-white/10 flex items-center gap-2">
-        <HeartPulse size={14} className="text-rose-500" />
-        <span className="text-[10px] font-mono text-gray-400">Awaiting vitals...</span>
-      </div>
-    </div>
-
     {/* Name Tag */}
     <div className="absolute bottom-4 left-4 flex items-center gap-2">
       <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2 border border-white/5">
@@ -1079,18 +1072,7 @@ const LiveNotesPanel = ({ appointment }) => {
 /* ═══════════════════════════════════════════════════════════════════ */
 
 const ChatPanel = ({ appointment }) => (
-  <>
-    <div className="flex-1 p-4 overflow-y-auto space-y-3">
-      <div className="bg-blue-500/10 p-3 rounded-lg rounded-tl-none max-w-[85%]">
-        <p className="text-sm text-blue-200">Hello! I&apos;m ready for our appointment.</p>
-        <span className="text-[10px] text-blue-300/50 block mt-1">Dr. {appointment.providerLastName} &bull; {formatTime(new Date())}</span>
-      </div>
-    </div>
-    <div className="p-3 border-t border-gray-800">
-      <input type="text" placeholder="Type a message..."
-        className="w-full px-3 py-2 bg-gray-800 rounded-lg text-sm outline-none text-white placeholder-gray-500 focus:ring-1 focus:ring-blue-400" />
-    </div>
-  </>
+  <ConsultationChatPanel appointment={appointment} />
 );
 
 /* ═══════════════════════════════════════════════════════════════════ */
