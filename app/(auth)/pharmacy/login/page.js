@@ -38,7 +38,7 @@ export default function PharmacyLoginPage() {
           localStorage.setItem('user', JSON.stringify(data.user));
         }
         localStorage.removeItem('token');
-        router.push('/pharmacy/dashboard');
+        router.push(data.user?.mustChangePassword ? '/pharmacy/create-password' : '/pharmacy/dashboard');
       } else {
         toast({ title: 'Login Failed', description: data.error || 'Invalid credentials', variant: 'destructive' });
       }

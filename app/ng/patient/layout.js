@@ -7,7 +7,7 @@ import { nigeriaPatientNavigation } from '@/components/ng/portalNavigation';
 export default function NigeriaPatientLayout({ children }) {
   const pathname = usePathname();
 
-  if (pathname === '/ng/patient/login') {
+  if (pathname === '/ng/patient/login' || pathname === '/ng/patient/register') {
     return children;
   }
 

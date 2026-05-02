@@ -46,11 +46,19 @@ const requirePaidAccess = async (req, res, next) => {
     const testingBypass = getTestingBypassState(rows[0]);
     const accessLevel = getEffectiveAccessLevel(rows[0]);
 
+    // Patients can create a free account and book pay-per-consult appointments.
+    // Payment/coverage is enforced on the appointment itself when a visit is accessed.
+    if (req.user.role === 'patient' && req.method === 'POST' && req.path === '/') {
+      req.userAccessLevel = accessLevel;
+      req.testingBypass = testingBypass;
+      return next();
+    }
+
     // Check if user has paid access
     if (!PAID_ACCESS_LEVELS.includes(accessLevel)) {
       return res.status(403).json({
         success: false,
-        error: 'Paid subscription or payment required',
+        error: 'Consultation payment or organization coverage is required',
         accessLevel: accessLevel,
         requiredAccess: 'paid'
       });

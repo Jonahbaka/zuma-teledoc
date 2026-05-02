@@ -16,7 +16,7 @@ export default function PharmacyRegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     pharmacyName: '', licenseNumber: '', ownerName: '',
-    email: '', phone: '', password: '',
+    email: '', phone: '', password: '', confirmPassword: '',
     address: '', city: '', state: '', acceptTerms: false
   });
 
@@ -25,12 +25,35 @@ export default function PharmacyRegisterPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.acceptTerms) { toast({ title: 'Please accept terms', variant: 'destructive' }); return; }
+    if (formData.password !== formData.confirmPassword) {
+      toast({ title: 'Passwords do not match', variant: 'destructive' });
+      return;
+    }
     setIsLoading(true);
     try {
+      const ownerParts = formData.ownerName.trim().split(/\s+/).filter(Boolean);
+      const firstName = ownerParts.shift() || formData.pharmacyName;
+      const lastName = ownerParts.join(' ') || 'Pharmacy';
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, role: 'pharmacy' })
+        body: JSON.stringify({
+          email: formData.email,
+          phone: formData.phone,
+          password: formData.password,
+          confirmPassword: formData.confirmPassword,
+          firstName,
+          lastName,
+          role: 'pharmacy',
+          country: 'US',
+          addressLine1: formData.address,
+          city: formData.city,
+          region: formData.state,
+          licenseNumber: formData.licenseNumber,
+          credentials: formData.pharmacyName,
+          hipaaConsent: true,
+          termsAccepted: true,
+        })
       });
       const data = await res.json();
       if (data.success) {
@@ -137,6 +160,13 @@ export default function PharmacyRegisterPage() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input type="password" placeholder="Create a secure password" value={formData.password} onChange={(e) => update('password', e.target.value)} className="pl-9" required />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Confirm Password *</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input type="password" placeholder="Confirm your password" value={formData.confirmPassword} onChange={(e) => update('confirmPassword', e.target.value)} className="pl-9" required />
                   </div>
                 </div>
 

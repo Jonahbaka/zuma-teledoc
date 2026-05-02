@@ -24,8 +24,8 @@ export default function NigeriaPharmacyWalletPage() {
     }
 
     const [walletResponse, transactionsResponse] = await Promise.all([
-      api.get(`/api/ng/pharmacy/${pharmacyWorkspace.id}/wallet`).catch(() => ({ data: {} })),
-      api.get(`/api/ng/pharmacy/${pharmacyWorkspace.id}/wallet/transactions`).catch(() => ({ data: [] })),
+      api.get(`/ng/pharmacy/${pharmacyWorkspace.id}/wallet`).catch(() => ({ data: {} })),
+      api.get(`/ng/pharmacy/${pharmacyWorkspace.id}/wallet/transactions`).catch(() => ({ data: [] })),
     ]);
 
     setWallet(walletResponse.data || {});
@@ -41,7 +41,7 @@ export default function NigeriaPharmacyWalletPage() {
     if (!workspace?.id) return;
     setNotice('');
     try {
-      await api.post(`/api/ng/pharmacy/${workspace.id}/wallet/settle`);
+      await api.post(`/ng/pharmacy/${workspace.id}/wallet/settle`);
       setNotice('Settlement request submitted.');
       await loadWallet();
     } catch (error) {

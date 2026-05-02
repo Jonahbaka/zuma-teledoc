@@ -11,6 +11,10 @@ const { auditMiddleware, auditPhiAccess } = require('../middleware/audit');
 const { encrypt, decrypt, encryptFields, decryptFields } = require('../../lib/encryption');
 const { validate, createVisitSchema, signVisitSchema, paginationSchema } = require('../../lib/validation');
 const { keysToCamel, parseQueryParams, getPaginationMeta } = require('../../lib/utils');
+const {
+  requireActiveProviderToolAccess,
+  recordProviderUsage,
+} = require('../../ng/services/providers/providerAccessService');
 
 const router = express.Router();
 
@@ -21,6 +25,7 @@ const router = express.Router();
 router.post('/',
   authenticate,
   requireRole('provider'),
+  requireActiveProviderToolAccess,
   auditMiddleware('create', 'visit', { phiAccessed: true }),
   async (req, res) => {
     try {
@@ -110,6 +115,10 @@ router.post('/',
         appointmentId: data.appointmentId,
         providerId: req.user.id 
       });
+
+      await recordProviderUsage(req.user.id, 'consultation_completed', {
+        metadata: { visitId: rows[0].id, appointmentId: data.appointmentId },
+      }).catch(() => null);
       
       res.status(201).json({
         success: true,

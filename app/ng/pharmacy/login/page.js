@@ -40,9 +40,9 @@ export default function NigeriaPharmacyLoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_30%),radial-gradient(circle_at_85%_10%,rgba(14,165,233,0.12),transparent_26%),linear-gradient(160deg,#ecfdf5,#f8fafc_55%,#ecfeff)] px-4 py-6 sm:px-6 sm:py-8">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6 lg:grid lg:grid-cols-[1.08fr_0.92fr] lg:items-center">
-        <section className="rounded-[2rem] border border-white/80 bg-white/82 p-6 shadow-[0_24px_70px_rgba(15,23,42,0.12)] backdrop-blur-2xl sm:p-8">
+    <div className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_30%),radial-gradient(circle_at_85%_10%,rgba(14,165,233,0.12),transparent_26%),linear-gradient(160deg,#ecfdf5,#f8fafc_55%,#ecfeff)] px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto flex w-full max-w-5xl min-w-0 flex-col gap-6 overflow-hidden lg:grid lg:grid-cols-[1.08fr_0.92fr] lg:items-center">
+        <section className="w-full max-w-[calc(100vw-2rem)] min-w-0 overflow-hidden rounded-[2rem] border border-white/80 bg-white/82 p-6 shadow-[0_24px_70px_rgba(15,23,42,0.12)] backdrop-blur-2xl sm:p-8">
           <Link href="/ng" className="inline-flex items-center gap-3">
             <span className="rounded-2xl border border-slate-800 bg-slate-950 px-3 py-2 shadow-[0_0_24px_rgba(16,185,129,0.2)]">
               <DoctaRxLogo className="h-7 w-auto" />
@@ -57,10 +57,10 @@ export default function NigeriaPharmacyLoginPage() {
             <Building2 className="h-4 w-4" />
             Nigeria Pharmacy Access
           </div>
-          <h1 className="mt-4 text-4xl font-bold leading-tight text-foreground sm:text-5xl">
+          <h1 className="mt-4 break-words text-3xl font-bold leading-tight text-foreground sm:text-5xl">
             Manage orders, inventory, wallet settlement, and compliance from one workspace.
           </h1>
-          <p className="mt-4 text-base leading-7 text-muted-foreground">
+          <p className="mt-4 break-words text-base leading-7 text-muted-foreground">
             This login lands pharmacy operators in the actual Nigeria pharmacy portal with dashboard, orders, inventory, wallet, settings, and profile routes behind it.
           </p>
 
@@ -72,13 +72,13 @@ export default function NigeriaPharmacyLoginPage() {
             ].map((item) => (
               <div key={item} className="flex items-start gap-3 rounded-[1.25rem] border border-emerald-500/15 bg-emerald-500/5 px-4 py-3">
                 <ShieldCheck className="mt-0.5 h-4.5 w-4.5 shrink-0 text-emerald-600" />
-                <p className="text-sm leading-6 text-foreground/90">{item}</p>
+                <p className="min-w-0 break-words text-sm leading-6 text-foreground/90">{item}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="rounded-[2rem] border border-slate-800 bg-[linear-gradient(160deg,rgba(2,6,23,0.98),rgba(15,23,42,0.95))] p-6 text-white shadow-[0_28px_80px_rgba(15,23,42,0.28)] sm:p-8">
+        <section className="w-full max-w-[calc(100vw-2rem)] min-w-0 rounded-[2rem] border border-slate-800 bg-[linear-gradient(160deg,rgba(2,6,23,0.98),rgba(15,23,42,0.95))] p-6 text-white shadow-[0_28px_80px_rgba(15,23,42,0.28)] sm:p-8">
           <div className="text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-lg shadow-emerald-900/20">
               <Building2 className="h-8 w-8 text-white" />

@@ -30,7 +30,7 @@ export default function NigeriaPatientOrdersPage() {
   const loadOrders = async () => {
     try {
       const params = filter === 'all' ? undefined : { status: filter };
-      const response = await api.get('/api/ng/patient/orders', { params });
+      const response = await api.get('/ng/patient/orders', { params });
       setOrders(Array.isArray(response.data) ? response.data : []);
     } finally {
       setLoading(false);
@@ -44,7 +44,7 @@ export default function NigeriaPatientOrdersPage() {
   const payForOrder = async (orderId) => {
     setNotice('');
     try {
-      const response = await api.post(`/api/ng/patient/orders/${orderId}/pay`);
+      const response = await api.post(`/ng/patient/orders/${orderId}/pay`);
       const authorizationUrl = response.data?.authorizationUrl || response.data?.checkoutUrl || response.data?.paymentUrl;
 
       if (authorizationUrl && typeof window !== 'undefined') {
@@ -61,7 +61,7 @@ export default function NigeriaPatientOrdersPage() {
   const cancelOrder = async (orderId) => {
     setNotice('');
     try {
-      await api.post(`/api/ng/patient/orders/${orderId}/cancel`, { reason: 'Patient cancelled from portal' });
+      await api.post(`/ng/patient/orders/${orderId}/cancel`, { reason: 'Patient cancelled from portal' });
       setNotice('Order cancelled.');
       await loadOrders();
     } catch (error) {

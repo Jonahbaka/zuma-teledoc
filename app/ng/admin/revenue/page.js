@@ -13,7 +13,7 @@ export default function NigeriaAdminRevenuePage() {
 
   useEffect(() => {
     const loadRevenue = async () => {
-      const response = await api.get('/api/ng/admin/analytics/revenue').catch(() => ({ data: [] }));
+      const response = await api.get('/ng/admin/analytics/revenue').catch(() => ({ data: [] }));
       setRows(Array.isArray(response.data) ? response.data : []);
     };
 

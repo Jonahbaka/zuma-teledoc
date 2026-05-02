@@ -25,7 +25,7 @@ export default function NigeriaPatientPrescriptionsPage() {
 
   const loadPrescriptions = async () => {
     try {
-      const response = await api.get('/api/ng/patient/prescriptions');
+      const response = await api.get('/ng/patient/prescriptions');
       setPrescriptions(Array.isArray(response.data) ? response.data : []);
     } finally {
       setLoading(false);
@@ -42,7 +42,7 @@ export default function NigeriaPatientPrescriptionsPage() {
 
     setUploading(true);
     try {
-      const response = await api.post('/api/ng/patient/prescriptions/upload', {
+      const response = await api.post('/ng/patient/prescriptions/upload', {
         imageUrl: URL.createObjectURL(file),
       });
       setUploadResult(response.data);
@@ -57,7 +57,7 @@ export default function NigeriaPatientPrescriptionsPage() {
 
     setUploading(true);
     try {
-      const response = await api.post('/api/ng/patient/prescriptions/text', {
+      const response = await api.post('/ng/patient/prescriptions/text', {
         text: prescriptionText,
       });
       setUploadResult(response.data);

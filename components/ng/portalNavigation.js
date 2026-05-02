@@ -35,6 +35,7 @@ export const nigeriaPatientNavigation = [
 
 export const nigeriaPharmacyNavigation = [
   { name: 'Dashboard', href: '/ng/pharmacy/dashboard', icon: LayoutDashboard },
+  { name: 'Prescriptions', href: '/ng/pharmacy/prescriptions', icon: FileText },
   { name: 'Orders', href: '/ng/pharmacy/orders', icon: ClipboardList },
   { name: 'Inventory', href: '/ng/pharmacy/inventory', icon: Pill },
   { name: 'Wallet', href: '/ng/pharmacy/wallet', icon: Wallet },

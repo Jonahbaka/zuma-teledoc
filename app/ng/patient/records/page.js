@@ -32,8 +32,8 @@ export default function NigeriaPatientRecordsPage() {
         const [documentsResponse, visitsResponse, prescriptionsResponse, ordersResponse, appointmentsResponse] = await Promise.all([
           currentUser ? medicalRecordsAPI.getByPatient(currentUser.id).catch(() => ({ data: { success: false, records: [] } })) : Promise.resolve({ data: { success: false, records: [] } }),
           currentUser ? visitsAPI.getByPatient(currentUser.id).catch(() => ({ data: { success: false, visits: [] } })) : Promise.resolve({ data: { success: false, visits: [] } }),
-          api.get('/api/ng/patient/prescriptions', { params: { limit: 6 } }).catch(() => ({ data: [] })),
-          api.get('/api/ng/patient/orders', { params: { limit: 6 } }).catch(() => ({ data: [] })),
+          api.get('/ng/patient/prescriptions', { params: { limit: 6 } }).catch(() => ({ data: [] })),
+          api.get('/ng/patient/orders', { params: { limit: 6 } }).catch(() => ({ data: [] })),
           appointmentsAPI.getAll({ status: 'completed' }).catch(() => ({ data: { success: false, appointments: [] } })),
         ]);
 

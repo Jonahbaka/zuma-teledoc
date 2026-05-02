@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Eye, EyeOff, LockKeyhole, ShieldCheck, Stethoscope } from 'lucide-react';
+import { Building2, Eye, EyeOff, LockKeyhole, ShieldCheck, Stethoscope } from 'lucide-react';
 import { authAPI } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
@@ -22,12 +22,30 @@ const MARKET_COPY = {
     accent: 'from-purple-600 to-indigo-600',
     focus: 'focus:border-purple-500 focus:ring-purple-500/20',
   },
+  US_PHARMACY: {
+    homeHref: '/',
+    loginHref: '/pharmacy/login',
+    dashboardHref: '/pharmacy/dashboard',
+    title: 'Create a new pharmacy password',
+    subtitle: 'Set a permanent password before entering the DoctaRx Pharmacy Portal.',
+    accent: 'from-purple-600 to-indigo-600',
+    focus: 'focus:border-purple-500 focus:ring-purple-500/20',
+  },
   NG: {
     homeHref: '/ng',
     loginHref: '/ng/provider/login',
     dashboardHref: '/ng/provider/dashboard',
     title: 'Create a new provider password',
     subtitle: 'Set a permanent password before entering Nigeria provider ops.',
+    accent: 'from-emerald-600 to-teal-600',
+    focus: 'focus:border-emerald-500 focus:ring-emerald-500/20',
+  },
+  NG_PHARMACY: {
+    homeHref: '/ng',
+    loginHref: '/ng/pharmacy/login',
+    dashboardHref: '/ng/pharmacy/dashboard',
+    title: 'Create a new pharmacy password',
+    subtitle: 'Set a permanent password before entering the DoctaRx Nigeria Pharmacy Portal.',
     accent: 'from-emerald-600 to-teal-600',
     focus: 'focus:border-emerald-500 focus:ring-emerald-500/20',
   },
@@ -43,8 +61,12 @@ function meetsPasswordPolicy(value) {
   );
 }
 
-export default function ProviderCreatePasswordPage({ market = 'US' }) {
-  const copy = MARKET_COPY[market] || MARKET_COPY.US;
+export default function ProviderCreatePasswordPage({ market = 'US', role = 'provider' }) {
+  const copyKey = role === 'pharmacy'
+    ? (market === 'NG' ? 'NG_PHARMACY' : 'US_PHARMACY')
+    : market;
+  const copy = MARKET_COPY[copyKey] || MARKET_COPY.US;
+  const PortalIcon = role === 'pharmacy' ? Building2 : Stethoscope;
   const router = useRouter();
   const pathname = usePathname();
   const { user, loading, isAuthenticated, refreshUser, updateUser } = useAuth();
@@ -59,8 +81,10 @@ export default function ProviderCreatePasswordPage({ market = 'US' }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    setPreferredProviderMarket(market);
-  }, [market]);
+    if (role === 'provider') {
+      setPreferredProviderMarket(market);
+    }
+  }, [market, role]);
 
   useEffect(() => {
     if (loading) {
@@ -72,7 +96,7 @@ export default function ProviderCreatePasswordPage({ market = 'US' }) {
       return;
     }
 
-    if (user?.role !== 'provider') {
+    if (user?.role !== role) {
       router.replace('/');
       return;
     }
@@ -80,7 +104,7 @@ export default function ProviderCreatePasswordPage({ market = 'US' }) {
     if (!user?.mustChangePassword) {
       router.replace(copy.dashboardHref);
     }
-  }, [copy.dashboardHref, copy.loginHref, isAuthenticated, loading, router, user]);
+  }, [copy.dashboardHref, copy.loginHref, isAuthenticated, loading, role, router, user]);
 
   const policySatisfied = useMemo(
     () => meetsPasswordPolicy(form.newPassword),
@@ -138,12 +162,16 @@ export default function ProviderCreatePasswordPage({ market = 'US' }) {
 
       await refreshUser();
 
-      router.replace(
-        toProviderPortalPath('/dashboard', {
-          pathname,
-          user: response.data?.user || { ...user, mustChangePassword: false },
-        })
-      );
+      if (role === 'provider') {
+        router.replace(
+          toProviderPortalPath('/dashboard', {
+            pathname,
+            user: response.data?.user || { ...user, mustChangePassword: false },
+          })
+        );
+      } else {
+        router.replace(copy.dashboardHref);
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Could not update password. Please try again.');
     } finally {
@@ -151,7 +179,7 @@ export default function ProviderCreatePasswordPage({ market = 'US' }) {
     }
   };
 
-  if (loading || !isAuthenticated || user?.role !== 'provider') {
+  if (loading || !isAuthenticated || user?.role !== role) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 text-sm text-slate-300">
         Checking secure session...
@@ -168,14 +196,14 @@ export default function ProviderCreatePasswordPage({ market = 'US' }) {
           </Link>
           <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-slate-300 sm:inline-flex">
             <ShieldCheck className="h-4 w-4" />
-            Provider security
+            Account security
           </div>
         </header>
 
         <main className="grid flex-1 items-center gap-8 py-8 lg:grid-cols-[0.95fr_1.05fr]">
           <section className="max-w-xl">
             <div className={`mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${copy.accent}`}>
-              <Stethoscope className="h-7 w-7" />
+              <PortalIcon className="h-7 w-7" />
             </div>
             <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
               {copy.title}

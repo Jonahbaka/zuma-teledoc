@@ -10,7 +10,7 @@ export default function NigeriaAdminCompliancePage() {
   const [notice, setNotice] = useState('');
 
   const loadCompliance = async () => {
-    const response = await api.get('/api/ng/admin/compliance/audit-log').catch(() => ({ data: [] }));
+    const response = await api.get('/ng/admin/compliance/audit-log').catch(() => ({ data: [] }));
     setAuditEntries(Array.isArray(response.data) ? response.data : []);
   };
 
@@ -21,7 +21,7 @@ export default function NigeriaAdminCompliancePage() {
   const runExpiredInventoryCheck = async () => {
     setNotice('');
     try {
-      await api.post('/api/ng/admin/compliance/check-expired');
+      await api.post('/ng/admin/compliance/check-expired');
       setNotice('Expired inventory check started.');
     } catch (error) {
       setNotice(error.response?.data?.error || 'Unable to start expired inventory check.');

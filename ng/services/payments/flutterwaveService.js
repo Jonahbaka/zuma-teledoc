@@ -65,7 +65,7 @@ class FlutterwaveService {
       payment_options: paymentOptions,
       customer: { email, phonenumber: phone, name },
       customizations: {
-        title: 'ZumaRx Nigeria',
+        title: 'DoctaRx Nigeria',
         description: 'Medication order payment',
         logo: `${process.env.NEXT_PUBLIC_APP_URL}/logo.png`,
       },

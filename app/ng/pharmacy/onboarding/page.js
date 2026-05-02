@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 const NIGERIAN_STATES = [
   'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi', 'Bayelsa', 'Benue',
@@ -39,7 +40,14 @@ export default function PharmacyOnboarding() {
     setLoading(true);
     setError('');
     try {
-      await api.post('/api/ng/pharmacy/register', form);
+      await api.post('/ng/pharmacy/register', {
+        ...form,
+        whatsappBusinessNumber: form.whatsapp,
+        preferredPrescriptionReceivingMethod: 'dashboard_whatsapp',
+        acceptsBankTransfer: true,
+        acceptsPos: true,
+        acceptsCash: true,
+      });
       setSuccess(true);
     } catch (err) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.');
@@ -76,12 +84,9 @@ export default function PharmacyOnboarding() {
       <header className="bg-white border-b">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center">
           <Link href="/ng" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">Rx</span>
-            </div>
-            <span className="font-bold text-gray-900">ZumaRx</span>
+            <DoctaRxLogo className="h-8 w-auto" />
           </Link>
-          <span className="ml-4 text-gray-500">Pharmacy Registration</span>
+          <span className="ml-4 text-gray-600">DoctaRx Nigeria Pharmacy Portal</span>
         </div>
       </header>
 

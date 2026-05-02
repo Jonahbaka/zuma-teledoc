@@ -23,8 +23,8 @@ export default function NigeriaPharmacyInventoryPage() {
       }
 
       const [inventoryResponse, alertsResponse] = await Promise.all([
-        api.get(`/api/ng/pharmacy/${pharmacyWorkspace.id}/inventory`).catch(() => ({ data: { items: [] } })),
-        api.get(`/api/ng/pharmacy/${pharmacyWorkspace.id}/inventory/alerts`).catch(() => ({ data: [] })),
+        api.get(`/ng/pharmacy/${pharmacyWorkspace.id}/inventory`).catch(() => ({ data: { items: [] } })),
+        api.get(`/ng/pharmacy/${pharmacyWorkspace.id}/inventory/alerts`).catch(() => ({ data: [] })),
       ]);
 
       const inventoryItems = Array.isArray(inventoryResponse.data)

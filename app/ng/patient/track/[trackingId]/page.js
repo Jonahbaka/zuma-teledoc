@@ -18,7 +18,7 @@ export default function DeliveryTracking() {
 
   async function loadTracking() {
     try {
-      const res = await api.get(`/api/ng/patient/tracking/${trackingId}`);
+      const res = await api.get(`/ng/patient/tracking/${trackingId}`);
       setTracking(res.data);
     } catch (err) {
       console.error(err);

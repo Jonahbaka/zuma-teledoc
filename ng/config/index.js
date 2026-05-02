@@ -71,7 +71,7 @@ const config = {
     provider: process.env.SMS_PROVIDER || 'termii',
     termii: {
       apiKey: process.env.TERMII_API_KEY,
-      senderId: process.env.TERMII_SENDER_ID || 'ZumaRx',
+      senderId: process.env.TERMII_SENDER_ID || 'DoctaRx',
       baseUrl: 'https://api.ng.termii.com/api',
     },
   },

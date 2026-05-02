@@ -26,7 +26,7 @@ function TrackOrderContent() {
 
   async function loadOrder() {
     try {
-      const res = await api.get(`/api/ng/patient/orders/${orderId}`);
+      const res = await api.get(`/ng/patient/orders/${orderId}`);
       setOrder(res.data);
     } catch (err) {
       console.error(err);

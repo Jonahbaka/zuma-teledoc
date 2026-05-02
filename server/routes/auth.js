@@ -212,6 +212,24 @@ router.post('/register', async (req, res) => {
     );
     
     const user = rows[0];
+
+    if (String(data.country || '').toUpperCase() === 'NG') {
+      await db.query(
+        `UPDATE users
+            SET region = 'NG',
+                market_scope = 'NG',
+                account_status = COALESCE(account_status, 'active'),
+                coverage_status = CASE WHEN role = 'patient' THEN 'self_pay' ELSE coverage_status END,
+                updated_at = NOW()
+          WHERE id = $1`,
+        [user.id]
+      ).catch((metadataError) => {
+        logger.warn('Failed to set Nigeria registration metadata', {
+          userId: user.id,
+          error: metadataError.message
+        });
+      });
+    }
     
     // Create subscription record (free tier by default)
     await db.query(

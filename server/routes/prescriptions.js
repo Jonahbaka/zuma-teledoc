@@ -11,6 +11,10 @@ const { validate } = require('../../lib/validation');
 const prescriptionService = require('../services/prescriptionService');
 const logger = require('../middleware/logger');
 const { z } = require('zod');
+const {
+  requireActiveProviderToolAccess,
+  recordProviderUsage,
+} = require('../../ng/services/providers/providerAccessService');
 
 // Validation schemas
 const createPrescriptionSchema = z.object({
@@ -63,6 +67,7 @@ const updatePharmacySchema = z.object({
 router.post('/',
   authenticate,
   requireRole(['provider', 'admin', 'super_admin']),
+  requireActiveProviderToolAccess,
   auditMiddleware('create', 'prescription'),
   async (req, res) => {
     try {
@@ -76,6 +81,10 @@ router.post('/',
         patientId: data.patientId,
         medication: data.medicationName
       });
+
+      await recordProviderUsage(req.user.id, 'prescription_issued', {
+        metadata: { prescriptionId: prescription.id, patientId: data.patientId },
+      }).catch(() => null);
       
       res.status(201).json({
         success: true,
@@ -197,6 +206,7 @@ router.get('/:id/history',
 router.post('/:id/sign-and-send',
   authenticate,
   requireRole(['provider', 'admin', 'super_admin']),
+  requireActiveProviderToolAccess,
   auditMiddleware('update', 'prescription'),
   async (req, res) => {
     try {

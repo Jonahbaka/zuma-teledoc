@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { CreditCard, Search, ChevronLeft, Download, TrendingUp, Users, XCircle } from 'lucide-react';
+import { CheckCircle2, CreditCard, Search, ChevronLeft, Download, TrendingUp, Users, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatNaira } from '../../lib/ngUtils';
 
@@ -21,15 +21,22 @@ export default function AdminSubscriptions() {
   const [tab, setTab] = useState('active');
   const [search, setSearch] = useState('');
   const [summary, setSummary] = useState({ total: 0, active: 0, mrr: 0 });
+  const [manualNotice, setManualNotice] = useState('');
+  const [manualActivation, setManualActivation] = useState({
+    subjectType: 'provider',
+    userId: '',
+    organizationId: '',
+    planKey: '',
+    amountNgn: '',
+    paymentMethod: 'bank_transfer',
+    paymentReference: '',
+    periodEnd: '',
+    notes: '',
+  });
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 
-  useEffect(() => {
-    fetch('/api/ng/subscriptions/plans', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(d => setPlans(d.plans || [])).catch(() => {});
-  }, []);
-
-  useEffect(() => {
+  const loadSubscriptions = async () => {
     setLoading(true);
     const params = new URLSearchParams({ limit: 100 });
     if (tab !== 'all') params.set('status', tab);
@@ -41,6 +48,15 @@ export default function AdminSubscriptions() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetch('/api/ng/subscriptions/plans', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => setPlans(d.plans || [])).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadSubscriptions();
   }, [tab]);
 
   const handleCancel = async (id) => {
@@ -52,13 +68,75 @@ export default function AdminSubscriptions() {
     setSubs(s => s.filter(x => x.id !== id));
   };
 
+  const handleManualActivation = async (event) => {
+    event.preventDefault();
+    setManualNotice('');
+
+    if (!manualActivation.planKey) {
+      setManualNotice('Select a plan before activating a subscription.');
+      return;
+    }
+
+    if (manualActivation.subjectType === 'provider' && !manualActivation.userId) {
+      setManualNotice('Provider user ID is required for provider subscription activation.');
+      return;
+    }
+
+    if (manualActivation.subjectType === 'organization' && !manualActivation.organizationId) {
+      setManualNotice('Organisation ID is required for bulk subscription activation.');
+      return;
+    }
+
+    const response = await fetch('/api/ng/subscriptions/admin/manual-activation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        ...manualActivation,
+        userId: manualActivation.subjectType === 'provider' ? manualActivation.userId : null,
+        organizationId: manualActivation.subjectType === 'organization' ? manualActivation.organizationId : null,
+        amountNgn: manualActivation.amountNgn ? Number(manualActivation.amountNgn) : undefined,
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setManualNotice(payload.error || 'Unable to activate subscription.');
+      return;
+    }
+
+    setManualNotice('Subscription activated from admin-confirmed payment.');
+    setManualActivation({
+      subjectType: 'provider',
+      userId: '',
+      organizationId: '',
+      planKey: '',
+      amountNgn: '',
+      paymentMethod: 'bank_transfer',
+      paymentReference: '',
+      periodEnd: '',
+      notes: '',
+    });
+    loadSubscriptions();
+  };
+
   const filtered = subs.filter(s =>
-    s.user_id?.toString().includes(search) ||
-    s.plan_id?.toLowerCase().includes(search.toLowerCase()) ||
-    s.entity_type?.toLowerCase().includes(search.toLowerCase())
+    [
+      s.subscriber_user_id,
+      s.subscriber_org_id,
+      s.user_email,
+      s.plan_key,
+      s.plan_name,
+      s.plan_id,
+    ].filter(Boolean).join(' ').toLowerCase().includes(search.toLowerCase())
   );
 
-  const planLabel = (pid) => plans.find(p => p.id === pid)?.name || pid;
+  const planLabel = (subscription) => {
+    if (typeof subscription === 'string') {
+      return plans.find(p => p.id === subscription)?.name || subscription;
+    }
+    return subscription.plan_name || plans.find(p => p.id === subscription.plan_id)?.name || subscription.plan_key || subscription.plan_id;
+  };
+  const eligibleManualPlans = plans.filter((plan) => plan.target_role === manualActivation.subjectType);
 
   return (
     <div className="space-y-6">
@@ -89,6 +167,111 @@ export default function AdminSubscriptions() {
           );
         })}
       </div>
+
+      <form onSubmit={handleManualActivation} className="rounded-2xl border border-border bg-card p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 text-sm font-bold text-foreground">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              Admin-confirmed subscription activation
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Use this when Nigeria payment is confirmed by bank transfer, POS, cash, invoice, or operations review.
+            </p>
+          </div>
+          {manualNotice ? <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">{manualNotice}</span> : null}
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <select
+            value={manualActivation.subjectType}
+            onChange={(e) => setManualActivation({
+              ...manualActivation,
+              subjectType: e.target.value,
+              planKey: '',
+              userId: e.target.value === 'provider' ? manualActivation.userId : '',
+              organizationId: e.target.value === 'organization' ? manualActivation.organizationId : '',
+            })}
+            className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground"
+          >
+            <option value="provider">Provider subscription</option>
+            <option value="organization">Organisation bulk subscription</option>
+          </select>
+
+          {manualActivation.subjectType === 'provider' ? (
+            <input
+              value={manualActivation.userId}
+              onChange={(e) => setManualActivation({ ...manualActivation, userId: e.target.value })}
+              placeholder="Provider user ID"
+              className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground"
+            />
+          ) : (
+            <input
+              value={manualActivation.organizationId}
+              onChange={(e) => setManualActivation({ ...manualActivation, organizationId: e.target.value })}
+              placeholder="Organisation ID"
+              className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground"
+            />
+          )}
+
+          <select
+            value={manualActivation.planKey}
+            onChange={(e) => {
+              const selected = plans.find((plan) => plan.plan_key === e.target.value);
+              setManualActivation({
+                ...manualActivation,
+                planKey: e.target.value,
+                amountNgn: selected?.price_monthly ? String(selected.price_monthly) : manualActivation.amountNgn,
+              });
+            }}
+            className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground"
+          >
+            <option value="">Select plan</option>
+            {eligibleManualPlans.map((plan) => (
+              <option key={plan.plan_key} value={plan.plan_key}>{plan.name}</option>
+            ))}
+          </select>
+
+          <input
+            value={manualActivation.amountNgn}
+            onChange={(e) => setManualActivation({ ...manualActivation, amountNgn: e.target.value })}
+            placeholder="Amount confirmed, ₦"
+            inputMode="decimal"
+            className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground"
+          />
+          <select
+            value={manualActivation.paymentMethod}
+            onChange={(e) => setManualActivation({ ...manualActivation, paymentMethod: e.target.value })}
+            className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground"
+          >
+            <option value="bank_transfer">Bank transfer</option>
+            <option value="pos">POS</option>
+            <option value="cash">Cash</option>
+            <option value="manual_invoice">Manual invoice</option>
+          </select>
+          <input
+            value={manualActivation.paymentReference}
+            onChange={(e) => setManualActivation({ ...manualActivation, paymentReference: e.target.value })}
+            placeholder="Payment reference"
+            className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground"
+          />
+          <input
+            type="date"
+            value={manualActivation.periodEnd}
+            onChange={(e) => setManualActivation({ ...manualActivation, periodEnd: e.target.value })}
+            className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground"
+          />
+          <input
+            value={manualActivation.notes}
+            onChange={(e) => setManualActivation({ ...manualActivation, notes: e.target.value })}
+            placeholder="Admin notes"
+            className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground md:col-span-2"
+          />
+          <Button type="submit" className="h-10 bg-emerald-600 text-white hover:bg-emerald-500">
+            Activate Subscription
+          </Button>
+        </div>
+      </form>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-accent rounded-xl p-1 w-fit flex-wrap">
@@ -125,8 +308,8 @@ export default function AdminSubscriptions() {
               <div key={s.id} className="px-6 py-4 flex items-start justify-between gap-4 flex-wrap">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-foreground capitalize">{s.entity_type || 'patient'}</span>
-                    <span className="text-xs text-muted-foreground">#{s.entity_id || s.user_id}</span>
+                    <span className="text-xs font-bold text-foreground capitalize">{s.subscriber_org_id ? 'organisation' : 'user'}</span>
+                    <span className="text-xs text-muted-foreground">#{s.subscriber_org_id || s.subscriber_user_id}</span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${statusBadge(s.status)}`}>{s.status?.replace('_', ' ')}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">Plan: <strong className="text-foreground">{planLabel(s.plan_id)}</strong> • {s.billing_cycle || 'monthly'}</p>
@@ -134,7 +317,7 @@ export default function AdminSubscriptions() {
                     Started: {s.started_at ? new Date(s.started_at).toLocaleDateString('en-NG') : '—'} •
                     Expires: {s.current_period_end ? new Date(s.current_period_end).toLocaleDateString('en-NG') : '—'}
                   </p>
-                  {s.amount && <p className="text-xs font-medium text-foreground">{formatNaira(s.amount)}/mo</p>}
+                  {s.amount_per_period && <p className="text-xs font-medium text-foreground">{formatNaira(s.amount_per_period)}/mo</p>}
                 </div>
                 {s.status === 'active' && (
                   <Button size="sm" onClick={() => handleCancel(s.id)}

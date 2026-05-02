@@ -24,6 +24,10 @@ const {
   getAuthorizedVideoAppointment,
   getTelehealthIceServers
 } = require('../services/telehealthSessionService');
+const {
+  ensureProviderAccessForUser,
+  recordProviderUsage,
+} = require('../../ng/services/providers/providerAccessService');
 
 const router = express.Router();
 const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
@@ -1090,6 +1094,31 @@ router.post('/:id/join', authenticate, async (req, res) => {
     const { id } = req.params;
 
     const appointment = await getAuthorizedVideoAppointment(id, req.user);
+    if (String(req.user.role || '').toLowerCase() === 'provider') {
+      const userMarket = await db.query(
+        `SELECT country, region, market_scope FROM users WHERE id = $1 LIMIT 1`,
+        [req.user.id]
+      );
+      const marketValue = String(
+        userMarket.rows[0]?.country || userMarket.rows[0]?.region || userMarket.rows[0]?.market_scope || ''
+      ).toLowerCase();
+      if (marketValue === 'ng' || marketValue === 'nigeria') {
+        const accessState = await ensureProviderAccessForUser(req.user.id, { startTrialIfEligible: true });
+        if (!accessState.access.allowed) {
+          return res.status(accessState.access.accessStatus === 'trial_expired' ? 402 : 403).json({
+            success: false,
+            error: accessState.access.blockReason,
+            code: accessState.access.accessStatus === 'trial_expired'
+              ? 'PROVIDER_SUBSCRIPTION_REQUIRED'
+              : 'PROVIDER_ACCESS_BLOCKED',
+            providerAccess: accessState,
+          });
+        }
+        await recordProviderUsage(req.user.id, 'video_call_started', {
+          metadata: { appointmentId: id },
+        }).catch(() => null);
+      }
+    }
     const roomId = await ensureAppointmentRoomId(appointment.id, appointment.roomId);
 
     res.json({

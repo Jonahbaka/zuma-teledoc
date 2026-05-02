@@ -16,7 +16,7 @@ export default function NigeriaAdminPharmaciesPage() {
 
   const loadPharmacies = async () => {
     try {
-      const response = await api.get('/api/ng/admin/pharmacies');
+      const response = await api.get('/ng/admin/pharmacies');
       setPharmacies(Array.isArray(response.data) ? response.data : []);
     } finally {
       setLoading(false);
@@ -31,12 +31,12 @@ export default function NigeriaAdminPharmaciesPage() {
     setNotice('');
     try {
       if (action === 'verify') {
-        await api.post(`/api/ng/admin/pharmacies/${pharmacyId}/verify`, {
+        await api.post(`/ng/admin/pharmacies/${pharmacyId}/verify`, {
           approved,
           rejectionReason: approved ? null : 'Rejected from admin operations portal review',
         });
       } else {
-        await api.post(`/api/ng/admin/pharmacies/${pharmacyId}/suspend`, {
+        await api.post(`/ng/admin/pharmacies/${pharmacyId}/suspend`, {
           reason: 'Suspended from admin operations portal',
         });
       }

@@ -46,22 +46,22 @@ router.get('/medication-requests', async (req, res) => {
 
     if (req.query.status) {
       params.push(String(req.query.status).trim());
-      where.push(`r.status = ${params.length}`);
+      where.push(`r.status = $${params.length}`);
     }
 
     if (req.query.query) {
       params.push(`%${String(req.query.query).trim()}%`);
       where.push(`(
-        r.medicine_name ILIKE ${params.length}
-        OR r.generic_name ILIKE ${params.length}
-        OR r.phone ILIKE ${params.length}
-        OR r.email ILIKE ${params.length}
+        r.medicine_name ILIKE $${params.length}
+        OR r.generic_name ILIKE $${params.length}
+        OR r.phone ILIKE $${params.length}
+        OR r.email ILIKE $${params.length}
       )`);
     }
 
     if (req.query.fulfillmentPreference) {
       params.push(String(req.query.fulfillmentPreference).trim());
-      where.push(`r.fulfillment_preference = ${params.length}`);
+      where.push(`r.fulfillment_preference = $${params.length}`);
     }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -83,7 +83,7 @@ router.get('/medication-requests', async (req, res) => {
          LEFT JOIN ng_pharmacies assigned ON assigned.id = r.assigned_pharmacy_id
          ${whereClause}
         ORDER BY r.created_at DESC
-        LIMIT ${params.length - 1} OFFSET ${params.length}`,
+        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
 
@@ -127,17 +127,17 @@ router.patch('/medication-requests/:requestId', async (req, res) => {
 
     if (nextStatus) {
       values.push(nextStatus);
-      updates.push(`status = ${values.length}`);
+      updates.push(`status = $${values.length}`);
     }
 
     if (req.body.assignedPharmacyId !== undefined) {
       values.push(req.body.assignedPharmacyId || null);
-      updates.push(`assigned_pharmacy_id = ${values.length}`);
+      updates.push(`assigned_pharmacy_id = $${values.length}`);
     }
 
     if (req.body.adminNotes !== undefined) {
       values.push(req.body.adminNotes || null);
-      updates.push(`admin_notes = ${values.length}`);
+      updates.push(`admin_notes = $${values.length}`);
     }
 
     if (req.body.confirmedPriceNgn !== undefined) {
@@ -148,17 +148,17 @@ router.patch('/medication-requests/:requestId', async (req, res) => {
         return res.status(400).json({ error: 'Confirmed price must be a number.' });
       }
       values.push(confirmedPrice);
-      updates.push(`confirmed_price_ngn = ${values.length}`);
+      updates.push(`confirmed_price_ngn = $${values.length}`);
     }
 
     if (req.body.pharmacyNotes !== undefined) {
       values.push(req.body.pharmacyNotes || null);
-      updates.push(`pharmacy_notes = ${values.length}`);
+      updates.push(`pharmacy_notes = $${values.length}`);
     }
 
     if (req.body.clarificationRequest !== undefined) {
       values.push(req.body.clarificationRequest || null);
-      updates.push(`clarification_request = ${values.length}`);
+      updates.push(`clarification_request = $${values.length}`);
     }
 
     if (!updates.length) {
@@ -171,7 +171,7 @@ router.patch('/medication-requests/:requestId', async (req, res) => {
     const result = await pool.query(
       `UPDATE ng_medication_requests
           SET ${updates.join(', ')}
-        WHERE id = ${values.length}
+        WHERE id = $${values.length}
         RETURNING *`,
       values
     );
@@ -197,17 +197,17 @@ router.get('/medicines', async (req, res) => {
     if (req.query.query) {
       params.push(`%${String(req.query.query).trim()}%`);
       where.push(`(
-        d.name ILIKE ${params.length}
-        OR d.generic_name ILIKE ${params.length}
-        OR d.brand_name ILIKE ${params.length}
-        OR d.source_name ILIKE ${params.length}
-        OR d.source_reference ILIKE ${params.length}
+        d.name ILIKE $${params.length}
+        OR d.generic_name ILIKE $${params.length}
+        OR d.brand_name ILIKE $${params.length}
+        OR d.source_name ILIKE $${params.length}
+        OR d.source_reference ILIKE $${params.length}
       )`);
     }
 
     if (req.query.sourceQualityStatus) {
       params.push(String(req.query.sourceQualityStatus).trim());
-      where.push(`COALESCE(d.source_quality_status, 'needs_admin_review') = ${params.length}`);
+      where.push(`COALESCE(d.source_quality_status, 'needs_admin_review') = $${params.length}`);
     }
 
     if (isQueryEnabled(req.query.disabled)) {
@@ -270,7 +270,7 @@ router.get('/medicines', async (req, res) => {
                  COALESCE(d.source_quality_status, 'needs_admin_review') ASC,
                  d.updated_at DESC NULLS LAST,
                  d.name ASC
-        LIMIT ${params.length - 1} OFFSET ${params.length}`,
+        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
 
@@ -304,35 +304,35 @@ router.patch('/medicines/:medicineId', requireSuperAdmin, async (req, res) => {
     if (req.body.disabled === true) {
       nextStatus = nextStatus || 'disabled';
       values.push(new Date());
-      updates.push(`disabled_at = ${values.length}`);
+      updates.push(`disabled_at = $${values.length}`);
       values.push(getActorUserId(req.user));
-      updates.push(`disabled_by = ${values.length}`);
+      updates.push(`disabled_by = $${values.length}`);
       values.push(req.body.disabledReason || 'Disabled by Nigeria admin source review.');
-      updates.push(`disabled_reason = ${values.length}`);
+      updates.push(`disabled_reason = $${values.length}`);
       values.push(false);
-      updates.push(`is_supported = ${values.length}`);
+      updates.push(`is_supported = $${values.length}`);
     } else if (req.body.disabled === false) {
       values.push(null);
-      updates.push(`disabled_at = ${values.length}`);
+      updates.push(`disabled_at = $${values.length}`);
       values.push(null);
-      updates.push(`disabled_by = ${values.length}`);
+      updates.push(`disabled_by = $${values.length}`);
       values.push(null);
-      updates.push(`disabled_reason = ${values.length}`);
+      updates.push(`disabled_reason = $${values.length}`);
     }
 
     if (nextStatus) {
       values.push(nextStatus);
-      updates.push(`source_quality_status = ${values.length}`);
+      updates.push(`source_quality_status = $${values.length}`);
     }
 
     if (req.body.isSupported !== undefined) {
       values.push(Boolean(req.body.isSupported));
-      updates.push(`is_supported = ${values.length}`);
+      updates.push(`is_supported = $${values.length}`);
     }
 
     if (req.body.adminReviewNotes !== undefined) {
       values.push(req.body.adminReviewNotes || null);
-      updates.push(`admin_review_notes = ${values.length}`);
+      updates.push(`admin_review_notes = $${values.length}`);
     }
 
     if (!updates.length) {
@@ -350,7 +350,7 @@ router.patch('/medicines/:medicineId', requireSuperAdmin, async (req, res) => {
     const result = await pool.query(
       `UPDATE ng_drug_catalog
           SET ${updates.join(', ')}
-        WHERE id = ${values.length}
+        WHERE id = $${values.length}
         RETURNING id, name, source_quality_status, is_supported, disabled_at, disabled_reason, admin_review_notes`,
       values
     );
@@ -391,20 +391,20 @@ router.get('/pharmacy-inventory', async (req, res) => {
 
     if (req.query.medicineId) {
       params.push(req.query.medicineId);
-      where.push(`i.drug_id = ${params.length}`);
+      where.push(`i.drug_id = $${params.length}`);
     }
 
     if (req.query.verificationStatus) {
       params.push(String(req.query.verificationStatus).trim());
-      where.push(`COALESCE(i.availability_verification_status, 'unverified') = ${params.length}`);
+      where.push(`COALESCE(i.availability_verification_status, 'unverified') = $${params.length}`);
     }
 
     if (req.query.query) {
       params.push(`%${String(req.query.query).trim()}%`);
       where.push(`(
-        d.name ILIKE ${params.length}
-        OR d.generic_name ILIKE ${params.length}
-        OR p.name ILIKE ${params.length}
+        d.name ILIKE $${params.length}
+        OR d.generic_name ILIKE $${params.length}
+        OR p.name ILIKE $${params.length}
       )`);
     }
 
@@ -443,7 +443,7 @@ router.get('/pharmacy-inventory', async (req, res) => {
          JOIN ng_pharmacies p ON p.id = i.pharmacy_id
          ${whereClause}
         ORDER BY i.updated_at DESC NULLS LAST, d.name ASC
-        LIMIT ${params.length - 1} OFFSET ${params.length}`,
+        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
 
@@ -551,7 +551,11 @@ router.post('/pharmacies/:pharmacyId/suspend', async (req, res) => {
   try {
     const pool = getPool();
     await pool.query(
-      `UPDATE ng_pharmacies SET status = 'suspended', updated_at = NOW() WHERE id = $1`,
+      `UPDATE ng_pharmacies
+          SET status = 'suspended',
+              account_status = 'suspended',
+              updated_at = NOW()
+        WHERE id = $1`,
       [req.params.pharmacyId]
     );
     await complianceService.logAction({

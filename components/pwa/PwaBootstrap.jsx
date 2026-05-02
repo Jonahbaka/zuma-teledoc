@@ -205,7 +205,11 @@ export default function PwaBootstrap() {
     pathname === '/ng/medicines' ||
     pathname.startsWith('/ng/medicines/') ||
     pathname === '/ng/pricing' ||
-    pathname.startsWith('/ng/pricing/');
+    pathname.startsWith('/ng/pricing/') ||
+    pathname === '/ng/pharmacy' ||
+    pathname.startsWith('/ng/pharmacy/') ||
+    pathname === '/pharmacy' ||
+    pathname.startsWith('/pharmacy/');
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [installMode, setInstallMode] = useState('hidden');
   const [isStandalone, setIsStandalone] = useState(false);

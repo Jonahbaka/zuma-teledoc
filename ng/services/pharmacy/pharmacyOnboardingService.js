@@ -36,6 +36,14 @@ class PharmacyOnboardingService {
       .replace(/^-|-$/g, '')
       + '-' + Math.random().toString(36).substring(2, 6);
 
+    const receivingMethod = ['dashboard', 'whatsapp', 'dashboard_whatsapp'].includes(data.preferredPrescriptionReceivingMethod)
+      ? data.preferredPrescriptionReceivingMethod
+      : 'dashboard';
+    const notificationPreferences = {
+      dashboard: receivingMethod === 'dashboard' || receivingMethod === 'dashboard_whatsapp',
+      whatsapp: receivingMethod === 'whatsapp' || receivingMethod === 'dashboard_whatsapp',
+    };
+
     const result = await pool.query(
       `INSERT INTO ng_pharmacies (
         owner_user_id, name, slug, pcn_license_number, pcn_license_expiry,
@@ -43,8 +51,13 @@ class PharmacyOnboardingService {
         superintendent_email, address_line1, address_line2, city, state, lga,
         postal_code, latitude, longitude, phone, whatsapp, email, website,
         bank_name, bank_account_number, bank_account_name, bank_code,
-        status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,'pending_review')
+        whatsapp_business_number, preferred_prescription_receiving_method,
+        notification_preferences, accepts_bank_transfer, accepts_pos, accepts_cash,
+        status, account_status, onboarding_status
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,'pending_review','pending_onboarding','profile_submitted'
+      )
       RETURNING *`,
       [
         ownerUserId, data.name, slug, data.pcnLicenseNumber,
@@ -57,10 +70,26 @@ class PharmacyOnboardingService {
         data.phone, data.whatsapp || null, data.email, data.website || null,
         data.bankName || null, data.bankAccountNumber || null,
         data.bankAccountName || null, data.bankCode || null,
+        data.whatsappBusinessNumber || data.whatsapp || null,
+        receivingMethod,
+        JSON.stringify(notificationPreferences),
+        data.acceptsBankTransfer !== false,
+        data.acceptsPos !== false,
+        data.acceptsCash !== false,
       ]
     );
 
     const pharmacy = result.rows[0];
+
+    await pool.query(
+      `UPDATE users
+          SET region = 'NG',
+              market_scope = 'NG',
+              account_status = COALESCE(account_status, 'active'),
+              updated_at = NOW()
+        WHERE id = $1`,
+      [ownerUserId]
+    ).catch(() => null);
 
     // Create wallet
     await pool.query(
@@ -136,6 +165,8 @@ class PharmacyOnboardingService {
       await pool.query(
         `UPDATE ng_pharmacies SET
           status = 'approved',
+          account_status = 'active',
+          onboarding_status = 'approved',
           verified_at = NOW(),
           verified_by = $1,
           updated_at = NOW()
@@ -156,7 +187,7 @@ class PharmacyOnboardingService {
             businessName: p.name,
             bankCode: p.bank_code,
             accountNumber: p.bank_account_number,
-            description: `ZumaRx Pharmacy: ${p.name}`,
+            description: `DoctaRx Nigeria Pharmacy: ${p.name}`,
             primaryContactEmail: p.email,
             primaryContactPhone: p.phone,
           });
@@ -187,7 +218,10 @@ class PharmacyOnboardingService {
 
     await pool.query(
       `UPDATE ng_pharmacies SET
-        status = 'rejected', updated_at = NOW()
+        status = 'rejected',
+        account_status = 'rejected',
+        onboarding_status = 'rejected',
+        updated_at = NOW()
       WHERE id = $1`,
       [pharmacyId]
     );

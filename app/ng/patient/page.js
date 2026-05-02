@@ -68,8 +68,8 @@ export default function NigeriaPatientPortalPage() {
       try {
         const [appointmentsRes, prescriptionsRes, ordersRes, conversationsRes] = await Promise.all([
           appointmentsAPI.getUpcoming(4).catch(() => ({ data: { success: false, appointments: [] } })),
-          api.get('/api/ng/patient/prescriptions', { params: { limit: 4 } }).catch(() => ({ data: [] })),
-          api.get('/api/ng/patient/orders', { params: { limit: 4 } }).catch(() => ({ data: [] })),
+          api.get('/ng/patient/prescriptions', { params: { limit: 4 } }).catch(() => ({ data: [] })),
+          api.get('/ng/patient/orders', { params: { limit: 4 } }).catch(() => ({ data: [] })),
           messagesAPI.getConversations().catch(() => ({ data: { success: false, conversations: [] } })),
         ]);
 

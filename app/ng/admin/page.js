@@ -20,9 +20,9 @@ export default function NigeriaAdminDashboardPage() {
     const loadDashboard = async () => {
       try {
         const [dashboardResponse, pendingResponse, topResponse] = await Promise.all([
-          api.get('/api/ng/admin/analytics/dashboard').catch(() => ({ data: {} })),
-          api.get('/api/ng/admin/pharmacies/pending', { params: { limit: 5 } }).catch(() => ({ data: { pharmacies: [] } })),
-          api.get('/api/ng/admin/analytics/top-pharmacies').catch(() => ({ data: [] })),
+          api.get('/ng/admin/analytics/dashboard').catch(() => ({ data: {} })),
+          api.get('/ng/admin/pharmacies/pending', { params: { limit: 5 } }).catch(() => ({ data: { pharmacies: [] } })),
+          api.get('/ng/admin/analytics/top-pharmacies').catch(() => ({ data: [] })),
         ]);
 
         setDashboard(dashboardResponse.data || {});

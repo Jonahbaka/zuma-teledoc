@@ -53,7 +53,9 @@ const canonicalRole = (role) => roleAliasMap[normalizeRole(role)] || normalizeRo
 const PASSWORD_CHANGE_ALLOWED_PATHS = new Set([
   '/api/auth/me',
   '/api/auth/logout',
-  '/api/auth/password/change'
+  '/api/auth/password/change',
+  '/api/ng/providers/register',
+  '/api/ng/providers/me/access'
 ]);
 
 function isPasswordChangeAllowedRequest(req) {
@@ -138,13 +140,13 @@ const authenticate = async (req, res, next) => {
     };
 
     if (
-      req.user.role === 'provider' &&
+      ['provider', 'pharmacy'].includes(req.user.role) &&
       req.user.mustChangePassword &&
       !isPasswordChangeAllowed
     ) {
       return res.status(403).json({
         success: false,
-        error: 'Password change required before accessing provider features.',
+        error: 'Password change required before accessing account features.',
         code: 'PASSWORD_CHANGE_REQUIRED'
       });
     }

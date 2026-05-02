@@ -48,6 +48,10 @@ function getRequiredPasswordChangePath(role, pathname = '') {
     return isNigeriaPath ? '/ng/provider/create-password' : '/provider/create-password';
   }
 
+  if (role === 'pharmacy') {
+    return isNigeriaPath ? '/ng/pharmacy/create-password' : '/pharmacy/create-password';
+  }
+
   return isNigeriaPath ? '/ng/auth/login' : '/login';
 }
 

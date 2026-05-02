@@ -15,7 +15,7 @@ const notificationService = require('../services/notifications');
 
 const router = express.Router();
 
-const TEST_ACCOUNT_ROLES = new Set(['provider']);
+const TEST_ACCOUNT_ROLES = new Set(['patient', 'provider', 'pharmacy']);
 const TEST_ACCOUNT_TIERS = new Set(['basic', 'gold', 'platinum']);
 const TEST_ACCOUNT_COUNTRIES = new Set(['USA', 'Nigeria']);
 const TEST_ACCOUNT_ACCESS_LEVEL_BY_TIER = {
@@ -290,8 +290,9 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
     const role = String(req.body.role || 'provider').trim().toLowerCase();
-    const firstName = String(req.body.firstName || '').trim();
-    const lastName = String(req.body.lastName || '').trim();
+    const pharmacyBusinessName = String(req.body.pharmacyBusinessName || req.body.businessName || '').trim();
+    const firstName = String(req.body.firstName || (role === 'pharmacy' ? pharmacyBusinessName : '')).trim();
+    const lastName = String(req.body.lastName || (role === 'pharmacy' ? 'Pharmacy' : '')).trim();
     const temporaryPassword = String(req.body.temporaryPassword || '');
     const specialty = String(req.body.specialty || '').trim() || null;
     const requestedCountry = String(req.body.country || 'USA').trim();
@@ -310,7 +311,7 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
     if (!TEST_ACCOUNT_ROLES.has(role)) {
       return res.status(400).json({
         success: false,
-        error: 'Admin-created test accounts are currently limited to provider roles'
+        error: 'Admin-created test accounts support patient, provider, and pharmacy roles'
       });
     }
 
@@ -365,10 +366,14 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
       });
     }
 
-    const providerStatus = bypassCredentialing ? 'approved' : 'pending';
-    const accessLevel = testingBypassActive
+    const providerStatus = role === 'provider'
+      ? (bypassCredentialing ? 'approved' : 'pending')
+      : null;
+    const accessLevel = testingBypassActive && role !== 'pharmacy'
       ? TEST_ACCOUNT_ACCESS_LEVEL_BY_TIER[testingBypassTier]
-      : 'read_only';
+      : role === 'patient'
+        ? 'pay_per_visit'
+        : 'read_only';
 
     const { rows } = await client.query(
       `INSERT INTO users (
@@ -379,6 +384,7 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
          failed_login_attempts, locked_until,
          must_change_password, password_changed_at,
          testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier,
+         market_scope, account_status, is_test_account,
          hipaa_consent_at, terms_accepted_at,
          created_at, updated_at
        ) VALUES (
@@ -389,13 +395,14 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
          0, NULL,
          $11, $12,
          $13, $14, $15,
+         $16, 'active', TRUE,
          NOW(), NOW(),
          NOW(), NOW()
        )
        RETURNING id, email, role, first_name, last_name, provider_status,
                  is_active, is_verified, must_change_password,
                  testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier,
-                 country, specialty`,
+                 country, specialty, market_scope, account_status, is_test_account`,
       [
         email,
         passwordHash,
@@ -411,18 +418,98 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
         forcePasswordChange ? null : new Date(),
         testingBypassActive,
         testingBypassExpiresAt,
-        testingBypassActive ? testingBypassTier : null
+        testingBypassActive && role !== 'pharmacy' ? testingBypassTier : null,
+        country === 'Nigeria' ? 'NG' : 'US'
       ]
     );
 
     const user = rows[0];
 
-    if (testingBypassActive) {
+    if (testingBypassActive && role !== 'pharmacy') {
       await client.query(
         `INSERT INTO subscriptions (
            user_id, tier, status, current_period_start, current_period_end, created_at, updated_at
          ) VALUES ($1, $2, 'active', NOW(), $3, NOW(), NOW())`,
         [user.id, testingBypassTier, testingBypassExpiresAt]
+      );
+    }
+
+    if (country === 'Nigeria') {
+      await client.query(
+        `UPDATE users
+            SET region = 'NG',
+                coverage_status = CASE WHEN role = 'patient' THEN 'self_pay' ELSE coverage_status END,
+                updated_at = NOW()
+          WHERE id = $1`,
+        [user.id]
+      ).catch(() => null);
+    }
+
+    if (role === 'provider' && country === 'Nigeria') {
+      await client.query(
+        `INSERT INTO ng_providers (
+           user_id, full_name, email, phone, mdcn_number, specialty,
+           status, trial_status, subscription_status, access_status,
+           consult_fee_general, consult_fee_specialist
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6,
+           $7, 'not_started', 'inactive', $8,
+           3000, 8000
+         )
+         ON CONFLICT (user_id) DO NOTHING`,
+        [
+          user.id,
+          `${firstName} ${lastName}`.trim(),
+          email,
+          req.body.phone || '+2340000000000',
+          req.body.mdcnNumber || req.body.licenseNumber || `TEST-${Date.now()}`,
+          'general_practice',
+          bypassCredentialing ? 'verified' : 'pending',
+          bypassCredentialing ? 'trial_not_started' : 'pending_approval',
+        ]
+      );
+    }
+
+    if (role === 'pharmacy' && country === 'Nigeria') {
+      const businessName = pharmacyBusinessName || `${firstName} ${lastName}`.trim();
+      const slug = `${businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Math.random().toString(36).slice(2, 6)}`;
+      await client.query(
+        `INSERT INTO ng_pharmacies (
+           owner_user_id, name, slug, pcn_license_number, pcn_license_expiry,
+           superintendent_name, superintendent_pcn_number, superintendent_phone,
+           address_line1, city, state, phone, whatsapp, email,
+           whatsapp_business_number, preferred_prescription_receiving_method,
+           notification_preferences, status, account_status, onboarding_status
+         ) VALUES (
+           $1,$2,$3,$4,NOW() + INTERVAL '1 year',
+           $5,$6,$7,$8,$9,$10,$11,$12,$13,
+           $14,$15,$16,$17,$18,$19
+         )
+         ON CONFLICT (pcn_license_number) DO NOTHING`,
+        [
+          user.id,
+          businessName,
+          slug,
+          req.body.licenseNumber || req.body.pcnLicenseNumber || `TEST-PCN-${Date.now()}`,
+          req.body.superintendentName || `${firstName} ${lastName}`.trim(),
+          req.body.superintendentPcnNumber || `TEST-SP-${Date.now()}`,
+          req.body.phone || '+2340000000000',
+          req.body.branchLocation || req.body.addressLine1 || 'Test pharmacy branch',
+          req.body.city || 'Abuja',
+          req.body.state || 'FCT',
+          req.body.phone || '+2340000000000',
+          req.body.whatsappNumber || req.body.whatsapp || null,
+          email,
+          req.body.whatsappBusinessNumber || req.body.whatsappNumber || req.body.whatsapp || null,
+          req.body.preferredPrescriptionReceivingMethod || 'dashboard',
+          JSON.stringify({
+            dashboard: true,
+            whatsapp: ['whatsapp', 'dashboard_whatsapp'].includes(req.body.preferredPrescriptionReceivingMethod),
+          }),
+          bypassCredentialing ? 'approved' : 'pending_review',
+          bypassCredentialing ? 'active' : 'pending_onboarding',
+          bypassCredentialing ? 'approved' : 'profile_submitted',
+        ]
       );
     }
 
@@ -463,7 +550,7 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Provider test account created',
+      message: `${role.charAt(0).toUpperCase() + role.slice(1)} test account created`,
       user: keysToCamel(user)
     });
   } catch (error) {

@@ -16,7 +16,7 @@ import {
   Building2,
   BadgeCheck,
 } from 'lucide-react';
-import { authAPI } from '@/lib/api';
+import api, { authAPI } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -211,6 +211,25 @@ function ProviderRegisterContent({ market = 'US' }) {
         });
 
       if (response.data.success) {
+        if (market === 'NG' && response.data.accessToken && !inviteToken) {
+          localStorage.setItem('accessToken', response.data.accessToken);
+          if (response.data.refreshToken) {
+            localStorage.setItem('refreshToken', response.data.refreshToken);
+          }
+
+          await api.post('/ng/providers/register', {
+            full_name: `${payload.firstName} ${payload.lastName}`.trim(),
+            email: payload.email,
+            phone: payload.phone,
+            mdcn_number: payload.npiNumber || payload.medicalLicense,
+            specialty: payload.specialty,
+            practice_city: payload.city,
+            practice_state: payload.region,
+            consult_fee_general: 3000,
+            consult_fee_specialist: 8000,
+          });
+        }
+
         toast({
           title: 'Registration Successful',
           description: market === 'NG'

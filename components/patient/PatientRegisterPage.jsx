@@ -59,9 +59,12 @@ export default function PatientRegisterPage({
 
   const passwordChecks = {
     minLength: formData.password.length >= 8,
-    hasLetter: /[A-Za-z]/.test(formData.password),
+    hasUppercase: /[A-Z]/.test(formData.password),
+    hasLowercase: /[a-z]/.test(formData.password),
     hasNumber: /\d/.test(formData.password),
+    hasSymbol: /[^A-Za-z0-9]/.test(formData.password),
   };
+  const passwordPolicySatisfied = Object.values(passwordChecks).every(Boolean);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -70,6 +73,15 @@ export default function PatientRegisterPage({
       toast({
         title: 'Password Mismatch',
         description: 'Passwords do not match',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!passwordPolicySatisfied) {
+      toast({
+        title: 'Password Requirements',
+        description: 'Password must include uppercase, lowercase, number, and symbol.',
         variant: 'destructive'
       });
       return;
@@ -267,8 +279,10 @@ export default function PatientRegisterPage({
                     </div>
                     <div className="space-y-1 text-xs">
                       <p className={passwordChecks.minLength ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• At least 8 characters</p>
-                      <p className={passwordChecks.hasLetter ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• Includes at least one letter</p>
+                      <p className={passwordChecks.hasUppercase ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• Includes one uppercase letter</p>
+                      <p className={passwordChecks.hasLowercase ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• Includes one lowercase letter</p>
                       <p className={passwordChecks.hasNumber ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• Includes at least one number</p>
+                      <p className={passwordChecks.hasSymbol ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• Includes at least one symbol</p>
                     </div>
                   </div>
 
@@ -321,7 +335,7 @@ export default function PatientRegisterPage({
                     </Button>
                     <Button
                       type="submit"
-                      disabled={isLoading || !formData.acceptTerms}
+                      disabled={isLoading || !formData.acceptTerms || !passwordPolicySatisfied}
                       className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                     >
                       {isLoading ? (

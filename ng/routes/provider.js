@@ -7,19 +7,62 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../../server/db');
 const { authenticate, requireRole } = require('../../server/middleware/auth');
+const {
+  ensureProviderAccessForUser,
+  recordProviderUsage,
+  requireActiveProviderToolAccess,
+} = require('../services/providers/providerAccessService');
+const whatsappDispenseService = require('../services/whatsapp/whatsappDispenseService');
+
+const SPECIALTY_MAP = {
+  'family medicine': 'general_practice',
+  'general practice': 'general_practice',
+  'general_practice': 'general_practice',
+  'primary care': 'general_practice',
+  'internal medicine': 'internal_medicine',
+  'internal_medicine': 'internal_medicine',
+  pediatrics: 'pediatrics',
+  paediatrics: 'pediatrics',
+  obgyn: 'obstetrics_gynecology',
+  'ob/gyn': 'obstetrics_gynecology',
+  'obstetrics and gynecology': 'obstetrics_gynecology',
+  'obstetrics & gynecology': 'obstetrics_gynecology',
+  cardiology: 'cardiology',
+  dermatology: 'dermatology',
+  psychiatry: 'psychiatry',
+  orthopedics: 'orthopedics',
+  orthopaedics: 'orthopedics',
+  ophthalmology: 'ophthalmology',
+  ent: 'ent',
+  urology: 'urology',
+  neurology: 'neurology',
+  oncology: 'oncology',
+  radiology: 'radiology',
+  surgery: 'surgery',
+};
+
+function normalizeSpecialty(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[-_]+/g, ' ');
+  return SPECIALTY_MAP[normalized] || 'other';
+}
+
+function buildPrescriptionNumber() {
+  return `DTRX-NG-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+}
 
 // --- PROVIDER REGISTRATION ---
 
-router.post('/register', async (req, res) => {
+router.post('/register', authenticate, requireRole(['provider']), async (req, res) => {
   const pool = getPool();
   const client = await pool.connect();
   try {
     const {
-      user_id, full_name, email, phone, gender, mdcn_number,
+      full_name, email, phone, gender, mdcn_number,
       specialty, sub_specialty, years_experience, qualifications,
       practice_name, practice_address, practice_city, practice_state,
       consult_fee_general, consult_fee_specialist, bio, languages,
     } = req.body;
+    const user_id = req.user.id;
 
     if (!full_name || !email || !phone || !mdcn_number || !specialty) {
       return res.status(400).json({ error: 'Required fields missing' });
@@ -42,17 +85,27 @@ router.post('/register', async (req, res) => {
         specialty, sub_specialty, years_experience, qualifications,
         practice_name, practice_address, practice_city, practice_state,
         consult_fee_general, consult_fee_specialist, bio, languages,
-        status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'pending')
+        status, trial_status, subscription_status, access_status
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'pending','not_started','inactive','pending_approval')
       RETURNING id, status
     `, [
       user_id, full_name, email, phone, gender, mdcn_number,
-      specialty, sub_specialty || null, years_experience || 0,
+      normalizeSpecialty(specialty), sub_specialty || null, years_experience || 0,
       JSON.stringify(qualifications || []),
       practice_name, practice_address, practice_city, practice_state,
       consult_fee_general || 3000, consult_fee_specialist || 8000,
       bio || null, languages || [],
     ]);
+
+    await client.query(
+      `UPDATE users
+          SET region = 'NG',
+              market_scope = 'NG',
+              provider_status = COALESCE(provider_status, 'pending'),
+              updated_at = NOW()
+        WHERE id = $1`,
+      [user_id]
+    );
 
     await client.query('COMMIT');
     res.status(201).json({ provider: result.rows[0], message: 'Registration submitted. Verification pending.' });
@@ -63,6 +116,169 @@ router.post('/register', async (req, res) => {
     client.release();
   }
 });
+
+router.get('/me/access', authenticate, requireRole(['provider']), async (req, res) => {
+  try {
+    const access = await ensureProviderAccessForUser(req.user.id, { startTrialIfEligible: true });
+    res.json({ providerAccess: access });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/pharmacies', authenticate, requireRole(['provider', 'admin']), async (req, res) => {
+  const pool = getPool();
+  try {
+    const result = await pool.query(
+      `SELECT id, name, city, state, phone, whatsapp, whatsapp_business_number,
+              preferred_prescription_receiving_method, delivery_enabled,
+              status, account_status
+         FROM ng_pharmacies
+        WHERE status = 'approved'
+           OR owner_user_id = $1
+        ORDER BY is_featured DESC, name ASC
+        LIMIT 100`,
+      [req.user.id]
+    );
+    res.json({ pharmacies: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/prescriptions', authenticate, requireRole(['provider']), async (req, res) => {
+  const pool = getPool();
+  try {
+    const provider = await pool.query('SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1', [req.user.id]);
+    if (!provider.rows.length) {
+      return res.json({ prescriptions: [] });
+    }
+
+    const result = await pool.query(
+      `SELECT rx.*,
+              patient.first_name AS patient_first_name,
+              patient.last_name AS patient_last_name,
+              patient.email AS patient_email,
+              pharmacy.name AS pharmacy_name,
+              pharmacy.phone AS pharmacy_phone,
+              pharmacy.whatsapp_business_number
+         FROM ng_digital_prescriptions rx
+         JOIN users patient ON patient.id = rx.patient_user_id
+         LEFT JOIN ng_pharmacies pharmacy ON pharmacy.id = COALESCE(rx.routed_pharmacy_id, rx.preferred_pharmacy_id, rx.dispensed_by_pharmacy_id)
+        WHERE rx.provider_id = $1
+        ORDER BY rx.created_at DESC
+        LIMIT 100`,
+      [provider.rows[0].id]
+    );
+    res.json({ prescriptions: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/prescriptions',
+  authenticate,
+  requireRole(['provider']),
+  requireActiveProviderToolAccess,
+  async (req, res) => {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      const {
+        patientUserId,
+        appointmentId,
+        items,
+        preferredPharmacyId,
+        routedPharmacyId,
+        diagnosis,
+        notes,
+        fulfillmentPreference,
+      } = req.body;
+
+      if (!patientUserId || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: 'Patient and at least one medication item are required.' });
+      }
+
+      await client.query('BEGIN');
+
+      const provider = await client.query('SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1', [req.user.id]);
+      if (!provider.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Nigeria provider profile is not completed.' });
+      }
+
+      const pharmacyId = routedPharmacyId || preferredPharmacyId || null;
+      if (pharmacyId) {
+        const pharmacy = await client.query('SELECT id FROM ng_pharmacies WHERE id = $1 LIMIT 1', [pharmacyId]);
+        if (!pharmacy.rows.length) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'Selected pharmacy was not found.' });
+        }
+      }
+
+      const prescriptionResult = await client.query(
+        `INSERT INTO ng_digital_prescriptions (
+           provider_id, patient_user_id, appointment_id, prescription_number,
+           items, preferred_pharmacy_id, routed_pharmacy_id, routed_at,
+           status, dispense_status, pharmacy_response_status,
+           diagnosis, notes, fulfillment_preference, is_controlled
+         ) VALUES (
+           $1,$2,$3,$4,$5,$6,$7,CASE WHEN $7 IS NOT NULL THEN NOW() ELSE NULL END,
+           $8,'pending','pending_pharmacy_confirmation',
+           $9,$10,$11,$12
+         )
+         RETURNING *`,
+        [
+          provider.rows[0].id,
+          patientUserId,
+          appointmentId || null,
+          buildPrescriptionNumber(),
+          JSON.stringify(items),
+          preferredPharmacyId || null,
+          routedPharmacyId || preferredPharmacyId || null,
+          pharmacyId ? 'routed' : 'active',
+          diagnosis || null,
+          notes || null,
+          fulfillmentPreference || 'pickup_or_delivery',
+          items.some((item) => item.isControlled === true || item.controlledOrSpecialHandling === true),
+        ]
+      );
+
+      await client.query('COMMIT');
+      await recordProviderUsage(req.user.id, 'prescription_issued', {
+        metadata: { prescriptionId: prescriptionResult.rows[0].id, routed: Boolean(pharmacyId) },
+      }).catch(() => null);
+
+      let whatsappNotification = null;
+      if (pharmacyId) {
+        whatsappNotification = await whatsappDispenseService
+          .createPharmacyPrescriptionNotification({
+            prescriptionId: prescriptionResult.rows[0].id,
+            pharmacyId,
+            createdByUserId: req.user.id,
+          })
+          .catch(() => null);
+      }
+
+      res.status(201).json({
+        prescription: prescriptionResult.rows[0],
+        whatsappNotification,
+        message: pharmacyId
+          ? 'Prescription routed to the selected pharmacy for confirmation.'
+          : 'Prescription created. Select a pharmacy to route fulfillment.',
+      });
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (_) {
+        // no-op
+      }
+      res.status(500).json({ error: err.message });
+    } finally {
+      client.release();
+    }
+  }
+);
 
 // --- PROVIDER PROFILE ---
 
@@ -218,9 +434,29 @@ router.post('/:providerId/verify', authenticate, requireRole(['admin']), async (
         rejection_reason = $2,
         verified_at = CASE WHEN $1 = 'verified' THEN NOW() ELSE verified_at END,
         verified_by = $3,
+        access_status = CASE
+          WHEN $1 = 'verified' THEN 'trial_not_started'
+          WHEN $1 = 'suspended' THEN 'suspended'
+          WHEN $1 = 'rejected' THEN 'rejected'
+          ELSE access_status
+        END,
         updated_at = NOW()
       WHERE id = $4
     `, [statusMap[action], reason || null, req.user.id, req.params.providerId]);
+    await pool.query(
+      `UPDATE users u
+          SET provider_status = CASE
+                WHEN $1 = 'verified' THEN 'approved'
+                WHEN $1 = 'suspended' THEN 'suspended'
+                WHEN $1 = 'rejected' THEN 'rejected'
+                ELSE provider_status
+              END,
+              updated_at = NOW()
+         FROM ng_providers p
+        WHERE p.user_id = u.id
+          AND p.id = $2`,
+      [statusMap[action], req.params.providerId]
+    );
     res.json({ success: true, status: statusMap[action] });
   } catch (err) {
     res.status(500).json({ error: err.message });

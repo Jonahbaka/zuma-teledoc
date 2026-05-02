@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Link2, Copy, Plus, Trash2, RefreshCw, Clock, Users, Stethoscope, Heart,
+  Link2, Copy, Plus, Trash2, RefreshCw, Clock, Users, Stethoscope, Heart, Building2,
   CheckCircle, XCircle, AlertTriangle, Eye, Loader2, Zap, UserPlus, KeyRound
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -41,6 +41,12 @@ const DEFAULT_TEST_ACCOUNT = {
   email: '',
   temporaryPassword: '',
   specialty: '',
+  pharmacyBusinessName: '',
+  branchLocation: '',
+  phone: '',
+  whatsappBusinessNumber: '',
+  pcnLicenseNumber: '',
+  preferredPrescriptionReceivingMethod: 'dashboard',
   country: 'USA',
   forcePasswordChange: true,
   bypassCredentialing: true,
@@ -146,7 +152,7 @@ export default function TestingLinksPage() {
 
       if (res.data.success) {
         toast({
-          title: 'Provider Test Account Created',
+          title: `${newAccount.role.charAt(0).toUpperCase() + newAccount.role.slice(1)} Test Account Created`,
           description: 'The account will require a new password on first login',
         });
         setShowCreateAccountDialog(false);
@@ -255,7 +261,7 @@ export default function TestingLinksPage() {
             Testing Access
           </h1>
           <p className="text-muted-foreground mt-1">
-            Create controlled test access for patient and provider QA workflows
+            Create controlled test access for patient, provider, and pharmacy QA workflows
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -289,15 +295,30 @@ export default function TestingLinksPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Account Type</Label>
-                    <div className="flex h-10 items-center justify-between gap-3 rounded-md border bg-background px-3 text-sm">
-                      <span className="inline-flex items-center gap-2">
-                        <Stethoscope className="w-4 h-4 text-blue-500" />
-                        Provider
-                      </span>
-                      <Badge className={newAccount.bypassCredentialing ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-amber-100 text-amber-700 hover:bg-amber-100'}>
-                        {newAccount.bypassCredentialing ? 'Approved' : 'Pending'}
-                      </Badge>
-                    </div>
+                    <Select
+                      value={newAccount.role}
+                      onValueChange={(role) => setNewAccount({
+                        ...newAccount,
+                        role,
+                        specialty: role === 'provider' ? newAccount.specialty : '',
+                        activateTestingBypass: role === 'pharmacy' ? false : newAccount.activateTestingBypass,
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="patient">
+                          <span className="inline-flex items-center gap-2"><Heart className="h-4 w-4" /> Patient</span>
+                        </SelectItem>
+                        <SelectItem value="provider">
+                          <span className="inline-flex items-center gap-2"><Stethoscope className="h-4 w-4" /> Provider</span>
+                        </SelectItem>
+                        <SelectItem value="pharmacy">
+                          <span className="inline-flex items-center gap-2"><Building2 className="h-4 w-4" /> Pharmacy</span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-2">
@@ -372,6 +393,68 @@ export default function TestingLinksPage() {
                   </div>
                 )}
 
+                {newAccount.role === 'pharmacy' && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Pharmacy Business Name</Label>
+                      <Input
+                        autoComplete="off"
+                        value={newAccount.pharmacyBusinessName}
+                        onChange={(e) => setNewAccount({ ...newAccount, pharmacyBusinessName: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Branch / Location</Label>
+                      <Input
+                        autoComplete="off"
+                        placeholder="e.g., Wuse 2, Abuja"
+                        value={newAccount.branchLocation}
+                        onChange={(e) => setNewAccount({ ...newAccount, branchLocation: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>PCN License / Registration</Label>
+                      <Input
+                        autoComplete="off"
+                        value={newAccount.pcnLicenseNumber}
+                        onChange={(e) => setNewAccount({ ...newAccount, pcnLicenseNumber: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Phone Number</Label>
+                      <Input
+                        autoComplete="off"
+                        value={newAccount.phone}
+                        onChange={(e) => setNewAccount({ ...newAccount, phone: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>WhatsApp Business Number</Label>
+                      <Input
+                        autoComplete="off"
+                        value={newAccount.whatsappBusinessNumber}
+                        onChange={(e) => setNewAccount({ ...newAccount, whatsappBusinessNumber: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Prescription Receiving Method</Label>
+                      <Select
+                        value={newAccount.preferredPrescriptionReceivingMethod}
+                        onValueChange={(preferredPrescriptionReceivingMethod) => setNewAccount({ ...newAccount, preferredPrescriptionReceivingMethod })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="dashboard">Dashboard only</SelectItem>
+                          <SelectItem value="whatsapp">WhatsApp only</SelectItem>
+                          <SelectItem value="dashboard_whatsapp">Dashboard + WhatsApp</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+
                 <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
                   {newAccount.role === 'provider' && (
                     <div className="flex items-center justify-between gap-4">
@@ -392,7 +475,7 @@ export default function TestingLinksPage() {
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <Label className="cursor-default">Require New Password</Label>
-                      <p className="text-xs text-muted-foreground">Blocks protected provider access until changed.</p>
+                      <p className="text-xs text-muted-foreground">Blocks protected portal access until changed.</p>
                     </div>
                     <Badge className="bg-green-100 text-green-700 hover:bg-green-100">On</Badge>
                   </div>
@@ -596,7 +679,7 @@ export default function TestingLinksPage() {
               <h3 className="font-semibold text-amber-900 dark:text-amber-200">Testing Access Security</h3>
               <ul className="text-sm text-amber-800 dark:text-amber-300 mt-2 space-y-1">
                 <li>- Testing links bypass payment and subscription requirements</li>
-                <li>- Provider test accounts are created as approved providers</li>
+                <li>- Patient, provider, and pharmacy test accounts can be created for US or Nigeria</li>
                 <li>- Temporary passwords must be changed on first login</li>
                 <li>- Monitor and revoke testing access when it is no longer needed</li>
               </ul>

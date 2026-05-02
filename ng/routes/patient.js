@@ -121,14 +121,45 @@ router.post('/prescriptions/:prescriptionId/route', async (req, res) => {
 router.get('/prescriptions', async (req, res) => {
   try {
     const pool = getPool();
-    const result = await pool.query(
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = ((parseInt(req.query.page) || 1) - 1) * limit;
+    const uploaded = await pool.query(
       `SELECT id, status, created_at, items, prescriber_name, ocr_confidence,
               is_controlled_substance, expires_at
        FROM ng_prescriptions WHERE patient_user_id = $1
        ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-      [req.user.id, parseInt(req.query.limit) || 20, ((parseInt(req.query.page) || 1) - 1) * 20]
+      [req.user.id, limit, offset]
     );
-    res.json(result.rows);
+    const digital = await pool.query(
+      `SELECT rx.id,
+              rx.status,
+              rx.dispense_status,
+              rx.pharmacy_response_status,
+              rx.created_at,
+              rx.items,
+              rx.prescription_number,
+              rx.expires_at,
+              provider.full_name AS prescriber_name,
+              pharmacy.name AS pharmacy_name,
+              pharmacy.phone AS pharmacy_phone,
+              pharmacy.whatsapp_business_number,
+              rx.fulfillment_preference,
+              rx.confirmed_price_ngn,
+              rx.pharmacy_notes
+         FROM ng_digital_prescriptions rx
+         JOIN ng_providers provider ON provider.id = rx.provider_id
+         LEFT JOIN ng_pharmacies pharmacy
+           ON pharmacy.id = COALESCE(rx.routed_pharmacy_id, rx.preferred_pharmacy_id, rx.dispensed_by_pharmacy_id)
+        WHERE rx.patient_user_id = $1
+        ORDER BY rx.created_at DESC
+        LIMIT $2 OFFSET $3`,
+      [req.user.id, limit, offset]
+    ).catch(() => ({ rows: [] }));
+
+    res.json([
+      ...digital.rows.map((row) => ({ ...row, source_type: 'provider_digital_prescription' })),
+      ...uploaded.rows.map((row) => ({ ...row, source_type: 'patient_uploaded_prescription' })),
+    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

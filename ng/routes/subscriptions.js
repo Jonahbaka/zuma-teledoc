@@ -220,6 +220,122 @@ router.post('/activate', authenticate, async (req, res) => {
   }
 });
 
+// --- ADMIN: manual payment/subscription activation ---
+
+router.post('/admin/manual-activation', authenticate, requireRole(['admin']), async (req, res) => {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    const {
+      subjectType,
+      userId,
+      organizationId,
+      planKey,
+      amountNgn,
+      paymentMethod = 'bank_transfer',
+      paymentReference,
+      periodStart,
+      periodEnd,
+      notes,
+    } = req.body;
+
+    if (!subjectType || !planKey || (!userId && !organizationId)) {
+      return res.status(400).json({ error: 'subjectType, planKey, and user or organization are required.' });
+    }
+
+    await client.query('BEGIN');
+
+    const planResult = await client.query(
+      'SELECT * FROM ng_subscription_plans WHERE plan_key = $1 LIMIT 1',
+      [planKey]
+    );
+    if (!planResult.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Plan not found.' });
+    }
+
+    const plan = planResult.rows[0];
+    const start = periodStart ? new Date(periodStart) : new Date();
+    const end = periodEnd ? new Date(periodEnd) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    const subscription = await client.query(
+      `INSERT INTO ng_subscriptions (
+         subscriber_user_id, subscriber_org_id, plan_id, plan_key,
+         status, billing_cycle, amount_per_period,
+         current_period_start, current_period_end,
+         payment_provider, last_payment_reference, last_payment_at,
+         admin_notes, admin_overridden_by, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4,'active','monthly',$5,$6,$7,'manual_admin',$8,NOW(),$9,$10,NOW(),NOW())
+       RETURNING *`,
+      [
+        userId || null,
+        organizationId || null,
+        plan.id,
+        planKey,
+        amountNgn ?? plan.price_monthly ?? 0,
+        start,
+        end,
+        paymentReference || `MANUAL-${Date.now()}`,
+        notes || null,
+        req.user.id,
+      ]
+    );
+
+    await client.query(
+      `INSERT INTO ng_manual_payment_confirmations (
+         subject_type, subject_user_id, organization_id, plan_key, amount_ngn,
+         payment_method, payment_reference, status, period_start, period_end,
+         notes, confirmed_by, confirmed_at, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,'confirmed',$8,$9,$10,$11,NOW(),NOW(),NOW())`,
+      [
+        subjectType,
+        userId || null,
+        organizationId || null,
+        planKey,
+        amountNgn ?? plan.price_monthly ?? 0,
+        paymentMethod,
+        paymentReference || subscription.rows[0].last_payment_reference,
+        start,
+        end,
+        notes || null,
+        req.user.id,
+      ]
+    );
+
+    if (subjectType === 'provider' && userId) {
+      await client.query(
+        `UPDATE ng_providers
+            SET subscription_status = 'active',
+                subscription_start_at = $2,
+                subscription_end_at = $3,
+                access_status = 'subscribed',
+                updated_at = NOW()
+          WHERE user_id = $1`,
+        [userId, start, end]
+      );
+    }
+
+    if (subjectType === 'organization' && organizationId) {
+      await client.query(
+        `UPDATE ng_organizations
+            SET subscription_id = $1,
+                status = CASE WHEN status = 'pending_review' THEN 'active' ELSE status END,
+                updated_at = NOW()
+          WHERE id = $2`,
+        [subscription.rows[0].id, organizationId]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ subscription: subscription.rows[0] });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // --- ADMIN: all subscriptions ---
 
 router.get('/', authenticate, requireRole(['admin']), async (req, res) => {
@@ -244,7 +360,20 @@ router.get('/', authenticate, requireRole(['admin']), async (req, res) => {
     const count = await pool.query(
       `SELECT COUNT(*) FROM ng_subscriptions s WHERE ${where.join(' AND ')}`, params
     );
-    res.json({ subscriptions: result.rows, total: parseInt(count.rows[0].count) });
+    const summary = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'active') AS active,
+         COALESCE(SUM(amount_per_period) FILTER (WHERE status = 'active'), 0) AS mrr
+       FROM ng_subscriptions s
+       WHERE ${where.join(' AND ')}`,
+      params
+    );
+    res.json({
+      subscriptions: result.rows,
+      total: parseInt(count.rows[0].count),
+      active: parseInt(summary.rows[0]?.active || 0),
+      mrr: Number(summary.rows[0]?.mrr || 0),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
