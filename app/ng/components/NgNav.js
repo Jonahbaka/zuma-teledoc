@@ -105,10 +105,10 @@ const PORTALS = [
       { label: 'Prescription Queue', href: '/ng/pharmacy/dashboard#orders', icon: FileText },
       { label: 'Inventory', href: '/ng/pharmacy/dashboard#inventory', icon: Package },
       { label: 'Analytics', href: '/ng/pharmacy/dashboard#analytics', icon: BarChart3 },
-      { label: 'Register Pharmacy', href: '/ng/pharmacy/onboarding', icon: Building2 },
+      { label: 'Register Pharmacy', href: '/ng/pharmacy/register', icon: Building2 },
     ],
     authLink: '/ng/pharmacy/login',
-    registerLink: '/ng/pharmacy/onboarding',
+    registerLink: '/ng/pharmacy',
   },
 ];
 

@@ -83,7 +83,7 @@ export default function NigeriaPharmacyLoginPage() {
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-lg shadow-emerald-900/20">
               <Building2 className="h-8 w-8 text-white" />
             </div>
-            <h2 className="mt-4 text-2xl font-bold">Sign in to your Nigeria pharmacy portal</h2>
+            <h2 className="mt-4 text-2xl font-bold">Pharmacy Login</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">Access dashboard operations, compliance status, and pharmacy wallet settlement.</p>
           </div>
 
@@ -107,7 +107,7 @@ export default function NigeriaPharmacyLoginPage() {
             </div>
 
             <Button type="submit" disabled={loading} className="h-12 w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-500 hover:to-teal-500">
-              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in...</> : 'Open Pharmacy Portal'}
+              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in...</> : 'Log in to Pharmacy Portal'}
             </Button>
           </form>
 
@@ -115,7 +115,7 @@ export default function NigeriaPharmacyLoginPage() {
             <Link href="/ng/pharmacy/register" className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/[0.1]">
               Register Pharmacy
             </Link>
-            <Link href="/ng/pharmacy/onboarding" className="inline-flex items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/16">
+            <Link href="/ng/pharmacy" className="inline-flex items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/16">
               Continue Onboarding
             </Link>
           </div>

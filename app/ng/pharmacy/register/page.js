@@ -17,6 +17,15 @@ const STATES = [
   'Yobe', 'Zamfara',
 ];
 
+const SERVICE_CATEGORIES = [
+  ['prescription', 'Prescription medicines'],
+  ['otc', 'OTC and wellness'],
+  ['pediatric', 'Pediatric medicines'],
+  ['women_health', "Women's health"],
+  ['chronic_care', 'Chronic care'],
+  ['delivery', 'Pickup/delivery coordination'],
+];
+
 function meetsPasswordPolicy(value) {
   return value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value) && /[^A-Za-z0-9]/.test(value);
 }
@@ -33,6 +42,8 @@ export default function NigeriaPharmacyRegisterPage() {
     password: '',
     confirmPassword: '',
     name: '',
+    legalBusinessName: '',
+    branchName: '',
     pcnLicenseNumber: '',
     pcnLicenseExpiry: '',
     superintendentName: '',
@@ -44,6 +55,15 @@ export default function NigeriaPharmacyRegisterPage() {
     whatsapp: '',
     whatsappBusinessNumber: '',
     preferredPrescriptionReceivingMethod: 'dashboard_whatsapp',
+    operatingWeekday: 'Mon-Fri 8:00 AM - 8:00 PM',
+    operatingSaturday: 'Saturday 9:00 AM - 6:00 PM',
+    operatingSunday: 'Sunday emergency/on-call only',
+    pickupEnabled: true,
+    deliveryEnabled: true,
+    deliveryRadiusKm: '10',
+    minimumOrderAmount: '500',
+    serviceCategories: ['prescription', 'otc'],
+    onboardingNotes: '',
     acceptsBankTransfer: true,
     acceptsPos: true,
     acceptsCash: true,
@@ -58,6 +78,16 @@ export default function NigeriaPharmacyRegisterPage() {
     setError('');
   };
 
+  const toggleCategory = (category) => {
+    setForm((current) => ({
+      ...current,
+      serviceCategories: current.serviceCategories.includes(category)
+        ? current.serviceCategories.filter((item) => item !== category)
+        : [...current.serviceCategories, category],
+    }));
+    setError('');
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
@@ -69,6 +99,11 @@ export default function NigeriaPharmacyRegisterPage() {
 
     if (form.password !== form.confirmPassword) {
       setError('Passwords do not match.');
+      return;
+    }
+
+    if (!form.pickupEnabled && !form.deliveryEnabled) {
+      setError('Choose at least pickup or delivery support.');
       return;
     }
 
@@ -101,6 +136,8 @@ export default function NigeriaPharmacyRegisterPage() {
 
       await api.post('/ng/pharmacy/register', {
         name: form.name,
+        legalBusinessName: form.legalBusinessName || form.name,
+        branchName: form.branchName,
         email: form.email,
         phone: form.phone,
         whatsapp: form.whatsapp || form.phone,
@@ -114,6 +151,17 @@ export default function NigeriaPharmacyRegisterPage() {
         addressLine1: form.addressLine1,
         city: form.city,
         state: form.state,
+        operatingHours: {
+          weekday: form.operatingWeekday,
+          saturday: form.operatingSaturday,
+          sunday: form.operatingSunday,
+        },
+        pickupEnabled: form.pickupEnabled,
+        deliveryEnabled: form.deliveryEnabled,
+        deliveryRadiusKm: Number(form.deliveryRadiusKm || 0),
+        minimumOrderAmount: Number(form.minimumOrderAmount || 0),
+        serviceCategories: form.serviceCategories,
+        onboardingNotes: form.onboardingNotes,
         acceptsBankTransfer: form.acceptsBankTransfer,
         acceptsPos: form.acceptsPos,
         acceptsCash: form.acceptsCash,
@@ -181,6 +229,8 @@ export default function NigeriaPharmacyRegisterPage() {
               <p className={`sm:col-span-2 text-xs ${passwordOk ? 'text-emerald-700' : 'text-slate-500'}`}>Use at least 8 characters with uppercase, lowercase, number, and symbol.</p>
 
               <input className="h-12 rounded-2xl border border-slate-300 px-4 text-sm sm:col-span-2" placeholder="Pharmacy business name" value={form.name} onChange={update('name')} required />
+              <input className="h-12 rounded-2xl border border-slate-300 px-4 text-sm sm:col-span-2" placeholder="Legal/business registration name, if different" value={form.legalBusinessName} onChange={update('legalBusinessName')} />
+              <input className="h-12 rounded-2xl border border-slate-300 px-4 text-sm sm:col-span-2" placeholder="Branch/location name, if applicable" value={form.branchName} onChange={update('branchName')} />
               <input className="h-12 rounded-2xl border border-slate-300 px-4 text-sm" placeholder="PCN license number" value={form.pcnLicenseNumber} onChange={update('pcnLicenseNumber')} required />
               <input className="h-12 rounded-2xl border border-slate-300 px-4 text-sm" type="date" value={form.pcnLicenseExpiry} onChange={update('pcnLicenseExpiry')} required />
               <input className="h-12 rounded-2xl border border-slate-300 px-4 text-sm" placeholder="Superintendent pharmacist name" value={form.superintendentName} onChange={update('superintendentName')} required />
@@ -197,10 +247,17 @@ export default function NigeriaPharmacyRegisterPage() {
                 <option value="whatsapp">WhatsApp only</option>
                 <option value="dashboard_whatsapp">Dashboard + WhatsApp</option>
               </select>
+              <input className="h-12 rounded-2xl border border-slate-300 px-4 text-sm sm:col-span-2" placeholder="Weekday operating hours" value={form.operatingWeekday} onChange={update('operatingWeekday')} />
+              <input className="h-12 rounded-2xl border border-slate-300 px-4 text-sm" placeholder="Saturday operating hours" value={form.operatingSaturday} onChange={update('operatingSaturday')} />
+              <input className="h-12 rounded-2xl border border-slate-300 px-4 text-sm" placeholder="Sunday/holiday operating hours" value={form.operatingSunday} onChange={update('operatingSunday')} />
+              <input className="h-12 rounded-2xl border border-slate-300 px-4 text-sm" inputMode="decimal" placeholder="Delivery radius in km" value={form.deliveryRadiusKm} onChange={update('deliveryRadiusKm')} />
+              <input className="h-12 rounded-2xl border border-slate-300 px-4 text-sm" inputMode="decimal" placeholder="Minimum order amount (NGN)" value={form.minimumOrderAmount} onChange={update('minimumOrderAmount')} />
             </div>
 
             <div className="mt-5 grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
               {[
+                ['pickupEnabled', 'Pickup workflow ready'],
+                ['deliveryEnabled', 'Delivery workflow ready'],
                 ['acceptsBankTransfer', 'Bank transfer ready'],
                 ['acceptsPos', 'POS ready'],
                 ['acceptsCash', 'Cash workflow ready'],
@@ -211,6 +268,25 @@ export default function NigeriaPharmacyRegisterPage() {
                 </label>
               ))}
             </div>
+
+            <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-900">Medication and service coverage</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {SERVICE_CATEGORIES.map(([value, label]) => (
+                  <label key={value} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
+                    <input type="checkbox" checked={form.serviceCategories.includes(value)} onChange={() => toggleCategory(value)} />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <textarea
+              className="mt-5 min-h-[100px] w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm"
+              placeholder="Onboarding notes for DoctaRx operations, delivery areas, branch instructions, or prescription receiving preferences"
+              value={form.onboardingNotes}
+              onChange={update('onboardingNotes')}
+            />
 
             <Button type="submit" disabled={submitting} className="mt-6 h-12 w-full rounded-2xl bg-emerald-600 text-white hover:bg-emerald-500">
               {submitting ? 'Creating pharmacy account...' : 'Create Pharmacy Account'}

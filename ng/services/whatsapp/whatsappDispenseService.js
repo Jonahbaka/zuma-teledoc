@@ -95,10 +95,9 @@ async function createPharmacyPrescriptionNotification({ prescriptionId, pharmacy
   const shouldNotifyWhatsApp = receivingMethod === 'whatsapp' || receivingMethod === 'dashboard_whatsapp';
   const itemCount = Array.isArray(record.items) ? record.items.length : 1;
   const dashboardPath = `/ng/pharmacy/prescriptions?prescription=${record.id}`;
-  const patientName = [record.patient_first_name, record.patient_last_name].filter(Boolean).join(' ') || 'DoctaRx patient';
   const messagePreview = [
     'DoctaRx prescription notification.',
-    `Patient: ${patientName}.`,
+    `Reference: ${record.prescription_number || record.id}.`,
     `Provider: ${record.provider_name || 'DoctaRx provider'}.`,
     `Items: ${itemCount}.`,
     `Open secure dashboard: ${dashboardPath}`,

@@ -612,6 +612,46 @@ router.get('/pharmacies', async (req, res) => {
   }
 });
 
+router.get('/whatsapp-notifications', async (req, res) => {
+  try {
+    const pool = getPool();
+    const { pharmacyId, status, limit = 50 } = req.query;
+    const params = [];
+    const where = ['1=1'];
+
+    if (pharmacyId) {
+      params.push(pharmacyId);
+      where.push(`l.pharmacy_id = $${params.length}`);
+    }
+
+    if (status) {
+      params.push(status);
+      where.push(`l.status = $${params.length}`);
+    }
+
+    params.push(parseInt(limit, 10) || 50);
+    const result = await pool.query(
+      `SELECT l.*,
+              p.name AS pharmacy_name,
+              p.whatsapp_business_number,
+              p.whatsapp
+         FROM ng_whatsapp_notification_log l
+         LEFT JOIN ng_pharmacies p ON p.id = l.pharmacy_id
+        WHERE ${where.join(' AND ')}
+        ORDER BY l.created_at DESC
+        LIMIT $${params.length}`,
+      params
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    const status = err.code === '42P01' ? 503 : 500;
+    res.status(status).json({
+      error: status === 503 ? 'WhatsApp notification log table is not migrated yet.' : err.message,
+    });
+  }
+});
+
 // --- PLATFORM ANALYTICS ---
 
 // Dashboard overview

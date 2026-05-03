@@ -2,7 +2,7 @@ User-agent: *
 Allow: /
 Allow: /ng
 Allow: /ng/provider/register
-Allow: /ng/pharmacy/onboarding
+Allow: /ng/pharmacy
 Allow: /ng/patient/search
 Allow: /ng/patient/track
 Disallow: /api/
@@ -74,6 +74,7 @@ Disallow: /ng/pharmacy/dashboard/
 Disallow: /ng/pharmacy/inventory/
 Disallow: /ng/pharmacy/login/
 Disallow: /ng/pharmacy/notifications/
+Disallow: /ng/pharmacy/onboarding/
 Disallow: /ng/pharmacy/orders/
 Disallow: /ng/pharmacy/profile/
 Disallow: /ng/pharmacy/register/

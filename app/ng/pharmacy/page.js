@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Building2, ClipboardCheck, LockKeyhole, MessageCircle, PackageCheck, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Building2, ClipboardCheck, Headphones, LockKeyhole, MessageCircle, PackageCheck, ShieldCheck } from 'lucide-react';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import { Button } from '@/components/ui/button';
 
@@ -98,6 +98,28 @@ export default function NigeriaPharmacyPortalEntryPage() {
                 </div>
               </article>
             ))}
+
+            <article className="rounded-[1.5rem] border border-emerald-200 bg-emerald-950 p-5 text-white shadow-sm">
+              <div className="flex gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/10">
+                  <Headphones className="h-6 w-6" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold">Partnership support</h2>
+                  <p className="mt-2 text-sm leading-6 text-emerald-50">
+                    Learn how pharmacy partnership works or contact DoctaRx operations before onboarding a branch.
+                  </p>
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                    <Link href="/ng/pharmacy/register" className="w-full sm:w-auto">
+                      <Button className="h-11 w-full bg-white text-emerald-950 hover:bg-emerald-50 sm:w-auto">Start Onboarding</Button>
+                    </Link>
+                    <a href="mailto:support@doctarx.com?subject=DoctaRx%20Nigeria%20Pharmacy%20Partnership" className="w-full sm:w-auto">
+                      <Button variant="outline" className="h-11 w-full border-white/30 bg-transparent text-white hover:bg-white/10 sm:w-auto">Contact DoctaRx</Button>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </article>
           </div>
         </section>
       </div>

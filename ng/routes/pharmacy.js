@@ -124,6 +124,13 @@ router.patch('/me', async (req, res) => {
           whatsapp: receivingMethod === 'whatsapp' || receivingMethod === 'dashboard_whatsapp',
         }
       : req.body.notificationPreferences || null;
+    const deliveryRadiusKm = req.body.deliveryRadiusKm === undefined || req.body.deliveryRadiusKm === null || req.body.deliveryRadiusKm === ''
+      ? null
+      : Number(req.body.deliveryRadiusKm);
+
+    if (deliveryRadiusKm !== null && !Number.isFinite(deliveryRadiusKm)) {
+      return res.status(400).json({ error: 'Delivery radius must be a number.' });
+    }
 
     const result = await pool.query(
       `UPDATE ng_pharmacies
@@ -135,6 +142,11 @@ router.patch('/me', async (req, res) => {
               accepts_pos = COALESCE($7, accepts_pos),
               accepts_cash = COALESCE($8, accepts_cash),
               operating_hours = COALESCE($9::jsonb, operating_hours),
+              delivery_enabled = COALESCE($10, delivery_enabled),
+              pickup_enabled = COALESCE($11, pickup_enabled),
+              delivery_radius_km = COALESCE($12, delivery_radius_km),
+              service_categories = COALESCE($13::jsonb, service_categories),
+              onboarding_notes = COALESCE($14, onboarding_notes),
               updated_at = NOW()
         WHERE id = $1
         RETURNING *`,
@@ -148,6 +160,11 @@ router.patch('/me', async (req, res) => {
         typeof req.body.acceptsPos === 'boolean' ? req.body.acceptsPos : null,
         typeof req.body.acceptsCash === 'boolean' ? req.body.acceptsCash : null,
         req.body.operatingHours ? JSON.stringify(req.body.operatingHours) : null,
+        typeof req.body.deliveryEnabled === 'boolean' ? req.body.deliveryEnabled : null,
+        typeof req.body.pickupEnabled === 'boolean' ? req.body.pickupEnabled : null,
+        deliveryRadiusKm,
+        Array.isArray(req.body.serviceCategories) ? JSON.stringify(req.body.serviceCategories) : null,
+        req.body.onboardingNotes || null,
       ]
     );
 
@@ -345,6 +362,36 @@ router.get('/:pharmacyId/prescriptions', async (req, res) => {
           END,
           rx.created_at DESC
         LIMIT 100`,
+      [req.params.pharmacyId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    handleRouteError(res, err);
+  }
+});
+
+router.get('/:pharmacyId/whatsapp-notifications', async (req, res) => {
+  try {
+    await assertPharmacyAccess(req, req.params.pharmacyId);
+
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT id,
+              notification_type,
+              prescription_id,
+              recipient_phone,
+              status,
+              message_preview,
+              secure_action_url,
+              metadata,
+              sent_at,
+              created_at,
+              updated_at
+         FROM ng_whatsapp_notification_log
+        WHERE pharmacy_id = $1
+        ORDER BY created_at DESC
+        LIMIT 25`,
       [req.params.pharmacyId]
     );
 

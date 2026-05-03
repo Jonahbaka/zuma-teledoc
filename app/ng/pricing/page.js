@@ -37,7 +37,7 @@ const HEADER_LINKS = [
   { label: 'Medicines', href: '/ng/medicines' },
   { label: 'Pricing', href: '/ng/pricing' },
   { label: 'Providers', href: '/ng/provider/register' },
-  { label: 'Pharmacies', href: '/ng/pharmacy/onboarding' },
+  { label: 'Pharmacies', href: '/ng/pharmacy' },
 ];
 
 const TONES = {
@@ -668,7 +668,7 @@ export default function NgPricingPage() {
                   plan={plan}
                   billingCycle={billingCycle}
                   tone="teal"
-                  href="/ng/pharmacy/onboarding"
+                  href="/ng/pharmacy"
                   cta="Register Pharmacy"
                 />
               ))}

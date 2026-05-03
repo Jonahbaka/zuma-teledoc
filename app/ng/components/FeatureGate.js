@@ -51,7 +51,7 @@ const GATE_CONFIGS = {
     badgeBg: 'bg-teal-500/10 text-teal-600 border-teal-500/20',
     title: 'Pharmacy Access Required',
     message: 'This feature is only available to registered pharmacy partners.',
-    cta: { label: 'Register Pharmacy', href: '/ng/pharmacy/onboarding' },
+    cta: { label: 'Open Pharmacy Portal', href: '/ng/pharmacy' },
   },
   corporate_only: {
     icon: Globe,

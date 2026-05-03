@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, Building2, Package, Wallet } from 'lucide-react';
+import { AlertTriangle, Building2, FileText, MessageCircle, Package, Wallet } from 'lucide-react';
 import NigeriaPharmacyPortalShell from '@/components/ng/NigeriaPharmacyPortalShell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +28,15 @@ function EmptyWorkspaceState() {
   );
 }
 
+function countByStatus(records, statuses) {
+  const allowed = new Set(statuses);
+  return records.filter((record) => allowed.has(String(record.pharmacy_response_status || record.status || '').toLowerCase())).length;
+}
+
+function formatReceivingMethod(value) {
+  return String(value || 'dashboard').replace(/_/g, ' ');
+}
+
 export default function NigeriaPharmacyDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [workspace, setWorkspace] = useState(null);
@@ -37,7 +46,17 @@ export default function NigeriaPharmacyDashboardPage() {
     wallet: {},
     alerts: [],
     compliance: {},
+    prescriptions: [],
+    whatsappNotifications: [],
   });
+
+  const prescriptions = dashboard.prescriptions || [];
+  const whatsappNotifications = dashboard.whatsappNotifications || [];
+  const pendingPrescriptions = countByStatus(prescriptions, ['pending_pharmacy_confirmation', 'pharmacy_reviewing', 'clarification_requested']);
+  const activeFulfillment = countByStatus(prescriptions, ['accepted', 'ready_for_pickup', 'out_for_delivery']);
+  const fulfilledPrescriptions = countByStatus(prescriptions, ['fulfilled']);
+  const manualWhatsappFallbacks = countByStatus(whatsappNotifications, ['manual_fallback_pending']);
+  const latestWhatsappNotification = whatsappNotifications[0];
 
   useEffect(() => {
     const loadWorkspace = async () => {
@@ -64,14 +83,17 @@ export default function NigeriaPharmacyDashboardPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Pharmacy Portal</p>
-              <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Operational dashboard for orders, inventory, and settlement</h1>
+              <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Operational dashboard for prescriptions, orders, and settlement</h1>
               <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-                This route is now the real Nigeria pharmacy portal dashboard, tied to the authenticated pharmacy workspace instead of a generic approved-pharmacy lookup.
+                This route is tied to the authenticated pharmacy workspace, routed prescriptions, WhatsApp/manual notification logs, fulfillment orders, and compliance status.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
+              <Link href="/ng/pharmacy/prescriptions">
+                <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Review Prescriptions</Button>
+              </Link>
               <Link href="/ng/pharmacy/orders">
-                <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Review Orders</Button>
+                <Button variant="outline">Review Orders</Button>
               </Link>
               <Link href="/ng/pharmacy/wallet">
                 <Button variant="outline">Open Wallet</Button>
@@ -88,25 +110,37 @@ export default function NigeriaPharmacyDashboardPage() {
           <EmptyWorkspaceState />
         ) : (
           <>
-            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {[
                 {
-                  label: 'Wallet Balance',
-                  value: formatNaira(dashboard.wallet.balance),
-                  detail: `Pending ${formatNaira(dashboard.wallet.pending_balance)}`,
-                  icon: Wallet,
+                  label: 'Pending Prescriptions',
+                  value: pendingPrescriptions,
+                  detail: `${prescriptions.length} routed to this pharmacy`,
+                  icon: FileText,
                 },
                 {
-                  label: 'Inventory Items',
-                  value: dashboard.stats.totalItems || 0,
-                  detail: `${dashboard.stats.lowStockItems || 0} low stock`,
+                  label: 'Active Fulfillment',
+                  value: activeFulfillment,
+                  detail: `${fulfilledPrescriptions} fulfilled`,
                   icon: Package,
+                },
+                {
+                  label: 'WhatsApp Workflow',
+                  value: formatReceivingMethod(workspace.preferred_prescription_receiving_method),
+                  detail: `${manualWhatsappFallbacks} manual fallback pending`,
+                  icon: MessageCircle,
                 },
                 {
                   label: 'Recent Orders',
                   value: dashboard.orders.length,
                   detail: workspace.name,
                   icon: Building2,
+                },
+                {
+                  label: 'Wallet Balance',
+                  value: formatNaira(dashboard.wallet.balance),
+                  detail: `Pending ${formatNaira(dashboard.wallet.pending_balance)}`,
+                  icon: Wallet,
                 },
                 {
                   label: 'Compliance Status',
@@ -131,6 +165,28 @@ export default function NigeriaPharmacyDashboardPage() {
                 </Card>
               ))}
             </section>
+
+            <Card className="border-border/70">
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle>Prescription receiving workflow</CardTitle>
+                <Link href="/ng/pharmacy/prescriptions">
+                  <Button variant="outline" size="sm">Open prescription queue</Button>
+                </Link>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-3">
+                {[
+                  ['Needs review', pendingPrescriptions, 'New, reviewing, or clarification requests'],
+                  ['In fulfillment', activeFulfillment, 'Accepted, ready for pickup, or out for delivery'],
+                  ['WhatsApp/manual logs', whatsappNotifications.length, latestWhatsappNotification ? String(latestWhatsappNotification.status || '').replace(/_/g, ' ') : 'No notifications logged yet'],
+                ].map(([label, value, detail]) => (
+                  <div key={label} className="rounded-2xl border border-border px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+                    <p className="mt-2 text-2xl font-bold text-foreground">{value}</p>
+                    <p className="mt-2 text-sm text-muted-foreground">{detail}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
 
             <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
               <Card className="border-border/70">
@@ -176,6 +232,8 @@ export default function NigeriaPharmacyDashboardPage() {
                       <p className="font-semibold text-foreground">{workspace.name}</p>
                       <p className="mt-1 text-muted-foreground">{workspace.city}, {workspace.state}</p>
                       <p className="mt-2 text-muted-foreground">Owner email: {workspace.owner_email || 'Unavailable'}</p>
+                      <p className="mt-2 text-muted-foreground">WhatsApp: {workspace.whatsapp_business_number || workspace.whatsapp || 'Not configured'}</p>
+                      <p className="mt-2 text-muted-foreground">Receiving: {formatReceivingMethod(workspace.preferred_prescription_receiving_method)}</p>
                     </div>
                     <div className="rounded-2xl border border-border px-4 py-4">
                       <p className="font-semibold text-foreground">PCN License</p>
@@ -195,7 +253,7 @@ export default function NigeriaPharmacyDashboardPage() {
                       dashboard.alerts.slice(0, 5).map((alert) => (
                         <div key={alert.id} className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
                           <p className="font-semibold">{alert.drug_name}</p>
-                          <p className="mt-1">Available: {alert.quantity_available} • Reorder level: {alert.reorder_level}</p>
+                          <p className="mt-1">Available: {alert.quantity_available} - Reorder level: {alert.reorder_level}</p>
                         </div>
                       ))
                     )}

@@ -435,9 +435,9 @@ export const MARKET_HOME_DATA = {
         tone: 'blue',
       },
       {
-        label: 'Pharmacy Onboarding',
-        description: 'Join the prescription network',
-        href: '/ng/pharmacy/onboarding',
+        label: 'Pharmacy Portal',
+        description: 'Login, register, or learn pharmacy partnership',
+        href: '/ng/pharmacy',
         icon: Pill,
         tone: 'violet',
       },
@@ -467,7 +467,7 @@ export const MARKET_HOME_DATA = {
       {
         label: 'Register Pharmacy',
         description: 'Grow your pharmacy network reach',
-        href: '/ng/pharmacy/onboarding',
+        href: '/ng/pharmacy',
         icon: Pill,
         tone: 'violet',
       },
@@ -626,8 +626,8 @@ export const MARKET_HOME_DATA = {
         title: 'Pharmacies',
         description: 'Receive verified prescription demand, confirm stock, publish pricing, and manage fulfillment from a network built for Nigeria.',
         bullets: ['Availability and pricing', 'Pickup and delivery coordination'],
-        ctaLabel: 'Register Pharmacy',
-        ctaHref: '/ng/pharmacy/onboarding',
+        ctaLabel: 'Open Pharmacy Portal',
+        ctaHref: '/ng/pharmacy',
       },
       {
         icon: Stethoscope,
@@ -684,7 +684,7 @@ export const MARKET_HOME_DATA = {
             'Provider and patient handoff visibility',
           ],
           ctaLabel: 'Register Pharmacy',
-          ctaHref: '/ng/pharmacy/onboarding',
+          ctaHref: '/ng/pharmacy',
         },
       ],
       sideTitle: 'What stays visible to patients',
@@ -738,7 +738,9 @@ export const MARKET_HOME_DATA = {
         {
           title: 'Pharmacies',
           links: [
-            { label: 'Register Pharmacy', href: '/ng/pharmacy/onboarding' },
+            { label: 'Pharmacy Portal', href: '/ng/pharmacy' },
+            { label: 'Pharmacy Login', href: '/ng/pharmacy/login' },
+            { label: 'Register Pharmacy', href: '/ng/pharmacy/register' },
             { label: 'Network View', href: '/ng#network' },
             { label: 'Access & Payment', href: '/ng#pricing' },
           ],

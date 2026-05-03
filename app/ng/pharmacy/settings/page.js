@@ -17,6 +17,13 @@ export default function NigeriaPharmacySettingsPage() {
     whatsapp: '',
     whatsappBusinessNumber: '',
     preferredPrescriptionReceivingMethod: 'dashboard',
+    operatingWeekday: '',
+    operatingSaturday: '',
+    operatingSunday: '',
+    pickupEnabled: true,
+    deliveryEnabled: true,
+    deliveryRadiusKm: '',
+    onboardingNotes: '',
     acceptsBankTransfer: true,
     acceptsPos: true,
     acceptsCash: true,
@@ -27,10 +34,27 @@ export default function NigeriaPharmacySettingsPage() {
       const pharmacyWorkspace = await fetchNigeriaPharmacyWorkspace().catch(() => null);
       setWorkspace(pharmacyWorkspace);
       if (pharmacyWorkspace) {
+        let hours = {};
+        if (pharmacyWorkspace.operating_hours && typeof pharmacyWorkspace.operating_hours === 'object') {
+          hours = pharmacyWorkspace.operating_hours;
+        } else if (typeof pharmacyWorkspace.operating_hours === 'string') {
+          try {
+            hours = JSON.parse(pharmacyWorkspace.operating_hours);
+          } catch (_) {
+            hours = {};
+          }
+        }
         setSettings({
           whatsapp: pharmacyWorkspace.whatsapp || '',
           whatsappBusinessNumber: pharmacyWorkspace.whatsapp_business_number || pharmacyWorkspace.whatsapp || '',
           preferredPrescriptionReceivingMethod: pharmacyWorkspace.preferred_prescription_receiving_method || 'dashboard',
+          operatingWeekday: hours.weekday || '',
+          operatingSaturday: hours.saturday || '',
+          operatingSunday: hours.sunday || '',
+          pickupEnabled: pharmacyWorkspace.pickup_enabled !== false,
+          deliveryEnabled: pharmacyWorkspace.delivery_enabled !== false,
+          deliveryRadiusKm: pharmacyWorkspace.delivery_radius_km || '',
+          onboardingNotes: pharmacyWorkspace.onboarding_notes || '',
           acceptsBankTransfer: pharmacyWorkspace.accepts_bank_transfer !== false,
           acceptsPos: pharmacyWorkspace.accepts_pos !== false,
           acceptsCash: pharmacyWorkspace.accepts_cash !== false,
@@ -51,7 +75,15 @@ export default function NigeriaPharmacySettingsPage() {
     setSaving(true);
     setNotice('');
     try {
-      const response = await api.patch('/ng/pharmacy/me', settings);
+      const response = await api.patch('/ng/pharmacy/me', {
+        ...settings,
+        deliveryRadiusKm: settings.deliveryRadiusKm === '' ? null : Number(settings.deliveryRadiusKm),
+        operatingHours: {
+          weekday: settings.operatingWeekday,
+          saturday: settings.operatingSaturday,
+          sunday: settings.operatingSunday,
+        },
+      });
       setWorkspace(response.data?.pharmacy || workspace);
       setNotice('Pharmacy settings saved.');
     } catch (error) {
@@ -100,7 +132,7 @@ export default function NigeriaPharmacySettingsPage() {
 
             <Card className="border-border/70">
               <CardHeader>
-                <CardTitle>Prescription receiving and payment readiness</CardTitle>
+                <CardTitle>Prescription receiving, hours, and payment readiness</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 text-sm text-muted-foreground">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -125,10 +157,37 @@ export default function NigeriaPharmacySettingsPage() {
                     <option value="whatsapp">WhatsApp only</option>
                     <option value="dashboard_whatsapp">Dashboard + WhatsApp</option>
                   </select>
+                  <input
+                    value={settings.operatingWeekday}
+                    onChange={(event) => updateSetting('operatingWeekday', event.target.value)}
+                    placeholder="Weekday operating hours"
+                    className="h-11 rounded-2xl border border-slate-300 bg-white px-3 text-sm text-slate-950 sm:col-span-2"
+                  />
+                  <input
+                    value={settings.operatingSaturday}
+                    onChange={(event) => updateSetting('operatingSaturday', event.target.value)}
+                    placeholder="Saturday operating hours"
+                    className="h-11 rounded-2xl border border-slate-300 bg-white px-3 text-sm text-slate-950"
+                  />
+                  <input
+                    value={settings.operatingSunday}
+                    onChange={(event) => updateSetting('operatingSunday', event.target.value)}
+                    placeholder="Sunday/holiday operating hours"
+                    className="h-11 rounded-2xl border border-slate-300 bg-white px-3 text-sm text-slate-950"
+                  />
+                  <input
+                    value={settings.deliveryRadiusKm}
+                    onChange={(event) => updateSetting('deliveryRadiusKm', event.target.value)}
+                    placeholder="Delivery radius in km"
+                    inputMode="decimal"
+                    className="h-11 rounded-2xl border border-slate-300 bg-white px-3 text-sm text-slate-950 sm:col-span-2"
+                  />
                 </div>
 
                 <div className="grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
                   {[
+                    ['pickupEnabled', 'Pickup workflow ready'],
+                    ['deliveryEnabled', 'Delivery workflow ready'],
                     ['acceptsBankTransfer', 'Bank transfer ready'],
                     ['acceptsPos', 'POS ready'],
                     ['acceptsCash', 'Cash workflow ready'],
@@ -143,6 +202,13 @@ export default function NigeriaPharmacySettingsPage() {
                     </label>
                   ))}
                 </div>
+
+                <textarea
+                  value={settings.onboardingNotes}
+                  onChange={(event) => updateSetting('onboardingNotes', event.target.value)}
+                  placeholder="Operational notes for delivery areas, branch instructions, or prescription receiving constraints"
+                  className="min-h-[96px] w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-950"
+                />
 
                 <Button onClick={saveSettings} disabled={saving} className="bg-emerald-600 text-white hover:bg-emerald-500">
                   {saving ? 'Saving...' : 'Save Settings'}

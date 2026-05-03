@@ -44,23 +44,33 @@ class PharmacyOnboardingService {
       whatsapp: receivingMethod === 'whatsapp' || receivingMethod === 'dashboard_whatsapp',
     };
 
+    const operatingHours = data.operatingHours && typeof data.operatingHours === 'object'
+      ? data.operatingHours
+      : {};
+    const serviceCategories = Array.isArray(data.serviceCategories)
+      ? data.serviceCategories
+      : [];
+
     const result = await pool.query(
       `INSERT INTO ng_pharmacies (
-        owner_user_id, name, slug, pcn_license_number, pcn_license_expiry,
+        owner_user_id, name, legal_business_name, branch_name, slug, pcn_license_number, pcn_license_expiry,
         superintendent_name, superintendent_pcn_number, superintendent_phone,
         superintendent_email, address_line1, address_line2, city, state, lga,
         postal_code, latitude, longitude, phone, whatsapp, email, website,
+        operating_hours, delivery_enabled, delivery_radius_km, minimum_order_amount,
         bank_name, bank_account_number, bank_account_name, bank_code,
         whatsapp_business_number, preferred_prescription_receiving_method,
         notification_preferences, accepts_bank_transfer, accepts_pos, accepts_cash,
+        pickup_enabled, service_categories, onboarding_notes,
         status, account_status, onboarding_status
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,'pending_review','pending_onboarding','profile_submitted'
+        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,
+        'pending_review','pending_onboarding','profile_submitted'
       )
       RETURNING *`,
       [
-        ownerUserId, data.name, slug, data.pcnLicenseNumber,
+        ownerUserId, data.name, data.legalBusinessName || data.name, data.branchName || null, slug, data.pcnLicenseNumber,
         data.pcnLicenseExpiry || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
         data.superintendentName, data.superintendentPcnNumber,
         data.superintendentPhone, data.superintendentEmail,
@@ -68,6 +78,10 @@ class PharmacyOnboardingService {
         data.lga || null, data.postalCode || null,
         data.latitude || null, data.longitude || null,
         data.phone, data.whatsapp || null, data.email, data.website || null,
+        JSON.stringify(operatingHours),
+        data.deliveryEnabled === true,
+        data.deliveryRadiusKm || 10,
+        data.minimumOrderAmount || 500,
         data.bankName || null, data.bankAccountNumber || null,
         data.bankAccountName || null, data.bankCode || null,
         data.whatsappBusinessNumber || data.whatsapp || null,
@@ -76,6 +90,9 @@ class PharmacyOnboardingService {
         data.acceptsBankTransfer !== false,
         data.acceptsPos !== false,
         data.acceptsCash !== false,
+        data.pickupEnabled !== false,
+        JSON.stringify(serviceCategories),
+        data.onboardingNotes || null,
       ]
     );
 
