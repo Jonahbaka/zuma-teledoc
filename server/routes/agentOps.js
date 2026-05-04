@@ -14,6 +14,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticate, requireRole } = require('../middleware/auth');
 const db = require('../db');
+const operationalAgentRuntime = require('../services/agent-runtime/runtime');
 
 let orchestrator;
 try {
@@ -27,7 +28,7 @@ try {
 const ensureOrchestrator = (req, res, next) => {
   if (!orchestrator) {
     const isWrite = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
-    if (isWrite) return res.json({ success: true, data: { status: 'skipped', reason: 'Orchestrator offline' } });
+    if (isWrite) return res.status(503).json({ success: false, error: 'Legacy orchestrator is offline. Use the Operational Agent Runtime for persisted tasks.' });
     return res.json({ success: true, data: null });
   }
   next();
@@ -129,12 +130,153 @@ router.get('/status', ...adminOnly, async (req, res) => {
 });
 
 // =========================================================================
+// OPERATIONAL AGENT RUNTIME
+// =========================================================================
+
+/** GET /api/agent-ops/runtime/health */
+router.get('/runtime/health', ...adminOnly, async (_req, res) => {
+  try {
+    const data = await operationalAgentRuntime.getHealth();
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /api/agent-ops/runtime/registry */
+router.get('/runtime/registry', ...adminOnly, async (_req, res) => {
+  try {
+    res.json({
+      success: true,
+      data: {
+        agents: operationalAgentRuntime.registry,
+        tools: operationalAgentRuntime.tools(),
+        model: operationalAgentRuntime.modelConfiguration(),
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /api/agent-ops/runtime/tasks */
+router.get('/runtime/tasks', ...adminOnly, async (req, res) => {
+  try {
+    const data = await operationalAgentRuntime.listTasks(req.query || {});
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** POST /api/agent-ops/runtime/tasks */
+router.post('/runtime/tasks', ...adminOnly, async (req, res) => {
+  try {
+    const task = await operationalAgentRuntime.createTask(req.body || {}, req.user || {});
+    res.status(201).json({ success: true, data: task });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+/** POST /api/agent-ops/runtime/run-next */
+router.post('/runtime/run-next', ...adminOnly, async (_req, res) => {
+  try {
+    const task = await operationalAgentRuntime.runNextTask();
+    res.json({ success: true, data: task || { status: 'idle', reason: 'No queued tasks' } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** POST /api/agent-ops/runtime/tasks/:id/run */
+router.post('/runtime/tasks/:id/run', ...adminOnly, async (req, res) => {
+  try {
+    const task = await operationalAgentRuntime.runNextTask(req.params.id);
+    res.json({ success: true, data: task || { status: 'idle', reason: 'Task is not queued or was already claimed' } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** POST /api/agent-ops/runtime/tasks/:id/cancel */
+router.post('/runtime/tasks/:id/cancel', ...adminOnly, async (req, res) => {
+  try {
+    const task = await operationalAgentRuntime.cancelTask(req.params.id);
+    if (!task) return res.status(404).json({ success: false, error: 'Task not found or no longer cancellable' });
+    res.json({ success: true, data: task });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /api/agent-ops/runtime/tasks/:id/tool-calls */
+router.get('/runtime/tasks/:id/tool-calls', ...adminOnly, async (req, res) => {
+  try {
+    const data = await operationalAgentRuntime.getTaskToolCalls(req.params.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /api/agent-ops/runtime/approvals */
+router.get('/runtime/approvals', ...adminOnly, async (req, res) => {
+  try {
+    const data = await operationalAgentRuntime.listApprovals(req.query || {});
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** POST /api/agent-ops/runtime/approvals/:id/approve */
+router.post('/runtime/approvals/:id/approve', ...adminOnly, async (req, res) => {
+  try {
+    const data = await operationalAgentRuntime.decideApproval(req.params.id, 'approved', req.user?.id, req.body?.notes);
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** POST /api/agent-ops/runtime/approvals/:id/reject */
+router.post('/runtime/approvals/:id/reject', ...adminOnly, async (req, res) => {
+  try {
+    const data = await operationalAgentRuntime.decideApproval(req.params.id, 'rejected', req.user?.id, req.body?.notes);
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /api/agent-ops/runtime/budget */
+router.get('/runtime/budget', ...adminOnly, async (_req, res) => {
+  try {
+    const data = await operationalAgentRuntime.getBudgetSettings();
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** PUT /api/agent-ops/runtime/budget */
+router.put('/runtime/budget', ...adminOnly, async (req, res) => {
+  try {
+    const data = await operationalAgentRuntime.updateBudgetSettings(req.body || {}, req.user?.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// =========================================================================
 // AGENT EXECUTION
 // =========================================================================
 
 /** POST /api/agent-ops/run/:agentType - Run a single agent */
 router.post('/run/:agentType', ...adminOnly, async (req, res) => {
-  if (!orchestrator) return res.json({ success: true, data: { status: 'skipped', reason: 'Orchestrator offline — agents respond via /api/agent-chat/messages' } });
+  if (!orchestrator) return res.status(503).json({ success: false, error: 'Legacy orchestrator is offline. Queue a task in the Operational Agent Runtime instead.' });
   try {
     const { agentType } = req.params;
     const result = await orchestrator.runAgent(agentType, { triggeredBy: req.user.id });
@@ -146,7 +288,7 @@ router.post('/run/:agentType', ...adminOnly, async (req, res) => {
 
 /** POST /api/agent-ops/run-all - Run all agents */
 router.post('/run-all', ...adminOnly, async (req, res) => {
-  if (!orchestrator) return res.json({ success: true, data: { status: 'skipped', reason: 'Orchestrator offline' } });
+  if (!orchestrator) return res.status(503).json({ success: false, error: 'Legacy orchestrator is offline. Queue a task in the Operational Agent Runtime instead.' });
   try {
     const results = await orchestrator.runAllAgents({ triggeredBy: req.user.id });
     res.json({ success: true, data: results });

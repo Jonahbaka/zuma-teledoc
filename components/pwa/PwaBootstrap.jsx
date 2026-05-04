@@ -202,6 +202,7 @@ function isMobileSafari() {
 export default function PwaBootstrap() {
   const pathname = usePathname() || '';
   const suppressInstallPrompt =
+    pathname === '/ng' ||
     pathname === '/ng/medicines' ||
     pathname.startsWith('/ng/medicines/') ||
     pathname === '/ng/pricing' ||

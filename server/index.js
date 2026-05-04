@@ -743,6 +743,15 @@ async function initializeApp() {
     console.error('🤖 Agent Orchestrator: Not available -', err.message);
   }
 
+  // Operational Agent Runtime: DB-backed task queue with safe tool calls and approvals.
+  try {
+    const operationalAgentRuntime = require('./services/agent-runtime/runtime');
+    const state = operationalAgentRuntime.startAgentWorker();
+    console.log(`Operational Agent Runtime: ${state.running ? 'ONLINE' : 'OFFLINE'} (${state.intervalMs || 'disabled'}ms poll)`);
+  } catch (err) {
+    console.error('Operational Agent Runtime: Not available -', err.message);
+  }
+
   // ═══ APP NERVE BRIDGE — Connect real app actions to agent nervous system ═══
   try {
     const nerveBridge = require('./services/agent-orchestrator/app-nerve-bridge');

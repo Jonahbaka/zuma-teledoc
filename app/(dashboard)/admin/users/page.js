@@ -21,12 +21,14 @@ export default function AdminUsers() {
   const [filters, setFilters] = useState({
     query: '',
     role: '',
-    isActive: ''
+    isActive: '',
+    market: '',
+    isTestAccount: ''
   });
 
   useEffect(() => {
     fetchUsers();
-  }, [pagination.page, filters.role, filters.isActive]);
+  }, [pagination.page, filters.role, filters.isActive, filters.market, filters.isTestAccount]);
 
   const fetchUsers = async () => {
     try {
@@ -78,16 +80,31 @@ export default function AdminUsers() {
 
   const handleSearch = (e) => {
     e.preventDefault();
+    setPagination(p => ({ ...p, page: 1 }));
     fetchUsers();
+  };
+
+  const updateFilter = (key, value) => {
+    setFilters((current) => ({ ...current, [key]: value }));
+    setPagination((current) => ({ ...current, page: 1 }));
   };
 
   const getRoleBadgeVariant = (role) => {
     switch (role) {
       case 'admin': return 'default';
       case 'provider': return 'info';
+      case 'pharmacy': return 'outline';
       case 'patient': return 'secondary';
       default: return 'outline';
     }
+  };
+
+  const getMarketLabel = (user) => {
+    const scope = String(user.marketScope || user.market_scope || '').toUpperCase();
+    const country = String(user.country || '').toLowerCase();
+    if (scope === 'NG' || country === 'ng' || country === 'nigeria') return 'Nigeria';
+    if (scope === 'US' || country === 'us' || country === 'usa') return 'US';
+    return 'Unassigned';
   };
 
   return (
@@ -112,33 +129,54 @@ export default function AdminUsers() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <Input
-                placeholder="Search by name or email..."
+                placeholder="Search by name, email, or phone..."
                 value={filters.query}
                 onChange={(e) => setFilters({ ...filters, query: e.target.value })}
                 className="pl-10"
               />
             </div>
             
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <select
                 value={filters.role}
-                onChange={(e) => setFilters({ ...filters, role: e.target.value })}
+                onChange={(e) => updateFilter('role', e.target.value)}
                 className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
                 <option value="">All Roles</option>
                 <option value="patient">Patients</option>
                 <option value="provider">Providers</option>
+                <option value="pharmacy">Pharmacies</option>
                 <option value="admin">Admins</option>
               </select>
 
               <select
                 value={filters.isActive}
-                onChange={(e) => setFilters({ ...filters, isActive: e.target.value })}
+                onChange={(e) => updateFilter('isActive', e.target.value)}
                 className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
                 <option value="">All Status</option>
                 <option value="true">Active</option>
                 <option value="false">Inactive</option>
+              </select>
+
+              <select
+                value={filters.market}
+                onChange={(e) => updateFilter('market', e.target.value)}
+                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="">All Markets</option>
+                <option value="US">US</option>
+                <option value="NG">Nigeria</option>
+              </select>
+
+              <select
+                value={filters.isTestAccount}
+                onChange={(e) => updateFilter('isTestAccount', e.target.value)}
+                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="">All Accounts</option>
+                <option value="true">Test Accounts</option>
+                <option value="false">Production Accounts</option>
               </select>
 
               <Button type="submit">
@@ -203,6 +241,21 @@ export default function AdminUsers() {
                           <div>
                             <p className="font-medium">{user.firstName} {user.lastName}</p>
                             <p className="text-sm text-gray-500">{user.email}</p>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <Badge variant="outline" className="text-[10px]">
+                                {getMarketLabel(user)}
+                              </Badge>
+                              {user.isTestAccount && (
+                                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-[10px]">
+                                  Test
+                                </Badge>
+                              )}
+                              {user.mustChangePassword && (
+                                <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-[10px]">
+                                  Password change required
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>

@@ -224,6 +224,85 @@ CREATE TABLE IF NOT EXISTS ai_agent_memory (
 );
 CREATE INDEX IF NOT EXISTS idx_agent_memory_type ON ai_agent_memory(agent_type);
 CREATE INDEX IF NOT EXISTS idx_agent_memory_created ON ai_agent_memory(created_at DESC);
+
+-- Operational Agent Runtime: persisted task queue, tool logs, approvals, and budget controls.
+CREATE TABLE IF NOT EXISTS ai_operational_agent_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  task_type VARCHAR(120) NOT NULL DEFAULT 'general',
+  requested_by UUID,
+  selected_agent_id VARCHAR(120),
+  selected_agent_name TEXT,
+  status VARCHAR(40) NOT NULL DEFAULT 'queued'
+    CHECK (status IN ('draft', 'queued', 'running', 'waiting_approval', 'completed', 'failed', 'cancelled')),
+  risk_level VARCHAR(30) NOT NULL DEFAULT 'low',
+  requires_approval BOOLEAN NOT NULL DEFAULT FALSE,
+  input JSONB NOT NULL DEFAULT '{}',
+  result JSONB,
+  error TEXT,
+  model_provider VARCHAR(80),
+  model_name VARCHAR(160),
+  prompt_version VARCHAR(80) DEFAULT 'operational-agent-runtime-v1',
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  estimated_cost_usd NUMERIC(12, 6) NOT NULL DEFAULT 0,
+  max_tool_calls INTEGER NOT NULL DEFAULT 6,
+  max_tokens INTEGER NOT NULL DEFAULT 1200,
+  queued_at TIMESTAMPTZ DEFAULT NOW(),
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  cancelled_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_operational_agent_tasks_status ON ai_operational_agent_tasks(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_operational_agent_tasks_agent ON ai_operational_agent_tasks(selected_agent_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_operational_agent_tasks_requested_by ON ai_operational_agent_tasks(requested_by, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ai_operational_agent_tool_calls (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id UUID NOT NULL REFERENCES ai_operational_agent_tasks(id) ON DELETE CASCADE,
+  agent_id VARCHAR(120) NOT NULL,
+  tool_name VARCHAR(160) NOT NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'completed'
+    CHECK (status IN ('queued', 'running', 'completed', 'failed', 'skipped')),
+  input_summary JSONB NOT NULL DEFAULT '{}',
+  output_summary JSONB,
+  error TEXT,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_operational_agent_tool_calls_task ON ai_operational_agent_tool_calls(task_id, created_at);
+
+CREATE TABLE IF NOT EXISTS ai_operational_agent_approvals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id UUID NOT NULL REFERENCES ai_operational_agent_tasks(id) ON DELETE CASCADE,
+  agent_id VARCHAR(120) NOT NULL,
+  action_type VARCHAR(120) NOT NULL,
+  risk_level VARCHAR(30) NOT NULL DEFAULT 'medium',
+  status VARCHAR(40) NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'approved', 'rejected', 'expired')),
+  proposed_action JSONB NOT NULL DEFAULT '{}',
+  decision_notes TEXT,
+  requested_by UUID,
+  decided_by UUID,
+  decided_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_operational_agent_approvals_status ON ai_operational_agent_approvals(status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ai_operational_agent_budget_settings (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  daily_budget_usd NUMERIC(12, 2) DEFAULT 5.00,
+  monthly_budget_usd NUMERIC(12, 2) DEFAULT 100.00,
+  simple_model VARCHAR(160) DEFAULT 'gemini-2.0-flash',
+  strong_model VARCHAR(160) DEFAULT 'claude-sonnet-4-6',
+  updated_by UUID,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+INSERT INTO ai_operational_agent_budget_settings (id)
+VALUES (1)
+ON CONFLICT (id) DO NOTHING;
 `;
 
 async function ensureAgentTables() {

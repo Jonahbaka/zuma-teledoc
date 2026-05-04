@@ -1308,7 +1308,7 @@ function CompactMarketWorkspace({ content, activeTab, onTabChange }) {
                 </WorkspacePanel>
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {content.audienceCards.map((card) => {
                   const Icon = card.icon;
                   const styles = toneStyles(card.tone);
@@ -1655,12 +1655,12 @@ export default function MarketHomepage({ market = 'US' }) {
       {content.showCountrySelector ? <CountrySelector /> : null}
 
       {emergencyBannerVisible ? (
-        <div className="fixed inset-x-0 top-0 z-[70] border-b border-red-500/20 bg-red-950/92 text-white backdrop-blur-xl">
-          <div className="mx-auto flex max-w-7xl items-center justify-center gap-3 px-4 py-3 text-center text-xs sm:text-sm">
+        <div className="fixed inset-x-0 top-0 z-[70] border-b border-red-400/30 bg-red-950 text-white shadow-sm">
+          <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 text-left text-xs sm:justify-center sm:text-center sm:text-sm">
             <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-red-500/20">
               <Activity className="h-4 w-4 text-red-300" />
             </div>
-            <p className="leading-5">
+            <p className="min-w-0 max-w-[calc(100vw-5.5rem)] flex-1 break-words leading-5 sm:max-w-none sm:flex-none">
               {content.banner.emergencyLabel} <strong>{content.banner.emergencyNumber}</strong> {content.banner.emergencyTail}
             </p>
             <button
@@ -1684,10 +1684,10 @@ export default function MarketHomepage({ market = 'US' }) {
             : 'border-transparent bg-background/70 py-4 backdrop-blur-xl'
         )}
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-          <Link href={content.code === 'US' ? '/' : '/ng'} className="flex items-center gap-3">
-            <span className="rounded-2xl border border-slate-800 bg-slate-950/95 px-3 py-2 shadow-[0_0_28px_rgba(34,211,238,0.16)]">
-              <DoctaRxLogo className="h-7 w-auto" />
+        <div className="mx-auto grid max-w-7xl grid-cols-[auto_minmax(0,1fr)] items-center gap-2 px-3 sm:gap-4 sm:px-6 md:flex md:justify-between">
+          <Link href={content.code === 'US' ? '/' : '/ng'} className="flex min-w-0 shrink-0 items-center gap-3">
+            <span className="rounded-2xl border border-slate-800 bg-slate-950/95 px-2.5 py-2 shadow-[0_0_28px_rgba(34,211,238,0.16)] sm:px-3">
+              <DoctaRxLogo className="!h-6 !w-24 sm:!h-7 sm:!w-28" />
             </span>
             <div className="hidden sm:block">
               <div className="text-sm font-semibold text-foreground">{content.name}</div>
@@ -1770,23 +1770,23 @@ export default function MarketHomepage({ market = 'US' }) {
             </div>
           </div>
 
-          <div className="flex md:hidden items-center gap-2">
+          <div className="flex min-w-0 shrink-0 items-center justify-end gap-1.5 justify-self-end md:hidden">
             <button
               type="button"
               onClick={() => openCompactSurface('access')}
-              className="rounded-full border border-border bg-background/82 px-3.5 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent"
+              className="rounded-full border border-border bg-background/82 px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent"
             >
               Portals
             </button>
             <Link
               href={content.hero.primaryCta.href}
-              className={cn('inline-flex items-center justify-center rounded-full px-3.5 py-2 text-sm font-semibold transition-colors', primaryTone.button)}
+              className={cn('hidden items-center justify-center rounded-full px-3 py-2 text-sm font-semibold transition-colors sm:inline-flex', primaryTone.button)}
             >
               {content.code === 'US' ? 'Get Care' : 'Start'}
             </Link>
             <button
               type="button"
-              className="rounded-full border border-border bg-background/80 p-2.5 text-foreground transition-colors hover:bg-accent"
+              className="rounded-full border border-border bg-background/80 p-2 text-foreground transition-colors hover:bg-accent"
               aria-label="Toggle navigation"
               onClick={() => setMobileMenuOpen((value) => !value)}
             >
@@ -1883,23 +1883,23 @@ export default function MarketHomepage({ market = 'US' }) {
           <div className="absolute inset-x-0 top-0 h-[32rem] bg-[linear-gradient(to_bottom,rgba(255,255,255,0.74),transparent)] dark:bg-[linear-gradient(to_bottom,rgba(2,6,23,0.6),transparent)]" />
           <div className="relative mx-auto max-w-7xl">
             <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] xl:items-center xl:gap-16">
-              <div className="space-y-6 sm:space-y-7">
+              <div className="min-w-0 space-y-6 sm:space-y-7">
                 <TonePill tone={content.hero.visualTone} icon={Sparkles}>{content.hero.badge}</TonePill>
-                <div className="space-y-4 sm:space-y-5">
-                  <h1 className="max-w-4xl text-[2.8rem] leading-[0.98] tracking-tight text-foreground sm:text-5xl md:text-6xl xl:text-[5.15rem]">
+                <div className="min-w-0 space-y-4 sm:space-y-5">
+                  <h1 className="max-w-full break-words text-[2.8rem] leading-[0.98] tracking-tight text-foreground sm:max-w-4xl sm:text-5xl md:text-6xl xl:text-[5.15rem]">
                     {content.hero.title}
                     <span className={cn('mt-2 block bg-clip-text text-transparent', content.code === 'US' ? 'bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 dark:from-cyan-300 dark:via-blue-300 dark:to-indigo-300' : 'bg-gradient-to-r from-emerald-600 via-teal-500 to-amber-500 dark:from-emerald-300 dark:via-teal-300 dark:to-amber-300')}>
                       {content.hero.highlight}
                     </span>
                   </h1>
-                  <p className="max-w-2xl text-base leading-7 text-muted-foreground md:text-lg xl:text-xl">{content.hero.description}</p>
+                  <p className="max-w-[calc(100vw-3rem)] break-words text-base leading-7 text-muted-foreground sm:max-w-full md:max-w-2xl md:text-lg xl:text-xl">{content.hero.description}</p>
                 </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                  <Link href={content.hero.primaryCta.href} className={cn('inline-flex items-center justify-center rounded-full px-6 py-3.5 text-base font-semibold transition-colors sm:px-7', primaryTone.button)}>
+                <div className="flex max-w-[calc(100vw-3rem)] flex-col gap-3 sm:max-w-full sm:flex-row sm:flex-wrap">
+                  <Link href={content.hero.primaryCta.href} className={cn('inline-flex w-full min-w-0 items-center justify-center rounded-full px-6 py-3.5 text-center text-base font-semibold transition-colors sm:w-auto sm:px-7', primaryTone.button)}>
                     {content.hero.primaryCta.label}
                     <ArrowRight className="ml-2 h-4.5 w-4.5" />
                   </Link>
-                  <Link href={content.hero.secondaryCta.href} className="inline-flex items-center justify-center rounded-full border border-border bg-background/80 px-6 py-3.5 text-base font-semibold text-foreground transition-colors hover:bg-accent sm:px-7">
+                  <Link href={content.hero.secondaryCta.href} className="inline-flex w-full min-w-0 items-center justify-center rounded-full border border-border bg-background/80 px-6 py-3.5 text-center text-base font-semibold text-foreground transition-colors hover:bg-accent sm:w-auto sm:px-7">
                     {content.hero.secondaryCta.label}
                   </Link>
                   <a href={content.hero.tertiaryCta.href} className="inline-flex items-center justify-center rounded-full px-2 py-3 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground">
@@ -2038,7 +2038,7 @@ export default function MarketHomepage({ market = 'US' }) {
         <section id={content.audienceSection.id} className="hidden px-4 py-16 sm:px-6 md:py-20 xl:block">
           <div className="mx-auto max-w-7xl space-y-12">
             <SectionHeading badge={content.audienceSection.badge} title={content.audienceSection.title} subtitle={content.audienceSection.subtitle} />
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
               {content.audienceCards.map((card) => {
                 const Icon = card.icon;
                 const styles = toneStyles(card.tone);
@@ -2076,7 +2076,7 @@ export default function MarketHomepage({ market = 'US' }) {
         <section id="pricing" className="hidden border-y border-border/60 bg-card/40 px-4 py-16 sm:px-6 md:py-20 xl:block">
           <div className="mx-auto max-w-7xl space-y-12">
             <SectionHeading title={content.pricingSection.title} subtitle={content.pricingSection.subtitle} />
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
               {pricingCards.map((plan) => {
                 const styles = toneStyles(plan.tone);
 

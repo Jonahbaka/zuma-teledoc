@@ -31,7 +31,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from '@/components/ui/use-toast';
-import api from '@/lib/api';
+import api, { adminAPI } from '@/lib/api';
 import { format, formatDistanceToNow } from 'date-fns';
 
 const DEFAULT_TEST_ACCOUNT = {
@@ -67,6 +67,14 @@ export default function TestingLinksPage() {
   const [filterType, setFilterType] = useState('all');
   const [showActiveOnly, setShowActiveOnly] = useState(true);
   const [newAccount, setNewAccount] = useState(DEFAULT_TEST_ACCOUNT);
+  const [testAccounts, setTestAccounts] = useState([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountPagination, setAccountPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [accountFilters, setAccountFilters] = useState({
+    query: '',
+    role: 'all',
+    market: 'all',
+  });
 
   const [newLink, setNewLink] = useState({
     linkType: 'patient',
@@ -101,9 +109,47 @@ export default function TestingLinksPage() {
     }
   }, [filterType, showActiveOnly]);
 
+  const fetchTestAccounts = useCallback(async () => {
+    try {
+      setAccountsLoading(true);
+      const params = {
+        page: accountPagination.page,
+        limit: 12,
+        isTestAccount: true,
+        sortBy: 'created_at',
+        sortOrder: 'desc',
+      };
+      if (accountFilters.query.trim()) params.query = accountFilters.query.trim();
+      if (accountFilters.role !== 'all') params.role = accountFilters.role;
+      if (accountFilters.market !== 'all') params.market = accountFilters.market;
+
+      const res = await adminAPI.getUsers(params);
+      if (res.data.success) {
+        setTestAccounts(res.data.users || []);
+        setAccountPagination((current) => ({
+          ...current,
+          total: res.data.pagination?.total || 0,
+          totalPages: res.data.pagination?.totalPages || 1,
+        }));
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.error || 'Failed to fetch test accounts',
+        variant: 'destructive'
+      });
+    } finally {
+      setAccountsLoading(false);
+    }
+  }, [accountFilters.market, accountFilters.query, accountFilters.role, accountPagination.page]);
+
   useEffect(() => {
     fetchLinks();
   }, [fetchLinks]);
+
+  useEffect(() => {
+    fetchTestAccounts();
+  }, [fetchTestAccounts]);
 
   const createLink = async () => {
     try {
@@ -148,15 +194,17 @@ export default function TestingLinksPage() {
   const createTestAccount = async () => {
     try {
       setCreatingAccount(true);
-      const res = await api.post('/admin/test-accounts', newAccount);
+      const res = await adminAPI.createTestAccount(newAccount);
 
       if (res.data.success) {
         toast({
           title: `${newAccount.role.charAt(0).toUpperCase() + newAccount.role.slice(1)} Test Account Created`,
-          description: 'The account will require a new password on first login',
+          description: `${res.data.user?.email || 'The account'} was saved and will require a new password on first login`,
         });
         setShowCreateAccountDialog(false);
         setNewAccount({ ...DEFAULT_TEST_ACCOUNT });
+        setAccountPagination((current) => ({ ...current, page: 1 }));
+        fetchTestAccounts();
       }
     } catch (error) {
       toast({
@@ -218,6 +266,26 @@ export default function TestingLinksPage() {
     toast({ title: 'Copied!', description: `${label} copied to clipboard` });
   };
 
+  const refreshAll = () => {
+    fetchLinks();
+    fetchTestAccounts();
+  };
+
+  const updateAccountFilter = (key, value) => {
+    setAccountFilters((current) => ({ ...current, [key]: value }));
+    setAccountPagination((current) => ({ ...current, page: 1 }));
+  };
+
+  const marketLabel = (account) => {
+    const scope = String(account.marketScope || account.market_scope || '').toUpperCase();
+    const country = String(account.country || '').toLowerCase();
+    if (scope === 'NG' || country === 'ng' || country === 'nigeria') return 'Nigeria';
+    if (scope === 'US' || country === 'us' || country === 'usa') return 'US';
+    return 'Unassigned';
+  };
+
+  const roleLabel = (role) => String(role || '').replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+
   const viewDetails = async (link) => {
     try {
       const res = await api.get(`/testing-links/${link.id}`);
@@ -265,7 +333,7 @@ export default function TestingLinksPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={fetchLinks} disabled={loading}>
+          <Button variant="outline" onClick={refreshAll} disabled={loading || accountsLoading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
@@ -685,6 +753,152 @@ export default function TestingLinksPage() {
               </ul>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Created Test Accounts */}
+      <Card>
+        <CardHeader className="gap-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-emerald-600" />
+                Created Test Accounts
+              </CardTitle>
+              <CardDescription>
+                Real users saved with isTestAccount=true. Use filters to verify patient, provider, and pharmacy accounts across US and Nigeria.
+              </CardDescription>
+            </div>
+            <Badge variant="outline" className="w-fit text-sm">
+              {accountPagination.total || 0} visible test accounts
+            </Badge>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto]">
+            <Input
+              value={accountFilters.query}
+              onChange={(event) => updateAccountFilter('query', event.target.value)}
+              placeholder="Search test accounts by name, email, or phone"
+            />
+            <Select value={accountFilters.role} onValueChange={(value) => updateAccountFilter('role', value)}>
+              <SelectTrigger className="md:w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All roles</SelectItem>
+                <SelectItem value="patient">Patients</SelectItem>
+                <SelectItem value="provider">Providers</SelectItem>
+                <SelectItem value="pharmacy">Pharmacies</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={accountFilters.market} onValueChange={(value) => updateAccountFilter('market', value)}>
+              <SelectTrigger className="md:w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All markets</SelectItem>
+                <SelectItem value="US">US</SelectItem>
+                <SelectItem value="NG">Nigeria</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" onClick={fetchTestAccounts} disabled={accountsLoading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${accountsLoading ? 'animate-spin' : ''}`} />
+              Reload
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {accountsLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="h-14 animate-pulse rounded-lg bg-muted" />
+              ))}
+            </div>
+          ) : testAccounts.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-8 text-center">
+              <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+              <h3 className="font-semibold">No test accounts match these filters</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Clear role, market, or search filters. Newly created accounts appear here after the backend confirms they were saved.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Account</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Market</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>First Login</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {testAccounts.map((account) => (
+                    <TableRow key={account.id}>
+                      <TableCell>
+                        <div className="font-medium">{account.firstName} {account.lastName}</div>
+                        <div className="text-xs text-muted-foreground">{account.email}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{roleLabel(account.role)}</Badge>
+                        {account.providerStatus && (
+                          <Badge className="ml-2 bg-blue-100 text-blue-700 hover:bg-blue-100">
+                            {account.providerStatus}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>{marketLabel(account)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          <Badge className={account.isActive ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-red-100 text-red-700 hover:bg-red-100'}>
+                            {account.isActive ? 'Active' : 'Inactive'}
+                          </Badge>
+                          <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Test</Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                        {account.createdAt ? format(new Date(account.createdAt), 'MMM d, yyyy h:mm a') : 'Unknown'}
+                      </TableCell>
+                      <TableCell>
+                        {account.mustChangePassword ? (
+                          <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Password change required</Badge>
+                        ) : (
+                          <Badge variant="outline">Password already changed</Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {accountPagination.totalPages > 1 && (
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Page {accountPagination.page} of {accountPagination.totalPages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={accountPagination.page <= 1}
+                      onClick={() => setAccountPagination((current) => ({ ...current, page: current.page - 1 }))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={accountPagination.page >= accountPagination.totalPages}
+                      onClick={() => setAccountPagination((current) => ({ ...current, page: current.page + 1 }))}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -34,6 +34,14 @@ const parseTestingDays = (value) => {
   return Math.min(Math.max(parsed, 1), 365);
 };
 
+const normalizeMarketScope = (value) => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === 'ng' || raw === 'nigeria') return 'NG';
+  if (raw === 'us' || raw === 'usa' || raw === 'united states') return 'US';
+  return null;
+};
+
 // All admin routes require admin or super_admin role
 router.use(authenticate, requireRole('admin', 'super_admin'));
 
@@ -215,7 +223,8 @@ router.get('/users', async (req, res) => {
       whereClause += ` AND (
         first_name ILIKE $${paramIndex} OR 
         last_name ILIKE $${paramIndex} OR 
-        email ILIKE $${paramIndex}
+        email ILIKE $${paramIndex} OR
+        phone ILIKE $${paramIndex}
       )`;
       values.push(`%${filters.query}%`);
       paramIndex++;
@@ -238,6 +247,36 @@ router.get('/users', async (req, res) => {
       values.push(filters.isActive);
       paramIndex++;
     }
+
+    if (filters.isTestAccount !== undefined) {
+      whereClause += ` AND COALESCE(is_test_account, FALSE) = $${paramIndex}`;
+      values.push(filters.isTestAccount);
+      paramIndex++;
+    }
+
+    if (filters.mustChangePassword !== undefined) {
+      whereClause += ` AND COALESCE(must_change_password, FALSE) = $${paramIndex}`;
+      values.push(filters.mustChangePassword);
+      paramIndex++;
+    }
+
+    const marketScope = normalizeMarketScope(filters.marketScope || filters.market || filters.country);
+    if (marketScope) {
+      whereClause += ` AND (
+        market_scope = $${paramIndex}
+        OR UPPER(country) = $${paramIndex}
+        OR (market_scope IS NULL AND $${paramIndex} = 'US' AND (country IS NULL OR country IN ('US', 'USA')))
+        OR (market_scope IS NULL AND $${paramIndex} = 'NG' AND country IN ('NG', 'Nigeria'))
+      )`;
+      values.push(marketScope);
+      paramIndex++;
+    }
+
+    if (filters.accountStatus) {
+      whereClause += ` AND account_status = $${paramIndex}`;
+      values.push(filters.accountStatus);
+      paramIndex++;
+    }
     
     // Get total count
     const { rows: countResult } = await db.query(
@@ -255,7 +294,11 @@ router.get('/users', async (req, res) => {
     const { rows } = await db.query(
       `SELECT id, email, role, first_name, last_name, phone,
               is_active, is_verified, provider_status,
-              specialty, credentials, created_at, last_login_at
+              specialty, credentials, country, region, market_scope,
+              account_status, access_level, must_change_password,
+              testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier,
+              COALESCE(is_test_account, FALSE) as is_test_account,
+              created_at, updated_at, last_login_at
        FROM users ${whereClause}
        ORDER BY ${sortField} ${sortOrder}
        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
@@ -306,6 +349,13 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
     const testingBypassDays = parseTestingDays(req.body.testingBypassDays);
     const testingBypassExpiresAt = testingBypassActive
       ? new Date(Date.now() + testingBypassDays * 24 * 60 * 60 * 1000)
+      : null;
+    const rawPharmacyPcnLicenseNumber = String(req.body.licenseNumber || req.body.pcnLicenseNumber || '').trim();
+    const pharmacyPcnLicenseNumber = role === 'pharmacy' && country === 'Nigeria'
+      ? rawPharmacyPcnLicenseNumber || `TEST-PCN-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
+      : null;
+    const pharmacySuperintendentPcnNumber = role === 'pharmacy' && country === 'Nigeria'
+      ? String(req.body.superintendentPcnNumber || '').trim() || `TEST-SP-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
       : null;
 
     if (!TEST_ACCOUNT_ROLES.has(role)) {
@@ -364,6 +414,25 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
         success: false,
         error: `An account with this email already exists as ${existingRows[0].role}`
       });
+    }
+
+    if (role === 'pharmacy' && country === 'Nigeria' && rawPharmacyPcnLicenseNumber) {
+      const { rows: existingPharmacyRows } = await client.query(
+        `SELECT id, name
+           FROM ng_pharmacies
+          WHERE pcn_license_number = $1
+          LIMIT 1`,
+        [rawPharmacyPcnLicenseNumber]
+      );
+
+      if (existingPharmacyRows.length > 0) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return res.status(409).json({
+          success: false,
+          error: `A Nigeria pharmacy profile already exists for PCN/license ${rawPharmacyPcnLicenseNumber}`
+        });
+      }
     }
 
     const providerStatus = role === 'provider'
@@ -473,7 +542,7 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
     if (role === 'pharmacy' && country === 'Nigeria') {
       const businessName = pharmacyBusinessName || `${firstName} ${lastName}`.trim();
       const slug = `${businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Math.random().toString(36).slice(2, 6)}`;
-      await client.query(
+      const pharmacyProfileResult = await client.query(
         `INSERT INTO ng_pharmacies (
            owner_user_id, name, slug, pcn_license_number, pcn_license_expiry,
            superintendent_name, superintendent_pcn_number, superintendent_phone,
@@ -485,14 +554,14 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
            $5,$6,$7,$8,$9,$10,$11,$12,$13,
            $14,$15,$16,$17,$18,$19
          )
-         ON CONFLICT (pcn_license_number) DO NOTHING`,
+         RETURNING id, name, pcn_license_number, status, account_status, onboarding_status`,
         [
           user.id,
           businessName,
           slug,
-          req.body.licenseNumber || req.body.pcnLicenseNumber || `TEST-PCN-${Date.now()}`,
+          pharmacyPcnLicenseNumber,
           req.body.superintendentName || `${firstName} ${lastName}`.trim(),
-          req.body.superintendentPcnNumber || `TEST-SP-${Date.now()}`,
+          pharmacySuperintendentPcnNumber,
           req.body.phone || '+2340000000000',
           req.body.branchLocation || req.body.addressLine1 || 'Test pharmacy branch',
           req.body.city || 'Abuja',
@@ -511,6 +580,10 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
           bypassCredentialing ? 'approved' : 'profile_submitted',
         ]
       );
+
+      if (!pharmacyProfileResult.rows[0]) {
+        throw new Error('Nigeria pharmacy profile was not created for this test account');
+      }
     }
 
     await client.query('COMMIT');

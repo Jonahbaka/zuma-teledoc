@@ -10,6 +10,7 @@ import {
   Target, DollarSign, Gauge, Sparkles, ArrowUpRight, GitBranch
 } from 'lucide-react';
 import HolographicAvatar from '@/components/agents/HolographicAvatar';
+import OperationalAgentRuntimePanel from '@/components/agents/OperationalAgentRuntimePanel';
 import { AGENT_PERSONAS, getAgentPersona, normalizeAgentId } from '@/lib/agentPersonas';
 import { getAgentTheme } from '@/lib/agentTheme';
 import { useAgentVoice } from '@/lib/agentVoice';
@@ -420,10 +421,10 @@ export default function AgentChatPage() {
               <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-indigo-300 bg-clip-text text-transparent">AGENT COMMAND CENTER</h1>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" /> Claude + Gemini
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400" /> Runtime health below
                 </span>
                 <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                  <Heart className="w-2.5 h-2.5" /> Heartbeat
+                  <Heart className="w-2.5 h-2.5" /> Legacy chat
                 </span>
                 <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
                   <Database className="w-2.5 h-2.5" /> Memory
@@ -443,7 +444,7 @@ export default function AgentChatPage() {
                 <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20" title="Nerve Bridge — Real app events → Agent reactions">
                   <Sparkles className="w-2.5 h-2.5" /> Nerve Bridge
                 </span>
-                <span className="text-[10px] text-gray-500">{AGENTS.length - 1} agents online</span>
+                <span className="text-[10px] text-gray-500">Operational status comes from persisted runtime tasks</span>
               </div>
             </div>
           </div>
@@ -481,6 +482,10 @@ export default function AgentChatPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="px-4 py-5 sm:px-6">
+        <OperationalAgentRuntimePanel />
       </div>
 
       {/* UPLOADS TAB */}
