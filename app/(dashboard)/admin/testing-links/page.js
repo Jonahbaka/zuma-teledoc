@@ -45,7 +45,6 @@ const DEFAULT_TEST_ACCOUNT = {
   branchLocation: '',
   phone: '',
   whatsappBusinessNumber: '',
-  pcnLicenseNumber: '',
   preferredPrescriptionReceivingMethod: 'dashboard',
   country: 'USA',
   forcePasswordChange: true,
@@ -194,7 +193,12 @@ export default function TestingLinksPage() {
   const createTestAccount = async () => {
     try {
       setCreatingAccount(true);
-      const res = await adminAPI.createTestAccount(newAccount);
+      const payload = { ...newAccount };
+      delete payload.pcnLicenseNumber;
+      delete payload.licenseNumber;
+      delete payload.superintendentPcnNumber;
+
+      const res = await adminAPI.createTestAccount(payload);
 
       if (res.data.success) {
         toast({
@@ -481,12 +485,10 @@ export default function TestingLinksPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>PCN License / Registration</Label>
-                      <Input
-                        autoComplete="off"
-                        value={newAccount.pcnLicenseNumber}
-                        onChange={(e) => setNewAccount({ ...newAccount, pcnLicenseNumber: e.target.value })}
-                      />
+                      <Label>Test Credential Handling</Label>
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900">
+                        PCN/license details are not required for pharmacy test accounts. Production pharmacy onboarding still requires proper credential review.
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label>Phone Number</Label>

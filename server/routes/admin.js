@@ -350,12 +350,16 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
     const testingBypassExpiresAt = testingBypassActive
       ? new Date(Date.now() + testingBypassDays * 24 * 60 * 60 * 1000)
       : null;
-    const rawPharmacyPcnLicenseNumber = String(req.body.licenseNumber || req.body.pcnLicenseNumber || '').trim();
+    // Test accounts must not require real regulatory credentials. The Nigeria
+    // pharmacy table currently requires a non-null PCN column, so test accounts
+    // get an internal placeholder that is never treated as an approval credential.
+    const pharmacyTestReference = `TEST-ACCOUNT-NO-PCN-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+    const superintendentTestReference = `TEST-ACCOUNT-NO-SP-PCN-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
     const pharmacyPcnLicenseNumber = role === 'pharmacy' && country === 'Nigeria'
-      ? rawPharmacyPcnLicenseNumber || `TEST-PCN-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
+      ? pharmacyTestReference
       : null;
     const pharmacySuperintendentPcnNumber = role === 'pharmacy' && country === 'Nigeria'
-      ? String(req.body.superintendentPcnNumber || '').trim() || `TEST-SP-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
+      ? superintendentTestReference
       : null;
 
     if (!TEST_ACCOUNT_ROLES.has(role)) {
@@ -414,25 +418,6 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
         success: false,
         error: `An account with this email already exists as ${existingRows[0].role}`
       });
-    }
-
-    if (role === 'pharmacy' && country === 'Nigeria' && rawPharmacyPcnLicenseNumber) {
-      const { rows: existingPharmacyRows } = await client.query(
-        `SELECT id, name
-           FROM ng_pharmacies
-          WHERE pcn_license_number = $1
-          LIMIT 1`,
-        [rawPharmacyPcnLicenseNumber]
-      );
-
-      if (existingPharmacyRows.length > 0) {
-        await client.query('ROLLBACK');
-        transactionOpen = false;
-        return res.status(409).json({
-          success: false,
-          error: `A Nigeria pharmacy profile already exists for PCN/license ${rawPharmacyPcnLicenseNumber}`
-        });
-      }
     }
 
     const providerStatus = role === 'provider'
