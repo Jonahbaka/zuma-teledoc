@@ -1110,7 +1110,7 @@ export default function TestingLinksPage({ market = 'US' }) {
                           <Badge className={accountStatus.color}>{accountStatus.label}</Badge>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {account.createdByAdminId || 'Unknown'}
+                          {account.createdByAdminEmail || account.createdByAdminId || 'Unknown'}
                         </TableCell>
                         <TableCell>
                           {account.testingBypassActive ? (
