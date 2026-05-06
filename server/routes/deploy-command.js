@@ -20,7 +20,7 @@ function buildDeployCommand() {
     `NODE_OPTIONS="--max-old-space-size=${DEPLOY_BUILD_MEMORY_MB}" npm run build`,
     'test -n "$(find .next/static/chunks/app -path \'*/admin/testing-links/page-*.js\' -print -quit)"',
     '(ln -sfn .next _next || true)',
-    '(rm -rf public/_next && ln -sfn ../.next public/_next || true)',
+    '(rm -rf public/_next || true)',
     '(rm -rf .next/_next && mkdir -p .next/_next && ln -sfn ../static .next/_next/static || true)',
     '(rm -rf .next/static/_next && mkdir -p .next/static/_next && ln -sfn .. .next/static/_next/static || true)',
     '(rm -rf .next/static/chunks/_next && mkdir -p .next/static/chunks/_next/static && ln -sfn ../.. .next/static/chunks/_next/static/chunks || true)',
