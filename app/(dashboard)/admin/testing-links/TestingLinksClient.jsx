@@ -113,7 +113,9 @@ function getDefaultTestingLink(market = 'US') {
 }
 
 export default function TestingLinksPage({ market = 'US' }) {
-  const normalizedMarket = market === 'NG' ? 'NG' : 'US';
+  const initialMarket = market === 'NG' ? 'NG' : 'US';
+  const [selectedMarket, setSelectedMarket] = useState(initialMarket);
+  const normalizedMarket = selectedMarket === 'NG' ? 'NG' : 'US';
   const marketConfig = MARKET_CONFIG[normalizedMarket];
   const [links, setLinks] = useState([]);
   const [testAccounts, setTestAccounts] = useState([]);
@@ -442,6 +444,18 @@ export default function TestingLinksPage({ market = 'US' }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-[180px]">
+            <Label className="sr-only">Market</Label>
+            <Select value={normalizedMarket} onValueChange={setSelectedMarket}>
+              <SelectTrigger>
+                <SelectValue placeholder="Market" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="US">US Market</SelectItem>
+                <SelectItem value="NG">Nigeria Market</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Button variant="outline" onClick={refreshAll} disabled={loading || accountsLoading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading || accountsLoading ? 'animate-spin' : ''}`} />
             Refresh
