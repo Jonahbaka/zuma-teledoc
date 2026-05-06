@@ -88,6 +88,11 @@ export default function AdminLayout({ children }) {
 
   useEffect(() => {
     if (isPublicRoute) return;
+    if (loading && typeof window !== 'undefined' && !window.localStorage.getItem('accessToken')) {
+      window.location.replace('/secure/admin');
+      return;
+    }
+
     if (!loading && !isAuthenticated) {
       router.replace('/secure/admin');
     }
@@ -157,18 +162,18 @@ export default function AdminLayout({ children }) {
         <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
           <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-purple-600" />
           <p className="text-base font-semibold">Checking administrator access...</p>
+          <button
+            type="button"
+            onClick={() => window.location.assign('/secure/admin')}
+            className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800"
+          >
+            Continue to Admin Login
+          </button>
           {authCheckElapsed && (
             <div className="mt-4 space-y-3">
               <p className="text-sm leading-6 text-slate-600">
                 If this screen stays here, continue to the secure admin login.
               </p>
-              <button
-                type="button"
-                onClick={() => window.location.assign('/secure/admin')}
-                className="inline-flex min-h-11 items-center justify-center rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800"
-              >
-                Continue to Admin Login
-              </button>
             </div>
           )}
         </div>
