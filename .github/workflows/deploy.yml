@@ -43,4 +43,9 @@ jobs:
             echo "Deploy webhook returned HTTP $response"
             exit 1
           fi
+          deploy_success=$(python3 -c 'import json,sys; print("true" if json.load(open("/tmp/deploy_response.json")).get("success") is True else "false")')
+          if [ "$deploy_success" != "true" ]; then
+            echo "::error::Deploy webhook did not start a deployment."
+            exit 1
+          fi
           echo "Deploy triggered successfully - build running in background on server"
