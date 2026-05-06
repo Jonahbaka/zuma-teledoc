@@ -13,7 +13,7 @@ function buildDeployCommand() {
     // Preserve production-only secrets and certificates that are intentionally untracked.
     'git clean -fd -e .env -e .env.* -e global-bundle.pem -e *.pem',
     'npm install --include=dev --prefer-offline --no-audit --no-fund',
-    'rm -rf .turbo .next _next',
+    'rm -rf .turbo .next _next public/_next',
     'npm run migrate',
     'node ng/migrations/migrate.js',
     'node ng/scripts/ingest-doctarx-nigeria-pack.js',
