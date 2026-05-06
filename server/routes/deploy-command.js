@@ -14,6 +14,7 @@ function buildDeployCommand() {
     'git clean -fd -e .env -e .env.* -e global-bundle.pem -e *.pem',
     'npm install --include=dev --prefer-offline --no-audit --no-fund',
     'rm -rf .turbo',
+    'npm run migrate',
     'node ng/migrations/migrate.js',
     'node ng/scripts/ingest-doctarx-nigeria-pack.js',
     `NODE_OPTIONS="--max-old-space-size=${DEPLOY_BUILD_MEMORY_MB}" npm run build`,

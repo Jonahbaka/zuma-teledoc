@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Zap, CheckCircle, XCircle, Clock, Loader2, Heart, Stethoscope,
-  ArrowRight, Shield, Gift, AlertTriangle
+  ArrowRight, Shield, Gift, AlertTriangle, Building2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +14,7 @@ import api from '@/lib/api';
 
 export default function TestingAccessPage() {
   const params = useParams();
-  const router = useRouter();
+  const pathname = usePathname() || '';
   const token = params.token;
 
   const [loading, setLoading] = useState(true);
@@ -51,6 +51,7 @@ export default function TestingAccessPage() {
   }
 
   if (error) {
+    const isNgPath = pathname.startsWith('/ng');
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-red-900 to-slate-900 p-4">
         <Card className="max-w-md w-full">
@@ -67,17 +68,17 @@ export default function TestingAccessPage() {
               <ul className="mt-2 space-y-1 ml-4 list-disc">
                 <li>Expired</li>
                 <li>Reached its usage limit</li>
-                <li>Been deactivated by an administrator</li>
+                <li>Been revoked or deleted by an administrator</li>
               </ul>
             </div>
             <div className="flex flex-col gap-2">
-              <Link href="/patient/login">
+              <Link href={isNgPath ? '/ng/auth/login' : '/patient/login'}>
                 <Button variant="outline" className="w-full">
                   <Heart className="w-4 h-4 mr-2" />
                   Patient Login
                 </Button>
               </Link>
-              <Link href="/provider/login">
+              <Link href={isNgPath ? '/ng/provider/login' : '/provider/login'}>
                 <Button variant="outline" className="w-full">
                   <Stethoscope className="w-4 h-4 mr-2" />
                   Provider Login
@@ -90,11 +91,30 @@ export default function TestingAccessPage() {
     );
   }
 
-  const isProvider = linkData?.linkType === 'provider';
-  const Icon = isProvider ? Stethoscope : Heart;
-  const color = isProvider ? 'blue' : 'pink';
-  const gradientFrom = isProvider ? 'from-blue-500' : 'from-pink-500';
-  const gradientTo = isProvider ? 'to-indigo-600' : 'to-rose-600';
+  const linkType = linkData?.linkType || 'patient';
+  const isProvider = linkType === 'provider';
+  const isPharmacy = linkType === 'pharmacy';
+  const isAdmin = linkType === 'admin' || linkType === 'super_admin';
+  const market = typeof window !== 'undefined'
+    ? String(new URLSearchParams(window.location.search).get('market') || '').toLowerCase()
+    : '';
+  const label = String(linkData?.label || '');
+  const responseMarket = String(linkData?.marketScope || '').toLowerCase();
+  const isNigeriaAccess = pathname.startsWith('/ng') || responseMarket === 'ng' || responseMarket === 'nigeria' || market === 'ng' || market === 'nigeria' || /\b(ng|nigeria)\b/i.test(label);
+  const loginHref = isAdmin
+    ? `/secure/admin?test_token=${token}`
+    : isNigeriaAccess
+      ? (isProvider ? `/ng/provider/login?test_token=${token}` : isPharmacy ? `/ng/pharmacy/login?test_token=${token}` : `/ng/auth/login?test_token=${token}`)
+      : `/${linkType}/login?test_token=${token}`;
+  const registerHref = isAdmin
+    ? `/secure/admin?test_token=${token}`
+    : isNigeriaAccess
+      ? (isProvider ? `/ng/provider/register?test_token=${token}` : isPharmacy ? `/ng/pharmacy/register?test_token=${token}` : `/ng/auth/register?test_token=${token}`)
+      : `/${linkType}/register?test_token=${token}`;
+  const Icon = isProvider ? Stethoscope : isPharmacy ? Building2 : isAdmin ? Shield : Heart;
+  const iconTextClass = isProvider ? 'text-blue-500' : isPharmacy ? 'text-emerald-500' : isAdmin ? 'text-amber-500' : 'text-pink-500';
+  const gradientFrom = isProvider ? 'from-blue-500' : isPharmacy ? 'from-emerald-500' : isAdmin ? 'from-amber-500' : 'from-pink-500';
+  const gradientTo = isProvider ? 'to-indigo-600' : isPharmacy ? 'to-teal-600' : isAdmin ? 'to-orange-600' : 'to-rose-600';
 
   return (
     <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4`}>
@@ -116,7 +136,7 @@ export default function TestingAccessPage() {
         <Card className="border-2 border-purple-500/30 shadow-2xl">
           <CardHeader className="text-center pb-2">
             <div className="flex items-center justify-center gap-2 mb-2">
-              <Icon className={`w-6 h-6 text-${color}-500`} />
+              <Icon className={`w-6 h-6 ${iconTextClass}`} />
               <CardTitle className="text-xl capitalize">{linkData?.linkType} Access</CardTitle>
             </div>
             {linkData?.label && (
@@ -170,16 +190,18 @@ export default function TestingAccessPage() {
               <p className="text-center text-sm text-muted-foreground">
                 Choose how you'd like to proceed:
               </p>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <Link href={`/${linkData?.linkType}/register?test_token=${token}`}>
-                  <Button 
-                    className={`w-full h-14 text-lg bg-gradient-to-r ${gradientFrom} ${gradientTo} hover:opacity-90`}
-                  >
-                    Create Account
-                    <ArrowRight className="w-5 h-5 ml-2" />
-                  </Button>
-                </Link>
-                <Link href={`/${linkData?.linkType}/login?test_token=${token}`}>
+              <div className={`grid gap-3 ${isAdmin ? '' : 'sm:grid-cols-2'}`}>
+                {!isAdmin && (
+                  <Link href={registerHref}>
+                    <Button 
+                      className={`w-full h-14 text-lg bg-gradient-to-r ${gradientFrom} ${gradientTo} hover:opacity-90`}
+                    >
+                      Create Account
+                      <ArrowRight className="w-5 h-5 ml-2" />
+                    </Button>
+                  </Link>
+                )}
+                <Link href={loginHref}>
                   <Button variant="outline" className="w-full h-14 text-lg">
                     Sign In
                     <ArrowRight className="w-5 h-5 ml-2" />

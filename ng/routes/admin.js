@@ -9,6 +9,30 @@ const pharmacyOnboardingService = require('../services/pharmacy/pharmacyOnboardi
 const complianceService = require('../services/compliance/complianceService');
 const { getPool } = require('../../server/db');
 const { requireSuperAdmin } = require('../../server/middleware/auth');
+const {
+  createAdminTestAccount,
+  listAdminTestAccounts,
+  updateAdminTestAccountLifecycle,
+} = require('../../server/services/adminTestAccountService');
+
+// --- TEST ACCOUNT MANAGEMENT ---
+
+router.get('/test-accounts', requireSuperAdmin, async (req, res) => {
+  return listAdminTestAccounts(req, res, { marketScope: 'NG' });
+});
+
+router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
+  return createAdminTestAccount(req, res, { marketScope: 'NG' });
+});
+
+router.patch('/test-accounts/:id', requireSuperAdmin, async (req, res) => {
+  const action = req.body?.action === 'delete' ? 'delete' : 'revoke';
+  return updateAdminTestAccountLifecycle(req, res, { marketScope: 'NG', action });
+});
+
+router.delete('/test-accounts/:id', requireSuperAdmin, async (req, res) => {
+  return updateAdminTestAccountLifecycle(req, res, { marketScope: 'NG', action: 'delete' });
+});
 
 
 function parsePagination(query = {}) {

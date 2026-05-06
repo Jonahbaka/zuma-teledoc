@@ -12,6 +12,11 @@ const { auditMiddleware, createAuditLog } = require('../middleware/audit');
 const { validate, searchUsersSchema, updateUserStatusSchema, paginationSchema } = require('../../lib/validation');
 const { keysToCamel, parseQueryParams, getPaginationMeta } = require('../../lib/utils');
 const notificationService = require('../services/notifications');
+const {
+  createAdminTestAccount,
+  listAdminTestAccounts,
+  updateAdminTestAccountLifecycle,
+} = require('../services/adminTestAccountService');
 
 const router = express.Router();
 
@@ -320,13 +325,36 @@ router.get('/users', async (req, res) => {
 });
 
 /**
+ * GET /api/admin/test-accounts
+ * List admin-created test accounts for the US market.
+ */
+router.get('/test-accounts', requireSuperAdmin, async (req, res) => {
+  return listAdminTestAccounts(req, res, { marketScope: 'US' });
+});
+
+/**
  * POST /api/admin/test-accounts
  * Create a real test account from the admin portal.
- *
- * Provider test accounts can optionally bypass credentialing for trusted QA/demo
- * workflows; otherwise they are created as pending providers.
  */
 router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
+  return createAdminTestAccount(req, res, { marketScope: 'US' });
+});
+
+router.patch('/test-accounts/:id', requireSuperAdmin, async (req, res) => {
+  const action = req.body?.action === 'delete' ? 'delete' : 'revoke';
+  return updateAdminTestAccountLifecycle(req, res, { marketScope: 'US', action });
+});
+
+router.delete('/test-accounts/:id', requireSuperAdmin, async (req, res) => {
+  return updateAdminTestAccountLifecycle(req, res, { marketScope: 'US', action: 'delete' });
+});
+
+/**
+ * Legacy test account creation implementation kept below for reference during
+ * rollout. The service-backed route above handles requests first and returns
+ * without calling next(), so this fallback is not reached.
+ */
+router.post('/test-accounts-legacy', requireSuperAdmin, async (req, res) => {
   let client;
   let transactionOpen = false;
 

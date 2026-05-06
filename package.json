@@ -17,6 +17,8 @@
     "ng:seed:pack": "node ng/scripts/ingest-doctarx-nigeria-pack.js",
     "migrate:rollback": "node server/db/rollback.js",
     "seed:links": "node server/scripts/seed-testing-links.js",
+    "verify:admin-test-access": "node scripts/verify-admin-test-access-flow.cjs",
+    "verify:testing-link-lifecycle": "node scripts/verify-testing-link-lifecycle.cjs",
     "lint": "eslint .",
     "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\""
   },
