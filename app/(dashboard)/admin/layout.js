@@ -81,6 +81,7 @@ export default function AdminLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const [inboxUnread, setInboxUnread] = useState(0);
+  const [authCheckElapsed, setAuthCheckElapsed] = useState(false);
   const isPublicRoute = PUBLIC_ADMIN_ROUTES.includes(pathname);
   const normalizedRole = String(user?.role || '').trim().toLowerCase();
   const isAdminRole = ['admin', 'super_admin', 'administrator', 'superadmin', 'super-admin'].includes(normalizedRole);
@@ -88,13 +89,30 @@ export default function AdminLayout({ children }) {
   useEffect(() => {
     if (isPublicRoute) return;
     if (!loading && !isAuthenticated) {
-      router.push('/secure/admin');
+      router.replace('/secure/admin');
     }
 
     if (!loading && isAuthenticated && !isAdminRole) {
-      router.push('/secure/admin');
+      router.replace('/secure/admin');
     }
   }, [loading, isAuthenticated, isAdminRole, router, isPublicRoute]);
+
+  useEffect(() => {
+    if (isPublicRoute || !loading) {
+      setAuthCheckElapsed(false);
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setAuthCheckElapsed(true);
+      const token = window.localStorage.getItem('accessToken');
+      if (!token) {
+        window.location.replace('/secure/admin');
+      }
+    }, 4500);
+
+    return () => window.clearTimeout(timeout);
+  }, [isPublicRoute, loading]);
 
   // Fetch inbox unread count
   useEffect(() => {
@@ -135,14 +153,47 @@ export default function AdminLayout({ children }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 text-slate-900">
+        <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-purple-600" />
+          <p className="text-base font-semibold">Checking administrator access...</p>
+          {authCheckElapsed && (
+            <div className="mt-4 space-y-3">
+              <p className="text-sm leading-6 text-slate-600">
+                If this screen stays here, continue to the secure admin login.
+              </p>
+              <button
+                type="button"
+                onClick={() => window.location.assign('/secure/admin')}
+                className="inline-flex min-h-11 items-center justify-center rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800"
+              >
+                Continue to Admin Login
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
 
   if (!isAuthenticated || !isAdminRole) {
-    return null;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 text-slate-900">
+        <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-lg font-semibold">Administrator sign-in required</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Sign in with an authorized admin account to access this page.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.assign('/secure/admin')}
+            className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800"
+          >
+            Go to Admin Login
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
