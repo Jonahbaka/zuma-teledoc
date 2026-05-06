@@ -75,6 +75,11 @@ const nextConfig = {
 
   // Image optimization
   images: {
+    // The production custom server serves public image files reliably, but the
+    // Next image optimizer route is not available behind the current Express/Nginx
+    // deployment path. Serve the checked-in responsive assets directly instead of
+    // rendering broken /_next/image URLs in production.
+    unoptimized: true,
     domains: ['doctarx.com', 'www.doctarx.com', 'localhost'],
     remotePatterns: [
       {

@@ -1,8 +1,7 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { Eye, EyeOff, Mail, Lock, Stethoscope, Shield, Loader2, Zap } from 'lucide-react';
 import { testingLinksAPI } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -33,11 +32,15 @@ const MARKET_THEMES = {
 };
 
 function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
-  const searchParams = useSearchParams();
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [testingMode, setTestingMode] = useState(null);
+  const [queryState, setQueryState] = useState({
+    fromInvite: false,
+    justRegistered: false,
+    testToken: null,
+  });
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -46,9 +49,7 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
   const theme = MARKET_THEMES[market] || MARKET_THEMES.US;
   const homeHref = market === 'NG' ? '/ng' : '/';
   const registerHref = market === 'NG' ? '/ng/provider/register' : '/provider/register';
-  const fromInvite = searchParams.get('from') === 'invite';
-  const justRegistered = searchParams.get('registered') === 'true';
-  const testToken = allowTestingAccess ? searchParams.get('test_token') : null;
+  const { fromInvite, justRegistered, testToken } = queryState;
 
   useEffect(() => {
     setPreferredProviderMarket(market);
@@ -57,8 +58,15 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
+
+      const params = new URLSearchParams(window.location.search);
+      setQueryState({
+        fromInvite: params.get('from') === 'invite',
+        justRegistered: params.get('registered') === 'true',
+        testToken: allowTestingAccess ? params.get('test_token') : null,
+      });
     }
-  }, [market]);
+  }, [allowTestingAccess, market]);
 
   useEffect(() => {
     if (justRegistered) {
@@ -295,21 +303,6 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
   );
 }
 
-function ProviderLoginFallback() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="flex items-center gap-2">
-        <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
-        <span className="text-slate-400">Loading...</span>
-      </div>
-    </div>
-  );
-}
-
 export default function ProviderLoginPage(props) {
-  return (
-    <Suspense fallback={<ProviderLoginFallback />}>
-      <ProviderLoginContent {...props} />
-    </Suspense>
-  );
+  return <ProviderLoginContent {...props} />;
 }
