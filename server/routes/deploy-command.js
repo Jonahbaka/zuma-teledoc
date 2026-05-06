@@ -25,6 +25,8 @@ function buildDeployCommand() {
     "(sudo mkdir -p /home/ubuntu 2>/dev/null && sudo ln -sfn /home/ec2-user/zuma-teledoc /home/ubuntu/zuma-teledoc 2>/dev/null || true)",
     "(sudo find /etc/nginx -name '*.conf' -exec grep -l '_next' {} \\; 2>/dev/null | xargs -r sudo sed -i 's|/home/ubuntu/zuma-teledoc|/home/ec2-user/zuma-teledoc|g' 2>/dev/null || true)",
     "(sudo find /etc/nginx -name '*.conf' -exec grep -l 'location[[:space:]]*/_next/static' {} \\; 2>/dev/null | xargs -r sudo perl -0pi -e 's#location\\s+/_next/static/?\\s*\\{[^}]*\\}#location /_next/static/ {\\n    alias /home/ec2-user/zuma-teledoc/.next/static/;\\n    expires 1y;\\n    access_log off;\\n    add_header Cache-Control \"public, immutable\";\\n}#sg' 2>/dev/null || true)",
+    "(sudo find /etc/nginx -name '*.conf' -exec grep -l '_next/static' {} \\; 2>/dev/null | xargs -r sudo perl -0pi -e 's#location\\s+(?:\\^~\\s+)?/_next/static/?\\s*\\{[^}]*\\}#location ^~ /_next/static/ {\\n    alias /home/ec2-user/zuma-teledoc/.next/static/;\\n    expires 1y;\\n    access_log off;\\n    add_header Cache-Control \"public, immutable\";\\n}#sg' 2>/dev/null || true)",
+    "(sudo find /etc/nginx -name '*.conf' -exec grep -l 'location.*_next' {} \\; 2>/dev/null | xargs -r sudo perl -0pi -e 's#location\\s+(?:\\^~\\s+)?/_next/\\s*\\{[^}]*\\}#location ^~ /_next/ {\\n    alias /home/ec2-user/zuma-teledoc/.next/;\\n    expires 1y;\\n    access_log off;\\n    add_header Cache-Control \"public, immutable\";\\n}#sg' 2>/dev/null || true)",
     '(sudo nginx -t 2>&1 && sudo nginx -s reload 2>&1 || true)',
     '(pm2 delete doctarx 2>/dev/null || true)',
     'sleep 1',
