@@ -33,6 +33,29 @@ const router = express.Router();
 const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
 const PROVIDER_UPCOMING_LOOKBACK_MS = 2 * 60 * 60 * 1000;
 const MAX_UPCOMING_LIMIT = 50;
+const BOOKABLE_PROVIDER_FILTER = `
+  role = 'provider'
+  AND provider_status = 'approved'
+  AND is_active = true
+  AND COALESCE(is_test_account, FALSE) = FALSE
+  AND COALESCE(account_status, 'active') NOT IN ('deleted', 'suspended', 'revoked', 'inactive')
+  AND COALESCE(test_account_metadata->>'testAccount', '') NOT IN ('true', 'TRUE')
+  AND COALESCE(test_account_metadata->>'isTestAccount', '') NOT IN ('true', 'TRUE')
+  AND COALESCE(test_account_metadata->>'createdFrom', '') NOT IN ('admin_portal', 'us_admin_portal', 'ng_admin_portal', 'admin_testing_access')
+  AND NOT EXISTS (
+    SELECT 1
+    FROM testing_access_links tal
+    WHERE tal.target_user_id = users.id
+       OR LOWER(COALESCE(tal.target_email, '')) = LOWER(users.email)
+       OR tal.last_used_by = users.id
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM provider_credentialing pc
+    WHERE pc.provider_id = users.id
+      AND pc.status = 'approved'
+  )
+`;
 
 /**
  * POST /api/appointments
@@ -49,7 +72,7 @@ router.post('/',
       // Verify provider exists and is approved
       const { rows: providers } = await db.query(
         `SELECT id, first_name, last_name FROM users 
-         WHERE id = $1 AND role = 'provider' AND provider_status = 'approved' AND is_active = true`,
+         WHERE id = $1 AND ${BOOKABLE_PROVIDER_FILTER}`,
         [data.providerId]
       );
       
@@ -512,9 +535,7 @@ router.post('/smart-book',
           `SELECT id, first_name, last_name, specialty, credentials
            FROM users
            WHERE id = $1
-           AND role = 'provider'
-           AND provider_status = 'approved'
-           AND is_active = true
+           AND ${BOOKABLE_PROVIDER_FILTER}
            LIMIT 1`,
           [providerId]
         );
@@ -541,9 +562,7 @@ router.post('/smart-book',
           const { rows: providers } = await db.query(
             `SELECT id, first_name, last_name, specialty, credentials
              FROM users
-             WHERE role = 'provider'
-             AND provider_status = 'approved'
-             AND is_active = true
+             WHERE ${BOOKABLE_PROVIDER_FILTER}
              AND (specialty ILIKE $1 OR specialty ILIKE $2)
              ORDER BY RANDOM()
              LIMIT 1`,
@@ -563,9 +582,7 @@ router.post('/smart-book',
         const { rows: anyProviders } = await db.query(
           `SELECT id, first_name, last_name, specialty, credentials
            FROM users
-           WHERE role = 'provider'
-           AND provider_status = 'approved'
-           AND is_active = true
+           WHERE ${BOOKABLE_PROVIDER_FILTER}
            ORDER BY RANDOM()
            LIMIT 1`
         );

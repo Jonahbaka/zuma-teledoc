@@ -15,6 +15,19 @@ const {
 } = require('./seedFallbackData');
 
 const DEFAULT_LIMIT = 12;
+const BLOCKED_PUBLIC_PROVIDER_TERMS = [
+  'test',
+  'qa',
+  'demo',
+  'sample',
+  'fake',
+  'internal',
+  'jonah baka',
+  'apollos goodnews',
+  'goodnews.appolos@gmail.com',
+  'abugail simon',
+  'abigail simon',
+];
 
 function logFallbackWarning(scope, error) {
   if (error) {
@@ -158,6 +171,9 @@ function mapInternalProviderRow(row) {
     kind: 'telehealth_provider',
     sourceType: 'internal_provider',
     canonicalName: `Dr. ${row.first_name} ${row.last_name}`.trim(),
+    credentialingStatus: row.credentialing_status || null,
+    providerVerificationStatus: row.provider_status || null,
+    publicCredentialed: row.credentialing_status === 'approved' && row.provider_status === 'approved',
     providerType: row.specialty ? 'specialist' : 'doctor',
     providerSubtype: row.specialty || 'telehealth',
     city: row.city,
@@ -189,6 +205,52 @@ function mapInternalProviderRow(row) {
     specialties: row.specialty ? [row.specialty] : [],
     insurances: [],
     payerIds: [],
+  };
+}
+
+function isDoctaRxVerifiedProvider(provider) {
+  if (provider.kind === 'telehealth_provider') {
+    return provider.publicCredentialed === true;
+  }
+
+  if (provider.kind === 'pharmacy') {
+    return provider.sourceType === 'internal_pharmacy';
+  }
+
+  return false;
+}
+
+function hasBlockedPublicProviderMarker(provider = {}) {
+  const haystack = normalizeText([
+    provider.canonicalName,
+    provider.email,
+    provider.providerType,
+    provider.providerSubtype,
+    provider.sourceType,
+    provider.kind,
+  ].filter(Boolean).join(' '));
+
+  return BLOCKED_PUBLIC_PROVIDER_TERMS.some((term) => haystack.includes(term));
+}
+
+function sanitizePublicProvider(provider) {
+  if (!provider || hasBlockedPublicProviderMarker(provider)) {
+    return null;
+  }
+
+  if (provider.kind === 'telehealth_provider' && !isDoctaRxVerifiedProvider(provider)) {
+    return null;
+  }
+
+  const canShowVerifiedBadge = isDoctaRxVerifiedProvider(provider);
+  return {
+    ...provider,
+    sourceBadges: (provider.sourceBadges || []).filter((badge) => {
+      if (normalizeText(badge) === 'doctarx verified') {
+        return canShowVerifiedBadge;
+      }
+      return true;
+    }),
   };
 }
 
@@ -464,56 +526,87 @@ async function getInternalTelehealthProviders({ state, city, specialty, query })
   const pool = getPoolSafe();
   const values = [];
   const conditions = [
-    `role = 'provider'`,
-    `provider_status = 'approved'`,
-    `(COALESCE(region::text, '') = 'NG' OR LOWER(COALESCE(country, '')) IN ('nigeria', 'ng'))`,
+    `u.role = 'provider'`,
+    `u.provider_status = 'approved'`,
+    `u.is_active = TRUE`,
+    `COALESCE(u.is_test_account, FALSE) = FALSE`,
+    `COALESCE(u.account_status, 'active') NOT IN ('deleted', 'suspended', 'revoked', 'inactive')`,
+    `(COALESCE(u.region::text, '') = 'NG' OR LOWER(COALESCE(u.country, '')) IN ('nigeria', 'ng'))`,
+    `COALESCE(u.test_account_metadata->>'testAccount', '') NOT IN ('true', 'TRUE')`,
+    `COALESCE(u.test_account_metadata->>'isTestAccount', '') NOT IN ('true', 'TRUE')`,
+    `COALESCE(u.test_account_metadata->>'createdFrom', '') NOT IN ('admin_portal', 'us_admin_portal', 'ng_admin_portal', 'admin_testing_access')`,
+    `COALESCE(u.test_account_metadata->>'status', '') NOT IN ('revoked', 'deleted')`,
+    `NOT EXISTS (
+      SELECT 1
+      FROM testing_access_links tal
+      WHERE tal.target_user_id = u.id
+         OR LOWER(COALESCE(tal.target_email, '')) = LOWER(u.email)
+         OR tal.last_used_by = u.id
+    )`,
+    `NOT EXISTS (
+      SELECT 1
+      FROM unnest($1::text[]) AS blocked(term)
+      WHERE LOWER(CONCAT_WS(' ', u.first_name, u.last_name, u.email, COALESCE(u.specialty, ''))) LIKE '%' || blocked.term || '%'
+    )`,
+    `EXISTS (
+      SELECT 1
+      FROM provider_credentialing pc
+      WHERE pc.provider_id = u.id
+        AND pc.status = 'approved'
+    )`,
   ];
+  values.push(BLOCKED_PUBLIC_PROVIDER_TERMS);
 
   if (state) {
     values.push(state);
-    conditions.push(`state ILIKE $${values.length}`);
+    conditions.push(`u.state ILIKE $${values.length}`);
   }
 
   if (city) {
     values.push(city);
-    conditions.push(`city ILIKE $${values.length}`);
+    conditions.push(`u.city ILIKE $${values.length}`);
   }
 
   if (specialty) {
     values.push(`%${specialty}%`);
-    conditions.push(`COALESCE(specialty, '') ILIKE $${values.length}`);
+    conditions.push(`COALESCE(u.specialty, '') ILIKE $${values.length}`);
   }
 
   if (query) {
     values.push(`%${query}%`);
     conditions.push(`(
-      CONCAT_WS(' ', first_name, last_name) ILIKE $${values.length}
-      OR COALESCE(specialty, '') ILIKE $${values.length}
+      CONCAT_WS(' ', u.first_name, u.last_name) ILIKE $${values.length}
+      OR COALESCE(u.specialty, '') ILIKE $${values.length}
     )`);
   }
 
   const sql = `
     SELECT
-      id,
-      first_name,
-      last_name,
-      specialty,
-      city,
-      state,
-      phone,
-      phone_number,
-      email,
-      created_at,
-      updated_at
-    FROM users
+      u.id,
+      u.first_name,
+      u.last_name,
+      u.specialty,
+      u.city,
+      u.state,
+      u.phone,
+      u.phone_number,
+      u.email,
+      u.provider_status,
+      u.created_at,
+      u.updated_at,
+      pc.status::text AS credentialing_status
+    FROM users u
+    JOIN provider_credentialing pc
+      ON pc.provider_id = u.id
+     AND pc.status = 'approved'
     WHERE ${conditions.join(' AND ')}
-    ORDER BY updated_at DESC NULLS LAST, created_at DESC
+    ORDER BY u.updated_at DESC NULLS LAST, u.created_at DESC
     LIMIT 100
   `;
 
   try {
     const result = await pool.query(sql, values);
-    return result.rows.map(mapInternalProviderRow);
+    return result.rows.map(mapInternalProviderRow).map(sanitizePublicProvider).filter(Boolean);
   } catch (error) {
     logFallbackWarning('internal telehealth providers', error);
     return [];
@@ -565,6 +658,8 @@ async function searchProviders(params = {}) {
 
   const seenProviders = new Set();
   const mergedProviders = [...groups, ...telehealthProviders, ...pharmacies]
+    .map(sanitizePublicProvider)
+    .filter(Boolean)
     .filter((provider) => {
       const dedupeKey = [
         normalizeText(provider.canonicalName),

@@ -49,6 +49,19 @@ const PROVIDER_TYPE_OPTIONS = [
 ];
 
 const STORAGE_KEY = 'ng-care-discovery-state';
+const BLOCKED_PROVIDER_TERMS = [
+  'test',
+  'qa',
+  'demo',
+  'sample',
+  'fake',
+  'internal',
+  'jonah baka',
+  'apollos goodnews',
+  'goodnews.appolos@gmail.com',
+  'abugail simon',
+  'abigail simon',
+];
 
 function makeSessionId() {
   if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
@@ -81,6 +94,40 @@ function buildWhatsAppHref(whatsappNumber, message) {
 
 function skeletonRows(count) {
   return Array.from({ length: count }, (_, index) => ({ id: `skeleton-${index}` }));
+}
+
+function visiblePublicProviders(providers) {
+  return (providers || [])
+    .filter((provider) => {
+      const haystack = [
+        provider?.canonicalName,
+        provider?.email,
+        provider?.providerType,
+        provider?.providerSubtype,
+        provider?.sourceType,
+        provider?.kind,
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      if (BLOCKED_PROVIDER_TERMS.some((term) => haystack.includes(term))) {
+        return false;
+      }
+
+      if (provider?.kind === 'telehealth_provider') {
+        return provider.publicCredentialed === true || provider.credentialingStatus === 'approved';
+      }
+
+      return true;
+    })
+    .map((provider) => ({
+      ...provider,
+      sourceBadges: (provider.sourceBadges || []).filter((badge) => {
+        if (String(badge).toLowerCase() === 'doctarx verified') {
+          return provider.publicCredentialed === true ||
+            (provider.kind === 'pharmacy' && provider.sourceType === 'internal_pharmacy');
+        }
+        return true;
+      }),
+    }));
 }
 
 function EmptyState({ title, body }) {
@@ -311,7 +358,7 @@ export default function NigeriaCareDiscoveryExperience({
       });
 
       setFeaturedCategories(response.data?.featuredCategories || []);
-      setProviders(response.data?.nearestProviders || []);
+      setProviders(visiblePublicProviders(response.data?.nearestProviders || []));
       setTelehealthOptions(response.data?.telehealthOptions || []);
       setSupport(response.data?.support || { whatsappNumber: '', callbackNumber: '', callbackLabel: 'Request a phone callback' });
       setPayers(response.data?.payers || { hmos: [], stateSchemes: [] });
@@ -344,7 +391,7 @@ export default function NigeriaCareDiscoveryExperience({
         },
       });
 
-      setProviders(response.data?.providers || []);
+      setProviders(visiblePublicProviders(response.data?.providers || []));
       await trackEvent('provider_search_performed', {
         payload: { resultCount: response.data?.total || 0, mode: modeOverride },
       });

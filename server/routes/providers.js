@@ -12,6 +12,29 @@ const { validate, createScheduleSchema, createTimeOffSchema, paginationSchema } 
 const { keysToCamel, parseQueryParams, getPaginationMeta } = require('../../lib/utils');
 
 const router = express.Router();
+const PUBLIC_PROVIDER_FILTER = `
+  role = 'provider'
+  AND provider_status = 'approved'
+  AND is_active = true
+  AND COALESCE(is_test_account, FALSE) = FALSE
+  AND COALESCE(account_status, 'active') NOT IN ('deleted', 'suspended', 'revoked', 'inactive')
+  AND COALESCE(test_account_metadata->>'testAccount', '') NOT IN ('true', 'TRUE')
+  AND COALESCE(test_account_metadata->>'isTestAccount', '') NOT IN ('true', 'TRUE')
+  AND COALESCE(test_account_metadata->>'createdFrom', '') NOT IN ('admin_portal', 'us_admin_portal', 'ng_admin_portal', 'admin_testing_access')
+  AND NOT EXISTS (
+    SELECT 1
+    FROM testing_access_links tal
+    WHERE tal.target_user_id = users.id
+       OR LOWER(COALESCE(tal.target_email, '')) = LOWER(users.email)
+       OR tal.last_used_by = users.id
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM provider_credentialing pc
+    WHERE pc.provider_id = users.id
+      AND pc.status = 'approved'
+  )
+`;
 
 /**
  * GET /api/providers
@@ -25,7 +48,7 @@ router.get('/', authenticate, async (req, res) => {
     
     const { specialty } = req.query;
     
-    let whereClause = "WHERE role = 'provider' AND provider_status = 'approved' AND is_active = true";
+    let whereClause = `WHERE ${PUBLIC_PROVIDER_FILTER}`;
     const values = [];
     let paramIndex = 1;
     
@@ -399,7 +422,7 @@ router.get('/:id', authenticate, async (req, res) => {
       `SELECT id, first_name, last_name, specialty, credentials, bio,
               city, state, npi_number
        FROM users
-       WHERE id = $1 AND role = 'provider' AND provider_status = 'approved' AND is_active = true`,
+       WHERE id = $1 AND ${PUBLIC_PROVIDER_FILTER}`,
       [id]
     );
     

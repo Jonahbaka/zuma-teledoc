@@ -7,12 +7,60 @@ import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
+const BLOCKED_PROVIDER_TERMS = [
+  'test',
+  'qa',
+  'demo',
+  'sample',
+  'fake',
+  'internal',
+  'jonah baka',
+  'apollos goodnews',
+  'goodnews.appolos@gmail.com',
+  'abugail simon',
+  'abigail simon',
+];
+
 function toDistance(provider) {
   if (provider?.distanceKm === null || provider?.distanceKm === undefined) {
     return 'City/state ranked';
   }
 
   return `${provider.distanceKm.toFixed(1)} km`;
+}
+
+function visiblePublicProviders(providers) {
+  return (providers || [])
+    .filter((provider) => {
+      const haystack = [
+        provider?.canonicalName,
+        provider?.email,
+        provider?.providerType,
+        provider?.providerSubtype,
+        provider?.sourceType,
+        provider?.kind,
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      if (BLOCKED_PROVIDER_TERMS.some((term) => haystack.includes(term))) {
+        return false;
+      }
+
+      if (provider?.kind === 'telehealth_provider') {
+        return provider.publicCredentialed === true || provider.credentialingStatus === 'approved';
+      }
+
+      return true;
+    })
+    .map((provider) => ({
+      ...provider,
+      sourceBadges: (provider.sourceBadges || []).filter((badge) => {
+        if (String(badge).toLowerCase() === 'doctarx verified') {
+          return provider.publicCredentialed === true ||
+            (provider.kind === 'pharmacy' && provider.sourceType === 'internal_pharmacy');
+        }
+        return true;
+      }),
+    }));
 }
 
 export default function NigeriaDiscoverySpotlight({ embeddedInPortal = false }) {
@@ -31,7 +79,7 @@ export default function NigeriaDiscoverySpotlight({ embeddedInPortal = false }) 
         }
 
         setFeaturedCategories(response.data?.featuredCategories || []);
-        setProviders(response.data?.nearestProviders || []);
+        setProviders(visiblePublicProviders(response.data?.nearestProviders || []));
       } catch (error) {
         console.error('[NG Discovery Spotlight] Failed to load', error);
       } finally {
