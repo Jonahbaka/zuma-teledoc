@@ -13,6 +13,8 @@ const pharmacyRoutes = require('./pharmacy');
 const patientRoutes = require('./patient');
 const adminRoutes = require('./admin');
 const webhookRoutes = require('./webhooks');
+const publicHealthRoutes = require('./publicHealth');
+const dhis2Routes = require('./dhis2');
 
 let discoverySeedScheduled = false;
 
@@ -89,6 +91,8 @@ const requireAdmin = (req, res, next) => {
 // Mount routes
 router.use('/discovery', discoveryRoutes);
 router.use('/pharmacy', authenticate, pharmacyRoutes);
+router.use('/public-health', authenticate, requireAdmin, publicHealthRoutes);
+router.use('/integrations/dhis2', authenticate, requireAdmin, dhis2Routes);
 router.use('/patient', authenticate, patientRoutes);
 router.use('/admin', authenticate, requireAdmin, adminRoutes);
 router.use('/webhooks', webhookRoutes); // No auth — signature verified per endpoint

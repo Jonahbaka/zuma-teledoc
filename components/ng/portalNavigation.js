@@ -3,6 +3,7 @@ import {
   Building2,
   Calendar,
   ClipboardList,
+  HeartPulse,
   FileText,
   LayoutDashboard,
   MessageSquare,
@@ -36,6 +37,7 @@ export const nigeriaPharmacyNavigation = [
 
 export const nigeriaAdminNavigation = [
   { name: 'Dashboard', href: '/ng/admin', icon: LayoutDashboard },
+  { name: 'Public Health Programme', href: '/ng/admin/public-health-programme', icon: HeartPulse },
   { name: 'Pharmacies', href: '/ng/admin/pharmacies', icon: Building2 },
   { name: 'Analytics', href: '/ng/admin/analytics', icon: BarChart3 },
   { name: 'Compliance', href: '/ng/admin/compliance', icon: ShieldCheck },
