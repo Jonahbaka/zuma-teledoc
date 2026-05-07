@@ -18,6 +18,8 @@ const organizationRoutes = require('./organization');
 const hospitalRoutes = require('./hospital');
 const subscriptionRoutes = require('./subscriptions');
 const testingLinksRoutes = require('../../server/routes/testingLinks');
+const publicHealthRoutes = require('./publicHealth');
+const dhis2Routes = require('./dhis2');
 
 let discoverySeedScheduled = false;
 
@@ -100,6 +102,8 @@ const requireAdmin = (req, res, next) => {
 // Mount routes
 router.use('/discovery', discoveryRoutes);
 router.use('/pharmacy', authenticate, pharmacyRoutes);
+router.use('/public-health', authenticate, requireAdmin, publicHealthRoutes);
+router.use('/integrations/dhis2', authenticate, requireAdmin, dhis2Routes);
 router.use('/patient', authenticate, patientRoutes);
 router.use('/admin/testing-links', authenticate, requireAdmin, testingLinksRoutes);
 router.use('/admin', authenticate, requireAdmin, adminRoutes);
