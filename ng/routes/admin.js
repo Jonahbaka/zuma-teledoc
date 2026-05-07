@@ -26,7 +26,11 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
 });
 
 router.patch('/test-accounts/:id', requireSuperAdmin, async (req, res) => {
-  const action = req.body?.action === 'delete' ? 'delete' : 'revoke';
+  const action = req.body?.action === 'delete'
+    ? 'delete'
+    : req.body?.action === 'restore'
+      ? 'restore'
+      : 'revoke';
   return updateAdminTestAccountLifecycle(req, res, { marketScope: 'NG', action });
 });
 

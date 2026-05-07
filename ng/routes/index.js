@@ -17,6 +17,7 @@ const providerRoutes = require('./provider');
 const organizationRoutes = require('./organization');
 const hospitalRoutes = require('./hospital');
 const subscriptionRoutes = require('./subscriptions');
+const testingLinksRoutes = require('../../server/routes/testingLinks');
 
 let discoverySeedScheduled = false;
 
@@ -100,6 +101,7 @@ const requireAdmin = (req, res, next) => {
 router.use('/discovery', discoveryRoutes);
 router.use('/pharmacy', authenticate, pharmacyRoutes);
 router.use('/patient', authenticate, patientRoutes);
+router.use('/admin/testing-links', authenticate, requireAdmin, testingLinksRoutes);
 router.use('/admin', authenticate, requireAdmin, adminRoutes);
 router.use('/webhooks', webhookRoutes); // No auth — signature verified per endpoint
 router.use('/providers', providerRoutes);          // public listing + protected profile

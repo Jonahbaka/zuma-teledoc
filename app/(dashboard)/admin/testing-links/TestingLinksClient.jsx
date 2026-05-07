@@ -36,6 +36,21 @@ import api from '@/lib/api';
 import { format, formatDistanceToNow } from 'date-fns';
 
 const MARKET_CONFIG = {
+  ALL: {
+    scope: 'ALL',
+    country: 'All Markets',
+    title: 'Testing Access',
+    description: 'Create, view, revoke, delete, and audit testing access across US and Nigeria markets',
+    accountTitle: 'Create Test Account',
+    accountDescription: 'Super-admin tool for market-scoped QA accounts with first-login password creation.',
+    linkDescription: 'Generate a market-scoped access link that allows users to bypass payment or subscription checks for testing',
+    stateLabel: 'State',
+    cityLabel: 'City / LGA',
+    phonePlaceholder: '+12025550123 or +2348012345678',
+    specialtyPlaceholder: 'e.g., Family Medicine',
+    warningTitle: 'Testing Access Security',
+    createButtonClass: 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700',
+  },
   US: {
     scope: 'US',
     country: 'USA',
@@ -67,6 +82,25 @@ const MARKET_CONFIG = {
     createButtonClass: 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700',
   },
 };
+
+const MARKET_OPTIONS = [
+  { value: 'ALL', label: 'All Markets' },
+  { value: 'US', label: 'US Market' },
+  { value: 'NG', label: 'Nigeria Market' },
+];
+
+const CREATION_MARKET_OPTIONS = MARKET_OPTIONS.filter((option) => option.value !== 'ALL');
+
+function normalizeUiMarket(market) {
+  const normalized = String(market || '').trim().toUpperCase();
+  if (normalized === 'NG') return 'NG';
+  if (normalized === 'US') return 'US';
+  return 'ALL';
+}
+
+function normalizeCreationMarket(market) {
+  return normalizeUiMarket(market) === 'NG' ? 'NG' : 'US';
+}
 
 function getDefaultTestAccount(market = 'US') {
   const config = MARKET_CONFIG[market] || MARKET_CONFIG.US;
@@ -112,10 +146,11 @@ function getDefaultTestingLink(market = 'US') {
   };
 }
 
-export default function TestingLinksPage({ market = 'US' }) {
-  const initialMarket = market === 'NG' ? 'NG' : 'US';
+export default function TestingLinksPage({ market = 'ALL' }) {
+  const initialMarket = normalizeUiMarket(market);
   const [selectedMarket, setSelectedMarket] = useState(initialMarket);
-  const normalizedMarket = selectedMarket === 'NG' ? 'NG' : 'US';
+  const normalizedMarket = normalizeUiMarket(selectedMarket);
+  const defaultCreationMarket = normalizedMarket === 'ALL' ? 'US' : normalizedMarket;
   const marketConfig = MARKET_CONFIG[normalizedMarket];
   const [links, setLinks] = useState([]);
   const [testAccounts, setTestAccounts] = useState([]);
@@ -142,9 +177,9 @@ export default function TestingLinksPage({ market = 'US' }) {
   const [accountCreatedFrom, setAccountCreatedFrom] = useState('');
   const [accountCreatedTo, setAccountCreatedTo] = useState('');
   const [showDeletedAccounts, setShowDeletedAccounts] = useState(false);
-  const [newAccount, setNewAccount] = useState(() => getDefaultTestAccount(normalizedMarket));
+  const [newAccount, setNewAccount] = useState(() => getDefaultTestAccount(defaultCreationMarket));
 
-  const [newLink, setNewLink] = useState(() => getDefaultTestingLink(normalizedMarket));
+  const [newLink, setNewLink] = useState(() => getDefaultTestingLink(defaultCreationMarket));
 
   const fetchLinks = useCallback(async () => {
     try {
@@ -178,7 +213,7 @@ export default function TestingLinksPage({ market = 'US' }) {
     try {
       setAccountsLoading(true);
       const endpoint = normalizedMarket === 'NG' ? '/ng/admin/test-accounts' : '/admin/test-accounts';
-      const params = { limit: 100 };
+      const params = { marketScope: normalizedMarket, limit: 100 };
       if (accountRoleFilter !== 'all') params.role = accountRoleFilter;
       if (accountStatusFilter !== 'all') params.status = accountStatusFilter;
       if (accountSearch.trim()) params.query = accountSearch.trim();
@@ -213,8 +248,9 @@ export default function TestingLinksPage({ market = 'US' }) {
   }, [fetchTestAccounts]);
 
   useEffect(() => {
-    setNewAccount(getDefaultTestAccount(normalizedMarket));
-    setNewLink(getDefaultTestingLink(normalizedMarket));
+    const creationMarket = normalizedMarket === 'ALL' ? 'US' : normalizedMarket;
+    setNewAccount(getDefaultTestAccount(creationMarket));
+    setNewLink(getDefaultTestingLink(creationMarket));
   }, [normalizedMarket]);
 
   const refreshAll = () => {
@@ -222,21 +258,38 @@ export default function TestingLinksPage({ market = 'US' }) {
     fetchTestAccounts();
   };
 
+  const getRecordMarketScope = (record = {}) => normalizeCreationMarket(record.marketScope || record.market_scope || normalizedMarket);
+
+  const getAccountEndpoint = (account) => {
+    const accountMarket = getRecordMarketScope(account);
+    return accountMarket === 'NG' ? `/ng/admin/test-accounts/${account.id}` : `/admin/test-accounts/${account.id}`;
+  };
+
+  const toFullUrl = (url) => {
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) return url;
+    if (typeof window !== 'undefined') {
+      return `${window.location.origin}${url.startsWith('/') ? url : `/${url}`}`;
+    }
+    return url;
+  };
+
   const createLink = async () => {
     try {
       setCreating(true);
-      const res = await api.post('/testing-links', { ...newLink, marketScope: normalizedMarket });
+      const createMarket = normalizeCreationMarket(newLink.marketScope || defaultCreationMarket);
+      const res = await api.post('/testing-links', { ...newLink, marketScope: createMarket });
       if (res.data.success) {
         toast({
           title: 'Link Created!',
           description: 'Testing access link has been generated',
         });
         setShowCreateDialog(false);
-        setNewLink(getDefaultTestingLink(normalizedMarket));
+        setNewLink(getDefaultTestingLink(createMarket));
         fetchLinks();
         
         // Auto-copy the link
-        navigator.clipboard.writeText(res.data.link.fullUrl);
+        navigator.clipboard.writeText(getCanonicalLinkUrl(res.data.link));
         toast({
           title: 'Link Copied!',
           description: 'The access link has been copied to clipboard',
@@ -256,20 +309,22 @@ export default function TestingLinksPage({ market = 'US' }) {
   const createTestAccount = async () => {
     try {
       setCreatingAccount(true);
-      const endpoint = normalizedMarket === 'NG' ? '/ng/admin/test-accounts' : '/admin/test-accounts';
-      const res = await api.post(endpoint, { ...newAccount, marketScope: normalizedMarket, country: marketConfig.country });
+      const createMarket = normalizeCreationMarket(newAccount.marketScope || defaultCreationMarket);
+      const createConfig = MARKET_CONFIG[createMarket];
+      const endpoint = createMarket === 'NG' ? '/ng/admin/test-accounts' : '/admin/test-accounts';
+      const res = await api.post(endpoint, { ...newAccount, marketScope: createMarket, country: createConfig.country });
 
       if (!res.data.success) {
         throw new Error(res.data.error || 'Failed to create test account');
       }
 
       toast({
-        title: `${marketConfig.country} Test Account Created`,
-        description: `${res.data.user?.role || 'Account'} will route to ${normalizedMarket === 'NG' ? 'the Nigeria' : 'the US'} portal.`,
+        title: `${createConfig.country} Test Account Created`,
+        description: `${res.data.user?.role || 'Account'} will route to ${createMarket === 'NG' ? 'the Nigeria' : 'the US'} portal.`,
       });
       await fetchTestAccounts();
       setShowCreateAccountDialog(false);
-      setNewAccount(getDefaultTestAccount(normalizedMarket));
+      setNewAccount(getDefaultTestAccount(createMarket));
     } catch (error) {
       toast({
         title: 'Error',
@@ -285,7 +340,8 @@ export default function TestingLinksPage({ market = 'US' }) {
     if (!confirm('Delete this testing link? This is a soft delete: the record is retained for audit but hidden from the default list and the link will no longer work.')) return;
     
     try {
-      await api.delete(`/testing-links/${linkId}`, { params: { marketScope: normalizedMarket } });
+      const link = links.find((item) => item.id === linkId);
+      await api.delete(`/testing-links/${linkId}`, { params: { marketScope: getRecordMarketScope(link) } });
       toast({ title: 'Link Deleted' });
       fetchLinks();
     } catch (error) {
@@ -301,7 +357,7 @@ export default function TestingLinksPage({ market = 'US' }) {
     if (!confirm('Revoke this testing link? The access URL will stop working immediately.')) return;
 
     try {
-      await api.patch(`/testing-links/${link.id}`, { action: 'revoke', marketScope: normalizedMarket });
+      await api.patch(`/testing-links/${link.id}`, { action: 'revoke', marketScope: getRecordMarketScope(link) });
       toast({ title: 'Access Revoked', description: 'The test access link can no longer be used.' });
       fetchLinks();
     } catch (error) {
@@ -317,8 +373,7 @@ export default function TestingLinksPage({ market = 'US' }) {
     if (!confirm('Revoke this test account? The account will be deactivated and testing bypass will be removed.')) return;
 
     try {
-      const endpoint = normalizedMarket === 'NG' ? `/ng/admin/test-accounts/${account.id}` : `/admin/test-accounts/${account.id}`;
-      await api.patch(endpoint, { action: 'revoke' });
+      await api.patch(getAccountEndpoint(account), { action: 'revoke' });
       toast({ title: 'Test Account Revoked', description: `${account.email} can no longer access testing tools.` });
       fetchTestAccounts();
     } catch (error) {
@@ -334,8 +389,7 @@ export default function TestingLinksPage({ market = 'US' }) {
     if (!confirm('Delete this test account record? This is a soft delete for audit history and removes it from the default list.')) return;
 
     try {
-      const endpoint = normalizedMarket === 'NG' ? `/ng/admin/test-accounts/${account.id}` : `/admin/test-accounts/${account.id}`;
-      await api.delete(endpoint);
+      await api.delete(getAccountEndpoint(account));
       toast({ title: 'Test Account Deleted', description: 'The record is hidden from the default list.' });
       fetchTestAccounts();
     } catch (error) {
@@ -349,7 +403,7 @@ export default function TestingLinksPage({ market = 'US' }) {
 
   const extendLink = async (link, hours) => {
     try {
-      await api.patch(`/testing-links/${link.id}`, { extendHours: hours, marketScope: normalizedMarket });
+      await api.patch(`/testing-links/${link.id}`, { extendHours: hours, marketScope: getRecordMarketScope(link) });
       toast({ title: `Link extended by ${hours} hours` });
       fetchLinks();
     } catch (error) {
@@ -375,28 +429,62 @@ export default function TestingLinksPage({ market = 'US' }) {
   };
 
   const getCanonicalLinkUrl = (link = {}) => (
-    link.full_access_url ||
+    toFullUrl(link.full_access_url ||
     link.fullAccessUrl ||
     link.fullUrl ||
+    link.full_url ||
     link.access_url ||
     link.accessUrl ||
+    link.accessPath ||
+    link.access_path ||
     link.loginUrl ||
-    ''
+    '')
   );
 
   const getAccountAccessUrl = (account = {}) => (
-    account.full_access_url ||
+    toFullUrl(account.full_access_url ||
     account.fullAccessUrl ||
     account.fullUrl ||
+    account.full_url ||
     account.access_url ||
     account.accessUrl ||
+    account.accessPath ||
+    account.access_path ||
     account.loginUrl ||
-    ''
+    '')
   );
+
+  const restoreLink = async (link) => {
+    try {
+      await api.patch(`/testing-links/${link.id}`, { action: 'restore', marketScope: getRecordMarketScope(link) });
+      toast({ title: 'Link Restored', description: 'The access link is active again.' });
+      fetchLinks();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.error || 'Failed to restore link',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const restoreTestAccount = async (account) => {
+    try {
+      await api.patch(getAccountEndpoint(account), { action: 'restore' });
+      toast({ title: 'Test Account Restored', description: `${account.email} is active again.` });
+      fetchTestAccounts();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.error || 'Failed to restore test account',
+        variant: 'destructive'
+      });
+    }
+  };
 
   const viewDetails = async (link) => {
     try {
-      const res = await api.get(`/testing-links/${link.id}`, { params: { marketScope: normalizedMarket } });
+      const res = await api.get(`/testing-links/${link.id}`, { params: { marketScope: getRecordMarketScope(link) } });
       if (res.data.success) {
         setSelectedLink(res.data);
         setShowDetailsDialog(true);
@@ -434,9 +522,10 @@ export default function TestingLinksPage({ market = 'US' }) {
 
   const stats = {
     total: links.length,
-    active: links.filter(l => l.is_active && !l.isExpired && !l.isExhausted).length,
+    active: links.filter(l => l.is_active && !l.isExpired && !l.isExhausted && !l.isRevoked && !l.isDeleted && l.status !== 'deleted').length,
     provider: links.filter(l => l.link_type === 'provider').length,
     patient: links.filter(l => l.link_type === 'patient').length,
+    pharmacy: links.filter(l => l.link_type === 'pharmacy').length,
     totalActivations: links.reduce((sum, l) => sum + (l.activation_count || 0), 0)
   };
 
@@ -447,6 +536,10 @@ export default function TestingLinksPage({ market = 'US' }) {
     patients: testAccounts.filter((account) => account.role === 'patient').length,
     pharmacies: testAccounts.filter((account) => account.role === 'pharmacy').length,
   };
+  const accountMarket = normalizeCreationMarket(newAccount.marketScope || defaultCreationMarket);
+  const accountConfig = MARKET_CONFIG[accountMarket];
+  const linkMarket = normalizeCreationMarket(newLink.marketScope || defaultCreationMarket);
+  const linkConfig = MARKET_CONFIG[linkMarket];
 
   return (
     <div className="space-y-6">
@@ -471,8 +564,11 @@ export default function TestingLinksPage({ market = 'US' }) {
                 <SelectValue placeholder="Market" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="US">US Market</SelectItem>
-                <SelectItem value="NG">Nigeria Market</SelectItem>
+                {MARKET_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -485,7 +581,7 @@ export default function TestingLinksPage({ market = 'US' }) {
             onOpenChange={(open) => {
               setShowCreateAccountDialog(open);
               if (!open) {
-                setNewAccount(getDefaultTestAccount(normalizedMarket));
+                setNewAccount(getDefaultTestAccount(defaultCreationMarket));
               }
             }}
           >
@@ -543,9 +639,26 @@ export default function TestingLinksPage({ market = 'US' }) {
 
                   <div className="space-y-2">
                     <Label>Operations Region</Label>
-                    <div className="flex h-10 items-center rounded-md border bg-muted/30 px-3 text-sm font-medium">
-                      {marketConfig.country}
-                    </div>
+                    <Select
+                      value={accountMarket}
+                      onValueChange={(marketScope) => setNewAccount({
+                        ...newAccount,
+                        marketScope,
+                        country: MARKET_CONFIG[marketScope].country,
+                        state: marketScope === 'NG' ? (newAccount.state || 'FCT') : newAccount.state,
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CREATION_MARKET_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -584,7 +697,7 @@ export default function TestingLinksPage({ market = 'US' }) {
                         <Label>WhatsApp Business Number</Label>
                         <Input
                           autoComplete="off"
-                          placeholder={marketConfig.phonePlaceholder}
+                          placeholder={accountConfig.phonePlaceholder}
                           value={newAccount.whatsappNumber}
                           onChange={(e) => setNewAccount({ ...newAccount, whatsappNumber: e.target.value })}
                         />
@@ -593,7 +706,7 @@ export default function TestingLinksPage({ market = 'US' }) {
                         <Label>Branch / Location</Label>
                         <Input
                           autoComplete="off"
-                          placeholder={normalizedMarket === 'NG' ? 'Wuse 2, Abuja' : 'Downtown branch'}
+                          placeholder={accountMarket === 'NG' ? 'Wuse 2, Abuja' : 'Downtown branch'}
                           value={newAccount.branchLocation}
                           onChange={(e) => setNewAccount({ ...newAccount, branchLocation: e.target.value })}
                         />
@@ -666,16 +779,16 @@ export default function TestingLinksPage({ market = 'US' }) {
                     <Label>Phone</Label>
                     <Input
                       autoComplete="off"
-                      placeholder={marketConfig.phonePlaceholder}
+                      placeholder={accountConfig.phonePlaceholder}
                       value={newAccount.phone}
                       onChange={(e) => setNewAccount({ ...newAccount, phone: e.target.value })}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{marketConfig.stateLabel}</Label>
+                    <Label>{accountConfig.stateLabel}</Label>
                     <Input
                       autoComplete="off"
-                      placeholder={normalizedMarket === 'NG' ? 'FCT' : 'CA'}
+                      placeholder={accountMarket === 'NG' ? 'FCT' : 'CA'}
                       value={newAccount.state}
                       onChange={(e) => setNewAccount({ ...newAccount, state: e.target.value })}
                     />
@@ -684,10 +797,10 @@ export default function TestingLinksPage({ market = 'US' }) {
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>{marketConfig.cityLabel}</Label>
+                    <Label>{accountConfig.cityLabel}</Label>
                     <Input
                       autoComplete="off"
-                      placeholder={normalizedMarket === 'NG' ? 'Abuja Municipal' : 'San Francisco'}
+                      placeholder={accountMarket === 'NG' ? 'Abuja Municipal' : 'San Francisco'}
                       value={newAccount.lga}
                       onChange={(e) => setNewAccount({ ...newAccount, lga: e.target.value })}
                     />
@@ -731,7 +844,7 @@ export default function TestingLinksPage({ market = 'US' }) {
                   <div className="space-y-2">
                     <Label>Provider Specialty</Label>
                     <Input
-                      placeholder={marketConfig.specialtyPlaceholder}
+                      placeholder={accountConfig.specialtyPlaceholder}
                       autoComplete="off"
                       value={newAccount.specialty}
                       onChange={(e) => setNewAccount({ ...newAccount, specialty: e.target.value })}
@@ -826,17 +939,32 @@ export default function TestingLinksPage({ market = 'US' }) {
             <DialogTrigger asChild>
               <Button className={marketConfig.createButtonClass}>
                 <Plus className="w-4 h-4 mr-2" />
-                Create {normalizedMarket === 'NG' ? 'NG ' : ''}Testing Link
+                Create {normalizedMarket === 'ALL' ? '' : normalizedMarket === 'NG' ? 'NG ' : 'US '}Testing Link
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>Create {normalizedMarket === 'NG' ? 'Nigeria ' : ''}Testing Access Link</DialogTitle>
+                <DialogTitle>Create {linkMarket === 'NG' ? 'Nigeria ' : 'US '}Testing Access Link</DialogTitle>
                 <DialogDescription>
-                  {marketConfig.linkDescription}
+                  {linkConfig.linkDescription}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Market</Label>
+                  <Select value={linkMarket} onValueChange={(marketScope) => setNewLink({ ...newLink, marketScope })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CREATION_MARKET_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-2">
                   <Label>Link Type</Label>
                   <Select value={newLink.linkType} onValueChange={(v) => setNewLink({ ...newLink, linkType: v })}>
@@ -1212,6 +1340,18 @@ export default function TestingLinksPage({ market = 'US' }) {
                                 Delete
                               </Button>
                             )}
+                            {account.status === 'deleted' && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => restoreTestAccount(account)}
+                                className="text-green-700 hover:text-green-800"
+                                title="Restore account"
+                              >
+                                <RefreshCw className="mr-1 h-4 w-4" />
+                                Restore
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1225,7 +1365,7 @@ export default function TestingLinksPage({ market = 'US' }) {
       </Card>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -1267,6 +1407,17 @@ export default function TestingLinksPage({ market = 'US' }) {
                 <p className="text-2xl font-bold text-pink-600">{stats.patient}</p>
               </div>
               <Heart className="w-8 h-8 text-pink-500" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Pharmacy Links</p>
+                <p className="text-2xl font-bold text-emerald-600">{stats.pharmacy}</p>
+              </div>
+              <Building2 className="w-8 h-8 text-emerald-500" />
             </div>
           </CardContent>
         </Card>
@@ -1380,6 +1531,7 @@ export default function TestingLinksPage({ market = 'US' }) {
                 <TableRow>
                   <TableHead>Type</TableHead>
                   <TableHead>Label</TableHead>
+                  <TableHead>Market</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Uses</TableHead>
                   <TableHead>Tier</TableHead>
@@ -1410,6 +1562,9 @@ export default function TestingLinksPage({ market = 'US' }) {
                             </p>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{link.market_scope || link.marketScope || 'US'}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge className={status.color}>{status.label}</Badge>
@@ -1513,6 +1668,18 @@ export default function TestingLinksPage({ market = 'US' }) {
                             >
                               <Trash2 className="mr-1 h-4 w-4" />
                               Delete
+                            </Button>
+                          )}
+                          {link.isDeleted && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => restoreLink(link)}
+                              className="text-green-700 hover:text-green-800"
+                              title="Restore"
+                            >
+                              <RefreshCw className="mr-1 h-4 w-4" />
+                              Restore
                             </Button>
                           )}
                         </div>

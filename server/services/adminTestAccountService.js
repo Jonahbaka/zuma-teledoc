@@ -9,6 +9,7 @@ const {
   getMarketConfig,
   getMarketScopeFromRequest,
   getScopedPortalPath,
+  normalizeMarketScope,
 } = require('../utils/marketScope');
 
 const TEST_ACCOUNT_ROLES = new Set(['provider', 'patient', 'pharmacy', 'admin']);
@@ -47,6 +48,30 @@ const getBaseUrl = (req) => {
   return 'https://doctarx.com';
 };
 
+function getMarketScopeForAdminQuery(req, options = {}) {
+  const rawScope = req?.query?.marketScope ||
+    req?.query?.market ||
+    req?.body?.marketScope ||
+    req?.body?.market ||
+    req?.headers?.['x-doctarx-market'];
+
+  if (options.allowAllMarkets && String(rawScope || '').trim().toUpperCase() === 'ALL') {
+    return 'ALL';
+  }
+
+  if (options.allowAllMarkets && rawScope) {
+    return normalizeMarketScope(rawScope, options.marketScope || 'US');
+  }
+
+  return options.marketScope || getMarketScopeFromRequest(req, 'US');
+}
+
+function appendMarketScopeFilter(where, params, sqlExpression, marketScope) {
+  if (marketScope === 'ALL') return;
+  params.push(marketScope);
+  where.push(`${sqlExpression} = $${params.length}`);
+}
+
 function ensureAdminTestAccountSchema() {
   if (!adminTestAccountSchemaReadyPromise) {
     adminTestAccountSchemaReadyPromise = db.query(`
@@ -69,6 +94,7 @@ function ensureAdminTestAccountSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS region region_code DEFAULT 'US';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS market_scope VARCHAR(10) DEFAULT 'US';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS test_account_metadata JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_test_account BOOLEAN DEFAULT FALSE;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_active BOOLEAN DEFAULT FALSE;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_expires_at TIMESTAMPTZ;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_tier VARCHAR(50);
@@ -90,6 +116,7 @@ function ensureAdminTestAccountSchema() {
 
       CREATE INDEX IF NOT EXISTS idx_users_market_scope ON users(market_scope);
       CREATE INDEX IF NOT EXISTS idx_users_role_market_scope ON users(role, market_scope);
+      CREATE INDEX IF NOT EXISTS idx_users_is_test_account ON users(is_test_account);
 
       ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'active';
       ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
@@ -101,7 +128,7 @@ function ensureAdminTestAccountSchema() {
       CREATE INDEX IF NOT EXISTS idx_testing_access_links_status ON testing_access_links(status);
       CREATE INDEX IF NOT EXISTS idx_testing_access_links_deleted_at ON testing_access_links(deleted_at);
       CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_user_id ON testing_access_links(target_user_id);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_email ON testing_access_links(target_email);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_email ON testing_access_links(LOWER(target_email));
     `).catch((error) => {
       adminTestAccountSchemaReadyPromise = null;
       throw error;
@@ -174,7 +201,7 @@ function getMetadata(row = {}) {
 
 function buildTestAccountAccessFields(role, marketScope, metadata = {}, req = null) {
   const token = metadata.testAccessToken || metadata.testingAccessToken || metadata.accessToken || null;
-  const resolvedMarketScope = metadata.marketScope || marketScope || 'US';
+  const resolvedMarketScope = normalizeMarketScope(metadata.marketScope || marketScope || 'US');
   const accessPath = token
     ? `${resolvedMarketScope === 'NG' ? '/ng' : ''}/access/${token}`
     : getScopedPortalPath(role, resolvedMarketScope, 'login');
@@ -304,7 +331,10 @@ async function ensureTestingAccessLinksForRows(req, rows, marketScope) {
   try {
     const enrichedRows = [];
     for (const row of rows) {
-      enrichedRows.push(await ensureRowTestingAccessLink(client, req, row, marketScope));
+      const rowMarketScope = marketScope === 'ALL'
+        ? normalizeMarketScope(row.market_scope || getMetadata(row).marketScope || 'US')
+        : marketScope;
+      enrichedRows.push(await ensureRowTestingAccessLink(client, req, row, rowMarketScope));
     }
     return enrichedRows;
   } finally {
@@ -315,7 +345,7 @@ async function ensureTestingAccessLinksForRows(req, rows, marketScope) {
 function mapTestAccountRow(row, marketScope, req = null) {
   const metadata = getMetadata(row);
   const account = keysToCamel(row);
-  const resolvedMarketScope = row.market_scope || metadata.marketScope || marketScope;
+  const resolvedMarketScope = normalizeMarketScope(row.market_scope || metadata.marketScope || marketScope);
   const isPharmacy = row.role === 'pharmacy';
   const isDeleted = Boolean(metadata.deletedAt);
   const isRevoked = Boolean(metadata.revokedAt) || row.is_active === false;
@@ -362,7 +392,7 @@ function mapTestAccountRow(row, marketScope, req = null) {
 async function listAdminTestAccounts(req, res, options = {}) {
   try {
     await ensureAdminTestAccountSchema();
-    const marketScope = options.marketScope || getMarketScopeFromRequest(req, 'US');
+    const marketScope = getMarketScopeForAdminQuery(req, options);
     const limit = parsePositiveInteger(req.query.limit, 50, 100);
     const page = parsePositiveInteger(req.query.page, 1, 100000);
     const offset = (page - 1) * limit;
@@ -373,15 +403,17 @@ async function listAdminTestAccounts(req, res, options = {}) {
     const createdBy = String(req.query.createdBy || '').trim();
     const createdFrom = String(req.query.createdFrom || '').trim();
     const createdTo = String(req.query.createdTo || '').trim();
-    const params = [marketScope];
+    const params = [];
     const where = [
       `u.role IN ('patient', 'provider', 'pharmacy', 'admin')`,
-      `COALESCE(u.market_scope, 'US') = $1`,
       `(
         u.test_account_metadata->>'testAccount' = 'true'
         OR u.test_account_metadata->>'isTestAccount' = 'true'
+        OR COALESCE(u.is_test_account, FALSE) = TRUE
+        OR COALESCE(u.test_account_metadata->>'createdFrom', '') IN ('admin_portal', 'us_admin_portal', 'ng_admin_portal', 'admin_testing_access')
       )`,
     ];
+    appendMarketScopeFilter(where, params, `COALESCE(u.market_scope, 'US')`, marketScope);
 
     if (TEST_ACCOUNT_ROLES.has(role)) {
       params.push(role);
@@ -429,8 +461,11 @@ async function listAdminTestAccounts(req, res, options = {}) {
     }
 
     if (createdBy) {
-      params.push(createdBy);
-      where.push(`u.test_account_metadata->>'createdByAdminId' = $${params.length}`);
+      const createdByValue = String(createdBy).trim();
+      params.push(createdByValue.includes('@') ? `%${createdByValue}%` : createdByValue);
+      where.push(createdByValue.includes('@')
+        ? `u.test_account_metadata->>'createdByAdminEmail' ILIKE $${params.length}`
+        : `u.test_account_metadata->>'createdByAdminId' = $${params.length}`);
     }
 
     if (createdFrom) {
@@ -449,6 +484,8 @@ async function listAdminTestAccounts(req, res, options = {}) {
         u.email ILIKE $${params.length}
         OR u.first_name ILIKE $${params.length}
         OR u.last_name ILIKE $${params.length}
+        OR COALESCE(u.market_scope, 'US') ILIKE $${params.length}
+        OR u.role ILIKE $${params.length}
         OR COALESCE(u.phone, '') ILIKE $${params.length}
         OR COALESCE(u.specialty, '') ILIKE $${params.length}
         OR COALESCE(u.test_account_metadata::text, '') ILIKE $${params.length}
@@ -667,7 +704,7 @@ async function createAdminTestAccount(req, res, options = {}) {
          failed_login_attempts, locked_until,
          must_change_password, password_changed_at,
          testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier,
-         hipaa_consent_at, terms_accepted_at, test_account_metadata,
+         hipaa_consent_at, terms_accepted_at, is_test_account, test_account_metadata,
          created_at, updated_at
        ) VALUES (
          $1, $2, $3, $4, $5,
@@ -677,7 +714,7 @@ async function createAdminTestAccount(req, res, options = {}) {
          0, NULL,
          $16, $17,
          $18, $19, $20,
-         NOW(), NOW(), $21,
+         NOW(), NOW(), TRUE, $21,
          NOW(), NOW()
        )
        RETURNING id, email, role, first_name, last_name, provider_status,
@@ -867,7 +904,20 @@ async function updateAdminTestAccountLifecycle(req, res, options = {}) {
     const timestamp = new Date().toISOString();
     const actorId = req.user?.id || null;
     const actorEmail = req.user?.email || null;
-    const patch = action === 'delete'
+    const patch = action === 'restore'
+      ? {
+        status: 'active',
+        deletedAt: null,
+        deletedBy: null,
+        deletedByEmail: null,
+        revokedAt: null,
+        revokedBy: null,
+        revokedByEmail: null,
+        restoredAt: timestamp,
+        restoredBy: actorId,
+        restoredByEmail: actorEmail,
+      }
+      : action === 'delete'
       ? {
         status: 'deleted',
         deletedAt: timestamp,
@@ -886,8 +936,8 @@ async function updateAdminTestAccountLifecycle(req, res, options = {}) {
 
     const { rows } = await db.query(
       `UPDATE users u
-          SET is_active = FALSE,
-              testing_bypass_active = FALSE,
+          SET is_active = CASE WHEN $4 = 'restore' THEN TRUE ELSE FALSE END,
+              testing_bypass_active = CASE WHEN $4 = 'restore' THEN (testing_bypass_expires_at IS NULL OR testing_bypass_expires_at > NOW()) ELSE FALSE END,
               testing_bypass_expires_at = CASE WHEN $4 = 'delete' THEN NOW() ELSE testing_bypass_expires_at END,
               test_account_metadata = COALESCE(u.test_account_metadata, '{}'::jsonb) || $3::jsonb,
               updated_at = NOW()
@@ -897,6 +947,7 @@ async function updateAdminTestAccountLifecycle(req, res, options = {}) {
           AND (
             u.test_account_metadata->>'testAccount' = 'true'
             OR u.test_account_metadata->>'isTestAccount' = 'true'
+            OR COALESCE(u.is_test_account, FALSE) = TRUE
           )
           AND (
             $4 <> 'delete'
@@ -919,30 +970,30 @@ async function updateAdminTestAccountLifecycle(req, res, options = {}) {
 
     await db.query(
       `UPDATE testing_access_links
-          SET is_active = FALSE,
-              status = $3,
-              revoked_at = COALESCE(revoked_at, NOW()),
-              revoked_by = COALESCE(revoked_by, $4),
-              deleted_at = CASE WHEN $3 = 'deleted' THEN COALESCE(deleted_at, NOW()) ELSE deleted_at END,
-              deleted_by = CASE WHEN $3 = 'deleted' THEN COALESCE(deleted_by, $4) ELSE deleted_by END
+          SET is_active = CASE WHEN $3 = 'restore' THEN TRUE ELSE FALSE END,
+              status = CASE WHEN $3 = 'restore' THEN 'active' WHEN $3 = 'delete' THEN 'deleted' ELSE 'revoked' END,
+              revoked_at = CASE WHEN $3 = 'restore' THEN NULL ELSE COALESCE(revoked_at, NOW()) END,
+              revoked_by = CASE WHEN $3 = 'restore' THEN NULL ELSE COALESCE(revoked_by, $4) END,
+              deleted_at = CASE WHEN $3 = 'delete' THEN COALESCE(deleted_at, NOW()) WHEN $3 = 'restore' THEN NULL ELSE deleted_at END,
+              deleted_by = CASE WHEN $3 = 'delete' THEN COALESCE(deleted_by, $4) WHEN $3 = 'restore' THEN NULL ELSE deleted_by END
         WHERE COALESCE(market_scope, 'US') = $1
           AND (
             target_user_id = $2
             OR token = $5
           )
-          AND deleted_at IS NULL`,
+          AND ($3 = 'restore' OR deleted_at IS NULL)`,
       [
         marketScope,
         account.id,
-        action === 'delete' ? 'deleted' : 'revoked',
+        action,
         actorId,
         account.token || account.testAccountMetadata?.testAccessToken || null,
       ]
     );
 
     try {
-      await createAuditLog(req, action === 'delete' ? 'delete' : 'revoke', 'user', account.id, {
-        description: `${action === 'delete' ? 'Deleted' : 'Revoked'} admin-created test account`,
+      await createAuditLog(req, action === 'delete' ? 'delete' : action === 'restore' ? 'restore' : 'revoke', 'user', account.id, {
+        description: `${action === 'delete' ? 'Deleted' : action === 'restore' ? 'Restored' : 'Revoked'} admin-created test account`,
         newValues: {
           email: account.email,
           role: account.role,
@@ -968,7 +1019,7 @@ async function updateAdminTestAccountLifecycle(req, res, options = {}) {
 
     res.json({
       success: true,
-      message: action === 'delete' ? 'Test account deleted' : 'Test account revoked',
+      message: action === 'delete' ? 'Test account deleted' : action === 'restore' ? 'Test account restored' : 'Test account revoked',
       account,
     });
   } catch (error) {

@@ -329,7 +329,7 @@ router.get('/users', async (req, res) => {
  * List admin-created test accounts for the US market.
  */
 router.get('/test-accounts', requireSuperAdmin, async (req, res) => {
-  return listAdminTestAccounts(req, res, { marketScope: 'US' });
+  return listAdminTestAccounts(req, res, { marketScope: 'US', allowAllMarkets: true });
 });
 
 /**
@@ -341,7 +341,11 @@ router.post('/test-accounts', requireSuperAdmin, async (req, res) => {
 });
 
 router.patch('/test-accounts/:id', requireSuperAdmin, async (req, res) => {
-  const action = req.body?.action === 'delete' ? 'delete' : 'revoke';
+  const action = req.body?.action === 'delete'
+    ? 'delete'
+    : req.body?.action === 'restore'
+      ? 'restore'
+      : 'revoke';
   return updateAdminTestAccountLifecycle(req, res, { marketScope: 'US', action });
 });
 

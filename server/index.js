@@ -608,6 +608,7 @@ async function initializeApp() {
   loadRoute('/api/medical-records', './routes/medicalRecords');
   loadRoute('/api/messages', './routes/messages');
   loadRoute('/api/notifications', './routes/notifications');
+  loadRoute('/api/admin/testing-links', './routes/testingLinks');
   loadRoute('/api/admin', './routes/admin');
   loadRoute('/api/providers', './routes/providers');
   loadRoute('/api/visits', './routes/visits');

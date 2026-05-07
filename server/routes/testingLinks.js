@@ -74,7 +74,7 @@ function ensureTestingLinksLifecycleSchema() {
       CREATE INDEX IF NOT EXISTS idx_testing_access_links_created_by ON testing_access_links(created_by);
       CREATE INDEX IF NOT EXISTS idx_testing_access_links_last_used_by ON testing_access_links(last_used_by);
       CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_user_id ON testing_access_links(target_user_id);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_email ON testing_access_links(target_email);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_email ON testing_access_links(LOWER(target_email));
     `).catch((error) => {
       lifecycleSchemaReadyPromise = null;
       throw error;
@@ -85,6 +85,24 @@ function ensureTestingLinksLifecycleSchema() {
 }
 
 const isQueryEnabled = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').toLowerCase());
+const isAllMarketScope = (value) => String(value || '').trim().toUpperCase() === 'ALL';
+
+const getMarketScopeForAdminQuery = (req, fallback = 'US') => {
+  const rawScope = req?.body?.marketScope ||
+    req?.body?.market ||
+    req?.query?.marketScope ||
+    req?.query?.market ||
+    req?.headers?.['x-doctarx-market'];
+
+  if (isAllMarketScope(rawScope)) return 'ALL';
+  return getMarketScopeFromRequest(req, fallback);
+};
+
+function appendMarketScopeFilter(where, params, sqlExpression, marketScope) {
+  if (marketScope === 'ALL') return;
+  params.push(marketScope);
+  where.push(`${sqlExpression} = $${params.length}`);
+}
 
 const parsePositiveInt = (value, fallback, max) => {
   const parsed = parseInt(value, 10);
@@ -107,18 +125,22 @@ const buildLinkUrls = (req, link, marketScope) => {
   const baseUrl = getBaseUrl(req);
   const token = link.token;
   const accessPath = `${resolvedMarketScope === 'NG' ? '/ng' : ''}/access/${token}`;
+  const fullAccessUrl = buildAbsoluteUrl(baseUrl, accessPath);
   const loginPath = appendToken(getScopedPortalPath(link.link_type, resolvedMarketScope, 'login'), token);
   const registerPath = appendToken(getScopedPortalPath(link.link_type, resolvedMarketScope, 'register'), token);
 
   return {
     market_scope: resolvedMarketScope,
     role: link.link_type,
-    email: link.target_email || null,
-    accessUrl: accessPath,
-    access_url: accessPath,
-    fullUrl: buildAbsoluteUrl(baseUrl, accessPath),
-    fullAccessUrl: buildAbsoluteUrl(baseUrl, accessPath),
-    full_access_url: buildAbsoluteUrl(baseUrl, accessPath),
+    email: link.target_email || link.target_user_email || null,
+    accessPath,
+    access_path: accessPath,
+    accessUrl: fullAccessUrl,
+    access_url: fullAccessUrl,
+    fullUrl: fullAccessUrl,
+    full_url: fullAccessUrl,
+    fullAccessUrl,
+    full_access_url: fullAccessUrl,
     loginUrl: buildAbsoluteUrl(baseUrl, loginPath),
     login_url: buildAbsoluteUrl(baseUrl, loginPath),
     registerUrl: buildAbsoluteUrl(baseUrl, registerPath),
@@ -138,6 +160,7 @@ const formatLink = (req, link, marketScope) => {
     isDeleted: status === 'deleted',
     createdByName: [link.created_by_first_name, link.created_by_last_name].filter(Boolean).join(' ') || link.created_by_email || null,
     lastUsedByName: [link.last_used_by_first_name, link.last_used_by_last_name].filter(Boolean).join(' ') || link.last_used_by_email || null,
+    targetUserName: [link.target_user_first_name, link.target_user_last_name].filter(Boolean).join(' ') || link.target_user_email || link.target_email || null,
   };
 };
 
@@ -198,14 +221,15 @@ router.get('/', authenticate, requireRole(['admin', 'super_admin']), async (req,
       createdFrom,
       createdTo,
     } = req.query;
-    const marketScope = getMarketScopeFromRequest(req, 'US');
+    const marketScope = getMarketScopeForAdminQuery(req, 'US');
     const limit = parsePositiveInt(req.query.limit, 50, 100);
     const page = parsePositiveInt(req.query.page, 1, 100000);
     const offset = (page - 1) * limit;
     const includeDeleted = isQueryEnabled(req.query.includeDeleted);
 
-    const params = [marketScope];
-    const where = [`COALESCE(tl.market_scope, 'US') = $1`];
+    const params = [];
+    const where = [];
+    appendMarketScopeFilter(where, params, `COALESCE(tl.market_scope, 'US')`, marketScope);
 
     const normalizedType = normalizeLinkType(type);
     if (SUPPORTED_LINK_TYPES.has(normalizedType)) {
@@ -228,8 +252,18 @@ router.get('/', authenticate, requireRole(['admin', 'super_admin']), async (req,
         tl.label ILIKE $${params.length}
         OR tl.description ILIKE $${params.length}
         OR tl.token ILIKE $${params.length}
+        OR tl.link_type ILIKE $${params.length}
+        OR COALESCE(tl.market_scope, 'US') ILIKE $${params.length}
+        OR COALESCE(tl.target_email, '') ILIKE $${params.length}
         OR creator.email ILIKE $${params.length}
+        OR COALESCE(creator.first_name, '') ILIKE $${params.length}
+        OR COALESCE(creator.last_name, '') ILIKE $${params.length}
         OR COALESCE(last_user.email, '') ILIKE $${params.length}
+        OR COALESCE(last_user.first_name, '') ILIKE $${params.length}
+        OR COALESCE(last_user.last_name, '') ILIKE $${params.length}
+        OR COALESCE(target_user.email, '') ILIKE $${params.length}
+        OR COALESCE(target_user.first_name, '') ILIKE $${params.length}
+        OR COALESCE(target_user.last_name, '') ILIKE $${params.length}
       )`);
     }
 
@@ -251,12 +285,13 @@ router.get('/', authenticate, requireRole(['admin', 'super_admin']), async (req,
       where.push(`tl.created_at <= $${params.length}`);
     }
 
-    const whereClause = `WHERE ${where.join(' AND ')}`;
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const countResult = await db.query(`
       SELECT COUNT(*)::int AS count
       FROM testing_access_links tl
       LEFT JOIN users creator ON tl.created_by = creator.id
       LEFT JOIN users last_user ON tl.last_used_by = last_user.id
+      LEFT JOIN users target_user ON tl.target_user_id = target_user.id
       ${whereClause}
     `, params);
 
@@ -272,10 +307,14 @@ router.get('/', authenticate, requireRole(['admin', 'super_admin']), async (req,
         last_user.email as last_used_by_email,
         last_user.first_name as last_used_by_first_name,
         last_user.last_name as last_used_by_last_name,
+        target_user.email as target_user_email,
+        target_user.first_name as target_user_first_name,
+        target_user.last_name as target_user_last_name,
         (SELECT COUNT(*) FROM testing_link_activations WHERE link_id = tl.id) as activation_count
       FROM testing_access_links tl
       LEFT JOIN users creator ON tl.created_by = creator.id
       LEFT JOIN users last_user ON tl.last_used_by = last_user.id
+      LEFT JOIN users target_user ON tl.target_user_id = target_user.id
       ${whereClause}
       ORDER BY tl.created_at DESC
       LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}
@@ -377,7 +416,10 @@ router.get('/:id', authenticate, requireRole(['admin', 'super_admin']), async (r
   try {
     await ensureTestingLinksLifecycleSchema();
     const { id } = req.params;
-    const marketScope = getMarketScopeFromRequest(req, 'US');
+    const marketScope = getMarketScopeForAdminQuery(req, 'US');
+    const params = [id];
+    const where = [`tl.id = $1`];
+    appendMarketScopeFilter(where, params, `COALESCE(tl.market_scope, 'US')`, marketScope);
     
     const { rows: [link] } = await db.query(`
       SELECT 
@@ -389,12 +431,16 @@ router.get('/:id', authenticate, requireRole(['admin', 'super_admin']), async (r
         creator.last_name as created_by_last_name,
         last_user.email as last_used_by_email,
         last_user.first_name as last_used_by_first_name,
-        last_user.last_name as last_used_by_last_name
+        last_user.last_name as last_used_by_last_name,
+        target_user.email as target_user_email,
+        target_user.first_name as target_user_first_name,
+        target_user.last_name as target_user_last_name
       FROM testing_access_links tl
       LEFT JOIN users creator ON tl.created_by = creator.id
       LEFT JOIN users last_user ON tl.last_used_by = last_user.id
-      WHERE tl.id = $1 AND COALESCE(tl.market_scope, 'US') = $2
-    `, [id, marketScope]);
+      LEFT JOIN users target_user ON tl.target_user_id = target_user.id
+      WHERE ${where.join(' AND ')}
+    `, params);
     
     if (!link) {
       return res.status(404).json({ success: false, error: 'Testing link not found' });
@@ -434,13 +480,16 @@ router.patch('/:id', authenticate, requireRole(['admin', 'super_admin']), async 
     await ensureTestingLinksLifecycleSchema();
     const { id } = req.params;
     const { isActive, extendHours, maxUses, label, description, action, status } = req.body;
-    const marketScope = getMarketScopeFromRequest(req, 'US');
+    const marketScope = getMarketScopeForAdminQuery(req, 'US');
     const shouldRevoke = action === 'revoke' || status === 'revoked' || isActive === false;
-    const shouldReactivate = action === 'reactivate' || status === 'active' || isActive === true;
+    const shouldRestore = action === 'restore';
+    const shouldReactivate = shouldRestore || action === 'reactivate' || status === 'active' || isActive === true;
     
     const updates = [];
-    const params = [id, marketScope];
-    let paramIndex = 3;
+    const params = [id];
+    const where = [`id = $1`];
+    appendMarketScopeFilter(where, params, `COALESCE(market_scope, 'US')`, marketScope);
+    let paramIndex = params.length + 1;
     
     if (shouldRevoke) {
       updates.push(`is_active = FALSE`);
@@ -453,6 +502,10 @@ router.patch('/:id', authenticate, requireRole(['admin', 'super_admin']), async 
       updates.push(`status = 'active'`);
       updates.push(`revoked_at = NULL`);
       updates.push(`revoked_by = NULL`);
+      if (shouldRestore) {
+        updates.push(`deleted_at = NULL`);
+        updates.push(`deleted_by = NULL`);
+      }
     }
     
     if (extendHours) {
@@ -481,7 +534,8 @@ router.patch('/:id', authenticate, requireRole(['admin', 'super_admin']), async 
     const { rows: [link] } = await db.query(`
       UPDATE testing_access_links
       SET ${updates.join(', ')}, updated_at = NOW()
-      WHERE id = $1 AND COALESCE(market_scope, 'US') = $2 AND deleted_at IS NULL
+      WHERE ${where.join(' AND ')}
+        ${shouldRestore ? '' : 'AND deleted_at IS NULL'}
       RETURNING *
     `, params);
     
@@ -511,20 +565,24 @@ router.delete('/:id', authenticate, requireRole(['admin', 'super_admin']), async
   try {
     await ensureTestingLinksLifecycleSchema();
     const { id } = req.params;
-    const marketScope = getMarketScopeFromRequest(req, 'US');
+    const marketScope = getMarketScopeForAdminQuery(req, 'US');
+    const params = [id];
+    const where = [`id = $1`];
+    appendMarketScopeFilter(where, params, `COALESCE(market_scope, 'US')`, marketScope);
+    const actorParam = params.length + 1;
+    params.push(req.user.id);
     
     const { rows } = await db.query(
       `UPDATE testing_access_links
           SET is_active = FALSE,
               status = 'deleted',
               deleted_at = COALESCE(deleted_at, NOW()),
-              deleted_by = COALESCE(deleted_by, $3),
+              deleted_by = COALESCE(deleted_by, $${actorParam}),
               updated_at = NOW()
-        WHERE id = $1
-          AND COALESCE(market_scope, 'US') = $2
+        WHERE ${where.join(' AND ')}
           AND deleted_at IS NULL
         RETURNING *`,
-      [id, marketScope, req.user.id]
+      params
     );
     
     if (rows.length === 0) {
