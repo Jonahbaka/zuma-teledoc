@@ -272,7 +272,7 @@ export const MARKET_HOME_DATA = {
     ],
     pricingSection: {
       title: 'Membership options already present in the product',
-      subtitle: 'US pricing stays in dollars only, and the section reflects existing subscription tiers instead of placeholder values.',
+      subtitle: 'US pricing stays in dollars only, with active subscription tiers and pay-per-visit options shown clearly.',
       note: 'Pay-per-visit and insurance-supported scheduling remain available in the booking flow.',
     },
     plans: [
