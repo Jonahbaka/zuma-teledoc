@@ -228,7 +228,7 @@ export default function TestingAccessPage() {
 
         {/* Footer */}
         <div className="text-center mt-8 text-white/50 text-sm">
-          <p>Powered by Docta Healthcare Platform</p>
+          <p>Powered by DoctaRx Healthcare Platform</p>
         </div>
       </div>
     </div>

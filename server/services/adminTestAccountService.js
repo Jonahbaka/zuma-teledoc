@@ -1,9 +1,11 @@
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const logger = require('../middleware/logger');
 const { createAuditLog } = require('../middleware/audit');
 const { keysToCamel } = require('../../lib/utils');
 const {
+  buildAbsoluteUrl,
   getMarketConfig,
   getMarketScopeFromRequest,
   getScopedPortalPath,
@@ -27,6 +29,23 @@ const TEST_ACCOUNT_ACCESS_LEVEL_BY_TIER = {
   platinum: 'platinum_monthly',
 };
 let adminTestAccountSchemaReadyPromise = null;
+const generateToken = () => crypto.randomBytes(32).toString('hex');
+
+const getBaseUrl = (req) => {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (envUrl && !envUrl.includes('localhost')) {
+    return envUrl;
+  }
+
+  const forwardedHost = req?.headers?.['x-forwarded-host'];
+  const host = forwardedHost || req?.get?.('host');
+  const proto = req?.headers?.['x-forwarded-proto'] || req?.protocol;
+  if (host) {
+    return `${proto || 'https'}://${host}`;
+  }
+
+  return 'https://doctarx.com';
+};
 
 function ensureAdminTestAccountSchema() {
   if (!adminTestAccountSchemaReadyPromise) {
@@ -71,6 +90,18 @@ function ensureAdminTestAccountSchema() {
 
       CREATE INDEX IF NOT EXISTS idx_users_market_scope ON users(market_scope);
       CREATE INDEX IF NOT EXISTS idx_users_role_market_scope ON users(role, market_scope);
+
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'active';
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS revoked_by UUID REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS target_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS target_email VARCHAR(255);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_status ON testing_access_links(status);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_deleted_at ON testing_access_links(deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_user_id ON testing_access_links(target_user_id);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_email ON testing_access_links(target_email);
     `).catch((error) => {
       adminTestAccountSchemaReadyPromise = null;
       throw error;
@@ -108,10 +139,15 @@ function requiredProviderSpecialty(role, specialty) {
 }
 
 function buildCreateAccountResponse(user, marketScope) {
+  const metadata = getMetadata(user);
+  const accessFields = buildTestAccountAccessFields(user.role, marketScope, metadata);
+
   return {
     ...keysToCamel(user),
     marketScope,
-    loginUrl: getScopedPortalPath(user.role, marketScope, 'login'),
+    ...accessFields,
+    loginUrl: accessFields.fullAccessUrl || getScopedPortalPath(user.role, marketScope, 'login'),
+    portalLoginUrl: getScopedPortalPath(user.role, marketScope, 'login'),
     dashboardUrl: getScopedPortalPath(user.role, marketScope, 'dashboard'),
   };
 }
@@ -136,7 +172,147 @@ function getMetadata(row = {}) {
   return row.test_account_metadata;
 }
 
-function mapTestAccountRow(row, marketScope) {
+function buildTestAccountAccessFields(role, marketScope, metadata = {}, req = null) {
+  const token = metadata.testAccessToken || metadata.testingAccessToken || metadata.accessToken || null;
+  const resolvedMarketScope = metadata.marketScope || marketScope || 'US';
+  const accessPath = token
+    ? `${resolvedMarketScope === 'NG' ? '/ng' : ''}/access/${token}`
+    : getScopedPortalPath(role, resolvedMarketScope, 'login');
+  const fullAccessUrl = buildAbsoluteUrl(getBaseUrl(req), accessPath);
+  const portalLoginUrl = getScopedPortalPath(role, resolvedMarketScope, 'login');
+
+  return {
+    token,
+    accessUrl: accessPath,
+    access_url: accessPath,
+    fullAccessUrl,
+    full_access_url: fullAccessUrl,
+    fullUrl: fullAccessUrl,
+    portalLoginUrl,
+    portal_login_url: portalLoginUrl,
+  };
+}
+
+async function ensureRowTestingAccessLink(client, req, row, marketScope) {
+  const metadata = getMetadata(row);
+  const status = metadata.deletedAt
+    ? 'deleted'
+    : metadata.revokedAt || row.is_active === false
+      ? 'revoked'
+      : 'active';
+
+  if (status !== 'active') {
+    return row;
+  }
+
+  const existingToken = metadata.testAccessToken || metadata.testingAccessToken || metadata.accessToken;
+  if (existingToken) {
+    const { rows } = await client.query(
+      `SELECT id, token
+         FROM testing_access_links
+        WHERE token = $1
+          AND COALESCE(market_scope, 'US') = $2
+          AND deleted_at IS NULL
+          AND revoked_at IS NULL
+          AND is_active = TRUE
+          AND expires_at > NOW()
+        LIMIT 1`,
+      [existingToken, marketScope]
+    );
+
+    if (rows.length) {
+      return row;
+    }
+  }
+
+  const { rows: existingLinks } = await client.query(
+    `SELECT id, token
+       FROM testing_access_links
+      WHERE COALESCE(market_scope, 'US') = $1
+        AND link_type = $2
+        AND deleted_at IS NULL
+        AND revoked_at IS NULL
+        AND is_active = TRUE
+        AND expires_at > NOW()
+        AND (
+          target_user_id = $3
+          OR LOWER(COALESCE(target_email, '')) = LOWER($4)
+          OR LOWER(COALESCE(description, '')) LIKE LOWER($5)
+        )
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [marketScope, row.role, row.id, row.email, `%${row.email}%`]
+  );
+
+  const link = existingLinks[0] || null;
+  const token = link?.token || generateToken();
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  let linkId = link?.id || null;
+
+  if (!linkId) {
+    const { rows: inserted } = await client.query(
+      `INSERT INTO testing_access_links (
+         token, link_type, label, description,
+         max_uses, expires_at, bypass_payment, bypass_subscription,
+         grant_tier, market_scope, created_by, status, target_user_id, target_email
+       ) VALUES (
+         $1, $2, $3, $4,
+         10, $5, TRUE, TRUE,
+         COALESCE($6, 'gold'), $7, $8, 'active', $9, $10
+       )
+       RETURNING id, token`,
+      [
+        token,
+        row.role,
+        `${[row.first_name, row.last_name].filter(Boolean).join(' ') || row.email} test access`,
+        `Admin-created ${marketScope} ${row.role} test account access for ${row.email}`,
+        expiresAt,
+        row.testing_bypass_tier || 'gold',
+        marketScope,
+        req.user?.id || null,
+        row.id,
+        row.email,
+      ]
+    );
+    linkId = inserted[0].id;
+  }
+
+  const nextMetadata = {
+    ...metadata,
+    testAccessLinkId: linkId,
+    testAccessToken: token,
+    testAccessUrl: `${marketScope === 'NG' ? '/ng' : ''}/access/${token}`,
+    testAccessExpiresAt: expiresAt.toISOString(),
+  };
+
+  await client.query(
+    `UPDATE users
+        SET test_account_metadata = $2::jsonb,
+            updated_at = NOW()
+      WHERE id = $1`,
+    [row.id, JSON.stringify(nextMetadata)]
+  );
+
+  return {
+    ...row,
+    test_account_metadata: nextMetadata,
+  };
+}
+
+async function ensureTestingAccessLinksForRows(req, rows, marketScope) {
+  const client = await db.getClient();
+  try {
+    const enrichedRows = [];
+    for (const row of rows) {
+      enrichedRows.push(await ensureRowTestingAccessLink(client, req, row, marketScope));
+    }
+    return enrichedRows;
+  } finally {
+    client.release();
+  }
+}
+
+function mapTestAccountRow(row, marketScope, req = null) {
   const metadata = getMetadata(row);
   const account = keysToCamel(row);
   const resolvedMarketScope = row.market_scope || metadata.marketScope || marketScope;
@@ -177,8 +353,8 @@ function mapTestAccountRow(row, marketScope) {
     createdByAdminId: metadata.createdByAdminId || metadata.createdBy || null,
     createdByAdminEmail: metadata.createdByAdminEmail || metadata.createdByEmail || null,
     testAccountMetadata: metadata,
-    accessUrl: getScopedPortalPath(row.role, resolvedMarketScope, 'login'),
-    loginUrl: getScopedPortalPath(row.role, resolvedMarketScope, 'login'),
+    ...buildTestAccountAccessFields(row.role, resolvedMarketScope, metadata, req),
+    loginUrl: buildTestAccountAccessFields(row.role, resolvedMarketScope, metadata, req).fullAccessUrl,
     dashboardUrl: getScopedPortalPath(row.role, resolvedMarketScope, 'dashboard'),
   };
 }
@@ -304,9 +480,11 @@ async function listAdminTestAccounts(req, res, options = {}) {
 
     const total = Number(countResult.rows[0]?.count || 0);
 
+    const enrichedRows = await ensureTestingAccessLinksForRows(req, result.rows, marketScope);
+
     res.json({
       success: true,
-      accounts: result.rows.map((row) => mapTestAccountRow(row, marketScope)),
+      accounts: enrichedRows.map((row) => mapTestAccountRow(row, marketScope, req)),
       pagination: {
         page,
         limit,
@@ -543,8 +721,58 @@ async function createAdminTestAccount(req, res, options = {}) {
       );
     }
 
+    const token = generateToken();
+    const linkExpiresAt = testingBypassExpiresAt || new Date(Date.now() + testingBypassDays * 24 * 60 * 60 * 1000);
+    const { rows: linkRows } = await client.query(
+      `INSERT INTO testing_access_links (
+         token, link_type, label, description,
+         max_uses, expires_at, bypass_payment, bypass_subscription,
+         grant_tier, market_scope, created_by, status, target_user_id, target_email
+       ) VALUES (
+         $1, $2, $3, $4,
+         10, $5, TRUE, TRUE,
+         $6, $7, $8, 'active', $9, $10
+       )
+       RETURNING id, token, expires_at`,
+      [
+        token,
+        role,
+        `${[firstName, lastName].filter(Boolean).join(' ') || email} test access`,
+        `Admin-created ${marketScope} ${role} test account access for ${email}`,
+        linkExpiresAt,
+        testingBypassTier,
+        marketScope,
+        req.user?.id || null,
+        user.id,
+        email,
+      ]
+    );
+
+    const link = linkRows[0];
+    const metadataWithLink = {
+      ...accountMetadata,
+      testAccessLinkId: link.id,
+      testAccessToken: link.token,
+      testAccessUrl: `${marketScope === 'NG' ? '/ng' : ''}/access/${link.token}`,
+      testAccessExpiresAt: link.expires_at,
+    };
+
+    const { rows: updatedRows } = await client.query(
+      `UPDATE users
+          SET test_account_metadata = $2::jsonb,
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, email, role, first_name, last_name, provider_status,
+                  is_active, is_verified, must_change_password,
+                  testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier,
+                  country, region, market_scope, state, city, phone, specialty,
+                  test_account_metadata`,
+      [user.id, JSON.stringify(metadataWithLink)]
+    );
+
     await client.query('COMMIT');
     transactionOpen = false;
+    const responseUser = updatedRows[0] || user;
 
     try {
       await createAuditLog(req, 'create', 'user', user.id, {
@@ -584,7 +812,7 @@ async function createAdminTestAccount(req, res, options = {}) {
     res.status(201).json({
       success: true,
       message: `${marketConfig.label} ${role} test account created`,
-      user: buildCreateAccountResponse(user, marketScope),
+      user: buildCreateAccountResponse(responseUser, marketScope),
     });
   } catch (error) {
     if (transactionOpen && client) {
@@ -688,6 +916,29 @@ async function updateAdminTestAccountLifecycle(req, res, options = {}) {
     }
 
     const account = mapTestAccountRow(rows[0], marketScope);
+
+    await db.query(
+      `UPDATE testing_access_links
+          SET is_active = FALSE,
+              status = $3,
+              revoked_at = COALESCE(revoked_at, NOW()),
+              revoked_by = COALESCE(revoked_by, $4),
+              deleted_at = CASE WHEN $3 = 'deleted' THEN COALESCE(deleted_at, NOW()) ELSE deleted_at END,
+              deleted_by = CASE WHEN $3 = 'deleted' THEN COALESCE(deleted_by, $4) ELSE deleted_by END
+        WHERE COALESCE(market_scope, 'US') = $1
+          AND (
+            target_user_id = $2
+            OR token = $5
+          )
+          AND deleted_at IS NULL`,
+      [
+        marketScope,
+        account.id,
+        action === 'delete' ? 'deleted' : 'revoked',
+        actorId,
+        account.token || account.testAccountMetadata?.testAccessToken || null,
+      ]
+    );
 
     try {
       await createAuditLog(req, action === 'delete' ? 'delete' : 'revoke', 'user', account.id, {

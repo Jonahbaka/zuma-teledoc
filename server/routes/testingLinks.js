@@ -34,6 +34,8 @@ function ensureTestingLinksLifecycleSchema() {
       ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS revoked_by UUID REFERENCES users(id) ON DELETE SET NULL;
       ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
       ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS target_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS target_email VARCHAR(255);
 
       DO $$ BEGIN
         IF EXISTS (
@@ -71,6 +73,8 @@ function ensureTestingLinksLifecycleSchema() {
       CREATE INDEX IF NOT EXISTS idx_testing_access_links_deleted_at ON testing_access_links(deleted_at);
       CREATE INDEX IF NOT EXISTS idx_testing_access_links_created_by ON testing_access_links(created_by);
       CREATE INDEX IF NOT EXISTS idx_testing_access_links_last_used_by ON testing_access_links(last_used_by);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_user_id ON testing_access_links(target_user_id);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_email ON testing_access_links(target_email);
     `).catch((error) => {
       lifecycleSchemaReadyPromise = null;
       throw error;
@@ -108,9 +112,17 @@ const buildLinkUrls = (req, link, marketScope) => {
 
   return {
     market_scope: resolvedMarketScope,
+    role: link.link_type,
+    email: link.target_email || null,
+    accessUrl: accessPath,
+    access_url: accessPath,
     fullUrl: buildAbsoluteUrl(baseUrl, accessPath),
+    fullAccessUrl: buildAbsoluteUrl(baseUrl, accessPath),
+    full_access_url: buildAbsoluteUrl(baseUrl, accessPath),
     loginUrl: buildAbsoluteUrl(baseUrl, loginPath),
+    login_url: buildAbsoluteUrl(baseUrl, loginPath),
     registerUrl: buildAbsoluteUrl(baseUrl, registerPath),
+    register_url: buildAbsoluteUrl(baseUrl, registerPath),
   };
 };
 
@@ -252,6 +264,8 @@ router.get('/', authenticate, requireRole(['admin', 'super_admin']), async (req,
     const { rows } = await db.query(`
       SELECT
         tl.*,
+        tl.link_type AS role,
+        tl.target_email AS email,
         creator.email as created_by_email,
         creator.first_name as created_by_first_name,
         creator.last_name as created_by_last_name,
@@ -368,6 +382,8 @@ router.get('/:id', authenticate, requireRole(['admin', 'super_admin']), async (r
     const { rows: [link] } = await db.query(`
       SELECT 
         tl.*,
+        tl.link_type AS role,
+        tl.target_email AS email,
         creator.email as created_by_email,
         creator.first_name as created_by_first_name,
         creator.last_name as created_by_last_name,

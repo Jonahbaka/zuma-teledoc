@@ -374,6 +374,26 @@ export default function TestingLinksPage({ market = 'US' }) {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const getCanonicalLinkUrl = (link = {}) => (
+    link.full_access_url ||
+    link.fullAccessUrl ||
+    link.fullUrl ||
+    link.access_url ||
+    link.accessUrl ||
+    link.loginUrl ||
+    ''
+  );
+
+  const getAccountAccessUrl = (account = {}) => (
+    account.full_access_url ||
+    account.fullAccessUrl ||
+    account.fullUrl ||
+    account.access_url ||
+    account.accessUrl ||
+    account.loginUrl ||
+    ''
+  );
+
   const viewDetails = async (link) => {
     try {
       const res = await api.get(`/testing-links/${link.id}`, { params: { marketScope: normalizedMarket } });
@@ -1136,7 +1156,7 @@ export default function TestingLinksPage({ market = 'US' }) {
                         </TableCell>
                         <TableCell>
                           <code className="block max-w-[180px] truncate rounded bg-muted px-2 py-1 text-xs">
-                            {account.loginUrl}
+                            {getAccountAccessUrl(account)}
                           </code>
                         </TableCell>
                         <TableCell>
@@ -1144,8 +1164,8 @@ export default function TestingLinksPage({ market = 'US' }) {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => copyToClipboard(account.loginUrl, 'Login URL')}
-                              title="Copy login URL"
+                              onClick={() => copyToClipboard(getAccountAccessUrl(account), 'Access URL')}
+                              title="Copy token access URL"
                             >
                               <Copy className="mr-1 h-4 w-4" />
                               Copy Link
@@ -1153,8 +1173,8 @@ export default function TestingLinksPage({ market = 'US' }) {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => openAccessUrl(account.loginUrl)}
-                              title="Open login link"
+                              onClick={() => openAccessUrl(getAccountAccessUrl(account))}
+                              title="Open token access link"
                             >
                               <ExternalLink className="mr-1 h-4 w-4" />
                               Open Link
@@ -1439,7 +1459,7 @@ export default function TestingLinksPage({ market = 'US' }) {
                       </TableCell>
                       <TableCell>
                         <code className="block max-w-[180px] truncate rounded bg-muted px-2 py-1 text-xs">
-                          {link.fullUrl}
+                          {getCanonicalLinkUrl(link)}
                         </code>
                       </TableCell>
                       <TableCell>
@@ -1447,7 +1467,7 @@ export default function TestingLinksPage({ market = 'US' }) {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => copyToClipboard(link.fullUrl, 'Link')}
+                            onClick={() => copyToClipboard(getCanonicalLinkUrl(link), 'Link')}
                             title="Copy link"
                           >
                             <Copy className="mr-1 h-4 w-4" />
@@ -1456,7 +1476,7 @@ export default function TestingLinksPage({ market = 'US' }) {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => openAccessUrl(link.fullUrl)}
+                            onClick={() => openAccessUrl(getCanonicalLinkUrl(link))}
                             title="Open access link"
                           >
                             <ExternalLink className="mr-1 h-4 w-4" />
@@ -1546,11 +1566,11 @@ export default function TestingLinksPage({ market = 'US' }) {
               <div className="space-y-2">
                 <Label className="text-muted-foreground">Access URL</Label>
                 <div className="flex items-center gap-2">
-                  <Input value={selectedLink.link.fullUrl} readOnly className="font-mono text-sm" />
+                  <Input value={getCanonicalLinkUrl(selectedLink.link)} readOnly className="font-mono text-sm" />
                   <Button
                     size="icon"
                     variant="outline"
-                    onClick={() => copyToClipboard(selectedLink.link.fullUrl, 'Access URL')}
+                    onClick={() => copyToClipboard(getCanonicalLinkUrl(selectedLink.link), 'Access URL')}
                   >
                     <Copy className="w-4 h-4" />
                   </Button>
