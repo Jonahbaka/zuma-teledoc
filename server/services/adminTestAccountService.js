@@ -485,7 +485,7 @@ async function listAdminTestAccounts(req, res, options = {}) {
         OR u.first_name ILIKE $${params.length}
         OR u.last_name ILIKE $${params.length}
         OR COALESCE(u.market_scope, 'US') ILIKE $${params.length}
-        OR u.role ILIKE $${params.length}
+        OR u.role::text ILIKE $${params.length}
         OR COALESCE(u.phone, '') ILIKE $${params.length}
         OR COALESCE(u.specialty, '') ILIKE $${params.length}
         OR COALESCE(u.test_account_metadata::text, '') ILIKE $${params.length}
