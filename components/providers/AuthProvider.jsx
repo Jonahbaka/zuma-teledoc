@@ -30,7 +30,7 @@ function getCountryAwareLoginPath(role, pathname = '') {
   switch (role) {
     case 'admin':
     case 'super_admin':
-      return '/secure/admin';
+      return isNigeriaPath ? '/ng/admin/login' : '/secure/admin';
     case 'provider':
       return getProviderLoginPath({ pathname });
     case 'pharmacy':
