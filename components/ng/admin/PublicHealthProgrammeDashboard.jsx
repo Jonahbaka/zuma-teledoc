@@ -3,23 +3,33 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
+  AreaChart as AreaChartIcon,
   BarChart3,
   Building2,
+  CalendarDays,
   CheckCircle2,
+  CircleDot,
   ClipboardList,
+  Database,
   Download,
   FileJson,
   FileText,
   FlaskConical,
+  Gauge,
+  Globe2,
   HeartPulse,
+  Layers3,
   LineChart as LineChartIcon,
   Loader2,
   Lock,
   MapPin,
+  Network,
   Pill,
+  PieChart as PieChartIcon,
   RefreshCw,
   Settings,
   ShieldCheck,
+  Sparkles,
   Stethoscope,
   TrendingUp,
   UploadCloud,
@@ -27,12 +37,15 @@ import {
   Video,
 } from 'lucide-react';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Legend,
-  Line,
-  LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -163,6 +176,89 @@ const competitiveCoverageGroups = [
   },
 ];
 
+const accentStyles = [
+  {
+    text: 'text-blue-700',
+    icon: 'text-blue-700',
+    iconBg: 'bg-blue-100',
+    border: 'border-blue-100',
+    panel: 'bg-gradient-to-br from-blue-50 via-white to-cyan-50',
+    glow: 'shadow-blue-100/70',
+    chart: '#2563eb',
+    softChart: '#93c5fd',
+  },
+  {
+    text: 'text-emerald-700',
+    icon: 'text-emerald-700',
+    iconBg: 'bg-emerald-100',
+    border: 'border-emerald-100',
+    panel: 'bg-gradient-to-br from-emerald-50 via-white to-teal-50',
+    glow: 'shadow-emerald-100/70',
+    chart: '#059669',
+    softChart: '#6ee7b7',
+  },
+  {
+    text: 'text-purple-700',
+    icon: 'text-purple-700',
+    iconBg: 'bg-purple-100',
+    border: 'border-purple-100',
+    panel: 'bg-gradient-to-br from-purple-50 via-white to-fuchsia-50',
+    glow: 'shadow-purple-100/70',
+    chart: '#7c3aed',
+    softChart: '#c4b5fd',
+  },
+  {
+    text: 'text-amber-700',
+    icon: 'text-amber-700',
+    iconBg: 'bg-amber-100',
+    border: 'border-amber-100',
+    panel: 'bg-gradient-to-br from-amber-50 via-white to-orange-50',
+    glow: 'shadow-amber-100/70',
+    chart: '#d97706',
+    softChart: '#fcd34d',
+  },
+  {
+    text: 'text-rose-700',
+    icon: 'text-rose-700',
+    iconBg: 'bg-rose-100',
+    border: 'border-rose-100',
+    panel: 'bg-gradient-to-br from-rose-50 via-white to-pink-50',
+    glow: 'shadow-rose-100/70',
+    chart: '#e11d48',
+    softChart: '#fda4af',
+  },
+  {
+    text: 'text-cyan-700',
+    icon: 'text-cyan-700',
+    iconBg: 'bg-cyan-100',
+    border: 'border-cyan-100',
+    panel: 'bg-gradient-to-br from-cyan-50 via-white to-sky-50',
+    glow: 'shadow-cyan-100/70',
+    chart: '#0891b2',
+    softChart: '#67e8f9',
+  },
+];
+
+const chartPalette = ['#2563eb', '#059669', '#7c3aed', '#d97706', '#e11d48', '#0891b2'];
+
+const tabIcons = {
+  executive: Sparkles,
+  overview: Activity,
+  areas: Layers3,
+  'patient-access': Users,
+  teleconsultation: Video,
+  referrals: Network,
+  'pharmacy-lab': Pill,
+  facilities: Building2,
+  analytics: BarChart3,
+  forecasting: LineChartIcon,
+  reports: FileText,
+  dhis2: Database,
+  competitive: Globe2,
+  settings: Settings,
+  audit: ShieldCheck,
+};
+
 function currentPeriod() {
   return new Date().toISOString().slice(0, 7);
 }
@@ -197,67 +293,95 @@ function statusClass(status) {
 
 function StatusPill({ status }) {
   return (
-    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(status)}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold capitalize shadow-sm ${statusClass(status)}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
       {String(status || 'not configured').replace(/_/g, ' ')}
     </span>
   );
 }
 
-function EmptyState({ title, body }) {
+function EmptyState({ title, body, icon: Icon = CircleDot }) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-700">
-      <p className="font-semibold text-slate-950">{title}</p>
-      <p className="mt-2 leading-6">{body}</p>
+    <div className="rounded-2xl border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 via-white to-blue-50/50 p-6 text-sm text-slate-700 shadow-inner">
+      <div className="flex items-start gap-3">
+        <div className="rounded-xl bg-white p-2 text-slate-500 shadow-sm ring-1 ring-slate-200">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="font-bold text-slate-950">{title}</p>
+          <p className="mt-2 leading-6">{body}</p>
+        </div>
+      </div>
     </div>
   );
 }
 
-function MetricCard({ label, value, icon: Icon = Activity }) {
+function MetricCard({ label, value, icon: Icon = Activity, accentIndex = 0, hint }) {
+  const accent = accentStyles[accentIndex % accentStyles.length];
   return (
-    <Card className="border-slate-200 bg-white shadow-sm">
-      <CardContent className="flex items-start gap-4 p-5">
-        <div className="rounded-lg bg-emerald-50 p-2 text-emerald-700">
+    <Card className={`group overflow-hidden border ${accent.border} ${accent.panel} shadow-lg ${accent.glow} transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl`}>
+      <CardContent className="relative p-5">
+        <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/60 blur-2xl transition-transform group-hover:scale-125" />
+        <div className="relative flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold text-slate-600">{label}</p>
+            <p className="mt-3 text-3xl font-black tracking-tight text-slate-950">{number(value)}</p>
+            {hint && <p className="mt-2 text-xs font-medium text-slate-500">{hint}</p>}
+          </div>
+          <div className={`rounded-2xl ${accent.iconBg} p-3 ${accent.icon} shadow-sm ring-1 ring-white/80`}>
           <Icon className="h-5 w-5" />
         </div>
-        <div>
-          <p className="text-sm font-medium text-slate-600">{label}</p>
-          <p className="mt-2 text-2xl font-bold text-slate-950">{number(value)}</p>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function ChartCard({ title, description, data, type = 'line' }) {
+function ChartCard({ title, description, data, type = 'line', accentIndex = 0 }) {
+  const accent = accentStyles[accentIndex % accentStyles.length];
+  const gradientId = `chartGradient-${title.replace(/[^a-zA-Z0-9]/g, '')}-${accentIndex}`;
   return (
-    <Card className="border-slate-200 bg-white">
-      <CardHeader>
-        <CardTitle className="text-lg text-slate-950">{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
+    <Card className={`overflow-hidden border ${accent.border} bg-white/95 shadow-lg ${accent.glow}`}>
+      <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white via-slate-50 to-white">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-lg font-black text-slate-950">{title}</CardTitle>
+            <CardDescription className="mt-1 leading-6">{description}</CardDescription>
+          </div>
+          <div className={`rounded-2xl ${accent.iconBg} p-2 ${accent.icon}`}>
+            {type === 'bar' ? <BarChart3 className="h-5 w-5" /> : <AreaChartIcon className="h-5 w-5" />}
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         {!data?.length ? (
-          <EmptyState title="No chart data yet" body="This chart will populate from real operational activity as records are captured." />
+          <EmptyState title="No chart data yet" body="This chart will populate from real operational activity as records are captured." icon={BarChart3} />
         ) : (
-          <div className="h-72 w-full">
+          <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
               {type === 'bar' ? (
                 <BarChart data={data}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#059669" radius={[4, 4, 0, 0]} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <Tooltip contentStyle={{ border: '0', borderRadius: 14, boxShadow: '0 18px 45px rgba(15,23,42,.14)' }} />
+                  <Bar dataKey="value" fill={accent.chart} radius={[10, 10, 3, 3]} />
                 </BarChart>
               ) : (
-                <LineChart data={data}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="value" stroke="#047857" strokeWidth={2} dot={false} />
-                </LineChart>
+                <AreaChart data={data}>
+                  <defs>
+                    <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={accent.chart} stopOpacity={0.28} />
+                      <stop offset="95%" stopColor={accent.chart} stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <Tooltip contentStyle={{ border: '0', borderRadius: 14, boxShadow: '0 18px 45px rgba(15,23,42,.14)' }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Area type="monotone" dataKey="value" stroke={accent.chart} strokeWidth={3} fill={`url(#${gradientId})`} dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                </AreaChart>
               )}
             </ResponsiveContainer>
           </div>
@@ -267,21 +391,51 @@ function ChartCard({ title, description, data, type = 'line' }) {
   );
 }
 
-function ExecutiveKpiSection({ section }) {
+function SectionBanner({ eyebrow, title, body, icon: Icon = Sparkles, accentIndex = 0, children }) {
+  const accent = accentStyles[accentIndex % accentStyles.length];
   return (
-    <Card className="border-slate-200 bg-white">
-      <CardHeader>
-        <CardTitle className="text-lg text-slate-950">{section.title}</CardTitle>
-        {section.emptyState && <CardDescription>{section.emptyState}</CardDescription>}
+    <section className={`relative overflow-hidden rounded-3xl border ${accent.border} ${accent.panel} p-5 shadow-lg ${accent.glow}`}>
+      <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/70 blur-2xl" />
+      <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-5xl">
+          {eyebrow && <p className={`text-xs font-black uppercase tracking-[0.2em] ${accent.text}`}>{eyebrow}</p>}
+          <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950 md:text-3xl">{title}</h2>
+          {body && <p className="mt-2 max-w-4xl text-sm leading-7 text-slate-700 md:text-base">{body}</p>}
+        </div>
+        <div className={`rounded-3xl ${accent.iconBg} p-3 ${accent.icon} shadow-sm ring-1 ring-white/80`}>
+          <Icon className="h-6 w-6" />
+        </div>
+      </div>
+      {children && <div className="relative mt-4">{children}</div>}
+    </section>
+  );
+}
+
+function ExecutiveKpiSection({ section }) {
+  const sectionIndex = Math.abs(String(section.key || section.title || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0));
+  const accent = accentStyles[sectionIndex % accentStyles.length];
+  return (
+    <Card className={`overflow-hidden border ${accent.border} bg-white shadow-lg ${accent.glow}`}>
+      <CardHeader className={`${accent.panel} border-b border-white/70`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-lg font-black text-slate-950">{section.title}</CardTitle>
+            {section.emptyState && <CardDescription className="mt-1 leading-6">{section.emptyState}</CardDescription>}
+          </div>
+          <div className={`rounded-2xl ${accent.iconBg} p-2 ${accent.icon}`}>
+            <Gauge className="h-5 w-5" />
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {(section.items || []).map((item) => (
+        {(section.items || []).map((item, index) => (
           <div
             key={`${section.key}-${item.label}`}
-            className={`rounded-lg border p-3 ${item.available ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'}`}
+            className={`relative overflow-hidden rounded-2xl border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${item.available ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50'}`}
           >
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{item.label}</p>
-            <p className={`mt-2 text-lg font-bold ${item.available ? 'text-slate-950' : 'text-amber-900'}`}>{formatExecutiveValue(item)}</p>
+            <div className={`absolute right-0 top-0 h-16 w-16 translate-x-6 -translate-y-6 rounded-full ${accentStyles[index % accentStyles.length].iconBg} opacity-70`} />
+            <p className="relative text-xs font-bold uppercase tracking-wide text-slate-500">{item.label}</p>
+            <p className={`relative mt-2 text-xl font-black tracking-tight ${item.available ? 'text-slate-950' : 'text-amber-900'}`}>{formatExecutiveValue(item)}</p>
             {item.emptyState && !item.available && <p className="mt-2 text-xs leading-5 text-amber-800">{item.emptyState}</p>}
             {item.description && <p className="mt-2 text-xs leading-5 text-slate-600">{item.description}</p>}
           </div>
@@ -312,15 +466,18 @@ function IntelligenceMap({ mapData }) {
     return 8 + ((value - min) / (max - min)) * 84;
   };
   return (
-    <div className="relative h-80 overflow-hidden rounded-xl border border-slate-200 bg-[radial-gradient(circle_at_top_left,#d1fae5,transparent_35%),linear-gradient(135deg,#f8fafc,#ecfeff)]">
-      <div className="absolute inset-0 opacity-60" style={{ backgroundImage: 'linear-gradient(#cbd5e1 1px, transparent 1px), linear-gradient(90deg, #cbd5e1 1px, transparent 1px)', backgroundSize: '42px 42px' }} />
+    <div className="relative h-96 overflow-hidden rounded-3xl border border-cyan-100 bg-[radial-gradient(circle_at_18%_20%,#cffafe,transparent_30%),radial-gradient(circle_at_82%_18%,#ddd6fe,transparent_26%),linear-gradient(135deg,#f8fafc,#ecfeff_55%,#f5f3ff)] shadow-inner">
+      <div className="absolute inset-0 opacity-70" style={{ backgroundImage: 'linear-gradient(#cbd5e1 1px, transparent 1px), linear-gradient(90deg, #cbd5e1 1px, transparent 1px)', backgroundSize: '42px 42px' }} />
+      <div className="absolute left-5 top-5 rounded-2xl border border-white/80 bg-white/85 px-4 py-3 text-xs font-bold uppercase tracking-[0.2em] text-cyan-800 shadow-sm backdrop-blur">
+        FCT visibility layer
+      </div>
       {points.map((point) => {
         const left = scale(Number(point.longitude), minLng, maxLng);
         const top = 100 - scale(Number(point.latitude), minLat, maxLat);
         return (
           <div
             key={point.id}
-            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-emerald-600 p-1 shadow-lg"
+            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-white bg-gradient-to-br from-emerald-500 to-cyan-500 p-2 shadow-xl shadow-cyan-500/20 ring-4 ring-cyan-200/50"
             style={{ left: `${left}%`, top: `${top}%` }}
             title={`${point.name} (${point.lga || point.city || 'unmapped'})`}
           >
@@ -328,8 +485,8 @@ function IntelligenceMap({ mapData }) {
           </div>
         );
       })}
-      <div className="absolute bottom-3 left-3 right-3 rounded-lg border border-white/70 bg-white/90 p-3 text-xs text-slate-700 shadow-sm">
-        <p className="font-semibold text-slate-950">{points.length} mapped facility point(s)</p>
+      <div className="absolute bottom-4 left-4 right-4 rounded-2xl border border-white/80 bg-white/90 p-4 text-xs text-slate-700 shadow-lg backdrop-blur">
+        <p className="font-bold text-slate-950">{points.length} mapped facility point(s)</p>
         <p className="mt-1">Map uses configured facility coordinates only. Workload overlays appear when facility-linked activity exists.</p>
       </div>
     </div>
@@ -338,9 +495,9 @@ function IntelligenceMap({ mapData }) {
 
 function CompactTable({ title, rows, columns, empty }) {
   return (
-    <Card className="border-slate-200 bg-white">
-      <CardHeader>
-        <CardTitle className="text-lg text-slate-950">{title}</CardTitle>
+    <Card className="overflow-hidden border-slate-200 bg-white shadow-lg shadow-slate-100">
+      <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white via-slate-50 to-white">
+        <CardTitle className="text-lg font-black text-slate-950">{title}</CardTitle>
       </CardHeader>
       <CardContent>
         {!rows?.length ? (
@@ -348,12 +505,12 @@ function CompactTable({ title, rows, columns, empty }) {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[420px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <thead className="bg-slate-50/80 text-xs uppercase tracking-wide text-slate-500">
                 <tr>{columns.map((column) => <th key={column.key} className="px-3 py-2">{column.label}</th>)}</tr>
               </thead>
               <tbody>
                 {rows.map((row, index) => (
-                  <tr key={row.id || row.provider_id || row.category || row.destination || row.status || index} className="border-t border-slate-200">
+                  <tr key={row.id || row.provider_id || row.category || row.destination || row.status || index} className="border-t border-slate-100 transition-colors hover:bg-blue-50/40">
                     {columns.map((column) => (
                       <td key={column.key} className="px-3 py-2 text-slate-700">
                         {column.render ? column.render(row) : (row[column.key] ?? 'N/A')}
@@ -372,13 +529,20 @@ function CompactTable({ title, rows, columns, empty }) {
 
 function ForecastCard({ title, forecast }) {
   return (
-    <Card className="border-slate-200 bg-white">
-      <CardHeader>
-        <CardTitle className="text-lg text-slate-950">{title}</CardTitle>
-        <CardDescription>{forecast?.method ? `Method: ${String(forecast.method).replace(/_/g, ' ')}` : 'Forecasting uses aggregate operational history only.'}</CardDescription>
+    <Card className="group overflow-hidden border-purple-100 bg-gradient-to-br from-white via-purple-50/60 to-cyan-50 shadow-lg shadow-purple-100/60 transition-all hover:-translate-y-0.5 hover:shadow-xl">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-lg font-black text-slate-950">{title}</CardTitle>
+            <CardDescription className="mt-1">{forecast?.method ? `Method: ${String(forecast.method).replace(/_/g, ' ')}` : 'Forecasting uses aggregate operational history only.'}</CardDescription>
+          </div>
+          <div className="rounded-2xl bg-purple-100 p-2 text-purple-700">
+            <TrendingUp className="h-5 w-5" />
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
-        <p className="text-3xl font-bold text-slate-950">{number(forecast?.predictedValue)}</p>
+        <p className="text-4xl font-black tracking-tight text-slate-950">{number(forecast?.predictedValue)}</p>
         <div className="mt-3">
           <StatusPill status={forecast?.confidenceLabel || 'insufficient_data'} />
         </div>
@@ -392,13 +556,13 @@ function ForecastCard({ title, forecast }) {
 
 function CompetitiveCoverageGroup({ group }) {
   return (
-    <Card className="border-slate-200 bg-white">
-      <CardHeader>
-        <CardTitle className="text-lg text-slate-950">{group.title}</CardTitle>
+    <Card className="overflow-hidden border-blue-100 bg-white shadow-lg shadow-blue-100/50">
+      <CardHeader className="bg-gradient-to-br from-blue-50 via-white to-emerald-50">
+        <CardTitle className="text-lg font-black text-slate-950">{group.title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         {(group.items || []).map(([label, status]) => (
-          <div key={label} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+          <div key={label} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm">
             <span className="font-medium text-slate-800">{label}</span>
             <StatusPill status={status} />
           </div>
@@ -410,16 +574,16 @@ function CompetitiveCoverageGroup({ group }) {
 
 function ProgrammeAreaCard({ area }) {
   return (
-    <Card className="border-slate-200 bg-white">
-      <CardHeader>
-        <CardTitle className="text-lg text-slate-950">{area.title}</CardTitle>
+    <Card className="overflow-hidden border-emerald-100 bg-white shadow-lg shadow-emerald-100/50 transition-all hover:-translate-y-0.5 hover:shadow-xl">
+      <CardHeader className="bg-gradient-to-br from-emerald-50 via-white to-cyan-50">
+        <CardTitle className="text-lg font-black text-slate-950">{area.title}</CardTitle>
         <CardDescription className="leading-6">{area.description}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 sm:grid-cols-2">
         {(area.metrics || []).map((metric) => (
-          <div key={metric.key} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{metric.label}</p>
-            <p className="mt-2 text-lg font-bold text-slate-950">{typeof metric.value === 'number' ? number(metric.value) : metric.value}</p>
+          <div key={metric.key} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{metric.label}</p>
+            <p className="mt-2 text-xl font-black text-slate-950">{typeof metric.value === 'number' ? number(metric.value) : metric.value}</p>
           </div>
         ))}
       </CardContent>
@@ -644,6 +808,28 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
     ['14-day follow-up demand', executiveForecasts.followups14Day],
   ];
 
+  const heroStats = [
+    { label: 'Consultations', value: metrics.total_consultations, icon: Stethoscope, accentIndex: 0 },
+    { label: 'Teleconsults', value: metrics.teleconsultations, icon: Video, accentIndex: 1 },
+    { label: 'Referrals', value: metrics.referrals_created, icon: Network, accentIndex: 2 },
+    { label: 'Prescriptions', value: metrics.prescriptions_created, icon: Pill, accentIndex: 3 },
+  ];
+
+  const readinessBadges = [
+    ['Local Aggregate Mode', 'ready'],
+    ['DHIS2/NHMIS Dry Run', readiness.syncStatus || 'dry_run_only'],
+    ['Government Approval', dhis2Settings?.governmentApprovalStatus || 'pending'],
+    ['API Credentials', dhis2Settings?.apiCredentialsStatus || 'pending'],
+    ['NDPR Review', dhis2Settings?.ndprReviewStatus || 'pending'],
+  ];
+
+  const serviceMix = [
+    { name: 'Consultations', value: Number(metrics.total_consultations || 0), color: chartPalette[0] },
+    { name: 'Teleconsultations', value: Number(metrics.teleconsultations || 0), color: chartPalette[1] },
+    { name: 'Referrals', value: Number(metrics.referrals_created || 0), color: chartPalette[2] },
+    { name: 'Prescriptions', value: Number(metrics.prescriptions_created || 0), color: chartPalette[3] },
+  ].filter((item) => item.value > 0);
+
   const comprehensiveChartSections = [
     {
       title: 'Patient Access Charts',
@@ -711,49 +897,106 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
   ];
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-950 via-slate-950 to-teal-900 p-6 text-white shadow-sm md:p-8">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+    <div className="relative space-y-8 overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-50 via-white to-blue-50/60 p-3 sm:p-5">
+      <div className="pointer-events-none absolute -left-24 top-20 h-72 w-72 rounded-full bg-cyan-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute -right-24 top-64 h-72 w-72 rounded-full bg-purple-200/40 blur-3xl" />
+
+      <section className="relative overflow-hidden rounded-[2rem] border border-white/20 bg-[radial-gradient(circle_at_12%_20%,rgba(34,211,238,.38),transparent_30%),radial-gradient(circle_at_82%_8%,rgba(168,85,247,.35),transparent_30%),linear-gradient(135deg,#07111f,#0f2767_45%,#064e3b)] p-6 text-white shadow-2xl shadow-blue-950/20 md:p-8">
+        <div className="absolute inset-0 opacity-35" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px)', backgroundSize: '34px 34px' }} />
+        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-stretch xl:justify-between">
           <div className="max-w-4xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-200">DoctaRx Nigeria</p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">Public Health Intelligence Programme</h1>
-            <p className="mt-3 max-w-3xl text-base leading-7 text-emerald-50">
-              Executive-ready care delivery visibility, referral coordination, pharmacy/lab coordination, aggregate reporting,
-              operational forecasting, and DHIS2/NHMIS readiness for FCTA and public-health stakeholder review.
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-cyan-100 shadow-sm backdrop-blur">
+                <ShieldCheck className="h-4 w-4" /> DoctaRx Nigeria
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/15 px-3 py-1.5 text-xs font-bold text-emerald-50">
+                <Sparkles className="h-4 w-4" /> Executive command center
+              </span>
+            </div>
+            <h1 className="mt-5 max-w-4xl text-4xl font-black tracking-tight md:text-5xl">
+              Public Health Intelligence Programme
+            </h1>
+            <p className="mt-4 max-w-3xl text-base leading-8 text-blue-50 md:text-lg">
+              DoctaRx helps AMAC and public-health leaders see consultations, disease trends, referrals,
+              prescription demand, PHC utilization, and forecasted health-service needs through executive dashboards,
+              programme analytics, DHIS2/NHMIS-ready reporting, and planning intelligence.
             </p>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
-              <span className="rounded-full bg-white/10 px-3 py-1.5 text-emerald-50">No fake live DHIS2 integration</span>
-              <span className="rounded-full bg-white/10 px-3 py-1.5 text-emerald-50">Local Aggregate Mode</span>
-              <span className="rounded-full bg-white/10 px-3 py-1.5 text-emerald-50">Aggregate reporting only</span>
-              <span className="rounded-full bg-white/10 px-3 py-1.5 text-emerald-50">Awaiting official credentials</span>
-              <span className="rounded-full bg-white/10 px-3 py-1.5 text-emerald-50">Government approval pending</span>
-              <span className="rounded-full bg-white/10 px-3 py-1.5 text-emerald-50">Dry-run exports until approval</span>
-              <span className="rounded-full bg-white/10 px-3 py-1.5 text-emerald-50">NDPR-aware</span>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {readinessBadges.map(([label, status]) => (
+                <span key={label} className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold text-white/90 backdrop-blur">
+                  {label}: {String(status || 'pending').replace(/_/g, ' ')}
+                </span>
+              ))}
             </div>
           </div>
-          <div className="rounded-xl border border-white/15 bg-white/10 p-4 text-sm text-emerald-50">
-            <p className="font-semibold text-white">Reporting period</p>
-            <Input
-              type="month"
-              value={period}
-              onChange={(event) => setPeriod(event.target.value)}
-              className="mt-2 border-white/20 bg-white text-slate-950"
-            />
-            <Button onClick={loadAll} variant="secondary" className="mt-3 w-full" disabled={loading}>
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-              Refresh data
-            </Button>
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:w-[36rem]">
+            <div className="rounded-3xl border border-white/15 bg-white/12 p-4 text-sm text-blue-50 shadow-xl backdrop-blur">
+              <p className="flex items-center gap-2 font-bold text-white"><CalendarDays className="h-4 w-4" /> Reporting period</p>
+              <Input
+                type="month"
+                value={period}
+                onChange={(event) => setPeriod(event.target.value)}
+                className="mt-3 h-11 border-white/20 bg-white text-slate-950"
+              />
+              <Button onClick={loadAll} variant="secondary" className="mt-3 h-11 w-full rounded-xl font-bold" disabled={loading}>
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                Refresh intelligence
+              </Button>
+            </div>
+            <div className="rounded-3xl border border-white/15 bg-white/12 p-4 shadow-xl backdrop-blur">
+              <p className="flex items-center gap-2 text-sm font-bold text-white"><PieChartIcon className="h-4 w-4" /> Service mix</p>
+              {serviceMix.length ? (
+                <div className="mt-2 h-28">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={serviceMix} dataKey="value" nameKey="name" innerRadius={28} outerRadius={46} paddingAngle={3}>
+                        {serviceMix.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                      </Pie>
+                      <Tooltip contentStyle={{ border: '0', borderRadius: 14, boxShadow: '0 18px 45px rgba(15,23,42,.18)' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm leading-6 text-blue-50">Service mix appears when aggregate activity is captured.</p>
+              )}
+            </div>
           </div>
+        </div>
+
+        <div className="relative mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {heroStats.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <div key={stat.label} className="rounded-3xl border border-white/15 bg-white/12 p-4 shadow-xl backdrop-blur transition-all hover:-translate-y-0.5 hover:bg-white/16">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-bold text-blue-50">{stat.label}</p>
+                  <div className="rounded-2xl bg-white/16 p-2 text-white">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                </div>
+                <p className="mt-3 text-3xl font-black tracking-tight text-white">{number(stat.value)}</p>
+                <p className="mt-1 text-xs font-medium text-blue-100">Live aggregate period signal</p>
+              </div>
+            );
+          })}
         </div>
       </section>
 
       {message && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{message}</div>}
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</div>}
 
-      <Card className="border-slate-200 bg-white">
-        <CardHeader>
-          <CardTitle className="text-lg text-slate-950">Executive filters</CardTitle>
-          <CardDescription>Filters are passed to the public-health APIs. If a field is not mapped yet, the dashboard keeps a clear empty state instead of inventing data.</CardDescription>
+      <Card className="relative overflow-hidden border-blue-100 bg-white/90 shadow-xl shadow-blue-100/60 backdrop-blur">
+        <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white via-blue-50/50 to-emerald-50/50">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <CardTitle className="text-lg font-black text-slate-950">Executive control surface</CardTitle>
+              <CardDescription className="mt-1 leading-6">Filter the intelligence layer by reporting period, facility, LGA, ward, provider, and programme area. Unmapped fields show explicit guidance instead of invented numbers.</CardDescription>
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-800">
+              <Gauge className="h-4 w-4" /> Real data mode
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
@@ -767,17 +1010,18 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
             ['programmeArea', 'Programme area', 'text', 'referrals, teleconsultation'],
           ].map(([key, label, type, placeholder]) => (
             <div key={key} className="space-y-2">
-              <Label>{label}</Label>
+              <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</Label>
               <Input
                 type={type}
                 value={filters[key] || ''}
                 placeholder={placeholder}
                 onChange={(event) => setFilters((current) => ({ ...current, [key]: event.target.value }))}
+                className="h-11 rounded-xl border-slate-200 bg-slate-50/70"
               />
             </div>
           ))}
           <div className="flex gap-2 sm:col-span-2 lg:col-span-4">
-            <Button onClick={loadAll} disabled={loading}>
+            <Button onClick={loadAll} disabled={loading} className="h-11 rounded-xl bg-blue-700 font-bold text-white hover:bg-blue-800">
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               Apply filters
             </Button>
@@ -785,6 +1029,7 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
               type="button"
               variant="outline"
               onClick={() => setFilters({ dateFrom: '', dateTo: '', facilityId: '', facilityType: '', lga: '', ward: '', providerId: '', programmeArea: '' })}
+              className="h-11 rounded-xl font-bold"
             >
               Clear filters
             </Button>
@@ -801,13 +1046,17 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-2">
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-xl shadow-slate-100 backdrop-blur">
           <TabsList className="flex h-auto min-w-max flex-wrap justify-start gap-2 bg-transparent p-0">
-            {tabs.map(([value, label]) => (
-              <TabsTrigger key={value} value={value} className="rounded-lg border border-slate-200 px-3 py-2 data-[state=active]:border-emerald-600 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-800">
+            {tabs.map(([value, label]) => {
+              const TabIcon = tabIcons[value] || Activity;
+              return (
+              <TabsTrigger key={value} value={value} className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold text-slate-600 transition-all data-[state=active]:border-blue-200 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-200">
+                <TabIcon className="mr-2 h-4 w-4" />
                 {label}
               </TabsTrigger>
-            ))}
+              );
+            })}
           </TabsList>
         </div>
 
@@ -818,21 +1067,18 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
         ) : (
           <>
             <TabsContent value="executive" className="space-y-6">
-              <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <h2 className="text-2xl font-bold text-slate-950">Executive Public Health Intelligence Dashboard</h2>
-                    <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
-                      A leadership view for FCTA/HSES, FMOH, AMAC, public hospitals, PHCs, and programme directors: what is happening now,
-                      what is changing over time, where demand is rising, and which operational actions need review.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
+              <SectionBanner
+                eyebrow="Executive intelligence"
+                title="Real-time public-health command center"
+                body="A leadership view for FCTA/HSES, FMOH, AMAC, public hospitals, PHCs, and programme directors: what is happening now, what is changing over time, where demand is rising, and which operational actions need review."
+                icon={Sparkles}
+                accentIndex={0}
+              >
+                <div className="flex flex-wrap gap-2">
                     <StatusPill status={executive?.governance?.dhis2Status || readiness.status} />
                     <StatusPill status={executive?.governance?.forecastStatus || overview?.forecastStatus || 'insufficient_data'} />
                   </div>
-                </div>
-              </section>
+              </SectionBanner>
 
               <section className="grid gap-4 lg:grid-cols-2">
                 {(executive?.kpiSections || []).map((section) => (
@@ -841,34 +1087,34 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
               </section>
 
               <section className="grid gap-4 xl:grid-cols-2">
-                <ChartCard title="Consultations over time" description="Operational demand trend from real consultation records." data={executiveCharts.consultations || []} />
-                <ChartCard title="Teleconsultations over time" description="Digital access and video/audio care trend where captured." data={executiveCharts.teleconsultations || []} />
-                <ChartCard title="Referrals over time" description="PHC, public hospital, specialist, lab, and pharmacy referral movement." data={executiveCharts.referrals || []} type="bar" />
-                <ChartCard title="Patient registration growth" description="Public access growth from Nigeria patient registration records." data={executiveCharts.registrations || []} />
-                <ChartCard title="Prescription demand trend" description="Medication demand signal from prescription records, not live stock claims." data={executiveCharts.prescriptions || []} />
-                <ChartCard title="Lab and pharmacy referral trend" description="Referral coordination pressure for diagnostic and medication fulfilment planning." data={[...(executiveCharts.labReferrals || []), ...(executiveCharts.pharmacyReferrals || [])]} type="bar" />
+                <ChartCard title="Consultations over time" description="Operational demand trend from real consultation records." data={executiveCharts.consultations || []} accentIndex={0} />
+                <ChartCard title="Teleconsultations over time" description="Digital access and video/audio care trend where captured." data={executiveCharts.teleconsultations || []} accentIndex={1} />
+                <ChartCard title="Referrals over time" description="PHC, public hospital, specialist, lab, and pharmacy referral movement." data={executiveCharts.referrals || []} type="bar" accentIndex={2} />
+                <ChartCard title="Patient registration growth" description="Public access growth from Nigeria patient registration records." data={executiveCharts.registrations || []} accentIndex={3} />
+                <ChartCard title="Prescription demand trend" description="Medication demand signal from prescription records, not live stock claims." data={executiveCharts.prescriptions || []} accentIndex={4} />
+                <ChartCard title="Lab and pharmacy referral trend" description="Referral coordination pressure for diagnostic and medication fulfilment planning." data={[...(executiveCharts.labReferrals || []), ...(executiveCharts.pharmacyReferrals || [])]} type="bar" accentIndex={5} />
               </section>
 
               <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-                <Card className="border-slate-200 bg-white">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-xl text-slate-950"><MapPin className="h-5 w-5 text-emerald-700" /> Public-health visibility map</CardTitle>
+                <Card className="overflow-hidden border-cyan-100 bg-white shadow-lg shadow-cyan-100/60">
+                  <CardHeader className="bg-gradient-to-br from-cyan-50 via-white to-blue-50">
+                    <CardTitle className="flex items-center gap-2 text-xl font-black text-slate-950"><MapPin className="h-5 w-5 text-cyan-700" /> Public-health visibility map</CardTitle>
                     <CardDescription>Facility and referral map points are shown only when real facility/LGA/ward coordinates are configured.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <IntelligenceMap mapData={executiveMaps} />
                   </CardContent>
                 </Card>
-                <Card className="border-slate-200 bg-white">
-                  <CardHeader>
-                    <CardTitle className="text-xl text-slate-950">Early signal detection</CardTitle>
+                <Card className="overflow-hidden border-amber-100 bg-white shadow-lg shadow-amber-100/60">
+                  <CardHeader className="bg-gradient-to-br from-amber-50 via-white to-rose-50">
+                    <CardTitle className="flex items-center gap-2 text-xl font-black text-slate-950"><Gauge className="h-5 w-5 text-amber-700" /> Early signal detection</CardTitle>
                     <CardDescription>Generated from aggregate operational metrics only. No disease diagnosis or outbreak prediction is claimed.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {(executive?.earlyPlanningSignals || []).length ? executive.earlyPlanningSignals.map((signal) => (
-                      <div key={signal.title} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div key={signal.title} className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-amber-50/50 p-4 shadow-sm">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="font-semibold text-slate-950">{signal.title}</p>
+                          <p className="font-bold text-slate-950">{signal.title}</p>
                           <StatusPill status={signal.severity || 'info'} />
                         </div>
                         <p className="mt-2 text-sm leading-6 text-slate-700">{signal.message}</p>
@@ -935,14 +1181,14 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
                   ]}
                   empty="Facility type breakdown requires configured public-health facilities, PHCs, hospitals, or partner facilities."
                 />
-                <Card className="border-slate-200 bg-white">
-                  <CardHeader>
-                    <CardTitle className="text-lg text-slate-950">Leadership actions to consider</CardTitle>
+                <Card className="overflow-hidden border-purple-100 bg-white shadow-lg shadow-purple-100/60">
+                  <CardHeader className="bg-gradient-to-br from-purple-50 via-white to-blue-50">
+                    <CardTitle className="flex items-center gap-2 text-lg font-black text-slate-950"><Sparkles className="h-5 w-5 text-purple-700" /> Leadership actions to consider</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {(executive?.leadershipActions || []).length ? executive.leadershipActions.map((action) => (
-                      <div key={action.title} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <p className="font-semibold text-slate-950">{action.title}</p>
+                      <div key={action.title} className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-purple-50/50 p-4 shadow-sm">
+                        <p className="font-bold text-slate-950">{action.title}</p>
                         <p className="mt-2 text-sm leading-6 text-slate-700">{action.message}</p>
                       </div>
                     )) : (
@@ -952,9 +1198,9 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
                 </Card>
               </section>
 
-              <Card className="border-slate-200 bg-white">
-                <CardHeader>
-                  <CardTitle className="text-xl text-slate-950">Financial and contract justification</CardTitle>
+              <Card className="overflow-hidden border-slate-200 bg-white shadow-lg shadow-slate-100">
+                <CardHeader className="bg-gradient-to-br from-slate-50 via-white to-emerald-50">
+                  <CardTitle className="flex items-center gap-2 text-xl font-black text-slate-950"><FileText className="h-5 w-5 text-emerald-700" /> Financial and contract justification</CardTitle>
                   <CardDescription>Supports pilot value summaries only when payment, sponsorship, or service-value configuration exists.</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -976,14 +1222,14 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
 
             <TabsContent value="overview" className="space-y-6">
               <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {(overview?.metricCards || []).slice(0, 12).map((metric) => (
-                  <MetricCard key={metric.key} label={metric.label} value={metric.value} icon={metricIcons[metric.key] || Activity} />
+                {(overview?.metricCards || []).slice(0, 12).map((metric, index) => (
+                  <MetricCard key={metric.key} label={metric.label} value={metric.value} icon={metricIcons[metric.key] || Activity} accentIndex={index} />
                 ))}
               </section>
               <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-                <Card className="border-slate-200 bg-white">
-                  <CardHeader>
-                    <CardTitle className="text-xl text-slate-950">FCTA Programme Participation Readiness</CardTitle>
+                <Card className="overflow-hidden border-emerald-100 bg-white shadow-lg shadow-emerald-100/60">
+                  <CardHeader className="bg-gradient-to-br from-emerald-50 via-white to-cyan-50">
+                    <CardTitle className="flex items-center gap-2 text-xl font-black text-slate-950"><ShieldCheck className="h-5 w-5 text-emerald-700" /> FCTA Programme Participation Readiness</CardTitle>
                     <CardDescription>Configured for serious stakeholder review while official DHIS2/NHMIS inputs remain pending.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -995,7 +1241,7 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
                       {(readiness.checklist || []).slice(0, 8).map((item) => (
                         <div key={item.key} className="rounded-lg border border-slate-200 p-3">
                           <div className="flex items-center justify-between gap-3">
-                            <p className="font-semibold text-slate-950">{item.label}</p>
+                            <p className="font-bold text-slate-950">{item.label}</p>
                             <StatusPill status={item.status} />
                           </div>
                           <p className="mt-2 text-sm leading-6 text-slate-600">{item.detail}</p>
@@ -1004,14 +1250,14 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="border-slate-200 bg-white">
-                  <CardHeader>
-                    <CardTitle className="text-xl text-slate-950">Market Baseline Coverage</CardTitle>
+                <Card className="overflow-hidden border-blue-100 bg-white shadow-lg shadow-blue-100/60">
+                  <CardHeader className="bg-gradient-to-br from-blue-50 via-white to-purple-50">
+                    <CardTitle className="flex items-center gap-2 text-xl font-black text-slate-950"><Globe2 className="h-5 w-5 text-blue-700" /> Market Baseline Coverage</CardTitle>
                     <CardDescription>DoctaRx matches Nigerian telemedicine basics and adds public-health intelligence.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {competitiveCoverageGroups.flatMap((group) => group.items.map(([label, status]) => ({ label, status }))).slice(0, 12).map((item) => (
-                      <div key={item.label} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                      <div key={item.label} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm">
                         <span className="font-medium text-slate-800">{item.label}</span>
                         <StatusPill status={item.status} />
                       </div>
@@ -1027,19 +1273,19 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
 
             <TabsContent value="patient-access" className="space-y-4">
               <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="Active patients" value={metrics.active_patients} icon={Users} />
-                <MetricCard label="New registrations" value={metrics.new_patient_registrations} icon={Users} />
-                <MetricCard label="Appointment bookings" value={metrics.appointment_bookings} icon={ClipboardList} />
-                <MetricCard label="Patient access requests" value={metrics.patient_access_requests} icon={HeartPulse} />
+                <MetricCard label="Active patients" value={metrics.active_patients} icon={Users} accentIndex={0} />
+                <MetricCard label="New registrations" value={metrics.new_patient_registrations} icon={Users} accentIndex={1} />
+                <MetricCard label="Appointment bookings" value={metrics.appointment_bookings} icon={ClipboardList} accentIndex={2} />
+                <MetricCard label="Patient access requests" value={metrics.patient_access_requests} icon={HeartPulse} accentIndex={3} />
               </section>
-              <Card className="border-slate-200 bg-white">
-                <CardHeader>
-                  <CardTitle>Patient access model</CardTitle>
+              <Card className="overflow-hidden border-blue-100 bg-white shadow-lg shadow-blue-100/50">
+                <CardHeader className="bg-gradient-to-br from-blue-50 via-white to-cyan-50">
+                  <CardTitle className="flex items-center gap-2 font-black text-slate-950"><Users className="h-5 w-5 text-blue-700" /> Patient access model</CardTitle>
                   <CardDescription>Mobile-first public pages, QR-code-ready URLs, low-bandwidth access, reminders, and patient portal activity feed aggregate reports.</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-3 md:grid-cols-2">
                   {['Patient registration', 'Facility discovery', 'Provider discovery', 'Teleconsultation booking', 'Follow-up booking', 'SMS/WhatsApp notification hooks', 'QR-ready public routes', 'Low-bandwidth-friendly access'].map((item) => (
-                    <div key={item} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-800">{item}</div>
+                    <div key={item} className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-blue-50/50 p-4 text-sm font-bold text-slate-800 shadow-sm">{item}</div>
                   ))}
                 </CardContent>
               </Card>
@@ -1047,59 +1293,58 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
 
             <TabsContent value="teleconsultation" className="space-y-4">
               <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="Teleconsultations" value={metrics.teleconsultations} icon={Video} />
-                <MetricCard label="Completed consultations" value={metrics.completed_consultations} icon={CheckCircle2} />
-                <MetricCard label="Audio fallback sessions" value={metrics.audio_fallback_sessions} icon={Activity} />
-                <MetricCard label="Failed video sessions" value={metrics.failed_video_sessions} icon={Video} />
+                <MetricCard label="Teleconsultations" value={metrics.teleconsultations} icon={Video} accentIndex={0} />
+                <MetricCard label="Completed consultations" value={metrics.completed_consultations} icon={CheckCircle2} accentIndex={1} />
+                <MetricCard label="Audio fallback sessions" value={metrics.audio_fallback_sessions} icon={Activity} accentIndex={2} />
+                <MetricCard label="Failed video sessions" value={metrics.failed_video_sessions} icon={Video} accentIndex={4} />
               </section>
-              <ChartCard title="Teleconsultations over time" description="Counts are pulled from real appointment records where available." data={charts.consultations || []} />
+              <ChartCard title="Teleconsultations over time" description="Counts are pulled from real appointment records where available." data={charts.consultations || []} accentIndex={0} />
             </TabsContent>
 
             <TabsContent value="referrals" className="space-y-4">
               <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="Referrals created" value={metrics.referrals_created} icon={UploadCloud} />
-                <MetricCard label="Completed referrals" value={metrics.referrals_completed} icon={CheckCircle2} />
-                <MetricCard label="Pending referrals" value={metrics.pending_referrals} icon={ClipboardList} />
-                <MetricCard label="Lab referrals" value={metrics.lab_referrals} icon={FlaskConical} />
+                <MetricCard label="Referrals created" value={metrics.referrals_created} icon={UploadCloud} accentIndex={2} />
+                <MetricCard label="Completed referrals" value={metrics.referrals_completed} icon={CheckCircle2} accentIndex={1} />
+                <MetricCard label="Pending referrals" value={metrics.pending_referrals} icon={ClipboardList} accentIndex={3} />
+                <MetricCard label="Lab referrals" value={metrics.lab_referrals} icon={FlaskConical} accentIndex={5} />
               </section>
-              <ChartCard title="Referrals over time" description="PHC, hospital, specialist, pharmacy, and lab referrals populate this trend when captured." data={charts.referrals || []} type="bar" />
+              <ChartCard title="Referrals over time" description="PHC, hospital, specialist, pharmacy, and lab referrals populate this trend when captured." data={charts.referrals || []} type="bar" accentIndex={2} />
             </TabsContent>
 
             <TabsContent value="pharmacy-lab" className="space-y-4">
               <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="Prescriptions created" value={metrics.prescriptions_created} icon={Pill} />
-                <MetricCard label="Pharmacy referrals" value={metrics.pharmacy_referrals} icon={Pill} />
-                <MetricCard label="Lab referrals" value={metrics.lab_referrals} icon={FlaskConical} />
-                <MetricCard label="Follow-up appointments" value={metrics.followup_appointments} icon={ClipboardList} />
+                <MetricCard label="Prescriptions created" value={metrics.prescriptions_created} icon={Pill} accentIndex={3} />
+                <MetricCard label="Pharmacy referrals" value={metrics.pharmacy_referrals} icon={Pill} accentIndex={1} />
+                <MetricCard label="Lab referrals" value={metrics.lab_referrals} icon={FlaskConical} accentIndex={5} />
+                <MetricCard label="Follow-up appointments" value={metrics.followup_appointments} icon={ClipboardList} accentIndex={2} />
               </section>
-              <ChartCard title="Prescription demand trend" description="Uses prescription records only. No fake pharmacy stock or lab API integration is claimed." data={charts.prescriptions || []} />
+              <ChartCard title="Prescription demand trend" description="Uses prescription records only. No fake pharmacy stock or lab API integration is claimed." data={charts.prescriptions || []} accentIndex={3} />
             </TabsContent>
 
             <TabsContent value="facilities" className="space-y-4">
               <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="Active facilities" value={metrics.active_facilities} icon={Building2} />
-                <MetricCard label="Active providers" value={metrics.active_providers} icon={Stethoscope} />
-                <MetricCard label="Total consultations" value={metrics.total_consultations} icon={Activity} />
-                <MetricCard label="Provider workload signal" value={metrics.teleconsultations + metrics.appointment_bookings} icon={TrendingUp} />
+                <MetricCard label="Active facilities" value={metrics.active_facilities} icon={Building2} accentIndex={5} />
+                <MetricCard label="Active providers" value={metrics.active_providers} icon={Stethoscope} accentIndex={1} />
+                <MetricCard label="Total consultations" value={metrics.total_consultations} icon={Activity} accentIndex={0} />
+                <MetricCard label="Provider workload signal" value={metrics.teleconsultations + metrics.appointment_bookings} icon={TrendingUp} accentIndex={2} />
               </section>
               <EmptyState title="Facility utilization details depend on mapped facilities" body="Add PHC, public hospital, and organisation-unit mappings as FCTA/FMOH identifiers become available. Until then, DoctaRx shows operational aggregate counts without fake government IDs." />
             </TabsContent>
 
             <TabsContent value="analytics" className="space-y-4">
-              <Card className="border-slate-200 bg-white">
-                <CardHeader>
-                  <CardTitle className="text-xl text-slate-950">Full analytics coverage</CardTitle>
-                  <CardDescription>
-                    Required public-health charts are represented here. Where the current data model lacks mapped fields, DoctaRx shows an empty state and the data requirement instead of mock production values.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
+              <SectionBanner
+                eyebrow="Analytics grid"
+                title="Full public-health visibility coverage"
+                body="Required public-health charts are represented here. Where the current data model lacks mapped fields, DoctaRx shows an empty state and the data requirement instead of mock production values."
+                icon={BarChart3}
+                accentIndex={2}
+              />
               {comprehensiveChartSections.map((section) => (
                 <section key={section.title} className="space-y-3">
-                  <h3 className="text-lg font-bold text-slate-950">{section.title}</h3>
+                  <h3 className="flex items-center gap-2 text-lg font-black text-slate-950"><BarChart3 className="h-5 w-5 text-blue-700" /> {section.title}</h3>
                   <div className="grid gap-4 xl:grid-cols-2">
-                    {section.charts.map(([title, description, data]) => (
-                      <ChartCard key={`${section.title}-${title}`} title={title} description={description} data={data || []} type={title.toLowerCase().includes(' by ') || title.toLowerCase().includes('breakdown') ? 'bar' : 'line'} />
+                    {section.charts.map(([title, description, data], index) => (
+                      <ChartCard key={`${section.title}-${title}`} title={title} description={description} data={data || []} type={title.toLowerCase().includes(' by ') || title.toLowerCase().includes('breakdown') ? 'bar' : 'line'} accentIndex={index} />
                     ))}
                   </div>
                 </section>
@@ -1107,51 +1352,53 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
             </TabsContent>
 
             <TabsContent value="forecasting" className="space-y-4">
-              <Card className="border-slate-200 bg-white">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><LineChartIcon className="h-5 w-5 text-emerald-700" /> Explainable operational forecast</CardTitle>
+              <Card className="overflow-hidden border-purple-100 bg-white shadow-lg shadow-purple-100/60">
+                <CardHeader className="bg-gradient-to-br from-purple-50 via-white to-cyan-50">
+                  <CardTitle className="flex items-center gap-2 font-black text-slate-950"><LineChartIcon className="h-5 w-5 text-purple-700" /> Explainable operational forecast</CardTitle>
                   <CardDescription>No disease outbreak prediction, no diagnosis, no randomized numbers. Forecasts use moving average or simple trend projection from aggregate activity.</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-[0.8fr_1.2fr]">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-sm font-semibold text-slate-700">7-day expected consultations</p>
-                    <p className="mt-3 text-4xl font-bold text-slate-950">{number(forecast?.predictedValue)}</p>
+                  <div className="rounded-3xl border border-purple-100 bg-gradient-to-br from-purple-600 to-blue-700 p-5 text-white shadow-xl shadow-purple-200">
+                    <p className="text-sm font-bold text-purple-100">7-day expected consultations</p>
+                    <p className="mt-3 text-5xl font-black tracking-tight text-white">{number(forecast?.predictedValue)}</p>
                     <div className="mt-3"><StatusPill status={forecast?.confidenceLabel || 'insufficient_data'} /></div>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">{forecast?.explanation || 'Forecasting requires more historical activity.'}</p>
+                    <p className="mt-3 text-sm leading-6 text-purple-50">{forecast?.explanation || 'Forecasting requires more historical activity.'}</p>
                   </div>
-                  <ChartCard title="Historical activity used for forecast" description="The forecast is based only on available aggregate operational activity." data={forecast?.historicalPoints || []} />
+                  <ChartCard title="Historical activity used for forecast" description="The forecast is based only on available aggregate operational activity." data={forecast?.historicalPoints || []} accentIndex={2} />
                 </CardContent>
               </Card>
             </TabsContent>
 
             <TabsContent value="reports" className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-950">Monthly aggregate reports</h2>
-                  <p className="text-sm text-slate-600">Generate reports from real aggregate data. Exports contain no patient identifiers.</p>
-                </div>
+              <SectionBanner
+                eyebrow="Reports and exports"
+                title="Monthly aggregate reports"
+                body="Generate reports from real aggregate data. Exports contain no patient identifiers and remain DHIS2/NHMIS dry-run until official credentials, mappings, and approvals are configured."
+                icon={FileText}
+                accentIndex={5}
+              >
                 <Button onClick={generateReport} disabled={working}>
                   {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                   Generate {period} report
                 </Button>
-              </div>
-              <Card className="border-amber-200 bg-amber-50">
+              </SectionBanner>
+              <Card className="overflow-hidden border-amber-200 bg-gradient-to-r from-amber-50 via-white to-purple-50 shadow-lg shadow-amber-100/50">
                 <CardContent className="p-4 text-sm leading-6 text-amber-900">
-                  <p className="font-semibold">AI narrative generation is disabled until a provider is explicitly configured.</p>
+                  <p className="font-bold">AI narrative generation is disabled until a provider is explicitly configured.</p>
                   <p className="mt-1">
                     The module uses deterministic executive summaries and planning signals from aggregate metrics. If an AI provider is enabled later,
                     only aggregate metrics may be sent and the generation event must be audit logged.
                   </p>
                 </CardContent>
               </Card>
-              <Card className="border-slate-200 bg-white">
+              <Card className="overflow-hidden border-slate-200 bg-white shadow-lg shadow-slate-100">
                 <CardContent className="p-0">
                   {!reports.length ? (
                     <div className="p-6"><EmptyState title="No public-health report has been generated" body="Generate a monthly aggregate report when operational records are available. Empty reports are allowed but clearly show zero values." /></div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[900px] text-left text-sm">
-                        <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                        <thead className="bg-gradient-to-r from-slate-50 to-blue-50 text-xs uppercase tracking-wide text-slate-500">
                           <tr>
                             <th className="px-4 py-3">Period</th>
                             <th className="px-4 py-3">Type</th>
@@ -1163,7 +1410,7 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
                         </thead>
                         <tbody>
                           {reports.map((report) => (
-                            <tr key={report.id} className="border-t border-slate-200">
+                            <tr key={report.id} className="border-t border-slate-100 transition-colors hover:bg-blue-50/40">
                               <td className="px-4 py-3 font-semibold text-slate-950">{report.report_period}</td>
                               <td className="px-4 py-3 text-slate-700">{report.report_type}</td>
                               <td className="px-4 py-3"><StatusPill status={report.status} /></td>
@@ -1201,16 +1448,16 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
 
             <TabsContent value="dhis2" className="space-y-4">
               <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                <Card className="border-slate-200 bg-white">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-emerald-700" /> DHIS2/NHMIS readiness</CardTitle>
+                <Card className="overflow-hidden border-emerald-100 bg-white shadow-lg shadow-emerald-100/60">
+                  <CardHeader className="bg-gradient-to-br from-emerald-50 via-white to-cyan-50">
+                    <CardTitle className="flex items-center gap-2 font-black text-slate-950"><ShieldCheck className="h-5 w-5 text-emerald-700" /> DHIS2/NHMIS readiness</CardTitle>
                     <CardDescription>This is an integration-ready readiness layer. It does not claim live government integration.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {(readiness.checklist || []).map((item) => (
-                      <div key={item.key} className="rounded-lg border border-slate-200 p-3">
+                      <div key={item.key} className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-emerald-50/40 p-4 shadow-sm">
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                          <p className="font-semibold text-slate-950">{item.label}</p>
+                          <p className="font-bold text-slate-950">{item.label}</p>
                           <StatusPill status={item.status} />
                         </div>
                         <p className="mt-2 text-sm leading-6 text-slate-600">{item.detail}</p>
@@ -1218,14 +1465,14 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
                     ))}
                   </CardContent>
                 </Card>
-                <Card className="border-slate-200 bg-white">
-                  <CardHeader>
-                    <CardTitle>Governance notes</CardTitle>
+                <Card className="overflow-hidden border-blue-100 bg-white shadow-lg shadow-blue-100/60">
+                  <CardHeader className="bg-gradient-to-br from-blue-50 via-white to-purple-50">
+                    <CardTitle className="flex items-center gap-2 font-black text-slate-950"><Lock className="h-5 w-5 text-blue-700" /> Governance notes</CardTitle>
                     <CardDescription>Displayed to admins to prevent overclaiming.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {(readiness.governanceNotes || []).map((note) => (
-                      <div key={note} className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-700">
+                      <div key={note} className="flex gap-3 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-blue-50/40 p-4 text-sm leading-6 text-slate-700 shadow-sm">
                         <Lock className="mt-0.5 h-4 w-4 flex-none text-emerald-700" />
                         <span>{note}</span>
                       </div>
@@ -1251,13 +1498,13 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
             </TabsContent>
 
             <TabsContent value="competitive" className="space-y-4">
-              <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
-                <h2 className="text-2xl font-bold text-slate-950">Competitive Coverage and Public-Sector Differentiation</h2>
-                <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
-                  DoctaRx covers the Nigerian telemedicine baseline and exceeds it with public-health intelligence, NHMIS/DHIS2-ready aggregate reporting,
-                  executive visibility, explainable forecasting, dry-run exports, and governance controls.
-                </p>
-              </section>
+              <SectionBanner
+                eyebrow="Market baseline coverage"
+                title="Competitive coverage and public-sector differentiation"
+                body="DoctaRx covers the Nigerian telemedicine baseline and exceeds it with public-health intelligence, NHMIS/DHIS2-ready aggregate reporting, executive visibility, explainable forecasting, dry-run exports, and governance controls."
+                icon={Globe2}
+                accentIndex={1}
+              />
               <div className="grid gap-4 lg:grid-cols-2">
                 {competitiveCoverageGroups.map((group) => (
                   <CompetitiveCoverageGroup key={group.title} group={group} />
@@ -1266,15 +1513,15 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
             </TabsContent>
 
             <TabsContent value="settings" className="space-y-4">
-              <Card className="border-slate-200 bg-white">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><Settings className="h-5 w-5 text-emerald-700" /> DHIS2 configuration readiness</CardTitle>
+              <Card className="overflow-hidden border-purple-100 bg-white shadow-lg shadow-purple-100/60">
+                <CardHeader className="bg-gradient-to-br from-purple-50 via-white to-cyan-50">
+                  <CardTitle className="flex items-center gap-2 font-black text-slate-950"><Settings className="h-5 w-5 text-purple-700" /> DHIS2 configuration readiness</CardTitle>
                   <CardDescription>Store official IDs and approval status when received. API token fields are write-only and never displayed.</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Environment</Label>
-                    <select value={settingsForm.environment} onChange={(event) => setSettingsForm({ ...settingsForm, environment: event.target.value })} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+                    <select value={settingsForm.environment} onChange={(event) => setSettingsForm({ ...settingsForm, environment: event.target.value })} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">
                       <option value="disabled">Disabled</option>
                       <option value="sandbox">Sandbox</option>
                       <option value="production">Production</option>
@@ -1295,15 +1542,15 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
                   {['governmentApprovalStatus', 'apiCredentialsStatus', 'dataSharingAgreementStatus', 'ndprReviewStatus'].map((key) => (
                     <div key={key} className="space-y-2">
                       <Label>{key.replace(/([A-Z])/g, ' $1')}</Label>
-                      <select value={settingsForm[key] || 'pending'} onChange={(event) => setSettingsForm({ ...settingsForm, [key]: event.target.value })} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+                      <select value={settingsForm[key] || 'pending'} onChange={(event) => setSettingsForm({ ...settingsForm, [key]: event.target.value })} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">
                         <option value="pending">Pending</option>
                         <option value={key === 'apiCredentialsStatus' ? 'configured' : 'approved'}>{key === 'apiCredentialsStatus' ? 'Configured' : 'Approved'}</option>
                         <option value="rejected">Rejected</option>
                       </select>
                     </div>
                   ))}
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 md:col-span-2">
-                    <p className="font-semibold text-amber-900">Live sync safety</p>
+                  <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-rose-50 p-4 shadow-sm md:col-span-2">
+                    <p className="font-bold text-amber-900">Live sync safety</p>
                     <p className="mt-2 text-sm leading-6 text-amber-800">Keep dry-run enabled until official credentials, approval, mappings, data-sharing agreement, and server safety flag are configured.</p>
                     <div className="mt-3 flex flex-wrap gap-4 text-sm">
                       <label className="flex items-center gap-2"><input type="checkbox" checked={settingsForm.enabled === true} onChange={(event) => setSettingsForm({ ...settingsForm, enabled: event.target.checked })} /> Integration enabled</label>
@@ -1317,9 +1564,9 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
                 </CardContent>
               </Card>
               {dhis2Settings && (
-                <Card className="border-slate-200 bg-white">
-                  <CardHeader>
-                    <CardTitle>Current DHIS2 readiness status</CardTitle>
+                <Card className="overflow-hidden border-slate-200 bg-white shadow-lg shadow-slate-100">
+                  <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50">
+                    <CardTitle className="font-black text-slate-950">Current DHIS2 readiness status</CardTitle>
                   </CardHeader>
                   <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <div><p className="text-xs text-slate-500">Base URL</p><StatusPill status={dhis2Settings.hasBaseUrl ? 'configured' : 'pending'} /></div>
@@ -1332,9 +1579,9 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
             </TabsContent>
 
             <TabsContent value="audit" className="space-y-4">
-              <Card className="border-slate-200 bg-white">
-                <CardHeader>
-                  <CardTitle>Public-health audit logs</CardTitle>
+              <Card className="overflow-hidden border-slate-200 bg-white shadow-lg shadow-slate-100">
+                <CardHeader className="bg-gradient-to-br from-slate-50 via-white to-emerald-50">
+                  <CardTitle className="flex items-center gap-2 font-black text-slate-950"><ShieldCheck className="h-5 w-5 text-emerald-700" /> Public-health audit logs</CardTitle>
                   <CardDescription>Report generation, approvals, exports, dry-run previews, and settings updates are logged.</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1343,9 +1590,9 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
                   ) : (
                     <div className="space-y-3">
                       {auditLogs.map((log) => (
-                        <div key={log.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+                        <div key={log.id} className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4 text-sm shadow-sm">
                           <div className="flex flex-wrap items-center justify-between gap-3">
-                            <p className="font-semibold text-slate-950">{log.action}</p>
+                            <p className="font-bold text-slate-950">{log.action}</p>
                             <span className="text-slate-500">{log.created_at ? new Date(log.created_at).toLocaleString() : 'N/A'}</span>
                           </div>
                           <p className="mt-1 text-slate-600">Actor: {log.actor_name || log.actor_email || 'System/Admin'}</p>
