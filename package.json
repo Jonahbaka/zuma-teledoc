@@ -20,7 +20,8 @@
     "verify:admin-test-access": "node scripts/verify-admin-test-access-flow.cjs",
     "verify:testing-link-lifecycle": "node scripts/verify-testing-link-lifecycle.cjs",
     "lint": "eslint .",
-    "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\""
+    "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\"",
+    "validate:db": "node scripts/validate-db.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",

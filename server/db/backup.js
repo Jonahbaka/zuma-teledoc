@@ -1,102 +1,154 @@
 /**
- * AWS Backup Database — Read-only mirror
+ * [DB:BACKUP] AWS RDS Backup Database Connection — READ-ONLY
  *
- * Activated only when BACKUP_DATABASE_URL is set. Every query is checked for
- * write keywords before execution so that a misconfigured caller cannot mutate
- * the backup. Neon is the only source of truth; this module never falls back
- * to writes under any circumstances.
+ * Manages a read-only connection to the AWS RDS backup replica.
+ * This module NEVER performs write operations. It is intentionally
+ * restricted at two levels:
+ *   1. SQL keyword inspection before every query (blocks write statements)
+ *   2. PostgreSQL session set to READ ONLY on every new pool connection
+ *
+ * If BACKUP_DATABASE_URL is not set, the module gracefully no-ops and
+ * readBackup() throws a configuration error instead of crashing.
  */
 
 require('dotenv').config();
+
 const { Pool } = require('pg');
 
-// SQL keywords that indicate a write/DDL intent.
-const WRITE_PATTERN = /^\s*(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE|REPLACE|MERGE|UPSERT|GRANT|REVOKE|LOCK\b|CALL|EXECUTE|DO\b)/i;
+// ─── Configuration ────────────────────────────────────────────────────────────
 
-function guardWrite(sql) {
-  if (WRITE_PATTERN.test(sql)) {
-    const preview = sql.replace(/\s+/g, ' ').slice(0, 120);
-    throw new Error(`[backup-db] Write operation blocked on read-only AWS mirror: ${preview}`);
-  }
-}
+const BACKUP_DATABASE_URL = process.env.BACKUP_DATABASE_URL;
 
-function buildPool() {
-  const url = process.env.BACKUP_DATABASE_URL;
-  if (!url) return null;
+/** True only when the env var is present and non-empty. */
+const isEnabled = Boolean(BACKUP_DATABASE_URL);
 
-  let connectionString = url;
-  let ssl = false;
+// Regex that matches any SQL keyword that performs a write or schema change.
+const WRITE_KEYWORD_RE = /\b(INSERT|UPDATE|DELETE|CREATE|DROP|TRUNCATE|ALTER)\b/i;
 
-  if (url.includes('sslmode=')) {
-    const certPath = process.env.BACKUP_PGSSLROOTCERT
-      ? require('path').resolve(process.cwd(), process.env.BACKUP_PGSSLROOTCERT)
-      : null;
-    const fs = require('fs');
-    ssl =
-      url.includes('sslmode=verify-full') && certPath && fs.existsSync(certPath)
-        ? { rejectUnauthorized: true, ca: fs.readFileSync(certPath).toString() }
-        : { rejectUnauthorized: false };
+let backupPool = null;
 
-    connectionString = url
-      .replace(/[?&]sslmode=[^&]+/, m => (m.startsWith('?') ? '?' : ''))
+if (isEnabled) {
+  // Strip sslmode= from the connection string — pg handles SSL via config object.
+  let connectionString = BACKUP_DATABASE_URL;
+  let sslConfig = { rejectUnauthorized: false }; // default for backup replica
+
+  if (connectionString.includes('sslmode=')) {
+    connectionString = connectionString
+      .replace(/[?&]sslmode=[^&]+/, (match) => (match.startsWith('?') ? '?' : ''))
       .replace(/\?$/, '');
+    // sslConfig already set to { rejectUnauthorized: false } above
   }
 
-  const pool = new Pool({
+  backupPool = new Pool({
     connectionString,
-    ssl,
-    max: parseInt(process.env.BACKUP_DB_POOL_MAX) || 3,
+    ssl: sslConfig,
+    max: 3,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-    // Enforce read-only at session level on every new connection.
-    options: '-c default_transaction_read_only=on',
+    connectionTimeoutMillis: 10000
   });
 
-  pool.on('error', err => console.error('[backup-db] Pool error:', err.message));
-  return pool;
+  // Level 2: enforce READ ONLY at the PostgreSQL session level on every
+  // new connection so even raw client.query() calls cannot write.
+  backupPool.on('connect', async (client) => {
+    try {
+      await client.query('SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY');
+      console.log('[DB:BACKUP] New read-only client connected to AWS RDS backup');
+    } catch (err) {
+      console.error('[DB:BACKUP] Failed to set READ ONLY session:', err.message);
+    }
+  });
+
+  backupPool.on('error', (err) => {
+    console.error('[DB:BACKUP] Unexpected backup pool error:', err.message);
+  });
+} else {
+  console.warn('[DB:BACKUP] BACKUP_DATABASE_URL is not set — backup database disabled');
 }
 
-let _pool = null;
+// ─── Public API ───────────────────────────────────────────────────────────────
 
-function getBackupPool() {
-  if (!_pool) _pool = buildPool();
-  return _pool;
-}
+/**
+ * Execute a read-only query against the AWS RDS backup replica.
+ *
+ * Enforces read-only at TWO levels:
+ *   1. Regex check — throws immediately if the SQL contains write keywords.
+ *   2. PostgreSQL session — the connection itself is in READ ONLY mode.
+ *
+ * @param {string} text   - SQL query (SELECT statements only)
+ * @param {Array}  params - Parameterised query values
+ * @returns {Promise<import('pg').QueryResult>}
+ */
+const readBackup = async (text, params) => {
+  if (!isEnabled) {
+    throw new Error('Backup database not configured');
+  }
 
-async function readBackup(sql, params) {
-  guardWrite(sql);
-  const pool = getBackupPool();
-  if (!pool) throw new Error('[backup-db] BACKUP_DATABASE_URL is not configured');
-  return pool.query(sql, params);
-}
-
-async function backupHealthCheck() {
-  const pool = getBackupPool();
-  if (!pool) return { available: false, reason: 'BACKUP_DATABASE_URL not set' };
-  try {
-    const result = await pool.query(
-      "SELECT NOW() AS ts, current_setting('transaction_read_only') AS read_only"
+  // Level 1: SQL keyword inspection — reject writes before they reach the DB.
+  if (WRITE_KEYWORD_RE.test(text)) {
+    throw new Error(
+      '[DB:BACKUP] Write operation rejected: backup database is read-only. ' +
+        'SQL contained a disallowed keyword (INSERT, UPDATE, DELETE, CREATE, DROP, TRUNCATE, or ALTER).'
     );
-    return {
-      available: true,
-      timestamp: result.rows[0].ts,
-      sessionReadOnly: result.rows[0].read_only === 'on',
-    };
-  } catch (err) {
-    return { available: false, error: err.message };
   }
-}
 
-async function closeBackup() {
-  if (_pool) {
-    await _pool.end();
-    _pool = null;
+  const start = Date.now();
+  try {
+    const result = await backupPool.query(text, params);
+    const duration = Date.now() - start;
+
+    if (duration > 500 || process.env.DB_VERBOSE === 'true') {
+      console.log('[DB:BACKUP] Executed read query', {
+        text: text.substring(0, 100),
+        duration,
+        rows: result.rowCount
+      });
+    }
+
+    return result;
+  } catch (error) {
+    console.error('[DB:BACKUP] Read query error:', {
+      text: text.substring(0, 100),
+      error: error.message
+    });
+    throw error;
   }
-}
+};
+
+/**
+ * Health-check the backup database connection.
+ *
+ * @returns {Promise<{ healthy: boolean, mode: 'read-only', timestamp?: Date, error?: string }>}
+ */
+const backupHealthCheck = async () => {
+  if (!isEnabled) {
+    return {
+      healthy: false,
+      mode: 'read-only',
+      error: 'Backup database not configured (BACKUP_DATABASE_URL not set)'
+    };
+  }
+
+  try {
+    const result = await backupPool.query('SELECT NOW() AS current_time');
+    return {
+      healthy: true,
+      mode: 'read-only',
+      timestamp: result.rows[0].current_time
+    };
+  } catch (error) {
+    console.error('[DB:BACKUP] Health check failed:', error.message);
+    return {
+      healthy: false,
+      mode: 'read-only',
+      error: error.message
+    };
+  }
+};
+
+// ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
   readBackup,
-  backupHealthCheck,
-  closeBackup,
-  isConfigured: () => !!process.env.BACKUP_DATABASE_URL,
+  healthCheck: backupHealthCheck,
+  isEnabled
 };

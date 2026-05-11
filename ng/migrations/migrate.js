@@ -60,8 +60,8 @@ async function runNgMigrations(pool) {
 // Allow standalone execution
 if (require.main === module) {
   const { getPool } = require('../../server/db');
-  const pool = getPool();
-  runNgMigrations(pool)
+  Promise.resolve(getPool())
+    .then(pool => runNgMigrations(pool))
     .then(result => {
       console.log('[NG] Migration result:', result);
       process.exit(0);

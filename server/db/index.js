@@ -1,7 +1,11 @@
 /**
  * PostgreSQL Database Connection Pool
- * Primary: Neon (DATABASE_URL with sslmode=require)
- * Backup:  AWS RDS (BACKUP_DATABASE_URL, read-only — see ./backup.js)
+ * Production-ready with SSL/TLS support for Neon (primary) and AWS RDS (backup).
+ *
+ * Neon endpoints advertise both A and AAAA records; many networks cannot route
+ * IPv6, causing ETIMEDOUT on the default dual-stack lookup. We pre-resolve to
+ * IPv4 and pass servername for TLS SNI before creating the Pool.
+ * All other URL types follow the original synchronous path.
  */
 
 require('dotenv').config();
@@ -9,85 +13,87 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const { resolveNeonUrl } = require('./resolve-neon-url');
 
-// Database configuration
-let connectionString = process.env.DATABASE_URL;
+// ─── SSL config for non-Neon URLs ────────────────────────────────────────────
+function buildSslConfig(rawUrl) {
+  if (!rawUrl || !rawUrl.includes('sslmode=')) return false;
 
-// Neon endpoints sleep after 5 min of inactivity; first query after wake has
-// ~500 ms cold-start latency — raise connection timeout accordingly.
-const isNeon = connectionString && connectionString.includes('neon.tech');
-
-// Configure SSL
-let sslConfig = false;
-if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('sslmode=')) {
   const certPath = process.env.PGSSLROOTCERT
     ? path.resolve(process.cwd(), process.env.PGSSLROOTCERT)
     : null;
 
-  if (process.env.DATABASE_URL.includes('sslmode=verify-full') && certPath && fs.existsSync(certPath)) {
-    sslConfig = {
-      rejectUnauthorized: true,
-      ca: fs.readFileSync(certPath).toString()
-    };
-  } else {
-    // Neon and most managed PG providers: SSL required, cert not pinned.
-    sslConfig = { rejectUnauthorized: false };
+  if (rawUrl.includes('sslmode=verify-full') && certPath && fs.existsSync(certPath)) {
+    return { rejectUnauthorized: true, ca: fs.readFileSync(certPath).toString() };
   }
-
-  // Strip sslmode param — pg handles SSL via the config object above
-  connectionString = connectionString.replace(/[?&]sslmode=[^&]+/, (match) =>
-    match.startsWith('?') ? '?' : ''
-  ).replace(/\?$/, '');
+  return { rejectUnauthorized: false };
 }
 
-// Neon free tier: 10 concurrent connections max (pooled endpoint raises this).
-// Keep the pool small so we don't saturate the branch limit.
-const defaultPoolMax = isNeon ? 5 : 10;
+// ─── Lazy pool (initialized on first use after Neon IPv4 resolution) ─────────
+let _pool = null;
+let _poolInit = null;
 
-const dbConfig = {
-  connectionString,
-  ssl: sslConfig,
-  max: parseInt(process.env.DB_POOL_MAX) || defaultPoolMax,
-  keepAlive: true,
-  keepAliveInitialDelayMillis: parseInt(process.env.DB_KEEPALIVE_DELAY_MS, 10) || 10000,
+async function initPool() {
+  const rawUrl = process.env.DATABASE_URL;
+  const isNeon = rawUrl && rawUrl.includes('neon.tech');
 
-  idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MS, 10) || 30000,
-  // Neon cold-start can take up to ~2 s; give 15 s on Neon, 8 s elsewhere.
-  connectionTimeoutMillis: parseInt(process.env.DB_POOL_CONN_TIMEOUT_MS, 10) || (isNeon ? 15000 : 8000),
-  query_timeout: parseInt(process.env.DB_QUERY_TIMEOUT_MS, 10) || 8000,
+  let connectionString, ssl;
 
-  allowExitOnIdle: false,
-};
+  if (isNeon) {
+    ({ connectionString, ssl } = await resolveNeonUrl(rawUrl));
+  } else {
+    ssl = buildSslConfig(rawUrl);
+    connectionString = rawUrl
+      ? rawUrl.replace(/[?&]sslmode=[^&]+/, (m) => (m.startsWith('?') ? '?' : '')).replace(/\?$/, '')
+      : rawUrl;
+  }
 
-const pool = new Pool(dbConfig);
+  const pool = new Pool({
+    connectionString,
+    ssl,
+    max: isNeon ? 5 : (parseInt(process.env.DB_POOL_MAX) || 10),
+    keepAlive: true,
+    keepAliveInitialDelayMillis: parseInt(process.env.DB_KEEPALIVE_DELAY_MS, 10) || 10000,
+    idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MS, 10) || 30000,
+    connectionTimeoutMillis: isNeon ? 15000 : (parseInt(process.env.DB_POOL_CONN_TIMEOUT_MS, 10) || 8000),
+    query_timeout: parseInt(process.env.DB_QUERY_TIMEOUT_MS, 10) || 8000,
+    allowExitOnIdle: false,
+  });
 
-// Connection error handling - DO NOT exit, just log
-pool.on('error', (err) => {
-  console.error('Unexpected database pool error:', err);
-  // DO NOT process.exit() - this kills Cloud Run containers before port binds
-});
+  pool.on('error', (err) => {
+    console.error('Unexpected database pool error:', err);
+    // DO NOT process.exit() — kills Cloud Run containers before port binds
+  });
 
-pool.on('connect', () => {
-  console.log(`[db] New client connected to ${isNeon ? 'Neon (primary)' : 'PostgreSQL'}`);
-});
+  pool.on('connect', () => {
+    console.log('New client connected to PostgreSQL');
+  });
 
-/**
- * Execute a query with parameters
- * @param {string} text - SQL query
- * @param {Array} params - Query parameters
- * @returns {Promise<Object>} Query result
- */
+  return pool;
+}
+
+function getPoolInstance() {
+  if (_pool) return Promise.resolve(_pool);
+  if (!_poolInit) {
+    _poolInit = initPool().then((p) => {
+      _pool = p;
+      return p;
+    });
+  }
+  return _poolInit;
+}
+
+// ─── Public API ──────────────────────────────────────────────────────────────
+
 const query = async (text, params) => {
+  const pool = await getPoolInstance();
   const start = Date.now();
   try {
     const result = await pool.query(text, params);
     const duration = Date.now() - start;
-
-    // Only log slow queries (>500ms) or in verbose mode to reduce noise
     if (duration > 500 || process.env.DB_VERBOSE === 'true') {
       console.log('Executed query', { text: text.substring(0, 100), duration, rows: result.rowCount });
     }
-
     return result;
   } catch (error) {
     console.error('Database query error:', { text: text.substring(0, 100), error: error.message });
@@ -95,40 +101,23 @@ const query = async (text, params) => {
   }
 };
 
-/**
- * Get a client from the pool for transactions
- * @returns {Promise<Object>} Database client
- */
 const getClient = async () => {
+  const pool = await getPoolInstance();
   const client = await pool.connect();
   const originalQuery = client.query.bind(client);
   const release = client.release.bind(client);
 
-  // Track query timeout
   const timeout = setTimeout(() => {
     console.error('Client has been checked out for more than 30 seconds!');
   }, 30000);
 
-  client.release = () => {
-    clearTimeout(timeout);
-    return release();
-  };
-
-  client.query = (...args) => {
-    return originalQuery(...args);
-  };
-
+  client.release = () => { clearTimeout(timeout); return release(); };
+  client.query = (...args) => originalQuery(...args);
   return client;
 };
 
-/**
- * Execute a transaction with multiple queries
- * @param {Function} callback - Function that receives client and executes queries
- * @returns {Promise<*>} Transaction result
- */
 const transaction = async (callback) => {
   const client = await getClient();
-
   try {
     await client.query('BEGIN');
     const result = await callback(client);
@@ -142,10 +131,6 @@ const transaction = async (callback) => {
   }
 };
 
-/**
- * Check database connection health
- * @returns {Promise<boolean>} Connection status
- */
 const healthCheck = async () => {
   try {
     const result = await query('SELECT NOW() as current_time');
@@ -155,18 +140,16 @@ const healthCheck = async () => {
   }
 };
 
-/**
- * Close all connections in the pool
- */
 const close = async () => {
-  await pool.end();
-  console.log('Database pool closed');
+  if (_pool) {
+    await _pool.end();
+    _pool = null;
+    _poolInit = null;
+    console.log('Database pool closed');
+  }
 };
 
-/**
- * Return the raw pool (used by NG region services)
- */
-const getPool = () => pool;
+const getPool = async () => getPoolInstance();
 
 module.exports = {
   query,
@@ -175,6 +158,4 @@ module.exports = {
   transaction,
   healthCheck,
   close,
-  pool
 };
-

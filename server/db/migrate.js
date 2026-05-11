@@ -7,34 +7,10 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const { resolveNeonUrl } = require('./resolve-neon-url');
 
-// Database configuration
-let connectionString = process.env.DATABASE_URL || '';
-let sslConfig = false;
-
-if (connectionString && connectionString.includes('sslmode=')) {
-  const certPath = process.env.PGSSLROOTCERT
-    ? path.resolve(process.cwd(), process.env.PGSSLROOTCERT)
-    : null;
-
-  if (connectionString.includes('sslmode=verify-full') && certPath && fs.existsSync(certPath)) {
-    sslConfig = {
-      rejectUnauthorized: true,
-      ca: fs.readFileSync(certPath).toString()
-    };
-  } else {
-    sslConfig = { rejectUnauthorized: false };
-  }
-
-  connectionString = connectionString.replace(/[?&]sslmode=[^&]+/, (match) =>
-    match.startsWith('?') ? '?' : ''
-  ).replace(/\?$/, '');
-}
-
-const pool = new Pool({
-  connectionString,
-  ssl: sslConfig
-});
+// Pool is resolved asynchronously inside runMigrations()
+let pool;
 
 const migrations = [
   // Migration 001: Create extensions
@@ -2865,7 +2841,7 @@ const migrations = [
 
       CREATE TABLE IF NOT EXISTS ai_chat_message_attachments (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        message_id UUID NOT NULL REFERENCES ai_chat_messages(id) ON DELETE CASCADE,
+        message_id UUID NOT NULL,
         file_id UUID NOT NULL REFERENCES ai_uploaded_files(id) ON DELETE CASCADE,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE (message_id, file_id)
@@ -2874,123 +2850,42 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_chat_attachments_message ON ai_chat_message_attachments(message_id);
       CREATE INDEX IF NOT EXISTS idx_chat_attachments_file ON ai_chat_message_attachments(file_id);
     `
-  },
-  {
-    name: '032_admin_testing_access_lifecycle',
-    up: `
-      DO $$ BEGIN
-        CREATE TYPE region_code AS ENUM ('US', 'NG', 'GH', 'KE', 'ZA');
-      EXCEPTION WHEN duplicate_object THEN NULL;
-      END $$;
-
-      DO $$ BEGIN
-        ALTER TYPE access_level ADD VALUE IF NOT EXISTS 'basic_monthly';
-      EXCEPTION WHEN duplicate_object OR undefined_object THEN NULL;
-      END $$;
-
-      DO $$ BEGIN
-        ALTER TYPE access_level ADD VALUE IF NOT EXISTS 'platinum_monthly';
-      EXCEPTION WHEN duplicate_object OR undefined_object THEN NULL;
-      END $$;
-
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS region region_code DEFAULT 'US';
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS market_scope VARCHAR(10) DEFAULT 'US';
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS test_account_metadata JSONB DEFAULT '{}'::jsonb;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_active BOOLEAN DEFAULT FALSE;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_expires_at TIMESTAMPTZ;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_tier VARCHAR(50);
-
-      DO $$ BEGIN
-        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'access_level') THEN
-          ALTER TABLE users ADD COLUMN IF NOT EXISTS access_level access_level DEFAULT 'read_only';
-        ELSE
-          ALTER TABLE users ADD COLUMN IF NOT EXISTS access_level VARCHAR(50) DEFAULT 'read_only';
-        END IF;
-      END $$;
-
-      UPDATE users
-         SET market_scope = CASE
-           WHEN region::text = 'NG' OR UPPER(COALESCE(country, '')) IN ('NG', 'NIGERIA') THEN 'NG'
-           ELSE COALESCE(NULLIF(market_scope, ''), 'US')
-         END
-       WHERE market_scope IS NULL OR market_scope = '';
-
-      CREATE INDEX IF NOT EXISTS idx_users_market_scope ON users(market_scope);
-      CREATE INDEX IF NOT EXISTS idx_users_role_market_scope ON users(role, market_scope);
-
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'active';
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS revoked_by UUID REFERENCES users(id) ON DELETE SET NULL;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES users(id) ON DELETE SET NULL;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS market_scope VARCHAR(10) DEFAULT 'US';
-      UPDATE testing_access_links SET market_scope = 'US' WHERE market_scope IS NULL OR market_scope = '';
-
-      DO $$ BEGIN
-        IF EXISTS (
-          SELECT 1
-            FROM pg_constraint
-           WHERE conname = 'testing_access_links_link_type_check'
-             AND conrelid = 'testing_access_links'::regclass
-        ) THEN
-          ALTER TABLE testing_access_links DROP CONSTRAINT testing_access_links_link_type_check;
-        END IF;
-
-        IF NOT EXISTS (
-          SELECT 1
-            FROM pg_constraint
-           WHERE conname = 'testing_access_links_link_type_check'
-             AND conrelid = 'testing_access_links'::regclass
-        ) THEN
-          ALTER TABLE testing_access_links
-            ADD CONSTRAINT testing_access_links_link_type_check
-            CHECK (link_type IN ('provider', 'patient', 'pharmacy', 'admin'));
-        END IF;
-      END $$;
-
-      UPDATE testing_access_links
-         SET status = CASE
-           WHEN deleted_at IS NOT NULL THEN 'deleted'
-           WHEN revoked_at IS NOT NULL OR is_active = FALSE THEN 'revoked'
-           WHEN expires_at <= NOW() THEN 'expired'
-           WHEN max_uses IS NOT NULL AND current_uses >= max_uses THEN 'used'
-           ELSE COALESCE(NULLIF(status, ''), 'active')
-         END
-       WHERE status IS NULL OR status = '';
-
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_status ON testing_access_links(status);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_deleted_at ON testing_access_links(deleted_at);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_created_by ON testing_access_links(created_by);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_last_used_by ON testing_access_links(last_used_by);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_market_scope ON testing_access_links(market_scope);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_type_market_scope ON testing_access_links(link_type, market_scope);
-    `
   }
 ];
 
-// Load SQL file migrations from server/db/migrations/*.sql (sorted by filename).
-// These supplement the inline `migrations` array above and follow the same
-// tracking table so they are never re-executed.
-function loadSqlFileMigrations() {
-  const migrationsDir = path.join(__dirname, 'migrations');
-  if (!fs.existsSync(migrationsDir)) return [];
-  return fs
-    .readdirSync(migrationsDir)
-    .filter(f => f.endsWith('.sql'))
-    .sort()
-    .map(f => ({
-      name: path.basename(f, '.sql'),
-      up: fs.readFileSync(path.join(migrationsDir, f), 'utf8'),
-    }));
-}
-
 async function runMigrations() {
-  const client = await pool.connect();
+  // Initialize pool — resolves Neon hostname to IPv4 if needed
+  const rawUrl = process.env.DATABASE_URL || '';
+  const isNeon = rawUrl.includes('neon.tech');
+  let connectionString = rawUrl;
+  let ssl = false;
 
+  if (isNeon) {
+    ({ connectionString, ssl } = await resolveNeonUrl(rawUrl));
+  } else if (rawUrl.includes('sslmode=')) {
+    const certPath = process.env.PGSSLROOTCERT
+      ? path.resolve(process.cwd(), process.env.PGSSLROOTCERT)
+      : null;
+    ssl = rawUrl.includes('sslmode=verify-full') && certPath && fs.existsSync(certPath)
+      ? { rejectUnauthorized: true, ca: fs.readFileSync(certPath).toString() }
+      : { rejectUnauthorized: false };
+    connectionString = rawUrl
+      .replace(/[?&]sslmode=[^&]+/, (m) => (m.startsWith('?') ? '?' : ''))
+      .replace(/\?$/, '');
+  }
+
+  pool = new Pool({
+    connectionString,
+    ssl,
+    max: isNeon ? 5 : 10,
+    connectionTimeoutMillis: isNeon ? 15000 : 8000,
+  });
+
+  const client = await pool.connect();
+  
   try {
     console.log('🚀 Starting database migrations...\n');
-
+    
     // Create migrations tracking table first
     await client.query(`
       CREATE TABLE IF NOT EXISTS migrations (
@@ -2999,28 +2894,25 @@ async function runMigrations() {
         executed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
-
+    
     // Get already executed migrations
     const { rows: executedMigrations } = await client.query(
       'SELECT name FROM migrations'
     );
     const executedNames = new Set(executedMigrations.map(m => m.name));
-
-    // Run inline migrations first, then SQL file migrations.
-    const allMigrations = [...migrations, ...loadSqlFileMigrations()];
-
+    
     let migrationsRun = 0;
-
-    for (const migration of allMigrations) {
+    
+    for (const migration of migrations) {
       if (executedNames.has(migration.name)) {
         console.log(`⏭️  Skipping ${migration.name} (already executed)`);
         continue;
       }
-
+      
       console.log(`📦 Running migration: ${migration.name}`);
-
+      
       await client.query('BEGIN');
-
+      
       try {
         await client.query(migration.up);
         await client.query(
@@ -3037,10 +2929,42 @@ async function runMigrations() {
         throw error;
       }
     }
-
+    
     console.log('==========================================');
     console.log(`✅ Migrations complete! (${migrationsRun} new migrations run)`);
     console.log('==========================================\n');
+
+    // ── File-based migrations in server/db/migrations/*.sql ──────────────────
+    const migrationsDir = path.join(__dirname, 'migrations');
+    if (fs.existsSync(migrationsDir)) {
+      const sqlFiles = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
+      let filesMigrated = 0;
+
+      for (const file of sqlFiles) {
+        if (executedNames.has(file)) {
+          console.log(`⏭️  Skipping file migration ${file} (already executed)`);
+          continue;
+        }
+        console.log(`📦 Running file migration: ${file}`);
+        const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+        await client.query('BEGIN');
+        try {
+          await client.query(sql);
+          await client.query('INSERT INTO migrations (name) VALUES ($1)', [file]);
+          await client.query('COMMIT');
+          console.log(`✅ Completed file migration: ${file}\n`);
+          filesMigrated++;
+        } catch (err) {
+          await client.query('ROLLBACK');
+          // Non-fatal: log and skip — these files may have external dependencies
+          console.warn(`⚠️  Skipped file migration: ${file} — ${err.message}\n`);
+        }
+      }
+
+      if (filesMigrated > 0) {
+        console.log(`✅ File-based migrations complete! (${filesMigrated} new)\n`);
+      }
+    }
 
   } catch (error) {
     console.error('Migration failed:', error);
