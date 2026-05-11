@@ -29,10 +29,10 @@ function buildDeployCommand() {
     "(sudo find /etc/nginx -name '*.conf' -exec grep -l 'location.*_next' {} \\; 2>/dev/null | xargs -r sudo perl -0pi -e 's#location\\s+(?:\\^~\\s+)?/_next/\\s*\\{[^}]*\\}#location ^~ /_next/ {\\n    alias /home/ec2-user/zuma-teledoc/.next/;\\n    expires 1y;\\n    access_log off;\\n    add_header Cache-Control \"public, immutable\";\\n}#sg' 2>/dev/null || true)",
     "(sudo find /etc/nginx -name '*.conf' -exec grep -l 'server_name.*doctarx' {} \\; 2>/dev/null | xargs -r sudo perl -0pi -e 's#location\\s+(?:=\\s+|~\\*?\\s+|\\^~\\s+)?[^\\{]*_next[^\\{]*\\{[^}]*\\}\\s*##sg; s#(server_name[^;]*doctarx[^;]*;)#$1\\n    location ^~ /_next/static/ {\\n        alias /home/ec2-user/zuma-teledoc/.next/static/;\\n        expires 1y;\\n        access_log off;\\n        add_header Cache-Control \"public, immutable\";\\n    }\\n    location ^~ /_next/ {\\n        alias /home/ec2-user/zuma-teledoc/.next/;\\n        expires 1y;\\n        access_log off;\\n        add_header Cache-Control \"public, immutable\";\\n    }\\n#sg' 2>/dev/null || true)",
     '(sudo nginx -t 2>&1 && sudo nginx -s reload 2>&1 || true)',
-    '(pm2 delete doctarx 2>/dev/null || true)',
-    'sleep 1',
-    `(pm2 restart ${PM2_APP_NAME} --update-env || pm2 start npm --name ${PM2_APP_NAME} -- start)`,
-    `(pm2 restart cronops --update-env || pm2 start npm --name cronops --cwd ${CRONOPS_ROOT} -- run start:prod)`,
+    // Zero-downtime reload: reload respawns workers one-by-one without dropping connections.
+    // Falls back to start via ecosystem config if the app is not yet registered in PM2.
+    `(pm2 reload ecosystem.config.js --only ${PM2_APP_NAME} --update-env 2>/dev/null || pm2 start ecosystem.config.js --only ${PM2_APP_NAME} --env production)`,
+    `(pm2 reload ecosystem.config.js --only cronops --update-env 2>/dev/null || pm2 start ecosystem.config.js --only cronops --env production)`,
     'echo "[deploy] complete"',
   ].join(' && ');
 }

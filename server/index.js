@@ -545,25 +545,25 @@ async function initializeApp() {
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(cookieParser(process.env.SESSION_SECRET));
   
-  // Rate limiting - COMPLETELY DISABLED for testing
-  // const limiter = rateLimit({
-  //   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  //   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000,
-  //   message: { success: false, error: 'Too many requests' },
-  //   standardHeaders: true,
-  //   legacyHeaders: false,
-  //   validate: { trustProxy: false, xForwardedForHeader: false }
-  // });
-  // app.use('/api', limiter);
-  
-  // Auth rate limiting - DISABLED for testing
-  // const authLimiter = rateLimit({
-  //   windowMs: 15 * 60 * 1000,
-  //   max: 50,
-  //   message: { success: false, error: 'Too many auth attempts' }
-  // });
-  // app.use('/api/auth/login', authLimiter);
-  // app.use('/api/auth/register', authLimiter);
+  const limiter = rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000,
+    message: { success: false, error: 'Too many requests' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: { trustProxy: false, xForwardedForHeader: false },
+  });
+  app.use('/api', limiter);
+
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 50,
+    message: { success: false, error: 'Too many auth attempts' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use('/api/auth/login', authLimiter);
+  app.use('/api/auth/register', authLimiter);
   
   // Request logging
   app.use((req, res, next) => {
