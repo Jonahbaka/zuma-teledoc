@@ -758,7 +758,7 @@ async function upsertProviderRows(pool, rows) {
 }
 
 async function ingestNigeriaPack() {
-  const pool = getPool();
+  const pool = await getPool();
   await runNgMigrations(pool);
 
   const hmoRows = readCsv('nhia_hmo_seed.csv').map(normalizeHmoRow).filter((row) => row.payer_name);
@@ -806,7 +806,7 @@ async function getDiscoverySeedCounts(pool) {
 }
 
 async function seedNigeriaDiscoveryIfNeeded() {
-  const pool = getPool();
+  const pool = await getPool();
   const before = await getDiscoverySeedCounts(pool);
   const needsSeed =
     Number(before.providers || 0) < 1000 ||
