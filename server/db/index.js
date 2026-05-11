@@ -149,7 +149,32 @@ const close = async () => {
   }
 };
 
-const getPool = async () => getPoolInstance();
+// Proxy that defers method calls until the pool is initialized. Returned only
+// during the brief startup window before initPool() resolves. After init,
+// getPool() returns the real Pool synchronously.
+function createPoolProxy() {
+  return new Proxy({}, {
+    get(_t, prop) {
+      if (prop === 'then') return undefined; // not thenable -> await returns proxy
+      return (...args) => getPoolInstance().then((pool) => {
+        const value = pool[prop];
+        return typeof value === 'function' ? value.apply(pool, args) : value;
+      });
+    },
+  });
+}
+
+// Backward-compatible: callers using `const pool = getPool()` (no await) get a
+// pool-shaped object whose methods Just Work. Callers using `await getPool()`
+// still get the real pool (await on a non-thenable resolves to itself).
+function getPool() {
+  return _pool || createPoolProxy();
+}
+
+// Kick off init eagerly so the proxy window is short.
+getPoolInstance().catch((err) => {
+  console.error('Eager pool init failed (will retry on demand):', err.message);
+});
 
 module.exports = {
   query,
