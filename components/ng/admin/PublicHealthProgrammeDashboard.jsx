@@ -196,6 +196,15 @@ const LIGHT_ACCENTS = [
   { border: 'border-cyan-100', header: 'from-cyan-50 via-white to-sky-50', icon: 'bg-cyan-100 text-cyan-700', text: 'text-cyan-700', chart: '#0891b2', soft: '#67e8f9' },
 ];
 
+const accentStyles = [
+  { panel: 'bg-gradient-to-r from-blue-50 to-cyan-50', text: 'text-blue-700', iconBg: 'bg-blue-100', icon: 'text-blue-700', chart: '#2563eb', border: 'border-blue-100', glow: 'shadow-blue-100/40', softChart: '#93c5fd' },
+  { panel: 'bg-gradient-to-r from-emerald-50 to-teal-50', text: 'text-emerald-700', iconBg: 'bg-emerald-100', icon: 'text-emerald-700', chart: '#059669', border: 'border-emerald-100', glow: 'shadow-emerald-100/40', softChart: '#6ee7b7' },
+  { panel: 'bg-gradient-to-r from-violet-50 to-indigo-50', text: 'text-violet-700', iconBg: 'bg-violet-100', icon: 'text-violet-700', chart: '#7c3aed', border: 'border-violet-100', glow: 'shadow-violet-100/40', softChart: '#c4b5fd' },
+  { panel: 'bg-gradient-to-r from-amber-50 to-orange-50', text: 'text-amber-700', iconBg: 'bg-amber-100', icon: 'text-amber-700', chart: '#d97706', border: 'border-amber-100', glow: 'shadow-amber-100/40', softChart: '#fcd34d' },
+  { panel: 'bg-gradient-to-r from-rose-50 to-pink-50', text: 'text-rose-700', iconBg: 'bg-rose-100', icon: 'text-rose-700', chart: '#e11d48', border: 'border-rose-100', glow: 'shadow-rose-100/40', softChart: '#fda4af' },
+  { panel: 'bg-gradient-to-r from-cyan-50 to-sky-50', text: 'text-cyan-700', iconBg: 'bg-cyan-100', icon: 'text-cyan-700', chart: '#0891b2', border: 'border-cyan-100', glow: 'shadow-cyan-100/40', softChart: '#67e8f9' },
+];
+
 const chartPalette = ['#2563eb', '#059669', '#7c3aed', '#d97706', '#e11d48', '#0891b2'];
 
 const tabIcons = {
