@@ -1,6 +1,7 @@
 /**
  * PostgreSQL Database Connection Pool
- * Production-ready with SSL/TLS support for AWS RDS
+ * Primary: Neon (DATABASE_URL with sslmode=require)
+ * Backup:  AWS RDS (BACKUP_DATABASE_URL, read-only — see ./backup.js)
  */
 
 require('dotenv').config();
@@ -12,6 +13,10 @@ const path = require('path');
 // Database configuration
 let connectionString = process.env.DATABASE_URL;
 
+// Neon endpoints sleep after 5 min of inactivity; first query after wake has
+// ~500 ms cold-start latency — raise connection timeout accordingly.
+const isNeon = connectionString && connectionString.includes('neon.tech');
+
 // Configure SSL
 let sslConfig = false;
 if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('sslmode=')) {
@@ -20,13 +25,12 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('sslmode=')) {
     : null;
 
   if (process.env.DATABASE_URL.includes('sslmode=verify-full') && certPath && fs.existsSync(certPath)) {
-    // AWS RDS: full certificate verification with the global bundle
     sslConfig = {
       rejectUnauthorized: true,
       ca: fs.readFileSync(certPath).toString()
     };
   } else {
-    // Fallback: SSL required but no cert provided
+    // Neon and most managed PG providers: SSL required, cert not pinned.
     sslConfig = { rejectUnauthorized: false };
   }
 
@@ -36,20 +40,23 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('sslmode=')) {
   ).replace(/\?$/, '');
 }
 
+// Neon free tier: 10 concurrent connections max (pooled endpoint raises this).
+// Keep the pool small so we don't saturate the branch limit.
+const defaultPoolMax = isNeon ? 5 : 10;
+
 const dbConfig = {
   connectionString,
   ssl: sslConfig,
-  max: parseInt(process.env.DB_POOL_MAX) || 10,
-  // Keep connections stable on serverless-ish environments
+  max: parseInt(process.env.DB_POOL_MAX) || defaultPoolMax,
   keepAlive: true,
   keepAliveInitialDelayMillis: parseInt(process.env.DB_KEEPALIVE_DELAY_MS, 10) || 10000,
 
-  // Timeouts tuned for responsiveness (avoid long hangs).
   idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MS, 10) || 30000,
-  connectionTimeoutMillis: parseInt(process.env.DB_POOL_CONN_TIMEOUT_MS, 10) || 8000,
+  // Neon cold-start can take up to ~2 s; give 15 s on Neon, 8 s elsewhere.
+  connectionTimeoutMillis: parseInt(process.env.DB_POOL_CONN_TIMEOUT_MS, 10) || (isNeon ? 15000 : 8000),
   query_timeout: parseInt(process.env.DB_QUERY_TIMEOUT_MS, 10) || 8000,
 
-  allowExitOnIdle: false
+  allowExitOnIdle: false,
 };
 
 const pool = new Pool(dbConfig);
@@ -61,7 +68,7 @@ pool.on('error', (err) => {
 });
 
 pool.on('connect', () => {
-  console.log('New client connected to PostgreSQL');
+  console.log(`[db] New client connected to ${isNeon ? 'Neon (primary)' : 'PostgreSQL'}`);
 });
 
 /**

@@ -2969,12 +2969,28 @@ const migrations = [
   }
 ];
 
+// Load SQL file migrations from server/db/migrations/*.sql (sorted by filename).
+// These supplement the inline `migrations` array above and follow the same
+// tracking table so they are never re-executed.
+function loadSqlFileMigrations() {
+  const migrationsDir = path.join(__dirname, 'migrations');
+  if (!fs.existsSync(migrationsDir)) return [];
+  return fs
+    .readdirSync(migrationsDir)
+    .filter(f => f.endsWith('.sql'))
+    .sort()
+    .map(f => ({
+      name: path.basename(f, '.sql'),
+      up: fs.readFileSync(path.join(migrationsDir, f), 'utf8'),
+    }));
+}
+
 async function runMigrations() {
   const client = await pool.connect();
-  
+
   try {
     console.log('🚀 Starting database migrations...\n');
-    
+
     // Create migrations tracking table first
     await client.query(`
       CREATE TABLE IF NOT EXISTS migrations (
@@ -2983,25 +2999,28 @@ async function runMigrations() {
         executed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    
+
     // Get already executed migrations
     const { rows: executedMigrations } = await client.query(
       'SELECT name FROM migrations'
     );
     const executedNames = new Set(executedMigrations.map(m => m.name));
-    
+
+    // Run inline migrations first, then SQL file migrations.
+    const allMigrations = [...migrations, ...loadSqlFileMigrations()];
+
     let migrationsRun = 0;
-    
-    for (const migration of migrations) {
+
+    for (const migration of allMigrations) {
       if (executedNames.has(migration.name)) {
         console.log(`⏭️  Skipping ${migration.name} (already executed)`);
         continue;
       }
-      
+
       console.log(`📦 Running migration: ${migration.name}`);
-      
+
       await client.query('BEGIN');
-      
+
       try {
         await client.query(migration.up);
         await client.query(
@@ -3018,11 +3037,11 @@ async function runMigrations() {
         throw error;
       }
     }
-    
+
     console.log('==========================================');
     console.log(`✅ Migrations complete! (${migrationsRun} new migrations run)`);
     console.log('==========================================\n');
-    
+
   } catch (error) {
     console.error('Migration failed:', error);
     process.exit(1);

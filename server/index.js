@@ -377,7 +377,16 @@ app.get('/api/health', (req, res) => {
     health.heartbeat = orchestrator.getHeartbeatStatus?.() || {};
     health.operatingMode = orchestrator.operatingMode;
   } catch (e) { /* not ready yet */ }
-  return res.status(frontendState === 'degraded' ? 503 : 200).json(health);
+
+  // Async database health (Neon primary + AWS backup) — fire-and-forget into the response
+  const dual = require('./db/dual');
+  dual.healthCheck().then(dbHealth => {
+    health.database = dbHealth;
+    res.status(frontendState === 'degraded' ? 503 : 200).json(health);
+  }).catch(() => {
+    health.database = { primary: { engine: 'neon', healthy: false }, backup: { engine: 'aws-rds', available: false } };
+    res.status(frontendState === 'degraded' ? 503 : 200).json(health);
+  });
 });
 
 // Early warmup guard:
