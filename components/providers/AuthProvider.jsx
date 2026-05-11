@@ -265,7 +265,6 @@ export function AuthProvider({ children }) {
     loading,
     error,
     isAuthenticated: !!user,
-    token: typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null,
     getToken,
     login,
     register,

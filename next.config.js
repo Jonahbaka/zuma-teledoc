@@ -66,6 +66,13 @@ const nextConfig = {
     ];
   },
 
+  async redirects() {
+    return [
+      { source: '/ng/secure/admin', destination: '/ng/admin/login', permanent: false },
+      { source: '/ng/secure/admin/:path*', destination: '/ng/admin/login', permanent: false },
+    ];
+  },
+
   // Environment variables exposed to client
   env: {
     NEXT_PUBLIC_APP_NAME: 'DoctaRx',
