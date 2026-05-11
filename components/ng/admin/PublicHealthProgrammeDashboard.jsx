@@ -239,8 +239,10 @@ function statusClass(status) {
   const s = String(status || '');
   if (['ready', 'approved', 'configured', 'active', 'generated', 'exported', 'synced', 'high'].includes(s))
     return 'bg-emerald-500 text-white border-emerald-600';
-  if (['pending', 'dry_run_only', 'data-dependent', 'low', 'medium', 'government_and_mapping_pending'].includes(s))
+  if (['pending', 'dry_run_only', 'data-dependent', 'low', 'medium', 'warning', 'government_and_mapping_pending'].includes(s))
     return 'bg-amber-400 text-amber-950 border-amber-500';
+  if (['info', 'review', 'review_demand_trend', 'coordinates_pending'].includes(s))
+    return 'bg-blue-500 text-white border-blue-600';
   if (['missing', 'critical', 'sync_failed', 'rejected'].includes(s))
     return 'bg-rose-500 text-white border-rose-600';
   return 'bg-slate-200 text-slate-700 border-slate-300';
@@ -559,6 +561,541 @@ function ProgrammeAreaCard({ area, idx = 0 }) {
         })}
       </CardContent>
     </Card>
+  );
+}
+
+function compactNumber(value) {
+  const numeric = Number(value || 0);
+  if (Math.abs(numeric) >= 1000000) return `${(numeric / 1000000).toFixed(1)}M`;
+  if (Math.abs(numeric) >= 1000) return `${(numeric / 1000).toFixed(1)}K`;
+  return number(numeric);
+}
+
+function Sparkline({ data, color = '#2563eb', gradientId }) {
+  if (!data?.length) {
+    return <div className="h-12 rounded-xl bg-gradient-to-r from-slate-100 to-white" />;
+  }
+
+  return (
+    <div className="h-14 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data}>
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={color} stopOpacity={0.28} />
+              <stop offset="95%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2.5} fill={`url(#${gradientId})`} dot={false} activeDot={false} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function CommandStatCard({ label, value, icon: Icon = Activity, accentIndex = 0, trendData, detail }) {
+  const accent = accentStyles[accentIndex % accentStyles.length];
+  return (
+    <div className="group relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_rgba(37,99,235,0.16)]">
+      <div className={`absolute inset-x-0 bottom-0 h-20 ${accent.panel} opacity-80`} />
+      <div className="relative flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
+          <p className={`mt-2 text-3xl font-black tracking-tight ${accent.text}`}>{compactNumber(value)}</p>
+          <p className="mt-1 text-xs font-semibold text-emerald-700">{detail || 'Live aggregate signal'}</p>
+        </div>
+        <div className={`rounded-2xl ${accent.iconBg} p-2.5 ${accent.icon} shadow-sm ring-1 ring-white`}>
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+      <div className="relative mt-3">
+        <Sparkline data={trendData || []} color={accent.chart} gradientId={`spark-${label.replace(/[^a-zA-Z0-9]/g, '')}-${accentIndex}`} />
+      </div>
+    </div>
+  );
+}
+
+function CommandTrendPanel({ consultations, teleconsultations }) {
+  const seriesMap = new Map();
+  (consultations || []).forEach((point) => {
+    const key = point.date || point.name || point.period;
+    if (!key) return;
+    seriesMap.set(key, { date: key, consultations: Number(point.value || 0), teleconsultations: 0 });
+  });
+  (teleconsultations || []).forEach((point) => {
+    const key = point.date || point.name || point.period;
+    if (!key) return;
+    const row = seriesMap.get(key) || { date: key, consultations: 0, teleconsultations: 0 };
+    row.teleconsultations = Number(point.value || 0);
+    seriesMap.set(key, row);
+  });
+  const data = Array.from(seriesMap.values());
+
+  return (
+    <Card className="overflow-hidden border-blue-100 bg-white shadow-[0_24px_70px_rgba(37,99,235,0.11)]">
+      <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white via-blue-50/80 to-cyan-50/70">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="text-lg font-black text-slate-950">Consultations Trend</CardTitle>
+            <CardDescription>Onsite and teleconsultation demand from real operational records.</CardDescription>
+          </div>
+          <div className="flex rounded-2xl border border-blue-100 bg-white p-1 text-xs font-bold text-slate-600 shadow-sm">
+            <span className="rounded-xl bg-blue-600 px-3 py-1.5 text-white">Weekly</span>
+            <span className="px-3 py-1.5">90-day</span>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {!data.length ? (
+          <EmptyState title="No consultation trend yet" body="This chart populates when consultation and teleconsultation records are captured." icon={AreaChartIcon} />
+        ) : (
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data}>
+                <defs>
+                  <linearGradient id="commandConsultations" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.24} />
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="commandTeleconsultations" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.24} />
+                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                <Tooltip contentStyle={{ border: '0', borderRadius: 16, boxShadow: '0 18px 45px rgba(15,23,42,.14)' }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Area type="monotone" dataKey="consultations" name="Consultations" stroke="#2563eb" strokeWidth={3} fill="url(#commandConsultations)" dot={false} activeDot={{ r: 5 }} />
+                <Area type="monotone" dataKey="teleconsultations" name="Teleconsultations" stroke="#06b6d4" strokeWidth={3} fill="url(#commandTeleconsultations)" dot={false} activeDot={{ r: 5 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function HorizontalBarPanel({ title, rows, labelKey, valueKey, empty, accentIndex = 0, limit = 8 }) {
+  const accent = accentStyles[accentIndex % accentStyles.length];
+  const visibleRows = (rows || []).slice(0, limit);
+  const maxValue = Math.max(...visibleRows.map((row) => Number(row[valueKey] || 0)), 0);
+  return (
+    <Card className={`overflow-hidden border ${accent.border} bg-white shadow-lg ${accent.glow}`}>
+      <CardHeader className={`${accent.panel} border-b border-white/70`}>
+        <CardTitle className="text-lg font-black text-slate-950">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!visibleRows.length ? (
+          <EmptyState title="Mapping data needed" body={empty || 'This panel will populate when mapped operational records exist.'} icon={BarChart3} />
+        ) : visibleRows.map((row, index) => {
+          const value = Number(row[valueKey] || 0);
+          const width = maxValue > 0 ? Math.max((value / maxValue) * 100, 6) : 0;
+          return (
+            <div key={`${row[labelKey] || index}-${value}`} className="grid grid-cols-[minmax(7rem,1fr)_2fr_auto] items-center gap-3 text-sm">
+              <span className="truncate font-semibold text-slate-700">{row[labelKey] || 'Unmapped'}</span>
+              <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full" style={{ width: `${width}%`, background: `linear-gradient(90deg, ${accent.softChart}, ${accent.chart})` }} />
+              </div>
+              <span className="min-w-12 text-right font-black text-slate-950">{number(value)}</span>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CategoryDonutPanel({ rows, total }) {
+  const data = (rows || []).slice(0, 5).map((row, index) => ({
+    name: row.category || row.facility_type || row.status || `Category ${index + 1}`,
+    value: Number(row.count || row.value || 0),
+    color: chartPalette[index % chartPalette.length],
+  })).filter((row) => row.value > 0);
+  const totalValue = total || data.reduce((sum, row) => sum + row.value, 0);
+
+  return (
+    <Card className="overflow-hidden border-purple-100 bg-white shadow-lg shadow-purple-100/60">
+      <CardHeader className="border-b border-slate-100 bg-gradient-to-br from-purple-50 via-white to-cyan-50">
+        <CardTitle className="text-lg font-black text-slate-950">Consultations by Category</CardTitle>
+        <CardDescription>Complaint, service, or facility categories where captured.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!data.length ? (
+          <EmptyState title="Category mapping needed" body="Add reason-for-visit, service category, diagnosis category, or facility type mappings to populate this panel." icon={PieChartIcon} />
+        ) : (
+          <div className="grid gap-4 md:grid-cols-[1fr_1.1fr] md:items-center">
+            <div className="relative h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={data} dataKey="value" nameKey="name" innerRadius={62} outerRadius={92} paddingAngle={3}>
+                    {data.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ border: '0', borderRadius: 16, boxShadow: '0 18px 45px rgba(15,23,42,.14)' }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                <p className="text-2xl font-black text-slate-950">{compactNumber(totalValue)}</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Total</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {data.map((row) => (
+                <div key={row.name} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-sm">
+                  <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-700">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: row.color }} />
+                    <span className="truncate">{row.name}</span>
+                  </span>
+                  <span className="font-black text-slate-950">{number(row.value)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReferralFlowPanel({ metrics }) {
+  const flow = [
+    { label: 'Created', value: metrics.referrals_created, icon: UploadCloud, color: 'from-emerald-50 to-white text-emerald-700 border-emerald-100' },
+    { label: 'Completed', value: metrics.referrals_completed, icon: CheckCircle2, color: 'from-blue-50 to-white text-blue-700 border-blue-100' },
+    { label: 'Pending', value: metrics.pending_referrals, icon: ClipboardList, color: 'from-purple-50 to-white text-purple-700 border-purple-100' },
+  ];
+  const completion = Number(metrics.referrals_created || 0) > 0
+    ? Math.round((Number(metrics.referrals_completed || 0) / Number(metrics.referrals_created || 0)) * 100)
+    : 0;
+
+  return (
+    <Card className="overflow-hidden border-blue-100 bg-white shadow-lg shadow-blue-100/60">
+      <CardHeader className="border-b border-slate-100 bg-gradient-to-br from-blue-50 via-white to-purple-50">
+        <CardTitle className="text-lg font-black text-slate-950">Referral Flow</CardTitle>
+        <CardDescription>PHC, hospital, specialist, pharmacy, and lab coordination state.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {flow.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div key={item.label} className={`rounded-3xl border bg-gradient-to-br p-4 text-center shadow-sm ${item.color}`}>
+                <Icon className="mx-auto h-6 w-6" />
+                <p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">{item.label}</p>
+                <p className="mt-1 text-2xl font-black">{number(item.value)}</p>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-5">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-bold text-slate-700">Referral completion rate</span>
+            <span className="font-black text-slate-950">{completion}%</span>
+          </div>
+          <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-emerald-500" style={{ width: `${completion}%` }} />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PrescriptionDemandPanel({ metrics, rows, chartData }) {
+  const visibleRows = (rows || []).slice(0, 5);
+  return (
+    <Card className="overflow-hidden border-amber-100 bg-white shadow-lg shadow-amber-100/60">
+      <CardHeader className="border-b border-slate-100 bg-gradient-to-br from-amber-50 via-white to-orange-50">
+        <CardTitle className="text-lg font-black text-slate-950">Prescription Demand</CardTitle>
+        <CardDescription>Medication demand signal from prescription and request records only.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 md:grid-cols-[1fr_1.1fr]">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Total items requested</p>
+            <p className="mt-1 text-3xl font-black text-slate-950">{number(metrics.prescriptions_created)}</p>
+            <div className="mt-3">
+              <Sparkline data={chartData || []} color="#d97706" gradientId="prescriptionDemandSpark" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            {!visibleRows.length ? (
+              <EmptyState title="No medication categories yet" body="Medication category reporting appears when prescription or pharmacy request categories are captured." icon={Pill} />
+            ) : visibleRows.map((row, index) => (
+              <div key={`${row.category}-${index}`} className="flex items-center justify-between gap-3 rounded-xl bg-amber-50/60 px-3 py-2 text-sm">
+                <span className="truncate font-semibold text-slate-700">{index + 1}. {row.category || 'Unmapped category'}</span>
+                <span className="font-black text-slate-950">{number(row.count)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DiseaseSignalPanel({ rows, signals }) {
+  const signalLookup = new Map((signals || []).map((signal) => [String(signal.title || '').toLowerCase(), signal]));
+  const visibleRows = (rows || []).slice(0, 6);
+  return (
+    <Card className="overflow-hidden border-rose-100 bg-white shadow-lg shadow-rose-100/60">
+      <CardHeader className="border-b border-slate-100 bg-gradient-to-br from-rose-50 via-white to-amber-50">
+        <CardTitle className="text-lg font-black text-slate-950">Disease / Complaint Surveillance</CardTitle>
+        <CardDescription>Planning signals from aggregate complaint and service-demand categories only.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!visibleRows.length ? (
+          <EmptyState title="No complaint categories yet" body="Capture complaint or diagnosis categories to show aggregate disease-pattern planning signals. This is not clinical diagnosis or outbreak declaration." icon={HeartPulse} />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[460px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Category</th>
+                  <th className="px-3 py-2">Cases</th>
+                  <th className="px-3 py-2">Planning signal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRows.map((row, index) => {
+                  const signal = signalLookup.get(String(row.category || '').toLowerCase());
+                  return (
+                    <tr key={`${row.category}-${index}`} className="border-t border-slate-100">
+                      <td className="px-3 py-3 font-semibold text-slate-800">{row.category || 'Unmapped'}</td>
+                      <td className="px-3 py-3 font-black text-slate-950">{number(row.count)}</td>
+                      <td className="px-3 py-3"><StatusPill status={signal?.severity || 'info'} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReadinessStatusPanel({ badges, indicators }) {
+  const configuredIndicators = (indicators || []).filter((indicator) => indicator.dhis2_data_element_id || indicator.dhis2DataElementId).length;
+  return (
+    <Card className="overflow-hidden border-emerald-100 bg-white shadow-lg shadow-emerald-100/60">
+      <CardHeader className="border-b border-slate-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50">
+        <CardTitle className="text-lg font-black text-slate-950">Government Readiness Status</CardTitle>
+        <CardDescription>Aggregate reporting readiness without claiming live government submission.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {badges.map(([label, status]) => (
+            <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
+              <div className="mt-2"><StatusPill status={status} /></div>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-bold text-emerald-900">Mapped DHIS2 indicators</span>
+            <span className="font-black text-emerald-900">{configuredIndicators}/{number((indicators || []).length)}</span>
+          </div>
+          <div className="mt-2 h-3 overflow-hidden rounded-full bg-emerald-100">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-cyan-500"
+              style={{ width: `${(indicators || []).length ? (configuredIndicators / indicators.length) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AlertsPanel({ signals, actions }) {
+  const items = [
+    ...(signals || []).map((signal) => ({ title: signal.title, message: signal.message, status: signal.severity || 'info' })),
+    ...(actions || []).slice(0, 3).map((action) => ({
+      title: typeof action === 'string' ? 'Leadership action' : action.title,
+      message: typeof action === 'string' ? action : action.message,
+      status: 'info',
+    })),
+  ].slice(0, 6);
+
+  return (
+    <Card className="overflow-hidden border-slate-200 bg-white shadow-lg shadow-slate-100">
+      <CardHeader className="border-b border-slate-100 bg-gradient-to-br from-white via-blue-50 to-purple-50">
+        <CardTitle className="text-lg font-black text-slate-950">Alerts & Notifications</CardTitle>
+        <CardDescription>Planning notices from real aggregate metrics and readiness state.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!items.length ? (
+          <EmptyState title="No alerts yet" body="Alerts appear when aggregate trends, readiness gaps, or operational patterns need leadership review." icon={CircleDot} />
+        ) : items.map((item, index) => (
+          <div key={`${item.title}-${index}`} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <p className="font-bold text-slate-950">{item.title}</p>
+              <StatusPill status={item.status} />
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{item.message}</p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Dhis2ConsolePanel({ readiness, settings, indicators, preview, onValidate, onDryRun, canDryRun, working }) {
+  const mappedIndicators = (indicators || []).filter((indicator) => indicator.dhis2_data_element_id || indicator.dhis2DataElementId).length;
+  const consoleRows = [
+    ['Local aggregate mode', 'OK'],
+    ['NHMIS/DHIS2 status', settings?.enabled ? 'Configured' : 'Dry run only'],
+    ['Dataset ID', settings?.datasetId ? 'Configured' : 'Pending'],
+    ['Org unit ID', settings?.orgUnitId ? 'Configured' : 'Pending'],
+    ['Mapped indicators', `${mappedIndicators}/${(indicators || []).length}`],
+    ['Government approval', settings?.governmentApprovalStatus || 'pending'],
+    ['API credentials', settings?.apiCredentialsStatus || 'pending'],
+    ['Data sharing agreement', settings?.dataSharingAgreementStatus || 'pending'],
+    ['Sync mode', settings?.dryRunOnly === false ? 'live disabled until approval checks pass' : 'dry run only'],
+    ['No patient identifiers', readiness?.noPatientIdentifiers === false ? 'Review' : 'OK'],
+  ];
+
+  return (
+    <Card className="overflow-hidden border-slate-800 bg-slate-950 text-slate-100 shadow-2xl shadow-slate-900/20">
+      <CardHeader className="border-b border-slate-800 bg-slate-900">
+        <CardTitle className="flex items-center gap-2 text-lg font-black text-white"><Database className="h-5 w-5 text-cyan-300" /> DHIS2 / NHMIS Reporting Preview</CardTitle>
+        <CardDescription className="text-slate-300">Dry-run readiness console. No government API submission is made without official credentials, mappings, approval, and dry-run disabled.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-2xl border border-slate-800 bg-[#0f172a] p-4 font-mono text-xs leading-6 text-emerald-300 shadow-inner">
+          {consoleRows.map(([label, value]) => (
+            <div key={label} className="grid grid-cols-[1fr_auto] gap-3">
+              <span>&gt; {label}</span>
+              <span className={String(value).toLowerCase().includes('pending') ? 'text-amber-300' : 'text-emerald-300'}>{String(value).replace(/_/g, ' ')}</span>
+            </div>
+          ))}
+          {preview?.payload && (
+            <div className="mt-4 border-t border-slate-700 pt-3 text-cyan-200">
+              &gt; Preview payload ready: {preview.payload.dataValues?.length || 0} aggregate value(s)
+            </div>
+          )}
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Button type="button" variant="outline" onClick={onValidate} disabled={working} className="h-11 rounded-xl border-slate-600 bg-slate-900 font-bold text-white hover:bg-slate-800">
+            {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+            Validate readiness
+          </Button>
+          <Button type="button" onClick={onDryRun} disabled={!canDryRun || working} className="h-11 rounded-xl bg-blue-600 font-bold text-white hover:bg-blue-500 disabled:opacity-50">
+            {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
+            Push dry run
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ExecutiveCommandCenter({
+  metrics,
+  executiveCharts,
+  executiveTables,
+  executiveMaps,
+  executiveForecastCards,
+  readinessBadges,
+  readiness,
+  dhis2Settings,
+  indicators,
+  preview,
+  earlyPlanningSignals,
+  leadershipActions,
+  testConnection,
+  dryRunDhis2,
+  reports,
+  working,
+}) {
+  const commandStats = [
+    { label: 'Consultations', value: metrics.total_consultations, icon: Users, accentIndex: 0, trendData: executiveCharts.consultations, detail: 'Aggregate care volume' },
+    { label: 'Teleconsultations', value: metrics.teleconsultations, icon: Video, accentIndex: 5, trendData: executiveCharts.teleconsultations, detail: 'Digital access volume' },
+    { label: 'Referrals', value: metrics.referrals_created, icon: Network, accentIndex: 2, trendData: executiveCharts.referrals, detail: 'Coordination load' },
+    { label: 'Prescription Demand', value: metrics.prescriptions_created, icon: Pill, accentIndex: 3, trendData: executiveCharts.prescriptions, detail: 'Medication signal' },
+    { label: 'PHC Utilization', value: metrics.active_facilities, icon: Building2, accentIndex: 1, trendData: executiveCharts.consultations, detail: 'Active facilities' },
+    { label: 'Provider Workload', value: metrics.active_providers, icon: Stethoscope, accentIndex: 4, trendData: executiveCharts.teleconsultations, detail: 'Active providers' },
+    { label: 'Patient Access', value: metrics.active_patients, icon: HeartPulse, accentIndex: 0, trendData: executiveCharts.registrations, detail: 'Active patients' },
+  ];
+  const lgaRows = executiveMaps?.lgaFacilityBreakdown || [];
+  const latestReport = (reports || [])[0];
+
+  return (
+    <section className="space-y-4 rounded-[2rem] border border-white bg-white/70 p-3 shadow-[0_30px_90px_rgba(15,23,42,0.08)] backdrop-blur md:p-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
+        {commandStats.map((stat) => <CommandStatCard key={stat.label} {...stat} />)}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.45fr_1fr_1.05fr]">
+        <CommandTrendPanel consultations={executiveCharts.consultations || []} teleconsultations={executiveCharts.teleconsultations || []} />
+        <HorizontalBarPanel
+          title="Facilities by LGA / Location"
+          rows={lgaRows}
+          labelKey="location"
+          valueKey="facility_count"
+          accentIndex={0}
+          empty="LGA rankings will populate after PHC, public hospital, patient access, or referral records are mapped to LGA/ward."
+        />
+        <CategoryDonutPanel rows={executiveTables.complaintCategories || executiveTables.facilityTypeBreakdown || []} total={metrics.total_consultations} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <Card className="overflow-hidden border-cyan-100 bg-white shadow-lg shadow-cyan-100/60">
+          <CardHeader className="border-b border-slate-100 bg-gradient-to-br from-cyan-50 via-white to-blue-50">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="text-lg font-black text-slate-950">LGA Ward Public-Health Visibility</CardTitle>
+                <CardDescription>Map-ready public-health visibility from configured facility coordinates and LGA/ward mappings.</CardDescription>
+              </div>
+              <StatusPill status={executiveMaps?.mapReadiness || 'coordinates_pending'} />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <IntelligenceMap mapData={executiveMaps} />
+          </CardContent>
+        </Card>
+        <Dhis2ConsolePanel
+          readiness={readiness}
+          settings={dhis2Settings}
+          indicators={indicators}
+          preview={preview}
+          onValidate={testConnection}
+          onDryRun={() => latestReport && dryRunDhis2(latestReport.id)}
+          canDryRun={Boolean(latestReport?.id)}
+          working={working}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1fr_1fr_0.8fr]">
+        <DiseaseSignalPanel rows={executiveTables.complaintCategories || []} signals={earlyPlanningSignals || []} />
+        <ReferralFlowPanel metrics={metrics} />
+        <PrescriptionDemandPanel metrics={metrics} rows={executiveTables.medicineCategories || executiveTables.topMedicationClasses || []} chartData={executiveCharts.prescriptions || []} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.25fr_0.95fr_0.95fr]">
+        <Card className="overflow-hidden border-purple-100 bg-white shadow-lg shadow-purple-100/60">
+          <CardHeader className="border-b border-slate-100 bg-gradient-to-br from-purple-50 via-white to-blue-50">
+            <CardTitle className="text-lg font-black text-slate-950">Forecasting & Planning Intelligence</CardTitle>
+            <CardDescription>Explainable operational forecasts only. No clinical diagnosis or outbreak prediction.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            {executiveForecastCards.slice(0, 4).map(([title, cardForecast]) => (
+              <div key={title} className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-purple-50/50 p-4">
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">{title}</p>
+                <p className="mt-2 text-2xl font-black text-slate-950">{number(cardForecast?.predictedValue)}</p>
+                <div className="mt-2"><StatusPill status={cardForecast?.confidenceLabel || 'insufficient_data'} /></div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+        <ReadinessStatusPanel badges={readinessBadges} indicators={indicators} />
+        <AlertsPanel signals={earlyPlanningSignals || []} actions={leadershipActions || []} />
+      </div>
+    </section>
   );
 }
 
@@ -1007,6 +1544,25 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
                   <StatusPill status={executive?.governance?.forecastStatus || overview?.forecastStatus || 'insufficient_data'} />
                 </div>
               </SectionBanner>
+
+              <ExecutiveCommandCenter
+                metrics={metrics}
+                executiveCharts={executiveCharts}
+                executiveTables={executiveTables}
+                executiveMaps={executiveMaps}
+                executiveForecastCards={executiveForecastCards}
+                readinessBadges={readinessBadges}
+                readiness={readiness}
+                dhis2Settings={dhis2Settings}
+                indicators={indicators}
+                preview={preview}
+                earlyPlanningSignals={executive?.earlyPlanningSignals || []}
+                leadershipActions={executive?.leadershipActions || []}
+                testConnection={testConnection}
+                dryRunDhis2={dryRunDhis2}
+                reports={reports}
+                working={working}
+              />
 
               <section className="grid gap-4 lg:grid-cols-2">
                 {(executive?.kpiSections || []).map((section) => (
