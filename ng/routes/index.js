@@ -18,8 +18,10 @@ const organizationRoutes = require('./organization');
 const hospitalRoutes = require('./hospital');
 const subscriptionRoutes = require('./subscriptions');
 const testingLinksRoutes = require('../../server/routes/testingLinks');
-const publicHealthRoutes = require('./publicHealth');
-const dhis2Routes = require('./dhis2');
+const publicHealthRoutes  = require('./publicHealth');
+const dhis2Routes         = require('./dhis2');
+const governanceRoutes    = require('./governance');
+const executiveViewRoutes = require('./executiveView');
 
 let discoverySeedScheduled = false;
 
@@ -66,6 +68,10 @@ router.get('/health', (req, res) => {
       subscriptions: true,
       digitalPrescriptions: true,
       appointments: true,
+      publicHealthIntelligence: true,
+      federatedGovernance: true,
+      executiveCommandCenter: true,
+      dhis2Readiness: true,
     },
   });
 });
@@ -102,8 +108,10 @@ const requireAdmin = (req, res, next) => {
 // Mount routes
 router.use('/discovery', discoveryRoutes);
 router.use('/pharmacy', authenticate, pharmacyRoutes);
-router.use('/public-health', authenticate, requireAdmin, publicHealthRoutes);
+router.use('/public-health',   authenticate, requireAdmin, publicHealthRoutes);
 router.use('/integrations/dhis2', authenticate, requireAdmin, dhis2Routes);
+router.use('/governance',     authenticate, requireAdmin, governanceRoutes);
+router.use('/executive-view', authenticate, executiveViewRoutes);
 router.use('/patient', authenticate, patientRoutes);
 router.use('/admin/testing-links', authenticate, requireAdmin, testingLinksRoutes);
 router.use('/admin', authenticate, requireAdmin, adminRoutes);
