@@ -22,6 +22,7 @@ const publicHealthRoutes  = require('./publicHealth');
 const dhis2Routes         = require('./dhis2');
 const governanceRoutes    = require('./governance');
 const executiveViewRoutes = require('./executiveView');
+const referralNetworkRoutes = require('./referralNetwork');
 
 let discoverySeedScheduled = false;
 
@@ -72,9 +73,18 @@ router.get('/health', (req, res) => {
       federatedGovernance: true,
       executiveCommandCenter: true,
       dhis2Readiness: true,
+      referralNetwork: true,
     },
   });
 });
+
+// Referral network: /public/* is unauthenticated (QR slip verify),
+// everything else requires authentication.
+const referralNetworkAuth = (req, res, next) => {
+  if (req.path.startsWith('/public/')) return next();
+  return authenticate(req, res, next);
+};
+router.use('/referral-network', referralNetworkAuth, referralNetworkRoutes);
 
 // Auth middleware (reuse existing)
 let authenticate;
