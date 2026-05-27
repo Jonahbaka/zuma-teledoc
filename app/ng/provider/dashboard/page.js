@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import ProviderDashboardPage from '@/app/(dashboard)/provider/dashboard/page';
 import api from '@/lib/api';
 
@@ -34,6 +35,11 @@ export default function NigeriaProviderDashboardPage() {
           </div>
           <div className="mt-1">
             Usage: {usage.appointmentsCount || 0} appointments, {usage.videoCallsCount || 0} video calls, {usage.prescriptionsCount || 0} prescriptions, {usage.messagesCount || 0} messages.
+          </div>
+          <div className="mt-2">
+            <Link href="/ng/provider/operations" className="inline-flex items-center gap-1 rounded-md bg-white/70 px-2 py-1 text-xs font-semibold text-slate-800 ring-1 ring-slate-200 hover:bg-white">
+              Open Operations Hub →
+            </Link>
           </div>
         </div>
       </div>
