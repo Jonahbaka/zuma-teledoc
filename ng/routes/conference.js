@@ -166,4 +166,14 @@ router.get('/rooms/:id/events', async (req, res) => {
   catch (e) { handleError(res, e); }
 });
 
+// ─── ICE servers (for client WebRTC config) ──────────────────────────────────
+// Reuses the same env-var-driven config as 1:1 telehealth so a single TURN
+// deployment serves both stacks. Falls back to Google STUN if no TURN is set.
+router.get('/ice-servers', (req, res) => {
+  try {
+    const { getTelehealthIceServers } = require('../../server/services/telehealthSessionService');
+    res.json({ ok: true, iceServers: getTelehealthIceServers() });
+  } catch (e) { handleError(res, e); }
+});
+
 module.exports = router;

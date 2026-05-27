@@ -20,6 +20,12 @@ const userSockets = new Map(); // socketId -> userId
 const telehealthRooms = new Map(); // roomId -> Map(socketId, participant)
 const telehealthSocketMeta = new Map(); // socketId -> { appointmentId, roomId, roomKey, participant }
 
+// Multi-party NG conferencing — separate maps so telehealth + conference
+// don't share state. Each conference room is keyed by ng_conf_rooms.id.
+const conferenceRooms = new Map(); // roomId -> Map(socketId, participant)
+const conferenceSocketMeta = new Map(); // socketId -> { roomId, roomKey, participant }
+const getConferenceRoomKey = (roomId) => `conference:${roomId}`;
+
 let io = null;
 
 const normalizeRole = (role) => String(role || '').trim().toLowerCase();
@@ -71,6 +77,31 @@ const removeTelehealthMembership = (socket, { emitLeft = true } = {}) => {
       appointmentId: session.appointmentId,
       roomId: session.roomId,
       participant: session.participant
+    });
+  }
+};
+
+// ── NG Conference helpers ────────────────────────────────────────────────────
+
+const removeConferenceMembership = (socket, { emitLeft = true } = {}) => {
+  const session = conferenceSocketMeta.get(socket.id);
+  if (!session) return;
+
+  const roomParticipants = conferenceRooms.get(session.roomId);
+  if (roomParticipants) {
+    roomParticipants.delete(socket.id);
+    if (roomParticipants.size === 0) {
+      conferenceRooms.delete(session.roomId);
+    }
+  }
+
+  socket.leave(session.roomKey);
+  conferenceSocketMeta.delete(socket.id);
+
+  if (emitLeft && io) {
+    socket.to(session.roomKey).emit('conference:participant-left', {
+      roomId: session.roomId,
+      participant: session.participant,
     });
   }
 };
@@ -386,6 +417,116 @@ const initializeSocket = (httpServer) => {
     });
 
     /**
+     * NG Multi-party conferencing signaling
+     *   conference:join     — validate participant against ng_conf_participants, return ICE
+     *   conference:signal   — relay WebRTC offer/answer/ice-candidate to a peer socket in the room
+     *   conference:leave    — leave the conference room
+     */
+    socket.on('conference:join', async (payload = {}, ack) => {
+      try {
+        const roomId = String(payload.roomId || '').trim();
+        if (!roomId) {
+          return emitSocketAck(ack, { ok: false, error: 'roomId required' });
+        }
+
+        // Validate via Neon — must be an admitted participant of this room
+        const db = require('../db');
+        const { rows: rRows } = await db.query(
+          `SELECT id, status, max_participants FROM ng_conf_rooms WHERE id = $1`,
+          [roomId]
+        );
+        if (!rRows.length) {
+          return emitSocketAck(ack, { ok: false, error: 'Room not found' });
+        }
+        const room = rRows[0];
+        if (room.status === 'ended' || room.status === 'cancelled') {
+          return emitSocketAck(ack, { ok: false, error: `Room is ${room.status}` });
+        }
+
+        const { rows: pRows } = await db.query(
+          `SELECT id, role, status, display_name, permissions_json
+             FROM ng_conf_participants
+            WHERE room_id = $1 AND user_id = $2`,
+          [roomId, socket.userId]
+        );
+        if (!pRows.length || pRows[0].status !== 'admitted') {
+          return emitSocketAck(ack, { ok: false, error: 'Not admitted to this room' });
+        }
+
+        const participantRow = pRows[0];
+        const participant = {
+          socketId: socket.id,
+          participantId: participantRow.id,
+          userId: socket.userId,
+          role: participantRow.role,
+          name: participantRow.display_name || socket.userName || 'Participant',
+          joinedAt: new Date().toISOString(),
+        };
+
+        const roomKey = getConferenceRoomKey(roomId);
+
+        // Clean up any prior membership
+        removeConferenceMembership(socket, { emitLeft: true });
+
+        const roomParticipants = conferenceRooms.get(roomId) || new Map();
+        const peers = Array.from(roomParticipants.values());
+        roomParticipants.set(socket.id, participant);
+        conferenceRooms.set(roomId, roomParticipants);
+        conferenceSocketMeta.set(socket.id, { roomId, roomKey, participant });
+        socket.join(roomKey);
+
+        const response = {
+          ok: true,
+          roomId,
+          participant,
+          participants: peers,           // peers already in the room (for mesh new-comer)
+          iceServers: getTelehealthIceServers(),
+        };
+        socket.emit('conference:joined', response);
+        socket.to(roomKey).emit('conference:participant-joined', { roomId, participant });
+        emitSocketAck(ack, response);
+      } catch (error) {
+        logger.warn('Conference join failed', {
+          userId: socket.userId,
+          roomId: payload?.roomId,
+          error: error.message,
+        });
+        emitSocketAck(ack, { ok: false, error: error.message || 'Failed to join conference' });
+      }
+    });
+
+    socket.on('conference:signal', (payload = {}, ack) => {
+      const session = conferenceSocketMeta.get(socket.id);
+      if (!session) {
+        return emitSocketAck(ack, { ok: false, error: 'Conference session not initialized' });
+      }
+      const targetSocketId = payload.toSocketId;
+      const signalType = String(payload.signalType || '').trim();
+      const roomParticipants = conferenceRooms.get(session.roomId);
+
+      if (!targetSocketId || !roomParticipants?.has(targetSocketId)) {
+        return emitSocketAck(ack, { ok: false, error: 'Peer unavailable' });
+      }
+      if (!['offer', 'answer', 'ice-candidate'].includes(signalType)) {
+        return emitSocketAck(ack, { ok: false, error: 'Unsupported signal type' });
+      }
+
+      io.to(targetSocketId).emit('conference:signal', {
+        roomId: session.roomId,
+        fromSocketId: socket.id,
+        participant: session.participant,
+        signalType,
+        signal: payload.signal || null,
+      });
+      emitSocketAck(ack, { ok: true });
+    });
+
+    socket.on('conference:leave', (_, ack) => {
+      removeConferenceMembership(socket, { emitLeft: true });
+      emitSocketAck(ack, { ok: true });
+    });
+
+    /**
      * Agent Ops live stream subscription (admin only)
      */
     socket.on('agent-ops:subscribe', () => {
@@ -402,6 +543,7 @@ const initializeSocket = (httpServer) => {
      */
     socket.on('disconnect', (reason) => {
       removeTelehealthMembership(socket, { emitLeft: true });
+      removeConferenceMembership(socket, { emitLeft: true });
       console.log(`🔌 Socket disconnected: ${userName} - ${reason}`);
       
       // Update last seen
