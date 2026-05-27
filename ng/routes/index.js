@@ -24,6 +24,7 @@ const governanceRoutes    = require('./governance');
 const executiveViewRoutes = require('./executiveView');
 const referralNetworkRoutes = require('./referralNetwork');
 const medicationsRoutes     = require('./medications');
+const soapRoutes            = require('./soap');
 
 let discoverySeedScheduled = false;
 
@@ -82,6 +83,9 @@ router.get('/health', (req, res) => {
 
 // Medication search v2 (public — no PHI)
 router.use('/medications', medicationsRoutes);
+
+// SOAP templates (read-only, no PHI)
+router.use('/soap', soapRoutes);
 
 // Referral network: /public/* is unauthenticated (QR slip verify),
 // everything else requires authentication.
