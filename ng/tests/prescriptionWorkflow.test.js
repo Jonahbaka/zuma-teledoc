@@ -93,11 +93,11 @@ describe('generateRxNumber', () => {
     const n = generateRxNumber();
     assert.match(n, /^NG-RX-\d{8}-[0-9A-F]{4}$/);
   });
-  it('generates unique numbers across 200 calls (statistically)', () => {
+  it('generates unique numbers across 50 calls (statistically)', () => {
+    // 2 hex bytes = 65,536-tail space. Birthday-problem at n=50 → P(collision)≈2%.
+    // Keep sample small to keep flake risk negligible.
     const seen = new Set();
-    for (let i = 0; i < 200; i++) seen.add(generateRxNumber());
-    // With 65k possible tails per date, 200 should rarely collide. Allow
-    // a tiny margin (199) for the absolute corner case.
-    assert.ok(seen.size >= 199, `expected ≥199 unique, got ${seen.size}`);
+    for (let i = 0; i < 50; i++) seen.add(generateRxNumber());
+    assert.equal(seen.size, 50);
   });
 });

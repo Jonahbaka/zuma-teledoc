@@ -98,7 +98,7 @@ function hashToken(raw) {
 
 function generateRefCode() {
   const year = new Date().getUTCFullYear();
-  const rand = crypto.randomBytes(4).toString('base64url').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  const rand = crypto.randomBytes(3).toString('hex').toUpperCase();
   return `DRN-${year}-${rand}`;
 }
 
@@ -248,9 +248,9 @@ describe('DRN QR token hashing', () => {
 // ─── Ref code generator ───────────────────────────────────────────────────────
 
 describe('DRN ref-code', () => {
-  it('matches DRN-YYYY-XXXXXX format', () => {
+  it('matches DRN-YYYY-XXXXXX (6 hex) format', () => {
     const code = generateRefCode();
-    assert.match(code, /^DRN-\d{4}-[A-Z0-9]{6}$/);
+    assert.match(code, /^DRN-\d{4}-[0-9A-F]{6}$/);
   });
 
   it('generates unique codes across 100 calls', () => {

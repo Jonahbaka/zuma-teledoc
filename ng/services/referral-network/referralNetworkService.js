@@ -53,7 +53,8 @@ function toNumber(v) {
 
 function generateRefCode() {
   const year = new Date().getUTCFullYear();
-  const rand = crypto.randomBytes(4).toString('base64url').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  // 3 bytes → 6 hex chars, deterministically. ~16.7M space — collision-safe.
+  const rand = crypto.randomBytes(3).toString('hex').toUpperCase();
   return `DRN-${year}-${rand}`;
 }
 

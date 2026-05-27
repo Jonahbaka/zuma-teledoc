@@ -26,6 +26,7 @@ const referralNetworkRoutes = require('./referralNetwork');
 const medicationsRoutes     = require('./medications');
 const soapRoutes            = require('./soap');
 const prescriptionsRoutes   = require('./prescriptions');
+const conferenceRoutes      = require('./conference');
 
 let discoverySeedScheduled = false;
 
@@ -79,6 +80,7 @@ router.get('/health', (req, res) => {
       referralNetwork: true,
       medicationSearchV2: true,
       prescriptionLifecycle: true,
+      multiPartyConferencing: true,
     },
   });
 });
@@ -97,6 +99,14 @@ const referralNetworkAuth = (req, res, next) => {
   return authenticate(req, res, next);
 };
 router.use('/referral-network', referralNetworkAuth, referralNetworkRoutes);
+
+// Conference: /public/redeem-invite is unauthenticated, everything else
+// requires auth. Same selective-auth pattern as referral-network.
+const conferenceAuth = (req, res, next) => {
+  if (req.path.startsWith('/public/')) return next();
+  return authenticate(req, res, next);
+};
+router.use('/conference', conferenceAuth, conferenceRoutes);
 
 // Auth middleware (reuse existing)
 let authenticate;
