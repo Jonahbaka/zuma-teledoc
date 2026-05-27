@@ -36,6 +36,13 @@ const STATIONS = [
     tone: 'bg-cyan-50 border-cyan-200 text-cyan-900',
   },
   {
+    href: '/ng/conference',
+    icon: Video,
+    title: 'Multi-Party Conferencing',
+    sub: 'Case conferences · teaching rounds · board reviews · role permissions · invites',
+    tone: 'bg-green-50 border-green-200 text-green-900',
+  },
+  {
     href: '/ng/executive-view',
     icon: BarChart3,
     title: 'Executive Command Centre',
