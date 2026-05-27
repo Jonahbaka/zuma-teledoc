@@ -25,6 +25,7 @@ const executiveViewRoutes = require('./executiveView');
 const referralNetworkRoutes = require('./referralNetwork');
 const medicationsRoutes     = require('./medications');
 const soapRoutes            = require('./soap');
+const prescriptionsRoutes   = require('./prescriptions');
 
 let discoverySeedScheduled = false;
 
@@ -77,6 +78,7 @@ router.get('/health', (req, res) => {
       dhis2Readiness: true,
       referralNetwork: true,
       medicationSearchV2: true,
+      prescriptionLifecycle: true,
     },
   });
 });
@@ -88,7 +90,8 @@ router.use('/medications', medicationsRoutes);
 router.use('/soap', soapRoutes);
 
 // Referral network: /public/* is unauthenticated (QR slip verify),
-// everything else requires authentication.
+// everything else requires authentication. Closure resolves `authenticate`
+// at request time, so its TDZ at module-load time is fine here.
 const referralNetworkAuth = (req, res, next) => {
   if (req.path.startsWith('/public/')) return next();
   return authenticate(req, res, next);
@@ -127,6 +130,7 @@ const requireAdmin = (req, res, next) => {
 // Mount routes
 router.use('/discovery', discoveryRoutes);
 router.use('/pharmacy', authenticate, pharmacyRoutes);
+router.use('/prescriptions', authenticate, prescriptionsRoutes);
 router.use('/public-health',   authenticate, requireAdmin, publicHealthRoutes);
 router.use('/integrations/dhis2', authenticate, requireAdmin, dhis2Routes);
 router.use('/governance',     authenticate, requireAdmin, governanceRoutes);
