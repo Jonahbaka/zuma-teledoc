@@ -23,6 +23,7 @@ const dhis2Routes         = require('./dhis2');
 const governanceRoutes    = require('./governance');
 const executiveViewRoutes = require('./executiveView');
 const referralNetworkRoutes = require('./referralNetwork');
+const medicationsRoutes     = require('./medications');
 
 let discoverySeedScheduled = false;
 
@@ -74,9 +75,13 @@ router.get('/health', (req, res) => {
       executiveCommandCenter: true,
       dhis2Readiness: true,
       referralNetwork: true,
+      medicationSearchV2: true,
     },
   });
 });
+
+// Medication search v2 (public — no PHI)
+router.use('/medications', medicationsRoutes);
 
 // Referral network: /public/* is unauthenticated (QR slip verify),
 // everything else requires authentication.
