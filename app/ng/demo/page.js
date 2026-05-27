@@ -22,6 +22,13 @@ const STATIONS = [
     tone: 'bg-violet-50 border-violet-200 text-violet-900',
   },
   {
+    href: '/ng/prescriptions',
+    icon: Pill,
+    title: 'Prescriptions',
+    sub: 'Compose · sign · send · pharmacy receive · per-item dispense · refills',
+    tone: 'bg-amber-50 border-amber-200 text-amber-900',
+  },
+  {
     href: '/ng/soap',
     icon: NotebookPen,
     title: 'SOAP Composer',
