@@ -237,7 +237,7 @@ async function createReferral(input, actor, pool = getPool()) {
       service_fee_naira, match_score, match_reasoning_json,
       expires_at
     ) VALUES (
-      $1, 'draft', COALESCE($2,'routine'),
+      $1, 'draft'::drn_referral_status, COALESCE($2::drn_urgency,'routine'::drn_urgency),
       $3, $4, $5, $6, $7,
       $8, $9, $10,
       $11, $12, $13,

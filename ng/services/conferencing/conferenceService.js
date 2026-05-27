@@ -78,10 +78,10 @@ async function createRoom(input, actor, pool = getPool()) {
         allow_chat, allow_private_dm,
         media_server, media_server_url, signaling_namespace,
         scheduled_start, scheduled_end, parent_room_id, metadata_json)
-     VALUES ($1,$2,COALESCE($3,'consultation'),$4,$5,$6,$7,$8,$9,
+     VALUES ($1,$2,COALESCE($3::ng_conf_kind,'consultation'::ng_conf_kind),$4,$5,$6,$7,$8,$9,
              $10,COALESCE($11,TRUE),COALESCE($12,FALSE),
              COALESCE($13,TRUE),COALESCE($14,TRUE),
-             $15,$16,$17,$18,$19,$20,COALESCE($21::jsonb,'{}'::jsonb))
+             COALESCE($15::ng_conf_media_server,'peer_mesh'::ng_conf_media_server),$16,$17,$18,$19,$20,COALESCE($21::jsonb,'{}'::jsonb))
      RETURNING *`,
     [
       code, input.title || 'Consultation', input.kind || null,
