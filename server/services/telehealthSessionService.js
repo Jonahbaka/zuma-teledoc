@@ -1,6 +1,22 @@
+const crypto = require('crypto');
 const db = require('../db');
 const logger = require('../middleware/logger');
 const { generateRoomId, keysToCamel } = require('../../lib/utils');
+
+/**
+ * Generate coturn REST-API time-limited TURN credentials.
+ * Matches coturn's `use-auth-secret` / `static-auth-secret` mechanism:
+ *   username   = <expiry_unix_ts>[:<user>]
+ *   credential = base64( HMAC-SHA1( secret, username ) )
+ * This is what makes TURN relay usable on symmetric NAT / Nigerian mobile
+ * carriers without distributing long-lived static credentials.
+ */
+const buildTurnRestCredential = (secret, ttlSeconds = 86400, user = 'doctarx') => {
+  const expiry = Math.floor(Date.now() / 1000) + Number(ttlSeconds || 86400);
+  const username = `${expiry}:${user}`;
+  const credential = crypto.createHmac('sha1', secret).update(username).digest('base64');
+  return { username, credential };
+};
 
 const DEFAULT_ICE_SERVERS = [
   {
@@ -96,11 +112,30 @@ const getTelehealthIceServers = () => {
     iceServers.push({ urls: stunServers });
   }
 
-  if (turnUrls.length && turnUsername && turnCredential) {
+  // TURN shared secret (coturn `static-auth-secret`) — preferred for production:
+  // generates short-lived credentials per session so nothing long-lived ships to
+  // the browser. Falls back to static username/credential if those are provided.
+  const turnSharedSecret =
+    process.env.RTC_TURN_STATIC_AUTH_SECRET ||
+    process.env.TURN_STATIC_AUTH_SECRET ||
+    process.env.TURN_SHARED_SECRET ||
+    '';
+  const turnTtl = process.env.RTC_TURN_TTL_SECONDS || process.env.TURN_TTL_SECONDS || 86400;
+
+  if (turnUrls.length && turnSharedSecret) {
+    const { username, credential } = buildTurnRestCredential(turnSharedSecret, turnTtl);
+    iceServers.push({ urls: turnUrls, username, credential });
+  } else if (turnUrls.length && turnUsername && turnCredential) {
     iceServers.push({
       urls: turnUrls,
       username: turnUsername,
       credential: turnCredential
+    });
+  } else if (turnUrls.length) {
+    // TURN host configured but no usable credential — warn loudly; STUN-only
+    // will fail on symmetric/mobile NAT (the Nigerian carrier case).
+    logger.warn('TURN URLs configured without credentials or shared secret — relay disabled, NAT traversal may fail', {
+      turnUrls,
     });
   }
 

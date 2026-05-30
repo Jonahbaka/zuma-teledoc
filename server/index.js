@@ -66,7 +66,10 @@ function getFrontendState() {
   if (!initialized) return 'initializing';
   if (nextInitStatus === 'failed' || nextInitStatus === 'timeout') return 'degraded';
   if (Date.now() - serverStartedAt.getTime() <= NEXT_WARMUP_GRACE_MS) return 'warming_up';
-  return 'warming_up';
+  // Past the warmup grace window and Next is still not ready: escalate to
+  // degraded so health gates stop treating a stuck frontend as acceptable.
+  // (Previously this returned 'warming_up' forever — a hung Next never failed health.)
+  return 'degraded';
 }
 
 // STEP 2: BIND PORT IMMEDIATELY - This MUST happen first for Cloud Run
@@ -380,13 +383,22 @@ app.get('/api/health', (req, res) => {
 
   // Async database health (Neon primary + AWS backup) — fire-and-forget into the response
   const dual = require('./db/dual');
-  dual.healthCheck().then(dbHealth => {
+  const finish = (dbHealth, dbReachable) => {
     health.database = dbHealth;
-    res.status(frontendState === 'degraded' ? 503 : 200).json(health);
-  }).catch(() => {
-    health.database = { primary: { engine: 'neon', healthy: false }, backup: { engine: 'aws-rds', available: false } };
-    res.status(frontendState === 'degraded' ? 503 : 200).json(health);
-  });
+    // Unhealthy when the frontend is degraded OR the primary DB is unreachable.
+    // Previously a dead primary DB still returned 200 (status code keyed only off
+    // frontendState), so a load balancer would route traffic to an instance that
+    // cannot serve a single query.
+    const dbDown = dbReachable === false || dbHealth?.primary?.healthy === false;
+    if (dbDown && health.status === 'healthy') health.status = 'degraded';
+    res.status(frontendState === 'degraded' || dbDown ? 503 : 200).json(health);
+  };
+  dual.healthCheck()
+    .then(dbHealth => finish(dbHealth, true))
+    .catch(() => finish(
+      { primary: { engine: 'neon', healthy: false }, backup: { engine: 'aws-rds', available: false } },
+      false
+    ));
 });
 
 // Early warmup guard:

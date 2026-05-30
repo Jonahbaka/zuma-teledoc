@@ -41,8 +41,10 @@ const deriveStableJwtSecret = (purpose) => {
     process.env.JWT_SECRET ||
     process.env.JWT_DERIVATION_SEED ||
     process.env.SESSION_SECRET ||
-    process.env.ENCRYPTION_KEY ||
-    process.env.DATABASE_URL;
+    process.env.ENCRYPTION_KEY;
+    // DATABASE_URL deliberately excluded — it is not a cryptographic secret and
+    // leaks via logs/CI/Sentry; using it to sign tokens would allow forgery.
+    // Must match server/middleware/auth.js so socket + HTTP auth share a key.
   if (!seed) return null;
   return crypto.createHmac('sha256', String(seed)).update(String(purpose)).digest('hex');
 };
@@ -552,13 +554,17 @@ const initializeSocket = (httpServer) => {
         userData.lastSeen = new Date();
       }
       
+      // This socket id is gone regardless of reconnection state — drop it now,
+      // otherwise on multi-tab/rapid-reconnect the guard below (which matches the
+      // *current* socket) skips it and the old id leaks in userSockets forever.
+      userSockets.delete(socket.id);
+
       // Remove from online users after a delay (to handle reconnections)
       setTimeout(() => {
         const currentSocket = onlineUsers.get(userId);
         if (currentSocket && currentSocket.socketId === socket.id) {
           onlineUsers.delete(userId);
-          userSockets.delete(socket.id);
-          
+
           // Notify others that user went offline
           socket.broadcast.emit('user:offline', {
             userId,

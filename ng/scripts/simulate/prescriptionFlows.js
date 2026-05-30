@@ -3,64 +3,64 @@
 /**
  * ng/scripts/simulate/prescriptionFlows.js
  *
- * Prescription lifecycle scenarios — happy path + every cancellation
- * branch + terminal-state immutability + refill mechanics. Mirrors the
- * TRANSITIONS map from prescriptionWorkflowService.js so the harness
- * stays in sync with what the service actually allows.
+ * Prescription lifecycle scenarios. These import the REAL state machine and the
+ * REAL completion rule from prescriptionWorkflowService.js (TRANSITIONS,
+ * isValidTransition, isTerminal, nextDispenseStatus) so the harness can never
+ * drift from production. The dispense model mirrors the service exactly: an item
+ * is dispensed once (whole item), and the prescription status is recomputed from
+ * item tallies via nextDispenseStatus — the same function the live service runs.
  */
 
 const { assert, step } = require('./lib');
+const {
+  TRANSITIONS,
+  isValidTransition,
+  isTerminal,
+  nextDispenseStatus,
+} = require('../../services/rx-engine/prescriptionWorkflowService');
 
-const TRANSITIONS = {
-  drafted:             ['signed', 'cancelled'],
-  signed:              ['sent_to_pharmacy', 'cancelled'],
-  sent_to_pharmacy:    ['received', 'cancelled', 'expired'],
-  received:            ['partially_dispensed', 'fully_dispensed', 'cancelled', 'expired'],
-  partially_dispensed: ['partially_dispensed', 'fully_dispensed', 'cancelled', 'expired'],
-  fully_dispensed:     ['completed'],
-  completed:           [],
-  cancelled:           [],
-  expired:             [],
-};
 const ALL = Object.keys(TRANSITIONS);
-const isValid    = (f, t) => (TRANSITIONS[f] || []).includes(t);
-const isTerminal = s => (TRANSITIONS[s] || []).length === 0;
 
-// Toy rx with items
-function newRx(items = []) {
+// In-memory prescription that mirrors the service's item model: each item is
+// pending → dispensed | cancelled | unavailable. No per-item quantity
+// accumulation (the live service marks the whole item dispensed in one call).
+function newRx(itemCount = 1) {
   return {
-    id: 'rx-' + Math.random().toString(36).slice(2, 8),
     status: 'drafted',
-    items: items.map((q, i) => ({
-      id: `it-${i}`,
-      ordered: q,
-      dispensed: 0,
-      refills_authorized: 0,
-      refills_remaining: 0,
-      unavailable: false,
-    })),
+    items: Array.from({ length: itemCount }, (_, i) => ({ id: `it-${i}`, status: 'pending' })),
   };
 }
 
-// Dispense advances the rx based on item totals — same rule the service uses.
-function dispenseItem(rx, itemIdx, qty) {
+function counts(rx) {
+  const total = rx.items.length;
+  const dispensed = rx.items.filter(i => i.status === 'dispensed').length;
+  const finalized = rx.items.filter(i => ['dispensed', 'cancelled', 'unavailable'].includes(i.status)).length;
+  return { total, dispensed, finalized };
+}
+
+// Mirrors prescriptionWorkflowService.dispenseItem guards + recompute.
+function dispenseItem(rx, itemIdx) {
+  if (!['received', 'partially_dispensed'].includes(rx.status)) {
+    const e = new Error('rx not dispensable'); e.code = 'INVALID_STATE'; throw e;
+  }
   const it = rx.items[itemIdx];
-  if (it.unavailable) {
+  if (['dispensed', 'cancelled'].includes(it.status)) {
+    const e = new Error('item already terminal'); e.code = 'INVALID_STATE'; throw e;
+  }
+  if (it.status === 'unavailable') {
     const e = new Error('item unavailable'); e.code = 'INVALID_STATE'; throw e;
   }
-  if (!['received', 'partially_dispensed'].includes(rx.status)) {
-    const e = new Error('rx not dispensable'); e.code = 'INVALID_TRANSITION'; throw e;
-  }
-  it.dispensed += qty;
-  if (it.dispensed > it.ordered) {
-    const e = new Error('over-dispense'); e.code = 'INVALID_STATE'; throw e;
-  }
-  const allFull = rx.items.every(i => i.unavailable || i.dispensed >= i.ordered);
-  rx.status = allFull ? 'fully_dispensed' : 'partially_dispensed';
+  it.status = 'dispensed';
+  rx.status = nextDispenseStatus(rx.status, counts(rx));
+}
+
+function markUnavailable(rx, itemIdx) {
+  rx.items[itemIdx].status = 'unavailable';
+  rx.status = nextDispenseStatus(rx.status, counts(rx));
 }
 
 function transition(rx, target) {
-  if (!isValid(rx.status, target)) {
+  if (!isValidTransition(rx.status, target)) {
     const e = new Error(`bad transition ${rx.status} → ${target}`); e.code = 'INVALID_TRANSITION'; throw e;
   }
   rx.status = target;
@@ -71,11 +71,11 @@ const scenarios = [
     suite: 'prescriptions',
     name: 'Happy path: drafted → signed → sent → received → fully_dispensed → completed',
     run(ctx) {
-      const rx = newRx([10]);
+      const rx = newRx(1);
       transition(rx, 'signed');             step(ctx, 'signed');
       transition(rx, 'sent_to_pharmacy');   step(ctx, 'sent_to_pharmacy');
       transition(rx, 'received');           step(ctx, 'received');
-      dispenseItem(rx, 0, 10);              step(ctx, 'dispensed full quantity');
+      dispenseItem(rx, 0);                  step(ctx, 'dispensed only item');
       assert.equal(rx.status, 'fully_dispensed');
       transition(rx, 'completed');          step(ctx, 'completed');
       assert.ok(isTerminal(rx.status));
@@ -83,31 +83,47 @@ const scenarios = [
   },
   {
     suite: 'prescriptions',
-    name: 'Partial dispense: 2 → 3 → 5 (full) advances correctly across calls',
+    name: 'Multi-item partial: dispense 1 of 3 → partial, then remaining → full',
     run(ctx) {
-      const rx = newRx([10]);
+      const rx = newRx(3);
       ['signed', 'sent_to_pharmacy', 'received'].forEach(t => transition(rx, t));
-      dispenseItem(rx, 0, 2); assert.equal(rx.status, 'partially_dispensed');
-      step(ctx, `after 2: ${rx.status}`);
-      dispenseItem(rx, 0, 3); assert.equal(rx.status, 'partially_dispensed');
-      step(ctx, `after +3 (=5): ${rx.status}`);
-      dispenseItem(rx, 0, 5); assert.equal(rx.status, 'fully_dispensed');
-      step(ctx, `after +5 (=10): ${rx.status}`);
+      dispenseItem(rx, 0); assert.equal(rx.status, 'partially_dispensed');
+      step(ctx, `after 1/3: ${rx.status}`);
+      dispenseItem(rx, 1); assert.equal(rx.status, 'partially_dispensed');
+      step(ctx, `after 2/3: ${rx.status}`);
+      dispenseItem(rx, 2); assert.equal(rx.status, 'fully_dispensed');
+      step(ctx, `after 3/3: ${rx.status}`);
     },
   },
   {
     suite: 'prescriptions',
-    name: 'Multi-item dispense: 2 items, one partial + one unavailable → still advances',
+    name: 'Regression: dispensed item + unavailable item → fully_dispensed (was stuck partial)',
     run(ctx) {
-      const rx = newRx([5, 3]);
+      // This is the bug the old fake hid: with an unavailable item, the real
+      // service used `dispensed === total` and could NEVER reach fully_dispensed.
+      const rx = newRx(2);
       ['signed', 'sent_to_pharmacy', 'received'].forEach(t => transition(rx, t));
-      rx.items[1].unavailable = true;
-      step(ctx, 'item #1 flagged unavailable');
-      dispenseItem(rx, 0, 5);
-      // Because item 1 is unavailable, allFull is true after item 0 is done.
+      markUnavailable(rx, 1);
+      step(ctx, 'item #2 flagged unavailable');
+      dispenseItem(rx, 0);
       assert.equal(rx.status, 'fully_dispensed',
-        'unavailable items should not block full-dispense');
-      step(ctx, 'unavailable item correctly excluded from completion check');
+        'unavailable items must finalize, not block completion');
+      step(ctx, 'unavailable item finalized; Rx completes');
+      transition(rx, 'completed');
+      assert.ok(isTerminal(rx.status));
+    },
+  },
+  {
+    suite: 'prescriptions',
+    name: 'Last-item unavailable after a dispense also completes the Rx',
+    run(ctx) {
+      const rx = newRx(2);
+      ['signed', 'sent_to_pharmacy', 'received'].forEach(t => transition(rx, t));
+      dispenseItem(rx, 0); assert.equal(rx.status, 'partially_dispensed');
+      markUnavailable(rx, 1);
+      assert.equal(rx.status, 'fully_dispensed',
+        'marking the last pending item unavailable must finalize the Rx');
+      step(ctx, 'recompute on markUnavailable advances to fully_dispensed');
     },
   },
   {
@@ -116,12 +132,8 @@ const scenarios = [
     run(ctx) {
       const nonTerminal = ALL.filter(s => !isTerminal(s) && s !== 'fully_dispensed');
       for (const s of nonTerminal) {
-        const rx = { id: 'rx', status: s, items: [] };
-        // partially_dispensed can self-loop, but cancelled is in its transition list too
-        assert.ok(isValid(s, 'cancelled'), `${s} must allow → cancelled`);
-        transition(rx, 'cancelled');
+        assert.ok(isValidTransition(s, 'cancelled'), `${s} must allow → cancelled`);
         step(ctx, `${s} → cancelled ✓`);
-        assert.ok(isTerminal(rx.status));
       }
     },
   },
@@ -131,8 +143,7 @@ const scenarios = [
     run(ctx) {
       for (const term of ['completed', 'cancelled', 'expired']) {
         for (const target of ALL) {
-          assert.ok(!isValid(term, target),
-            `${term} must reject → ${target}`);
+          assert.ok(!isValidTransition(term, target), `${term} must reject → ${target}`);
         }
         step(ctx, `${term} is fully immutable`);
       }
@@ -140,41 +151,36 @@ const scenarios = [
   },
   {
     suite: 'prescriptions',
-    name: 'Failure injection: dispense before received throws INVALID_TRANSITION',
+    name: 'Failure injection: dispense before received throws',
     run(ctx) {
-      const rx = newRx([5]);
+      const rx = newRx(1);
       ['signed', 'sent_to_pharmacy'].forEach(t => transition(rx, t));
       let threw = false;
-      try { dispenseItem(rx, 0, 1); } catch (e) {
-        threw = (e.code === 'INVALID_TRANSITION');
-      }
-      assert.ok(threw, 'must throw INVALID_TRANSITION before received');
+      try { dispenseItem(rx, 0); } catch (e) { threw = (e.code === 'INVALID_STATE'); }
+      assert.ok(threw, 'must throw before received');
       step(ctx, 'dispense before ack correctly rejected');
     },
   },
   {
     suite: 'prescriptions',
-    name: 'Failure injection: over-dispense throws and does not corrupt status',
+    name: 'Failure injection: re-dispensing a dispensed item throws INVALID_STATE',
     run(ctx) {
-      const rx = newRx([3]);
+      const rx = newRx(1);
       ['signed', 'sent_to_pharmacy', 'received'].forEach(t => transition(rx, t));
-      dispenseItem(rx, 0, 2);
+      dispenseItem(rx, 0);
       const before = rx.status;
       let threw = false;
-      try { dispenseItem(rx, 0, 5); } catch (e) {
-        threw = (e.code === 'INVALID_STATE');
-      }
-      // The toy throws after mutating — the real service is transactional, so
-      // it would not commit. We just assert the throw fires deterministically.
-      assert.ok(threw, 'must throw INVALID_STATE on over-dispense');
-      step(ctx, `over-dispense rejected (status was ${before}, threw INVALID_STATE)`);
+      try { dispenseItem(rx, 0); } catch (e) { threw = (e.code === 'INVALID_STATE'); }
+      assert.ok(threw, 'must throw INVALID_STATE re-dispensing a terminal item');
+      assert.equal(rx.status, before, 'status must not change on rejected re-dispense');
+      step(ctx, `re-dispense rejected (status stayed ${before})`);
     },
   },
   {
     suite: 'prescriptions',
     name: 'Refill mechanics: authorize 2, request twice, third request rejected',
     run(ctx) {
-      const item = { ordered: 10, dispensed: 10, refills_authorized: 2, refills_remaining: 2, unavailable: false };
+      const item = { refills_remaining: 2 };
       function refill(it) {
         if (it.refills_remaining <= 0) { const e = new Error('no refills'); e.code = 'INVALID_STATE'; throw e; }
         it.refills_remaining -= 1;

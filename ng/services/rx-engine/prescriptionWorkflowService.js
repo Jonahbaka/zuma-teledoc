@@ -32,6 +32,22 @@ function isValidTransition(from, to) {
 }
 function isTerminal(s) { return (TRANSITIONS[s] || []).length === 0; }
 
+/**
+ * Pure dispense-completion decision, shared by the live service and the
+ * simulation harness so they can never drift. Given the current status and the
+ * item tallies, returns the next lifecycle status.
+ *   counts: { total, dispensed, finalized }
+ *     total     = all items
+ *     dispensed = items with status 'dispensed'
+ *     finalized = items dispensed | cancelled | unavailable
+ */
+function nextDispenseStatus(fromStatus, { total, dispensed, finalized }) {
+  if (!['received', 'partially_dispensed'].includes(fromStatus)) return fromStatus;
+  if (finalized === total && dispensed > 0) return 'fully_dispensed';
+  if (dispensed > 0 || finalized > 0)       return 'partially_dispensed';
+  return fromStatus;
+}
+
 function generateRxNumber() {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const tail = crypto.randomBytes(2).toString('hex').toUpperCase();
@@ -222,7 +238,27 @@ async function dispenseItem(prescriptionId, itemId, actor, opts = {}, pool = get
     [itemId, qty, opts.substitute_drug_id || null, opts.substitute_reason || null, opts.pharmacy_id || null]
   );
 
-  // Recompute prescription status
+  const advanced = await recomputeDispenseStatus(prescriptionId, rx.lifecycle_status, itemId, actor, pool, { quantity: qty });
+  if (!advanced) {
+    await logEvent(prescriptionId, itemId, actor, 'item_dispensed', null, null,
+      `item ${item.drug_name} dispensed`, { quantity: qty }, pool);
+  }
+
+  return getPrescription(prescriptionId, pool);
+}
+
+/**
+ * Recompute a prescription's lifecycle status from its item rows and persist any
+ * advance (partial → full). Returns true if the prescription status changed.
+ *
+ * Completion rule: every item must be finalized (dispensed / cancelled /
+ * unavailable) AND at least one item actually dispensed. The previous inline
+ * check used `dispensed === total`, which permanently stalled any prescription
+ * containing an unavailable or cancelled item — it could never reach
+ * fully_dispensed, and therefore never `completed`.
+ */
+async function recomputeDispenseStatus(prescriptionId, fromStatus, itemId, actor, pool = getPool(), meta = {}) {
+  if (!['received', 'partially_dispensed'].includes(fromStatus)) return false;
   const after = await pool.query(
     `SELECT
        COUNT(*)::int AS total,
@@ -231,25 +267,18 @@ async function dispenseItem(prescriptionId, itemId, actor, opts = {}, pool = get
      FROM ng_rx_items WHERE prescription_id = $1`, [prescriptionId]
   );
   const { total, dispensed, finalized } = after.rows[0];
-  let next = rx.lifecycle_status;
-  if (dispensed === total)                  next = 'fully_dispensed';
-  else if (dispensed > 0 || finalized > 0)  next = 'partially_dispensed';
+  const next = nextDispenseStatus(fromStatus, { total, dispensed, finalized });
 
-  if (next !== rx.lifecycle_status) {
-    await pool.query(
-      `UPDATE ng_digital_prescriptions SET lifecycle_status = $2, updated_at = NOW() WHERE id = $1`,
-      [prescriptionId, next]
-    );
-    await logEvent(prescriptionId, itemId, actor,
-      next === 'fully_dispensed' ? 'full' : 'partial',
-      rx.lifecycle_status, next,
-      `auto-advance after item dispense`, { item_id: itemId, quantity: qty }, pool);
-  } else {
-    await logEvent(prescriptionId, itemId, actor, 'item_dispensed', null, null,
-      `item ${item.drug_name} dispensed`, { quantity: qty }, pool);
-  }
-
-  return getPrescription(prescriptionId, pool);
+  if (next === fromStatus) return false;
+  await pool.query(
+    `UPDATE ng_digital_prescriptions SET lifecycle_status = $2, updated_at = NOW() WHERE id = $1`,
+    [prescriptionId, next]
+  );
+  await logEvent(prescriptionId, itemId, actor,
+    next === 'fully_dispensed' ? 'full' : 'partial',
+    fromStatus, next, `auto-advance after item ${meta.quantity != null ? 'dispense' : 'status change'}`,
+    { item_id: itemId, ...meta }, pool);
+  return true;
 }
 
 /**
@@ -265,6 +294,8 @@ async function markItemUnavailable(prescriptionId, itemId, actor, { notes } = {}
   );
   await logEvent(prescriptionId, itemId, actor, 'item_unavailable', null, null,
     'pharmacy reports item unavailable', { notes }, pool);
+  // Marking the last pending item unavailable can complete the dispense.
+  await recomputeDispenseStatus(prescriptionId, rx.lifecycle_status, itemId, actor, pool);
   return getPrescription(prescriptionId, pool);
 }
 
@@ -389,6 +420,7 @@ module.exports = {
   TRANSITIONS,
   isValidTransition,
   isTerminal,
+  nextDispenseStatus,
   generateRxNumber,
   createDraft,
   getPrescription,
