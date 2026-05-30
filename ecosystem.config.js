@@ -5,8 +5,15 @@ module.exports = {
     {
       name: 'zuma-teledoc',
       script: 'server/index.js',
-      exec_mode: 'cluster',
-      instances: 'max',
+      // NOTE: must stay single-instance (fork) until Socket.IO state is externalized.
+      // server/services/socketService.js holds room/presence state in in-process Maps
+      // (onlineUsers, telehealthRooms, conferenceRooms, *SocketMeta) and uses no Redis
+      // adapter. Under cluster mode, room emits (socket.to(roomKey).emit) and presence
+      // split across workers, breaking multi-party conferencing/telehealth and requiring
+      // sticky sessions. To scale horizontally later: add @socket.io/redis-adapter AND
+      // move those Maps to Redis, then restore exec_mode:'cluster' / instances:'max'.
+      exec_mode: 'fork',
+      instances: 1,
       max_memory_restart: '1500M',
       wait_ready: true,
       listen_timeout: 10000,
