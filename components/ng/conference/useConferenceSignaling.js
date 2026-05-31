@@ -27,13 +27,19 @@ function getAuthToken() {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
+// STUN fallback so a failed/empty ICE fetch never leaves RTCPeerConnection with
+// an empty iceServers list (which silently disables NAT traversal entirely).
+const DEFAULT_ICE_SERVERS = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+];
+
 async function fetchIceServers() {
   try {
     const r = await fetch('/api/ng/conference/ice-servers', { credentials: 'include' });
-    if (!r.ok) return [];
+    if (!r.ok) return DEFAULT_ICE_SERVERS;
     const b = await r.json();
-    return b?.iceServers || [];
-  } catch { return []; }
+    return (Array.isArray(b?.iceServers) && b.iceServers.length) ? b.iceServers : DEFAULT_ICE_SERVERS;
+  } catch { return DEFAULT_ICE_SERVERS; }
 }
 
 export function useConferenceSignaling({ roomId, enabled = true, displayName = 'Participant' }) {

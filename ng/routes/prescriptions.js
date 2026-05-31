@@ -31,6 +31,25 @@ function actor(req) {
   };
 }
 
+// ─── Clinical role enforcement ────────────────────────────────────────────────
+// The routes were previously authenticate-only: any logged-in user — including a
+// patient — could sign, dispense, cancel, or approve refills. These guards split
+// prescriber / pharmacist / patient duties. Admins may override any action.
+const roleOf = (req) => String(req.user?.role || '').toLowerCase().trim().replace(/\s+/g, '_');
+const PRESCRIBER = new Set(['doctor', 'provider', 'consultant', 'physician', 'specialist', 'prescriber']);
+const PHARMACIST = new Set(['pharmacist', 'pharmacy', 'dispenser']);
+const PATIENT    = new Set(['patient']);
+const ADMIN      = new Set(['admin', 'administrator', 'super_admin', 'superadmin', 'platform_admin']);
+
+function requireRole(...groups) {
+  const allowed = new Set(groups.flatMap((g) => [...g]));
+  return (req, res, next) => {
+    const role = roleOf(req);
+    if (ADMIN.has(role) || allowed.has(role)) return next();
+    return res.status(403).json({ ok: false, error: `forbidden: action requires role ${[...allowed].join(' | ')}` });
+  };
+}
+
 function handleError(res, err) {
   if (err.code === 'NOT_FOUND')          return res.status(404).json({ ok: false, error: err.message });
   if (err.code === 'INVALID_TRANSITION') return res.status(409).json({ ok: false, error: err.message });
@@ -53,7 +72,7 @@ router.get('/', async (req, res) => {
   } catch (e) { handleError(res, e); }
 });
 
-router.post('/', express.json(), async (req, res) => {
+router.post('/', requireRole(PRESCRIBER), express.json(), async (req, res) => {
   try {
     const rx = await svc.createDraft({ ...req.body, provider_id: req.body.provider_id || req.user?.provider_id });
     res.status(201).json({ ok: true, prescription: rx });
@@ -73,12 +92,12 @@ router.get('/:id/events', async (req, res) => {
   catch (e) { handleError(res, e); }
 });
 
-router.post('/:id/sign', express.json(), async (req, res) => {
+router.post('/:id/sign', requireRole(PRESCRIBER), express.json(), async (req, res) => {
   try { res.json({ ok: true, prescription: await svc.sign(req.params.id, actor(req), req.body || {}) }); }
   catch (e) { handleError(res, e); }
 });
 
-router.post('/:id/send', express.json(), async (req, res) => {
+router.post('/:id/send', requireRole(PRESCRIBER), express.json(), async (req, res) => {
   try {
     const pid = req.body?.pharmacy_id;
     if (!pid) return res.status(400).json({ ok: false, error: 'pharmacy_id required' });
@@ -86,44 +105,44 @@ router.post('/:id/send', express.json(), async (req, res) => {
   } catch (e) { handleError(res, e); }
 });
 
-router.post('/:id/receive', async (req, res) => {
+router.post('/:id/receive', requireRole(PHARMACIST), async (req, res) => {
   try { res.json({ ok: true, prescription: await svc.acknowledgeReceipt(req.params.id, actor(req)) }); }
   catch (e) { handleError(res, e); }
 });
 
-router.post('/:id/cancel', express.json(), async (req, res) => {
+router.post('/:id/cancel', requireRole(PRESCRIBER), express.json(), async (req, res) => {
   try { res.json({ ok: true, prescription: await svc.cancel(req.params.id, actor(req), req.body || {}) }); }
   catch (e) { handleError(res, e); }
 });
 
-router.post('/:id/complete', async (req, res) => {
+router.post('/:id/complete', requireRole(PHARMACIST, PRESCRIBER), async (req, res) => {
   try { res.json({ ok: true, prescription: await svc.complete(req.params.id, actor(req)) }); }
   catch (e) { handleError(res, e); }
 });
 
-router.post('/:id/items/:itemId/dispense', express.json(), async (req, res) => {
+router.post('/:id/items/:itemId/dispense', requireRole(PHARMACIST), express.json(), async (req, res) => {
   try {
     res.json({ ok: true, prescription: await svc.dispenseItem(req.params.id, req.params.itemId, actor(req), req.body || {}) });
   } catch (e) { handleError(res, e); }
 });
 
-router.post('/:id/items/:itemId/unavailable', express.json(), async (req, res) => {
+router.post('/:id/items/:itemId/unavailable', requireRole(PHARMACIST), express.json(), async (req, res) => {
   try {
     res.json({ ok: true, prescription: await svc.markItemUnavailable(req.params.id, req.params.itemId, actor(req), req.body || {}) });
   } catch (e) { handleError(res, e); }
 });
 
-router.post('/:id/refill', express.json(), async (req, res) => {
+router.post('/:id/refill', requireRole(PATIENT, PRESCRIBER), express.json(), async (req, res) => {
   try { res.status(201).json({ ok: true, refill: await svc.requestRefill(req.params.id, req.body?.item_id, actor(req), req.body || {}) }); }
   catch (e) { handleError(res, e); }
 });
 
-router.post('/refills/:refillId/approve', async (req, res) => {
+router.post('/refills/:refillId/approve', requireRole(PRESCRIBER), async (req, res) => {
   try { res.json({ ok: true, refill: await svc.approveRefill(req.params.refillId, actor(req)) }); }
   catch (e) { handleError(res, e); }
 });
 
-router.post('/refills/:refillId/deny', express.json(), async (req, res) => {
+router.post('/refills/:refillId/deny', requireRole(PRESCRIBER), express.json(), async (req, res) => {
   try { res.json({ ok: true, refill: await svc.denyRefill(req.params.refillId, actor(req), req.body || {}) }); }
   catch (e) { handleError(res, e); }
 });

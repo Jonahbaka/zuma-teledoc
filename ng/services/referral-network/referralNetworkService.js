@@ -16,7 +16,7 @@
  */
 
 const crypto = require('crypto');
-const { getPool } = require('../../../server/db');
+const { getPool, transaction } = require('../../../server/db');
 
 // ─── State machine ────────────────────────────────────────────────────────────
 
@@ -289,50 +289,61 @@ async function getReferralByCode(refCode, pool = getPool()) {
   return r.rows[0] || null;
 }
 
-async function transitionReferral(id, toStatus, actor, opts = {}, pool = getPool()) {
-  const ref = await getReferral(id, pool);
-  if (!ref) {
-    const err = new Error('Referral not found');
-    err.code = 'NOT_FOUND';
-    throw err;
-  }
-  if (!isValidTransition(ref.status, toStatus)) {
-    const err = new Error(`Invalid transition ${ref.status} → ${toStatus}`);
-    err.code = 'INVALID_TRANSITION';
-    throw err;
-  }
-
-  const cols = ['status = $2', 'updated_at = NOW()'];
-  const params = [id, toStatus];
-
-  if (toStatus === 'scheduled' && opts.scheduled_at) {
-    params.push(opts.scheduled_at);
-    cols.push(`scheduled_at = $${params.length}`);
-  }
-  if (toStatus === 'completed') {
-    cols.push('completed_at = NOW()');
-  }
-  if (toStatus === 'cancelled') {
-    cols.push('cancelled_at = NOW()');
-    if (opts.cancellation_reason) {
-      params.push(opts.cancellation_reason);
-      cols.push(`cancellation_reason = $${params.length}`);
+async function transitionReferral(id, toStatus, actor, opts = {}, existing = null) {
+  // Status change + event log + commission accrual run in ONE transaction with a
+  // SELECT ... FOR UPDATE row lock. Previously these were separate autocommit
+  // writes and accrueCommissions was fire-and-forget with a swallowing .catch —
+  // so a referral could be left 'completed' with a missing/partial commission
+  // ledger, and two concurrent completions could double-accrue. The row lock
+  // serializes concurrent transitions on the same referral.
+  const run = async (client) => {
+    const lockRes = await client.query(`SELECT * FROM drn_referrals WHERE id = $1 FOR UPDATE`, [id]);
+    const ref = lockRes.rows[0];
+    if (!ref) {
+      const err = new Error('Referral not found');
+      err.code = 'NOT_FOUND';
+      throw err;
     }
-  }
+    if (!isValidTransition(ref.status, toStatus)) {
+      const err = new Error(`Invalid transition ${ref.status} → ${toStatus}`);
+      err.code = 'INVALID_TRANSITION';
+      throw err;
+    }
 
-  const sql = `UPDATE drn_referrals SET ${cols.join(', ')} WHERE id = $1 RETURNING *`;
-  const r = await pool.query(sql, params);
-  const updated = r.rows[0];
+    const cols = ['status = $2', 'updated_at = NOW()'];
+    const params = [id, toStatus];
 
-  await logEvent(id, actor, toStatus, ref.status, toStatus, opts.notes || null, opts.payload || null, pool);
+    if (toStatus === 'scheduled' && opts.scheduled_at) {
+      params.push(opts.scheduled_at);
+      cols.push(`scheduled_at = $${params.length}`);
+    }
+    if (toStatus === 'completed') {
+      cols.push('completed_at = NOW()');
+    }
+    if (toStatus === 'cancelled') {
+      cols.push('cancelled_at = NOW()');
+      if (opts.cancellation_reason) {
+        params.push(opts.cancellation_reason);
+        cols.push(`cancellation_reason = $${params.length}`);
+      }
+    }
 
-  if (toStatus === 'completed') {
-    await accrueCommissions(updated, pool).catch(err => {
-      console.error('[DRN] commission accrual failed', err.message);
-    });
-  }
+    const sql = `UPDATE drn_referrals SET ${cols.join(', ')} WHERE id = $1 RETURNING *`;
+    const r = await client.query(sql, params);
+    const updated = r.rows[0];
 
-  return updated;
+    await logEvent(id, actor, toStatus, ref.status, toStatus, opts.notes || null, opts.payload || null, client);
+
+    // In-transaction: a commission failure now rolls back the whole completion
+    // rather than leaving an inconsistent ledger.
+    if (toStatus === 'completed') {
+      await accrueCommissions(updated, client);
+    }
+
+    return updated;
+  };
+
+  return existing ? run(existing) : transaction(run);
 }
 
 async function logEvent(referralId, actor, eventKind, fromStatus, toStatus, notes, payload, pool = getPool()) {
@@ -388,6 +399,14 @@ function round2(n) {
 }
 
 async function accrueCommissions(referral, pool = getPool()) {
+  // Idempotency guard: never accrue twice for the same referral. Combined with
+  // the SELECT ... FOR UPDATE lock in transitionReferral, this prevents
+  // double-payout on retried or concurrent 'completed' transitions.
+  const existing = await pool.query(
+    `SELECT 1 FROM drn_commissions WHERE referral_id = $1 LIMIT 1`, [referral.id]
+  );
+  if (existing.rows.length) return [];
+
   const splits = computeSplit(referral);
   if (splits.length === 0) return [];
   const out = [];

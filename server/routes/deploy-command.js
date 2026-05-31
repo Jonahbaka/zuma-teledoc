@@ -1,6 +1,6 @@
 const PROJECT_ROOT = '/home/ec2-user/zuma-teledoc';
 const CRONOPS_ROOT = `${PROJECT_ROOT}/cronops`;
-const DEPLOY_BUILD_MEMORY_MB = process.env.DEPLOY_BUILD_MEMORY_MB || '1536';
+const DEPLOY_BUILD_MEMORY_MB = process.env.DEPLOY_BUILD_MEMORY_MB || '4096';
 const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
 
 function buildDeployCommand() {

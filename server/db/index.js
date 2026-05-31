@@ -184,3 +184,17 @@ module.exports = {
   healthCheck,
   close,
 };
+
+// Backward-compatible `db.pool` accessor. ~90 call sites across the legacy
+// service/route layer (clinicalEncounterService, prescriptionService,
+// insuranceWalletService, claims, social, etc.) use `db.pool.connect()` /
+// `db.pool.query()` / `db.pool.end()`. There was never a `pool` export, so every
+// one of those paths threw `TypeError: Cannot read properties of undefined
+// (reading 'connect')` at runtime — silently disabling EMR encounters, SOAP
+// notes, and legacy prescribing. getPool() already returns the real pg Pool once
+// initialized, or a deferring proxy during the brief startup window; both expose
+// connect/query/end, so exposing it as `.pool` fixes all call sites at the root.
+Object.defineProperty(module.exports, 'pool', {
+  enumerable: true,
+  get() { return getPool(); },
+});

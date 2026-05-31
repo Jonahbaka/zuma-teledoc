@@ -22,8 +22,11 @@ const deriveStableJwtSecret = (purpose) => {
     process.env.JWT_SECRET ||
     process.env.JWT_DERIVATION_SEED ||
     process.env.SESSION_SECRET ||
-    process.env.ENCRYPTION_KEY ||
-    process.env.DATABASE_URL;
+    process.env.ENCRYPTION_KEY;
+    // NOTE: DATABASE_URL deliberately excluded as a JWT seed. The connection
+    // string is shared with tooling, CI logs, error traces and Sentry
+    // breadcrumbs — it is not a cryptographic secret. Deriving the token-signing
+    // key from it would let anyone who sees the DB URL forge access tokens.
   if (!seed) return null;
   return crypto.createHmac('sha256', String(seed)).update(String(purpose)).digest('hex');
 };
