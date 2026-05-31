@@ -13,7 +13,7 @@
  */
 
 const crypto = require('crypto');
-const { getPool } = require('../../../server/db');
+const { getPool, transaction } = require('../../../server/db');
 
 const TRANSITIONS = {
   drafted:             ['signed', 'cancelled'],
@@ -63,7 +63,7 @@ function generateRxNumber() {
  *   items: [{ drug_id?, drug_name, generic_name?, brand_name?, dosage,
  *             frequency, duration_days?, quantity?, refills_authorized?, notes? }]
  */
-async function createDraft(input, pool = getPool()) {
+async function createDraft(input, existing = null) {
   if (!input.provider_id)     throw new Error('provider_id required');
   if (!input.patient_user_id) throw new Error('patient_user_id required');
   if (!Array.isArray(input.items) || input.items.length === 0) {
@@ -71,46 +71,54 @@ async function createDraft(input, pool = getPool()) {
   }
 
   const rxNumber = generateRxNumber();
-  const r = await pool.query(
-    `INSERT INTO ng_digital_prescriptions
-       (provider_id, patient_user_id, appointment_id, prescription_number,
-        items, preferred_pharmacy_id, diagnosis, notes, is_controlled,
-        lifecycle_status)
-     VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,COALESCE($9,false),'drafted')
-     RETURNING *`,
-    [
-      input.provider_id, input.patient_user_id, input.appointment_id || null,
-      rxNumber,
-      JSON.stringify(input.items),  // keep legacy JSONB blob in sync
-      input.preferred_pharmacy_id || null,
-      input.diagnosis || null,
-      input.notes || null,
-      input.is_controlled || false,
-    ]
-  );
-  const rx = r.rows[0];
-
-  // Normalized items
-  for (let i = 0; i < input.items.length; i++) {
-    const it = input.items[i];
-    await pool.query(
-      `INSERT INTO ng_rx_items
-         (prescription_id, position, drug_id, drug_name, generic_name, brand_name,
-          dosage, frequency, duration_days, quantity, refills_authorized,
-          refills_remaining, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,0),COALESCE($11,0),$12)`,
+  // Header + all item rows + the drafted event write atomically. Previously these
+  // were separate autocommit writes, so a failure partway through the item loop
+  // left an orphaned prescription header with partial items and no audit event.
+  const run = async (client) => {
+    const r = await client.query(
+      `INSERT INTO ng_digital_prescriptions
+         (provider_id, patient_user_id, appointment_id, prescription_number,
+          items, preferred_pharmacy_id, diagnosis, notes, is_controlled,
+          lifecycle_status)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,COALESCE($9,false),'drafted')
+       RETURNING *`,
       [
-        rx.id, i + 1, it.drug_id || null,
-        it.drug_name, it.generic_name || null, it.brand_name || null,
-        it.dosage, it.frequency,
-        it.duration_days || null, it.quantity || null,
-        it.refills_authorized || 0, it.notes || null,
+        input.provider_id, input.patient_user_id, input.appointment_id || null,
+        rxNumber,
+        JSON.stringify(input.items),  // keep legacy JSONB blob in sync
+        input.preferred_pharmacy_id || null,
+        input.diagnosis || null,
+        input.notes || null,
+        input.is_controlled || false,
       ]
     );
-  }
+    const rx = r.rows[0];
 
-  await logEvent(rx.id, null, { kind: 'system' }, 'drafted', null, 'drafted', 'prescription drafted', null, pool);
-  return getPrescription(rx.id, pool);
+    // Normalized items
+    for (let i = 0; i < input.items.length; i++) {
+      const it = input.items[i];
+      await client.query(
+        `INSERT INTO ng_rx_items
+           (prescription_id, position, drug_id, drug_name, generic_name, brand_name,
+            dosage, frequency, duration_days, quantity, refills_authorized,
+            refills_remaining, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,0),COALESCE($11,0),$12)`,
+        [
+          rx.id, i + 1, it.drug_id || null,
+          it.drug_name, it.generic_name || null, it.brand_name || null,
+          it.dosage, it.frequency,
+          it.duration_days || null, it.quantity || null,
+          it.refills_authorized || 0, it.notes || null,
+        ]
+      );
+    }
+
+    await logEvent(rx.id, null, { kind: 'system' }, 'drafted', null, 'drafted', 'prescription drafted', null, client);
+    return rx.id;
+  };
+
+  const rxId = existing ? await run(existing) : await transaction(run);
+  return getPrescription(rxId);
 }
 
 async function getPrescription(id, pool = getPool()) {
