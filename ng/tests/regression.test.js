@@ -98,6 +98,9 @@ test('P2 completion: never advances from non-dispensable state', () => {
 test('P2 completion: all-unavailable (0 dispensed) must NOT report fully_dispensed', () => {
   assert.strictEqual(rx.nextDispenseStatus('partially_dispensed', { total: 2, dispensed: 0, finalized: 2 }), 'partially_dispensed');
 });
+test('P2 completion: single-item dispensed → fully_dispensed (boundary)', () => {
+  assert.strictEqual(rx.nextDispenseStatus('received', { total: 1, dispensed: 1, finalized: 1 }), 'fully_dispensed');
+});
 
 // ─── P3: Transaction integrity ────────────────────────────────────────────────
 test('P3 tx: createDraft commits on success (BEGIN>COMMIT, 2 items, no rollback)', async () => {
@@ -132,6 +135,16 @@ test('P3 tx: commission accrual is idempotent (no double-accrue when commissions
   const { db, log } = makeFakeDb({ existingCommissions: true }); current = db;
   await ref.transitionReferral('ref-1', 'completed', { user_id: 'u1', kind: 'system' });
   assert.strictEqual(log.filter(x => x === 'INS_COMMISSION').length, 0);
+});
+test('P3 tx: illegal referral transition is rejected (no UPDATE/COMMIT)', async () => {
+  // Locked row is in_progress; in_progress → draft is not a legal transition.
+  const { db, log } = makeFakeDb(); current = db;
+  let code = null;
+  try { await ref.transitionReferral('ref-1', 'draft', { user_id: 'u1', kind: 'system' }); }
+  catch (e) { code = e.code; }
+  assert.strictEqual(code, 'INVALID_TRANSITION', 'must reject illegal transition');
+  assert.ok(!log.includes('UPD_REFERRAL'), 'must not update the referral on a rejected transition');
+  assert.ok(!log.includes('COMMIT'), 'must not commit on a rejected transition');
 });
 
 // ─── P1: Prescription RBAC ────────────────────────────────────────────────────
