@@ -2,8 +2,7 @@
 
 /**
  * components/ng/conference/RoomDetail.jsx
- * Live room view: participants + chat + permissions + invites + state controls.
- * No media plane here — control plane only.
+ * Live room view: live media + participants + chat + permissions + invites + state controls.
  */
 
 import { useEffect, useState, useCallback } from 'react';
@@ -17,8 +16,10 @@ import ParticipantsList from './ParticipantsList';
 import ChatPanel from './ChatPanel';
 import PermissionsPanel from './PermissionsPanel';
 import InvitePanel from './InvitePanel';
+import LiveMediaPanel from './LiveMediaPanel';
 
 const PANELS = [
+  { id: 'live',         label: 'Live',         icon: Video },
   { id: 'participants', label: 'Participants', icon: Users },
   { id: 'chat',         label: 'Chat',         icon: MessageSquare },
   { id: 'invites',      label: 'Invites',      icon: LinkIcon },
@@ -32,7 +33,7 @@ export default function RoomDetail({ roomId }) {
   const [me, setMe]                     = useState(null);
   const [err, setErr]                   = useState('');
   const [loading, setLoading]           = useState(true);
-  const [panel, setPanel]               = useState('participants');
+  const [panel, setPanel]               = useState('live');
   const [copied, setCopied]             = useState(false);
 
   const load = useCallback(async () => {
@@ -162,6 +163,13 @@ export default function RoomDetail({ roomId }) {
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-6">
+        {panel === 'live' && (
+          room.status === 'live'
+            ? <LiveMediaPanel roomId={room.id} displayName={me?.display_name || 'Participant'} active={panel === 'live'} />
+            : <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+                Media starts when the room is live. {room.status === 'scheduled' ? 'Start the room to open the media session.' : `Room is ${room.status}.`}
+              </p>
+        )}
         {panel === 'participants' && (
           <ParticipantsList roomId={room.id} participants={participants} me={me} onChanged={load} />
         )}
@@ -179,8 +187,8 @@ export default function RoomDetail({ roomId }) {
       </main>
 
       <footer className="mx-auto max-w-6xl px-6 pb-8 text-[11px] text-slate-400">
-        Control plane only — the media layer plugs into <code>{room.media_server}</code> at signaling namespace <code>{room.signaling_namespace}</code>.
-        Recording is metadata-only (no audio/video bytes leave the SFU bucket).
+        Media: mesh WebRTC via signaling namespace <code>{room.signaling_namespace}</code> (<code>{room.media_server}</code>).
+        For larger rooms, route through an SFU. Recording is metadata-only (no audio/video bytes leave the SFU bucket).
       </footer>
     </div>
   );
