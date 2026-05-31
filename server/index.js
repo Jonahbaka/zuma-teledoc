@@ -50,11 +50,16 @@ function readGitCommitId() {
 }
 
 function resolveBuildId() {
+  // Order matters: report the id of the frontend bundles that are ACTUALLY being
+  // served. That is .next/BUILD_ID. The chunked-upload deploy path uploads a
+  // prebuilt .next without moving git HEAD, so preferring git SHA here made
+  // /api/health advertise a stale buildId while serving new bundles. An explicit
+  // APP_BUILD_ID override still wins for environments that set it.
   const candidates = [
     process.env.APP_BUILD_ID,
+    readNextBuildId(),
     process.env.GITHUB_SHA ? process.env.GITHUB_SHA.slice(0, 12) : null,
     readGitCommitId(),
-    readNextBuildId(),
     packageJson.version ? `app-${packageJson.version}` : null,
   ];
 
@@ -348,7 +353,8 @@ app.get('/api/health', (req, res) => {
     nextInitError,
     frontendState,
     version: buildId,
-    buildId,
+    buildId,                                 // id of the served frontend bundles (.next/BUILD_ID)
+    gitCommit: readGitCommitId() || null,    // git HEAD — may differ from buildId after a chunked-upload deploy
     nemoClaw,
     // Cloud Run metadata (helps diagnose load balancer / revision split)
     service: process.env.K_SERVICE,
