@@ -48,9 +48,23 @@ function nextDispenseStatus(fromStatus, { total, dispensed, finalized }) {
   return fromStatus;
 }
 
-function generateRxNumber() {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const tail = crypto.randomBytes(2).toString('hex').toUpperCase();
+let rxSequenceDate = null;
+let rxSequenceValue = 0;
+let rxSequenceCount = 0;
+
+function generateRxNumber(now = new Date()) {
+  const date = now.toISOString().slice(0, 10).replace(/-/g, '');
+  if (date !== rxSequenceDate) {
+    rxSequenceDate = date;
+    rxSequenceValue = crypto.randomInt(0x10000);
+    rxSequenceCount = 0;
+  }
+  if (rxSequenceCount >= 0x10000) {
+    throw new Error(`Daily prescription number space exhausted for ${date}`);
+  }
+  rxSequenceValue = (rxSequenceValue + 1) & 0xffff;
+  rxSequenceCount += 1;
+  const tail = rxSequenceValue.toString(16).padStart(4, '0').toUpperCase();
   return `NG-RX-${date}-${tail}`;
 }
 

@@ -611,12 +611,14 @@ async function readHeatmap({ specialty, state, limit = 500 } = {}, pool = getPoo
 
 // ─── Listing referrals (inbox / outbox / analytics) ───────────────────────────
 
-async function listReferrals({ destination_org, originating_org, originating_agent, status, urgency, since, limit = 50 } = {}, pool = getPool()) {
+async function listReferrals({ destination_org, originating_org, originating_agent, patient_user_id, provider_id, status, urgency, since, limit = 50 } = {}, pool = getPool()) {
   const where = [];
   const params = [];
   if (destination_org)    { params.push(destination_org);    where.push(`destination_org = $${params.length}`); }
   if (originating_org)    { params.push(originating_org);    where.push(`originating_org = $${params.length}`); }
   if (originating_agent)  { params.push(originating_agent);  where.push(`originating_agent = $${params.length}`); }
+  if (patient_user_id)    { params.push(patient_user_id);    where.push(`patient_user_id = $${params.length}`); }
+  if (provider_id)        { params.push(provider_id);        where.push(`(originating_provider = $${params.length} OR destination_provider = $${params.length})`); }
   if (status)             { params.push(status);             where.push(`status = $${params.length}`); }
   if (urgency)            { params.push(urgency);            where.push(`urgency = $${params.length}`); }
   if (since)              { params.push(since);              where.push(`created_at >= $${params.length}`); }

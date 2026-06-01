@@ -42,7 +42,21 @@ function makeFakeDb({ failItemInsert = 0, existingCommissions = false } = {}) {
         log.push('INS_ITEM'); return { rows: [{ id: 'it-' + itemN }] };
       }
       if (/INSERT INTO ng_rx_events/i.test(text)) { log.push('INS_EVENT'); return { rows: [] }; }
-      if (/SELECT \* FROM ng_digital_prescriptions/i.test(text)) { return { rows: [{ id: 'rx-1', lifecycle_status: 'drafted' }] }; }
+      if (/SELECT id FROM ng_providers WHERE user_id/i.test(text)) { return { rows: [{ id: 'prov-1' }] }; }
+      if (/SELECT id FROM ng_pharmacies WHERE owner_user_id/i.test(text)) { return { rows: [{ id: 'pharm-1' }] }; }
+      if (/SELECT \* FROM ng_digital_prescriptions/i.test(text)) {
+        return {
+          rows: [{
+            id: 'rx-1',
+            lifecycle_status: 'drafted',
+            provider_id: 'prov-1',
+            patient_user_id: 'patient-1',
+            preferred_pharmacy_id: 'pharm-1',
+            routed_pharmacy_id: 'pharm-1',
+            dispensed_by_pharmacy_id: null,
+          }],
+        };
+      }
       if (/SELECT \* FROM ng_rx_items/i.test(text)) { return { rows: [] }; }
       if (/SELECT 1 FROM drn_commissions/i.test(text)) { return { rows: existingCommissions ? [{ ok: 1 }] : [] }; }
       if (/SELECT \* FROM drn_referrals[\s\S]*FOR UPDATE/i.test(text)) { return { rows: [{ id: 'ref-1', status: 'in_progress' }] }; }

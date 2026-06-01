@@ -23,6 +23,8 @@
     "test:regression": "node ng/tests/regression.test.js",
     "test:portal": "node ng/tests/portal-contract.test.js",
     "test:sim": "node ng/scripts/simulate.js",
+    "test:live-sim": "node ng/scripts/simulate-live.js",
+    "test:deploy-gate": "npm test && npm run test:sim",
     "lint": "eslint .",
     "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\"",
     "validate:db": "node scripts/validate-db.js"

@@ -9,7 +9,7 @@
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const crypto = require('node:crypto');
+const { generateRxNumber } = require('../services/rx-engine/prescriptionWorkflowService');
 
 const TRANSITIONS = {
   drafted:             ['signed', 'cancelled'],
@@ -24,12 +24,6 @@ const TRANSITIONS = {
 };
 function isValidTransition(from, to) { return (TRANSITIONS[from] || []).includes(to); }
 function isTerminal(s) { return (TRANSITIONS[s] || []).length === 0; }
-function generateRxNumber() {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const tail = crypto.randomBytes(2).toString('hex').toUpperCase();
-  return `NG-RX-${date}-${tail}`;
-}
-
 describe('Rx state machine', () => {
   it('accepts the canonical happy path', () => {
     const path = ['drafted', 'signed', 'sent_to_pharmacy', 'received', 'fully_dispensed', 'completed'];
@@ -93,9 +87,7 @@ describe('generateRxNumber', () => {
     const n = generateRxNumber();
     assert.match(n, /^NG-RX-\d{8}-[0-9A-F]{4}$/);
   });
-  it('generates unique numbers across 50 calls (statistically)', () => {
-    // 2 hex bytes = 65,536-tail space. Birthday-problem at n=50 → P(collision)≈2%.
-    // Keep sample small to keep flake risk negligible.
+  it('generates unique numbers across 50 calls', () => {
     const seen = new Set();
     for (let i = 0; i < 50; i++) seen.add(generateRxNumber());
     assert.equal(seen.size, 50);

@@ -49,6 +49,12 @@ function actor(req) {
   return req.user?.id || req.user?.userId || null;
 }
 
+async function runGate(middleware, req, res) {
+  let allowed = false;
+  await middleware(req, res, () => { allowed = true; });
+  return allowed;
+}
+
 // ─── Jurisdiction hierarchy ──────────────────────────────────────────────────
 
 router.get(
@@ -182,6 +188,10 @@ router.post(
       if (!APPROVER_ROLES.has(baseRole)) {
         return res.status(403).json({ error: 'Approval authority required for this transition.' });
       }
+    }
+    if (exporterTargets.has(targetStatus)) {
+      const allowed = await runGate(rbac.requireExportAuthority(), req, res);
+      if (!allowed) return;
     }
 
     const submission = await svc.advanceWorkflow({
