@@ -19,7 +19,7 @@
     "seed:links": "node server/scripts/seed-testing-links.js",
     "verify:admin-test-access": "node scripts/verify-admin-test-access-flow.cjs",
     "verify:testing-link-lifecycle": "node scripts/verify-testing-link-lifecycle.cjs",
-    "test": "node ng/tests/regression.test.js && node ng/tests/portal-contract.test.js",
+    "test": "node --test ng/tests/conferencing.test.js && node ng/tests/regression.test.js && node ng/tests/portal-contract.test.js",
     "test:regression": "node ng/tests/regression.test.js",
     "test:portal": "node ng/tests/portal-contract.test.js",
     "test:sim": "node ng/scripts/simulate.js",

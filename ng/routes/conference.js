@@ -20,6 +20,7 @@ function handleError(res, err) {
   if (err.code === 'NOT_FOUND')      return res.status(404).json({ ok: false, error: err.message });
   if (err.code === 'FORBIDDEN')      return res.status(403).json({ ok: false, error: err.message });
   if (err.code === 'INVALID_STATE')  return res.status(409).json({ ok: false, error: err.message });
+  if (err.code === 'MEDIA_NOT_READY') return res.status(409).json({ ok: false, error: err.message, readiness: err.readiness });
   if (err.code === 'ROOM_FULL')      return res.status(409).json({ ok: false, error: err.message });
   if (err.code === 'BAD_INPUT')      return res.status(400).json({ ok: false, error: err.message });
   console.error('[NG/Conf]', err);
@@ -173,6 +174,16 @@ router.get('/ice-servers', (req, res) => {
   try {
     const { getTelehealthIceServers } = require('../../server/services/telehealthSessionService');
     res.json({ ok: true, iceServers: getTelehealthIceServers() });
+  } catch (e) { handleError(res, e); }
+});
+
+router.get('/media-readiness', (req, res) => {
+  try {
+    const readiness = svc.assessConferenceMediaReadiness({
+      maxParticipants: req.query.max_participants ? Number(req.query.max_participants) : undefined,
+      mediaServer: req.query.media_server,
+    });
+    res.json({ ok: true, readiness });
   } catch (e) { handleError(res, e); }
 });
 

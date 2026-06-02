@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Loader2, AlertCircle, Users } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Loader2, AlertCircle, Users, ServerCrash } from 'lucide-react';
 import { useConferenceSignaling } from './useConferenceSignaling';
 
 function VideoTile({ stream, label, muted = false, isSelf = false }) {
@@ -114,6 +114,25 @@ export default function LiveMediaPanel({ roomId, displayName = 'Participant', ac
           className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-600 text-white hover:bg-rose-700">
           <PhoneOff className="h-5 w-5" />
         </button>
+      </div>
+    </div>
+  );
+}
+
+export function UnsupportedSfuPanel({ room }) {
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-6">
+      <div className="flex items-start gap-3">
+        <div className="rounded-lg bg-amber-100 p-2 text-amber-700">
+          <ServerCrash className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-amber-900">SFU media client not available</p>
+          <p className="mt-1 text-sm text-amber-800">
+            This room is configured for <code>{room?.media_server}</code> with up to {room?.max_participants} participants.
+            The browser panel only supports peer mesh rooms of 3 participants or fewer.
+          </p>
+        </div>
       </div>
     </div>
   );

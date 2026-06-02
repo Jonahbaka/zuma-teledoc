@@ -11,12 +11,12 @@ import {
   Video, Play, StopCircle, XCircle, Hand, ArrowLeft, AlertCircle,
   Users, MessageSquare, Shield, Link as LinkIcon, RefreshCw, Copy, CheckCircle2,
 } from 'lucide-react';
-import { conf, statusBadge, roleBadge, fmtDateTime } from './conferenceApi';
+import { conf, statusBadge, fmtDateTime } from './conferenceApi';
 import ParticipantsList from './ParticipantsList';
 import ChatPanel from './ChatPanel';
 import PermissionsPanel from './PermissionsPanel';
 import InvitePanel from './InvitePanel';
-import LiveMediaPanel from './LiveMediaPanel';
+import LiveMediaPanel, { UnsupportedSfuPanel } from './LiveMediaPanel';
 
 const PANELS = [
   { id: 'live',         label: 'Live',         icon: Video },
@@ -165,7 +165,11 @@ export default function RoomDetail({ roomId }) {
       <main className="mx-auto max-w-6xl px-6 py-6">
         {panel === 'live' && (
           room.status === 'live'
-            ? <LiveMediaPanel roomId={room.id} displayName={me?.display_name || 'Participant'} active={panel === 'live'} />
+            ? (
+                room.media_server === 'peer_mesh'
+                  ? <LiveMediaPanel roomId={room.id} displayName={me?.display_name || 'Participant'} active={panel === 'live'} />
+                  : <UnsupportedSfuPanel room={room} />
+              )
             : <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
                 Media starts when the room is live. {room.status === 'scheduled' ? 'Start the room to open the media session.' : `Room is ${room.status}.`}
               </p>
@@ -187,8 +191,8 @@ export default function RoomDetail({ roomId }) {
       </main>
 
       <footer className="mx-auto max-w-6xl px-6 pb-8 text-[11px] text-slate-400">
-        Media: mesh WebRTC via signaling namespace <code>{room.signaling_namespace}</code> (<code>{room.media_server}</code>).
-        For larger rooms, route through an SFU. Recording is metadata-only (no audio/video bytes leave the SFU bucket).
+        Media: <code>{room.media_server}</code> via signaling namespace <code>{room.signaling_namespace}</code>.
+        Peer mesh supports up to 3 participants; larger rooms require configured SFU and TURN services.
       </footer>
     </div>
   );

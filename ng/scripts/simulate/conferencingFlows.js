@@ -12,6 +12,10 @@
 const {
   effectivePermissions, can, canActOn, ROLE_DEFAULTS, PERMISSION_KEYS,
 } = require('../../../lib/ng/conferencePermissions');
+const {
+  assessConferenceMediaReadiness,
+  suggestMediaServer,
+} = require('../../../lib/ng/conferenceMediaReadiness');
 const { assert, step } = require('./lib');
 
 // Mirror the state machine from conferenceService (same pattern as the unit tests).
@@ -22,11 +26,6 @@ const ROOM_TRANSITIONS = {
   cancelled: [],
 };
 const isValidRoomTransition = (from, to) => (ROOM_TRANSITIONS[from] || []).includes(to);
-const PEER_MESH_LIMIT = 3;
-function suggestMediaServer(n) {
-  if (!n || n <= PEER_MESH_LIMIT) return 'peer_mesh';
-  return process.env.NG_CONF_DEFAULT_MEDIA_SERVER || 'livekit';
-}
 
 // Toy "room" + "participant" record for sequencing flows.
 function room(opts = {}) {
@@ -215,6 +214,34 @@ const scenarios = [
       assert.notEqual(suggestMediaServer(4), 'peer_mesh');
       assert.notEqual(suggestMediaServer(50), 'peer_mesh');
       step(ctx, 'peer-mesh holds at 3, SFU at 4+ — boundary is correct');
+    },
+  },
+  {
+    suite: 'conferencing',
+    name: 'Media readiness: 10-party SFU requires configured SFU plus TURN',
+    run(ctx) {
+      const unconfigured = assessConferenceMediaReadiness({
+        maxParticipants: 10,
+        mediaServer: 'livekit',
+        env: {},
+      });
+      assert.equal(unconfigured.ready, false, 'unconfigured 10-party SFU must fail closed');
+      assert.equal(unconfigured.blockers.length, 2, 'missing SFU and TURN should both be reported');
+      step(ctx, '10-party LiveKit room fails closed without LiveKit and TURN environment');
+
+      const configured = assessConferenceMediaReadiness({
+        maxParticipants: 10,
+        mediaServer: 'livekit',
+        env: {
+          LIVEKIT_URL: 'wss://livekit.example.test',
+          LIVEKIT_API_KEY: 'key',
+          LIVEKIT_API_SECRET: 'secret',
+          RTC_TURN_URLS: 'turn:turn.example.test:3478',
+          TURN_SHARED_SECRET: 'turn-secret',
+        },
+      });
+      assert.equal(configured.ready, true, 'configured SFU plus TURN should be production-ready');
+      step(ctx, '10-party LiveKit room passes when SFU and TURN prerequisites are present');
     },
   },
   {
