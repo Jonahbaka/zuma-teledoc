@@ -90,14 +90,14 @@ jobs:
           COMPLETE=false
           while [ $(date +%s) -lt $DEADLINE ]; do
             if [ -n "$DEPLOY_SECRET" ]; then
-              LOG_JSON=$(curl -s --max-time 15 -H "x-deploy-token: $DEPLOY_SECRET" "https://doctarx.com/api/deploy/log?lines=300" 2>/dev/null)
+              LOG_JSON=$(curl -s --max-time 15 -H "x-deploy-token: $DEPLOY_SECRET" "https://doctarx.com/api/deploy/log?lines=300" 2>/dev/null || echo '{}')
             else
-              oidc_resp=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doctarx-deploy" 2>/dev/null)
-              oidc_tok=$(printf '%s' "$oidc_resp" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("value",""))' 2>/dev/null)
-              LOG_JSON=$(curl -s --max-time 15 -H "Authorization: Bearer $oidc_tok" "https://doctarx.com/api/deploy/log?lines=300" 2>/dev/null)
+              oidc_resp=$(curl -sS --max-time 10 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doctarx-deploy" 2>/dev/null || echo '{}')
+              oidc_tok=$(printf '%s' "$oidc_resp" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("value",""))' 2>/dev/null || echo '')
+              LOG_JSON=$(curl -s --max-time 15 -H "Authorization: Bearer $oidc_tok" "https://doctarx.com/api/deploy/log?lines=300" 2>/dev/null || echo '{}')
             fi
-            DONE=$(printf '%s' "$LOG_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("complete",""))' 2>/dev/null)
-            FAILED=$(printf '%s' "$LOG_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("failed",""))' 2>/dev/null)
+            DONE=$(printf '%s' "${LOG_JSON:-{}}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("complete",""))' 2>/dev/null || echo '')
+            FAILED=$(printf '%s' "${LOG_JSON:-{}}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("failed",""))' 2>/dev/null || echo '')
             if [ "$DONE" = "True" ]; then
               COMPLETE=true
               echo "=== DEPLOY COMPLETE — verification output ==="
