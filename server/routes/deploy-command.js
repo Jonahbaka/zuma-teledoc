@@ -1,6 +1,6 @@
 const PROJECT_ROOT = '/home/ec2-user/zuma-teledoc';
 const CRONOPS_ROOT = `${PROJECT_ROOT}/cronops`;
-const DEPLOY_BUILD_MEMORY_MB = process.env.DEPLOY_BUILD_MEMORY_MB || '1536';
+const DEPLOY_BUILD_MEMORY_MB = process.env.DEPLOY_BUILD_MEMORY_MB || '4096';
 const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
 
 function buildDeployCommand() {
@@ -17,6 +17,7 @@ function buildDeployCommand() {
     'npm run migrate',
     'node ng/migrations/migrate.js',
     'node ng/scripts/ingest-doctarx-nigeria-pack.js',
+    'npm run test:deploy-gate',
     `NODE_OPTIONS="--max-old-space-size=${DEPLOY_BUILD_MEMORY_MB}" npm run build`,
     'test -n "$(find .next/static/chunks/app -path \'*/admin/testing-links/page-*.js\' -print -quit)"',
     '(ln -sfn .next _next || true)',

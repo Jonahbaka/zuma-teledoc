@@ -14,6 +14,11 @@ const {
   effectivePermissions, can, canActOn, ROLE_RANK, PERMISSION_KEYS,
   ROLE_DEFAULTS,
 } = require('../../lib/ng/conferencePermissions');
+const {
+  PEER_MESH_LIMIT,
+  assessConferenceMediaReadiness,
+  suggestMediaServer,
+} = require('../../lib/ng/conferenceMediaReadiness');
 
 // Mirror state machine
 const ROOM_TRANSITIONS = {
@@ -24,12 +29,6 @@ const ROOM_TRANSITIONS = {
 };
 function isValidRoomTransition(from, to) {
   return (ROOM_TRANSITIONS[from] || []).includes(to);
-}
-
-const PEER_MESH_LIMIT = 3;
-function suggestMediaServer(maxParticipants) {
-  if (!maxParticipants || maxParticipants <= PEER_MESH_LIMIT) return 'peer_mesh';
-  return process.env.NG_CONF_DEFAULT_MEDIA_SERVER || 'livekit';
 }
 
 // ─── Permissions ─────────────────────────────────────────────────────────────
@@ -174,6 +173,86 @@ describe('suggestMediaServer (peer-mesh ≤3 / SFU above)', () => {
 });
 
 // ─── Permission-key surface area ────────────────────────────────────────────
+
+describe('Conference media readiness', () => {
+  it('allows peer mesh at the participant limit while warning when TURN is absent', () => {
+    const readiness = assessConferenceMediaReadiness({
+      maxParticipants: PEER_MESH_LIMIT,
+      mediaServer: 'peer_mesh',
+      env: {},
+    });
+
+    assert.equal(readiness.ready, true);
+    assert.equal(readiness.hasTurn, false);
+    assert.equal(readiness.warnings.length, 1);
+  });
+
+  it('blocks peer mesh above the participant limit', () => {
+    const readiness = assessConferenceMediaReadiness({
+      maxParticipants: PEER_MESH_LIMIT + 1,
+      mediaServer: 'peer_mesh',
+      env: {},
+    });
+
+    assert.equal(readiness.ready, false);
+    assert.match(readiness.blockers.join(' '), /peer_mesh is limited/);
+  });
+
+  it('blocks SFU rooms when SFU or TURN config is missing', () => {
+    const readiness = assessConferenceMediaReadiness({
+      maxParticipants: 10,
+      mediaServer: 'livekit',
+      env: {},
+    });
+
+    assert.equal(readiness.ready, false);
+    assert.equal(readiness.blockers.length, 2);
+  });
+
+  it('does not treat credential-less TURN JSON as production-ready', () => {
+    const readiness = assessConferenceMediaReadiness({
+      maxParticipants: 10,
+      mediaServer: 'livekit',
+      env: {
+        LIVEKIT_URL: 'wss://livekit.example.test',
+        LIVEKIT_API_KEY: 'key',
+        LIVEKIT_API_SECRET: 'secret',
+        RTC_ICE_SERVERS_JSON: '[{"urls":"turn:turn.example.test:3478"}]',
+      },
+    });
+
+    assert.equal(readiness.ready, false);
+    assert.match(readiness.blockers.join(' '), /TURN relay is required/);
+  });
+
+  it('normalizes invalid participant counts before readiness checks', () => {
+    const readiness = assessConferenceMediaReadiness({
+      maxParticipants: 'not-a-number',
+      mediaServer: 'livekit',
+      env: {},
+    });
+
+    assert.equal(readiness.maxParticipants, 10);
+    assert.equal(readiness.requiresSfu, true);
+  });
+
+  it('accepts configured LiveKit plus TURN shared secret', () => {
+    const readiness = assessConferenceMediaReadiness({
+      maxParticipants: 10,
+      mediaServer: 'livekit',
+      env: {
+        LIVEKIT_URL: 'wss://livekit.example.test',
+        LIVEKIT_API_KEY: 'key',
+        LIVEKIT_API_SECRET: 'secret',
+        RTC_TURN_URLS: 'turn:turn.example.test:3478',
+        TURN_SHARED_SECRET: 'turn-secret',
+      },
+    });
+
+    assert.equal(readiness.ready, true);
+    assert.equal(readiness.hasTurn, true);
+  });
+});
 
 describe('PERMISSION_KEYS coverage', () => {
   it('every key appears in every role default', () => {

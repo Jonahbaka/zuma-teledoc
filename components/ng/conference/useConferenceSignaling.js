@@ -1,15 +1,25 @@
 'use client';
 
 /**
- * components/ng/conference/useConferenceSignaling.js
+ * useConferenceSignaling
  *
- * React hook that joins an ng_conf_rooms room via socket.io, exchanges
- * WebRTC signaling (offer/answer/ice-candidate) with every other peer in
- * the room (mesh topology up to ~3 participants — for >3 the operator
- * should plug in an SFU and have the server emit aggregated streams).
+ * React hook for peer-mesh multi-party conferencing (≤ ~5 participants).
+ * Joins the Socket.IO conference namespace, exchanges WebRTC offer/answer/ICE
+ * with every other admitted peer, and surfaces:
  *
- * Reuses the same socket.io namespace + JWT that the existing 1:1
- * telehealth stack uses (`server/services/socketService.js`).
+ *   localStream       – local camera/mic MediaStream (React state, triggers re-renders)
+ *   screenStream      – active screen-share stream, or null
+ *   isScreenSharing   – boolean
+ *   peers             – array of { socketId, userId, role, name }
+ *   streams           – { [socketId]: MediaStream }  remote media
+ *   phase             – 'idle' | 'connecting' | 'joined' | 'error'
+ *   error             – error message string when phase==='error'
+ *   connectionQuality – 'good' | 'fair' | 'poor' | null (RTCPeerConnection stats)
+ *   self              – this client's participant object
+ *   setMute(kind, muted) – toggle local audio/video tracks
+ *   startScreenShare()   – getDisplayMedia and replace video track in all peers
+ *   stopScreenShare()    – stop screen share and restore camera track
+ *   reconnect()          – close everything and reconnect from scratch
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -17,63 +27,90 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 let ioPromise = null;
 function loadSocketIO() {
   if (ioPromise) return ioPromise;
-  ioPromise = import('socket.io-client').then(m => m.io || m.default);
+  ioPromise = import('socket.io-client').then((m) => m.io || m.default);
   return ioPromise;
 }
 
 function getAuthToken() {
   if (typeof document === 'undefined') return null;
-  const m = document.cookie.match(/(?:^|;\s*)accessToken=([^;]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
+  const cookieMatch = document.cookie.match(/(?:^|;\s*)accessToken=([^;]+)/);
+  if (cookieMatch) return decodeURIComponent(cookieMatch[1]);
+  try { return localStorage.getItem('accessToken') || null; } catch { return null; }
 }
+
+const DEFAULT_ICE_SERVERS = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+];
 
 async function fetchIceServers() {
   try {
     const r = await fetch('/api/ng/conference/ice-servers', { credentials: 'include' });
-    if (!r.ok) return [];
+    if (!r.ok) return DEFAULT_ICE_SERVERS;
     const b = await r.json();
-    return b?.iceServers || [];
-  } catch { return []; }
+    return Array.isArray(b?.iceServers) && b.iceServers.length ? b.iceServers : DEFAULT_ICE_SERVERS;
+  } catch {
+    return DEFAULT_ICE_SERVERS;
+  }
 }
 
 export function useConferenceSignaling({ roomId, enabled = true, displayName = 'Participant' }) {
-  const [state, setState] = useState({
-    phase: 'idle',           // idle | connecting | joined | error
+  // ── Public state ────────────────────────────────────────────────────────────
+  const [sigState, setSigState] = useState({
+    phase: 'idle',      // idle | connecting | joined | error
     error: null,
     self: null,
-    peers: [],               // [{ socketId, userId, role, name }]
-    streams: {},             // socketId -> MediaStream
+    peers: [],          // [{ socketId, userId, role, name }]
+    streams: {},        // socketId -> MediaStream
   });
-  const socketRef    = useRef(null);
-  const pcByPeer     = useRef(new Map()); // socketId -> RTCPeerConnection
-  const localStream  = useRef(null);
-  const iceServers   = useRef([]);
+  const [localStream,      setLocalStream]      = useState(null);
+  const [screenStream,     setScreenStream]     = useState(null);
+  const [isScreenSharing,  setIsScreenSharing]  = useState(false);
+  const [connectionQuality, setConnectionQuality] = useState(null);
 
-  // ── Establish local media ─────────────────────────────────────────────────
+  // ── Private refs ─────────────────────────────────────────────────────────
+  const socketRef       = useRef(null);
+  const pcByPeer        = useRef(new Map());   // socketId -> RTCPeerConnection
+  const localStreamRef  = useRef(null);
+  const screenStreamRef = useRef(null);
+  const iceServersRef   = useRef([]);
+  const [reconnectKey, setReconnectKey] = useState(0);
+
+  // ── Acquire local media ────────────────────────────────────────────────────
   const acquireLocalMedia = useCallback(async () => {
-    if (localStream.current) return localStream.current;
+    if (localStreamRef.current) return localStreamRef.current;
+    let stream;
     try {
-      localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
     } catch {
-      // Audio-only fallback for low-bandwidth / no-camera contexts
-      localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     }
-    return localStream.current;
+    localStreamRef.current = stream;
+    setLocalStream(stream);
+    return stream;
   }, []);
 
-  // ── Build a peer connection toward a given peer ───────────────────────────
-  const buildPeer = useCallback((peerSocketId, isInitiator) => {
-    const pc = new RTCPeerConnection({ iceServers: iceServers.current });
+  // ── Replace video track in all peer connections ────────────────────────────
+  const replaceVideoTrack = useCallback((newTrack) => {
+    for (const pc of pcByPeer.current.values()) {
+      const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
+      if (sender) {
+        sender.replaceTrack(newTrack).catch(() => {});
+      }
+    }
+  }, []);
 
-    // Pump local tracks to this peer
-    if (localStream.current) {
-      for (const track of localStream.current.getTracks()) {
-        pc.addTrack(track, localStream.current);
+  // ── Build a peer connection ────────────────────────────────────────────────
+  const buildPeer = useCallback((peerSocketId, isInitiator) => {
+    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+
+    if (localStreamRef.current) {
+      for (const track of localStreamRef.current.getTracks()) {
+        pc.addTrack(track, localStreamRef.current);
       }
     }
 
     pc.ontrack = (ev) => {
-      setState(s => ({ ...s, streams: { ...s.streams, [peerSocketId]: ev.streams[0] } }));
+      setSigState((s) => ({ ...s, streams: { ...s.streams, [peerSocketId]: ev.streams[0] } }));
     };
 
     pc.onicecandidate = (ev) => {
@@ -86,16 +123,9 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
       }
     };
 
-    pc.onconnectionstatechange = () => {
-      if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
-        // Let server-emitted participant-left clean up
-      }
-    };
-
     pcByPeer.current.set(peerSocketId, pc);
 
     if (isInitiator) {
-      // Existing peers in room — new joiner initiates offers
       (async () => {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
@@ -104,22 +134,48 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
           signalType: 'offer',
           signal: { sdp: offer.sdp, type: offer.type },
         });
-      })().catch(e => console.error('offer failed', e));
+      })().catch((e) => console.error('[conference] offer failed', e));
     }
 
     return pc;
   }, []);
 
-  // ── Main connect lifecycle ────────────────────────────────────────────────
+  // ── Clean up everything ────────────────────────────────────────────────────
+  const cleanupAll = useCallback((stopMedia = true) => {
+    try { socketRef.current?.emit('conference:leave'); } catch {}
+    try { socketRef.current?.disconnect(); } catch {}
+    socketRef.current = null;
+
+    for (const pc of pcByPeer.current.values()) {
+      try { pc.close(); } catch {}
+    }
+    pcByPeer.current.clear();
+
+    if (stopMedia) {
+      if (localStreamRef.current) {
+        for (const t of localStreamRef.current.getTracks()) t.stop();
+        localStreamRef.current = null;
+        setLocalStream(null);
+      }
+      if (screenStreamRef.current) {
+        for (const t of screenStreamRef.current.getTracks()) t.stop();
+        screenStreamRef.current = null;
+        setScreenStream(null);
+        setIsScreenSharing(false);
+      }
+    }
+  }, []);
+
+  // ── Main connect effect ────────────────────────────────────────────────────
   useEffect(() => {
     if (!enabled || !roomId) return;
     let cancelled = false;
 
     (async () => {
-      setState(s => ({ ...s, phase: 'connecting', error: null }));
+      setSigState((s) => ({ ...s, phase: 'connecting', error: null }));
 
       try {
-        iceServers.current = await fetchIceServers();
+        iceServersRef.current = await fetchIceServers();
         await acquireLocalMedia();
         const io = await loadSocketIO();
         if (cancelled) return;
@@ -134,22 +190,30 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
         socketRef.current = sock;
 
         sock.on('connect_error', (err) => {
-          setState(s => ({ ...s, phase: 'error', error: err.message || 'socket connect error' }));
+          if (!cancelled) {
+            setSigState((s) => ({ ...s, phase: 'error', error: err.message || 'Connection error' }));
+          }
+        });
+
+        sock.on('disconnect', () => {
+          if (!cancelled) {
+            setSigState((s) => ({ ...s, phase: 'error', error: 'Disconnected from server' }));
+          }
         });
 
         sock.on('connect', () => {
           sock.emit('conference:join', { roomId, displayName }, (resp) => {
+            if (cancelled) return;
             if (!resp?.ok) {
-              setState(s => ({ ...s, phase: 'error', error: resp?.error || 'Join rejected' }));
+              setSigState((s) => ({ ...s, phase: 'error', error: resp?.error || 'Join rejected' }));
               return;
             }
-            setState(s => ({
+            setSigState((s) => ({
               ...s,
               phase: 'joined',
               self: resp.participant,
               peers: resp.participants || [],
             }));
-            // Initiate offers toward every existing peer (mesh)
             for (const peer of resp.participants || []) {
               buildPeer(peer.socketId, true);
             }
@@ -157,16 +221,20 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
         });
 
         sock.on('conference:participant-joined', ({ participant }) => {
-          setState(s => ({ ...s, peers: [...s.peers, participant] }));
-          // New peer; we wait for them to send the offer (they're initiator)
+          if (cancelled) return;
+          setSigState((s) => ({ ...s, peers: [...s.peers, participant] }));
         });
 
         sock.on('conference:participant-left', ({ participant }) => {
+          if (cancelled) return;
           const pc = pcByPeer.current.get(participant.socketId);
-          if (pc) { try { pc.close(); } catch {} pcByPeer.current.delete(participant.socketId); }
-          setState(s => ({
+          if (pc) {
+            try { pc.close(); } catch {}
+            pcByPeer.current.delete(participant.socketId);
+          }
+          setSigState((s) => ({
             ...s,
-            peers: s.peers.filter(p => p.socketId !== participant.socketId),
+            peers: s.peers.filter((p) => p.socketId !== participant.socketId),
             streams: Object.fromEntries(
               Object.entries(s.streams).filter(([sid]) => sid !== participant.socketId)
             ),
@@ -174,9 +242,9 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
         });
 
         sock.on('conference:signal', async ({ fromSocketId, signalType, signal }) => {
+          if (cancelled) return;
           let pc = pcByPeer.current.get(fromSocketId);
           if (!pc) pc = buildPeer(fromSocketId, false);
-
           try {
             if (signalType === 'offer') {
               await pc.setRemoteDescription(new RTCSessionDescription(signal));
@@ -193,39 +261,118 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
               await pc.addIceCandidate(new RTCIceCandidate(signal));
             }
           } catch (e) {
-            console.error('conference signal handle failed', signalType, e);
+            console.error('[conference] signal handling failed', signalType, e);
           }
         });
       } catch (e) {
-        setState(s => ({ ...s, phase: 'error', error: e.message }));
+        if (!cancelled) {
+          setSigState((s) => ({ ...s, phase: 'error', error: e.message || 'Failed to connect' }));
+        }
       }
     })();
 
     return () => {
       cancelled = true;
-      try { socketRef.current?.emit('conference:leave'); } catch {}
-      try { socketRef.current?.disconnect(); } catch {}
-      for (const pc of pcByPeer.current.values()) { try { pc.close(); } catch {} }
-      pcByPeer.current.clear();
-      if (localStream.current) {
-        for (const t of localStream.current.getTracks()) t.stop();
-        localStream.current = null;
-      }
+      cleanupAll(true);
+      setSigState({ phase: 'idle', error: null, self: null, peers: [], streams: {} });
     };
-  }, [roomId, enabled, displayName, acquireLocalMedia, buildPeer]);
+  }, [roomId, enabled, displayName, reconnectKey, acquireLocalMedia, buildPeer, cleanupAll]);
 
+  // ── Connection quality polling ─────────────────────────────────────────────
+  useEffect(() => {
+    const id = setInterval(async () => {
+      const pcs = Array.from(pcByPeer.current.values()).filter(
+        (pc) => pc.connectionState === 'connected'
+      );
+      if (!pcs.length) { setConnectionQuality(null); return; }
+
+      let totalLoss = 0;
+      let totalRtt  = 0;
+      let count     = 0;
+
+      await Promise.all(
+        pcs.map(async (pc) => {
+          try {
+            const stats = await pc.getStats();
+            stats.forEach((report) => {
+              if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
+                if (typeof report.fractionLost === 'number') { totalLoss += report.fractionLost; count++; }
+                if (typeof report.roundTripTime === 'number') { totalRtt  += report.roundTripTime; }
+              }
+            });
+          } catch {}
+        })
+      );
+
+      if (!count) { setConnectionQuality(null); return; }
+      const avgLoss = totalLoss / count;
+      const avgRtt  = totalRtt  / count;
+      if      (avgLoss < 0.02 && avgRtt < 0.15) setConnectionQuality('good');
+      else if (avgLoss < 0.05 && avgRtt < 0.30) setConnectionQuality('fair');
+      else                                        setConnectionQuality('poor');
+    }, 5000);
+
+    return () => clearInterval(id);
+  }, []);
+
+  // ── Public actions ─────────────────────────────────────────────────────────
   const setMute = useCallback((kind, muted) => {
-    if (!localStream.current) return;
-    for (const t of localStream.current.getTracks()) {
-      if ((kind === 'audio' && t.kind === 'audio') || (kind === 'video' && t.kind === 'video')) {
-        t.enabled = !muted;
-      }
+    if (!localStreamRef.current) return;
+    for (const t of localStreamRef.current.getTracks()) {
+      if (t.kind === kind) t.enabled = !muted;
     }
   }, []);
 
+  const startScreenShare = useCallback(async () => {
+    if (screenStreamRef.current) return;
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      screenStreamRef.current = stream;
+      setScreenStream(stream);
+      setIsScreenSharing(true);
+
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) replaceVideoTrack(videoTrack);
+
+      videoTrack?.addEventListener('ended', () => {
+        screenStreamRef.current = null;
+        setScreenStream(null);
+        setIsScreenSharing(false);
+        const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
+        if (cameraTrack) replaceVideoTrack(cameraTrack);
+      });
+    } catch (e) {
+      if (e.name !== 'AbortError' && e.name !== 'NotAllowedError') {
+        console.error('[conference] getDisplayMedia failed', e);
+      }
+    }
+  }, [replaceVideoTrack]);
+
+  const stopScreenShare = useCallback(() => {
+    if (!screenStreamRef.current) return;
+    for (const t of screenStreamRef.current.getTracks()) t.stop();
+    screenStreamRef.current = null;
+    setScreenStream(null);
+    setIsScreenSharing(false);
+    const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
+    if (cameraTrack) replaceVideoTrack(cameraTrack);
+  }, [replaceVideoTrack]);
+
+  const reconnect = useCallback(() => {
+    cleanupAll(false);
+    setSigState({ phase: 'connecting', error: null, self: null, peers: [], streams: {} });
+    setReconnectKey((k) => k + 1);
+  }, [cleanupAll]);
+
   return {
-    ...state,
-    localStream: localStream.current,
+    ...sigState,
+    localStream,
+    screenStream,
+    isScreenSharing,
+    connectionQuality,
     setMute,
+    startScreenShare,
+    stopScreenShare,
+    reconnect,
   };
 }

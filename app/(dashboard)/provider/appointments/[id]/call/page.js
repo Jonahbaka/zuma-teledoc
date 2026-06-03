@@ -7,9 +7,9 @@ import {
   PhoneOff, ShieldCheck, User,
   MessageSquare, Sparkles, X, Calendar, Clock,
   ArrowLeft, FileText, Save, Loader2, ClipboardList, Brain,
-  Bot
+  Bot, Maximize2, RefreshCw
 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { appointmentsAPI } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/utils';
@@ -19,7 +19,6 @@ import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import ClinicalCoPilot from '@/components/hive/ClinicalCoPilot';
 import { resolveProviderMarket, toProviderPortalPath } from '@/lib/providerPortal';
 import useTelehealthSession from '@/lib/useTelehealthSession';
-import ConsultationChatPanel from '@/components/video/ConsultationChatPanel';
 
 /* ─────────────────── constants ─────────────────── */
 
@@ -56,6 +55,36 @@ const FILTER_OPTIONS = [
   { id: 'mono', label: 'Monochrome', css: 'grayscale(100%) contrast(105%)' },
 ];
 
+const playSpeakerTestTone = async () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) {
+    throw new Error('Speaker test is not supported in this browser.');
+  }
+
+  const audioContext = new AudioContext();
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+
+  oscillator.frequency.value = 640;
+  gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.16, audioContext.currentTime + 0.03);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.45);
+
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start();
+  oscillator.stop(audioContext.currentTime + 0.5);
+
+  await new Promise((resolve) => {
+    oscillator.onended = resolve;
+  });
+  await audioContext.close();
+};
+
 /* ═══════════════════════════════════════════════════════════════════ */
 /*                          PAGE                                      */
 /* ═══════════════════════════════════════════════════════════════════ */
@@ -78,15 +107,23 @@ export default function ProviderVideoCallPage() {
   const [camOn, setCamOn] = useState(true);
   const {
     callError,
+    callPhase,
     connectionStatus,
+    connectionQuality,
     ensureLocalStream,
+    facingMode,
     joinCall,
     leaveCall,
     localStream,
     mediaError,
     mediaWarning,
+    messages,
+    reconnectCall,
     remoteParticipant,
-    remoteStream
+    remoteStream,
+    sendMessage,
+    startSelfTestCall,
+    switchCamera
   } = useTelehealthSession({ appointmentId: isStandalone ? null : appointmentId });
 
   /* ── Load appointment ── */
@@ -124,9 +161,7 @@ export default function ProviderVideoCallPage() {
 
     try {
       if (isStandalone) {
-        if (camOn || micOn) {
-          await ensureLocalStream();
-        }
+        await startSelfTestCall({ displayName: userName });
       } else {
         await joinCall({ displayName: userName });
       }
@@ -141,6 +176,15 @@ export default function ProviderVideoCallPage() {
   };
   const endCall = async () => {
     await leaveCall();
+    if (!isStandalone && appointment?.id && (connectionStatus === 'connected' || callPhase === 'in_progress' || appointment.status === 'in_progress')) {
+      await appointmentsAPI.update(appointment.id, { status: 'completed' }).catch(() => {
+        toast({
+          title: 'Visit status not updated',
+          description: 'The call ended, but the visit record could not be closed automatically.',
+          variant: 'destructive'
+        });
+      });
+    }
     setIsInCall(false);
     router.push(isStandalone
       ? toProviderPortalPath('/dashboard', { pathname, user })
@@ -187,7 +231,7 @@ export default function ProviderVideoCallPage() {
   const patientInitials = getPatientInitials(appointment);
 
   return (
-    <div className="flex contrast-dark h-[100dvh] flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_20%),radial-gradient(circle_at_85%_0%,rgba(15,23,42,0.42),transparent_34%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)] text-white font-sans selection:bg-blue-500/20">
+    <div className="flex contrast-dark min-h-[100dvh] flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_20%),radial-gradient(circle_at_85%_0%,rgba(15,23,42,0.42),transparent_34%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)] text-white font-sans selection:bg-blue-500/20">
       {/* ── Top Bar ── */}
       <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/72 px-4 pb-3 pt-[calc(0.7rem+env(safe-area-inset-top,0px))] backdrop-blur-xl sm:px-6">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
@@ -232,6 +276,8 @@ export default function ProviderVideoCallPage() {
           <Lobby appointment={appointment} userName={userName} setUserName={setUserName}
             onJoin={startCall} micOn={micOn} setMicOn={setMicOn}
             camOn={camOn} setCamOn={setCamOn}
+            onSwitchCamera={switchCamera}
+            facingMode={facingMode}
             localStream={localStream} ensureLocalStream={ensureLocalStream}
             mediaError={mediaError} />
         ) : (
@@ -241,7 +287,12 @@ export default function ProviderVideoCallPage() {
             onEndCall={endCall}
             localStream={localStream} ensureLocalStream={ensureLocalStream}
             remoteStream={remoteStream} remoteParticipant={remoteParticipant}
-            connectionStatus={connectionStatus} callError={callError} />
+            connectionStatus={connectionStatus} callPhase={callPhase}
+            connectionQuality={connectionQuality} callError={callError}
+            onReconnect={reconnectCall} onSwitchCamera={switchCamera}
+            facingMode={facingMode}
+            messages={messages}
+            onSendMessage={sendMessage} />
         )}
       </div>
     </div>
@@ -270,12 +321,47 @@ const CallTimer = () => {
 
 const Lobby = ({
   appointment, userName, setUserName, onJoin, micOn, setMicOn, camOn, setCamOn,
-  localStream, ensureLocalStream, mediaError
+  onSwitchCamera, facingMode, localStream, ensureLocalStream, mediaError
 }) => {
   const patientDisplayName = getPatientDisplayName(appointment);
+  const [switchingCamera, setSwitchingCamera] = useState(false);
+  const [testingSpeaker, setTestingSpeaker] = useState(false);
+
+  const handleSwitchCamera = async () => {
+    setSwitchingCamera(true);
+    try {
+      await onSwitchCamera?.();
+      if (!camOn) {
+        setCamOn(true);
+      }
+    } catch (error) {
+      toast({
+        title: 'Camera switch unavailable',
+        description: error.message || 'No alternate camera was found on this device.',
+        variant: 'destructive'
+      });
+    } finally {
+      setSwitchingCamera(false);
+    }
+  };
+
+  const handleSpeakerTest = async () => {
+    setTestingSpeaker(true);
+    try {
+      await playSpeakerTestTone();
+    } catch (error) {
+      toast({
+        title: 'Speaker test unavailable',
+        description: error.message || 'This browser does not support speaker testing.',
+        variant: 'destructive'
+      });
+    } finally {
+      setTestingSpeaker(false);
+    }
+  };
 
   return (
-    <div className="h-full flex items-center justify-center p-6">
+    <div className="h-full overflow-y-auto px-4 py-5 sm:p-6">
       <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-5 gap-8 items-center">
       {/* Camera preview */}
       <div className="lg:col-span-3 bg-[#1e1e1e] rounded-2xl overflow-hidden border border-gray-800">
@@ -293,9 +379,11 @@ const Lobby = ({
             {micOn ? 'Mic on' : 'Muted'}
           </div>
         </div>
-        <div className="flex justify-center gap-3 py-4 bg-[#1e1e1e]">
+        <div className="flex flex-wrap justify-center gap-3 py-4 bg-[#1e1e1e]">
           <ControlBtn icon={micOn ? Mic : MicOff} active={micOn} onClick={() => setMicOn(!micOn)} label={micOn ? 'Mute' : 'Unmute'} />
           <ControlBtn icon={camOn ? VideoIcon : VideoOff} active={camOn} onClick={() => setCamOn(!camOn)} label={camOn ? 'Stop Video' : 'Start Video'} />
+          <ControlBtn icon={RefreshCw} active={facingMode === 'environment'} onClick={handleSwitchCamera} label={switchingCamera ? 'Switching' : 'Switch Camera'} color="glass" />
+          <ControlBtn icon={ShieldCheck} active onClick={handleSpeakerTest} label={testingSpeaker ? 'Testing' : 'Speaker Test'} color="glass" />
         </div>
       </div>
 
@@ -386,8 +474,11 @@ const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
 
 const ActiveCall = ({
   appointment, micOn, toggleMic, camOn, toggleCam, onEndCall,
-  localStream, ensureLocalStream, remoteStream, remoteParticipant, connectionStatus, callError
+  localStream, ensureLocalStream, remoteStream, remoteParticipant, connectionStatus,
+  callPhase, connectionQuality, callError, onReconnect, onSwitchCamera, facingMode,
+  messages = [], onSendMessage
 }) => {
+  const stageRef = useRef(null);
   const [showAI, setShowAI] = useState(false);
   const [sidebarTab, setSidebarTab] = useState('notes');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -395,6 +486,9 @@ const ActiveCall = ({
   const [lightingBoost, setLightingBoost] = useState(0);
   const [showEffects, setShowEffects] = useState(false);
   const [showCaptions, setShowCaptions] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [switchingCamera, setSwitchingCamera] = useState(false);
+  const [chatDraft, setChatDraft] = useState('');
 
   // Build composite CSS filter string
   const getCssFilter = () => {
@@ -447,8 +541,72 @@ const ActiveCall = ({
     setShowEffects((current) => !current);
   };
 
+  const handleReconnect = async () => {
+    setReconnecting(true);
+    try {
+      await onReconnect?.();
+    } catch (error) {
+      toast({
+        title: 'Reconnect failed',
+        description: error.message || 'Please leave and rejoin the appointment if the network does not recover.',
+        variant: 'destructive'
+      });
+    } finally {
+      setReconnecting(false);
+    }
+  };
+
+  const handleSwitchCamera = async () => {
+    setSwitchingCamera(true);
+    try {
+      await onSwitchCamera?.();
+    } catch (error) {
+      toast({
+        title: 'Camera switch unavailable',
+        description: error.message || 'No alternate camera was found on this device.',
+        variant: 'destructive'
+      });
+    } finally {
+      setSwitchingCamera(false);
+    }
+  };
+
+  const handleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      await stageRef.current?.requestFullscreen?.();
+    } catch {
+      toast({
+        title: 'Fullscreen unavailable',
+        description: 'This browser does not allow fullscreen from the current view.',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleSendChat = async (event) => {
+    event.preventDefault();
+    const text = chatDraft.trim();
+    if (!text) return;
+
+    try {
+      setChatDraft('');
+      await onSendMessage?.(text);
+    } catch (error) {
+      toast({
+        title: 'Message not sent',
+        description: error.message || 'Rejoin the call and try sending the message again.',
+        variant: 'destructive'
+      });
+      setChatDraft(text);
+    }
+  };
+
   return (
-    <div className="relative flex-1 min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_20%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.14),transparent_24%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)]">
+    <div ref={stageRef} className="relative flex-1 min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_20%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.14),transparent_24%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)]">
       {(showAI || isSidebarOpen || showEffects) && (
         <button
           type="button"
@@ -462,7 +620,7 @@ const ActiveCall = ({
       <div className={`flex h-full min-h-0 transition-all duration-300 ${(showAI || isSidebarOpen) ? 'lg:pr-[22rem]' : ''}`}>
 
         {/* Main Stage Grid */}
-        <div className="relative flex-1 min-h-0 px-3 pb-[calc(10rem+env(safe-area-inset-bottom,0px))] pt-3 sm:px-4 sm:pb-[calc(8.2rem+env(safe-area-inset-bottom,0px))] sm:pt-4">
+        <div className="relative flex-1 min-h-0 px-3 pb-[calc(8.2rem+env(safe-area-inset-bottom,0px))] pt-3 sm:px-4 sm:pt-4">
 
           {/* Patient Feed (main, large) */}
           <div className="relative h-full overflow-hidden rounded-[1.9rem] border border-white/10 bg-black shadow-[0_34px_90px_rgba(2,6,23,0.52)]">
@@ -486,7 +644,7 @@ const ActiveCall = ({
 
               <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200 backdrop-blur-xl">
                 <span className={`h-2 w-2 rounded-full ${connectionStatus === 'connected' ? 'bg-emerald-400' : callError ? 'bg-rose-400' : 'bg-amber-300 animate-pulse'}`} />
-                {stageStatus}
+                {callPhase === 'ended' ? 'Ended' : stageStatus}
               </div>
             </div>
 
@@ -515,7 +673,7 @@ const ActiveCall = ({
 
       {/* ── AI Sidebar (Hive Clinical Co-Pilot) ── */}
       {showAI && (
-        <div className="fixed inset-x-0 bottom-0 z-50 flex h-[78vh] max-h-[78vh] flex-col overflow-hidden rounded-t-[1.8rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_26px_60px_rgba(2,6,23,0.58)] backdrop-blur-2xl lg:absolute lg:inset-y-0 lg:right-0 lg:left-auto lg:h-auto lg:max-h-none lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l">
+        <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[78vh] flex-col overflow-hidden rounded-t-[1.8rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_26px_60px_rgba(2,6,23,0.58)] backdrop-blur-2xl lg:absolute lg:inset-y-0 lg:right-0 lg:left-auto lg:max-h-none lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l">
           <div className="mx-auto mt-3 h-1.5 w-14 rounded-full bg-white/15 lg:hidden" />
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
             <div>
@@ -541,7 +699,7 @@ const ActiveCall = ({
 
       {/* ── Notes/Chat Sidebar ── */}
       {isSidebarOpen && (
-        <div className="fixed inset-x-0 bottom-0 z-50 flex h-[78vh] max-h-[78vh] flex-col overflow-hidden rounded-t-[1.8rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_26px_60px_rgba(2,6,23,0.58)] backdrop-blur-2xl lg:absolute lg:inset-y-0 lg:right-0 lg:left-auto lg:h-auto lg:max-h-none lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l">
+        <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[78vh] flex-col overflow-hidden rounded-t-[1.8rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_26px_60px_rgba(2,6,23,0.58)] backdrop-blur-2xl lg:absolute lg:inset-y-0 lg:right-0 lg:left-auto lg:max-h-none lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l">
           <div className="mx-auto mt-3 h-1.5 w-14 rounded-full bg-white/15 lg:hidden" />
           <div className="flex border-b border-white/10">
             <SidebarTabBtn label="Notes" icon={FileText} active={sidebarTab === 'notes'} onClick={() => setSidebarTab('notes')} />
@@ -555,7 +713,14 @@ const ActiveCall = ({
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             {sidebarTab === 'notes' && <LiveNotesPanel appointment={appointment} />}
-            {sidebarTab === 'chat' && <ChatPanel appointment={appointment} />}
+            {sidebarTab === 'chat' && (
+              <ChatPanel
+                messages={messages}
+                draft={chatDraft}
+                setDraft={setChatDraft}
+                onSend={handleSendChat}
+              />
+            )}
           </div>
         </div>
       )}
@@ -571,7 +736,7 @@ const ActiveCall = ({
 
       {/* ── Bottom Control Bar ── */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.9rem+env(safe-area-inset-bottom,0px))] pt-6 sm:px-4">
-        <div className="pointer-events-auto mx-auto flex w-full max-w-[42rem] flex-wrap items-center justify-center gap-2 rounded-[1.9rem] border border-white/10 bg-slate-950/82 px-3 py-3 shadow-[0_26px_60px_rgba(2,6,23,0.54)] backdrop-blur-2xl sm:flex-nowrap sm:gap-3 sm:px-4">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-[36rem] flex-wrap items-center justify-center gap-2 rounded-[1.9rem] border border-white/10 bg-slate-950/82 px-3 py-3 shadow-[0_26px_60px_rgba(2,6,23,0.54)] backdrop-blur-2xl sm:gap-3 sm:px-4">
           <ControlBtn icon={micOn ? Mic : MicOff} active={micOn} onClick={toggleMic} label={micOn ? 'Mute' : 'Unmute'} color={micOn ? 'primary' : 'danger'} />
           <ControlBtn icon={camOn ? VideoIcon : VideoOff} active={camOn} onClick={toggleCam} label={camOn ? 'Stop Video' : 'Start Video'} color={camOn ? 'primary' : 'danger'} />
           <ControlBtn icon={FileText} label="Captions" color={showCaptions ? 'primary' : 'glass'} onClick={() => setShowCaptions(!showCaptions)} />
@@ -579,16 +744,19 @@ const ActiveCall = ({
           <ControlBtn icon={MessageSquare} label="Chat" color={isSidebarOpen && sidebarTab === 'chat' ? 'primary' : 'glass'} onClick={toggleChatPanel} />
           <ControlBtn icon={Bot} label="AI Assistant" color={showAI ? 'primary' : 'glass'} onClick={toggleAiPanel} />
           <ControlBtn icon={Sparkles} active={showEffects} onClick={toggleEffectsPanel} label="Effects" color={showEffects ? 'primary' : 'glass'} />
+          <ControlBtn icon={RefreshCw} active={facingMode === 'environment'} onClick={handleSwitchCamera} label={switchingCamera ? 'Switching Camera' : 'Switch Camera'} color="glass" />
+          <ControlBtn icon={RefreshCw} active={connectionStatus === 'connected'} onClick={handleReconnect} label={reconnecting ? 'Reconnecting' : 'Reconnect'} color="glass" />
+          <ControlBtn icon={Maximize2} active onClick={handleFullscreen} label="Fullscreen" color="glass" />
           <button
-            type="button"
             onClick={onEndCall}
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-[0_18px_42px_rgba(244,63,94,0.42)] transition-all hover:bg-rose-400"
+            data-testid="telehealth-leave-call"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-500 text-white shadow-[0_18px_42px_rgba(244,63,94,0.42)] transition-all hover:bg-rose-400 sm:h-14 sm:w-14"
             title="Leave call"
-            aria-label="Leave call"
           >
             <PhoneOff size={20} />
           </button>
         </div>
+        <QualityBadge quality={connectionQuality} />
       </div>
     </div>
   );
@@ -625,7 +793,6 @@ const PatientVideoArea = ({ appointment, stream, participant, connectionStatus, 
 
   return (
     <div className="relative w-full h-full bg-gray-800 rounded-2xl overflow-hidden shadow-2xl border border-gray-700 group">
-    {/* Patient placeholder — when WebRTC connects, replace with real stream */}
     {stream ? (
       <video
         ref={videoRef}
@@ -1063,7 +1230,7 @@ const LiveNotesPanel = ({ appointment }) => {
         ))}
       </div>
       <div className="px-4 py-2 border-t border-gray-800 text-[10px] text-gray-600 flex justify-between">
-        <span>Auto-saves every 30s</span><span>HIPAA-compliant</span>
+        <span>Auto-saves every 30s</span><span>Secure clinical notes</span>
       </div>
     </div>
   );
@@ -1073,16 +1240,73 @@ const LiveNotesPanel = ({ appointment }) => {
 /*                        CHAT PANEL                                  */
 /* ═══════════════════════════════════════════════════════════════════ */
 
-const ChatPanel = ({ appointment }) => (
-  <ConsultationChatPanel appointment={appointment} />
+const ChatPanel = ({ messages = [], draft, setDraft, onSend }) => (
+  <>
+    <div className="flex-1 space-y-3 overflow-y-auto p-4" data-testid="telehealth-chat-messages">
+      {messages.length ? messages.map((message) => (
+        <div
+          key={message.id}
+          className={`rounded-xl border p-3 text-sm ${
+            message.senderRole === 'provider'
+              ? 'ml-8 border-blue-400/20 bg-blue-500/15 text-blue-50'
+              : 'mr-8 border-white/10 bg-white/5 text-slate-100'
+          }`}
+        >
+          <div className="mb-1 flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            <span>{message.senderRole === 'provider' ? 'You' : message.senderName || 'Patient'}</span>
+            <span>{message.sentAt ? new Date(message.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+          </div>
+          <p className="leading-5">{message.body}</p>
+        </div>
+      )) : (
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-center">
+          <p className="text-sm font-medium text-white">No secure messages yet</p>
+          <p className="mt-2 text-xs leading-5 text-gray-400">
+            Messages sent during this visit stay attached to the consultation.
+          </p>
+        </div>
+      )}
+    </div>
+    <form onSubmit={onSend} className="border-t border-gray-800 p-3">
+      <input
+        type="text"
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        placeholder="Type a message..."
+        data-testid="telehealth-chat-input"
+        className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm text-white outline-none placeholder-gray-500 focus:ring-1 focus:ring-blue-400"
+      />
+    </form>
+  </>
 );
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /*                       UI ATOMS                                     */
 /* ═══════════════════════════════════════════════════════════════════ */
 
+const QualityBadge = ({ quality }) => {
+  const level = quality?.level || 'idle';
+  const classes = {
+    good: 'border-emerald-400/25 bg-emerald-500/12 text-emerald-100',
+    fair: 'border-amber-400/25 bg-amber-500/12 text-amber-100',
+    poor: 'border-rose-400/25 bg-rose-500/12 text-rose-100',
+    error: 'border-rose-400/25 bg-rose-500/12 text-rose-100',
+    reconnecting: 'border-amber-400/25 bg-amber-500/12 text-amber-100',
+    connecting: 'border-amber-400/25 bg-amber-500/12 text-amber-100',
+    waiting: 'border-slate-400/25 bg-slate-500/12 text-slate-100',
+    idle: 'border-slate-400/20 bg-slate-500/10 text-slate-200',
+    ended: 'border-slate-400/20 bg-slate-500/10 text-slate-200'
+  };
+
+  return (
+    <div className={`pointer-events-auto mx-auto mt-2 w-fit rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] backdrop-blur-xl ${classes[level] || classes.idle}`}>
+      Quality: {quality?.label || 'Not connected'}
+    </div>
+  );
+};
+
 const ControlBtn = ({ icon: Icon, active, onClick, label, color = 'default' }) => {
-  const base = 'flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-200 backdrop-blur-md sm:h-[3.25rem] sm:w-[3.25rem]';
+  const base = 'flex h-11 w-11 items-center justify-center rounded-full border transition-all duration-200 backdrop-blur-md sm:h-[3.25rem] sm:w-[3.25rem]';
   const colors = {
     default: active !== false ? 'border-cyan-400/30 bg-cyan-500/20 text-cyan-100 shadow-[0_12px_28px_rgba(59,130,246,0.18)]' : 'border-white/10 bg-white/10 text-slate-100 hover:bg-white/15',
     primary: 'border-cyan-400/30 bg-cyan-500/20 text-cyan-100 shadow-[0_12px_28px_rgba(59,130,246,0.18)]',
@@ -1093,14 +1317,7 @@ const ControlBtn = ({ icon: Icon, active, onClick, label, color = 'default' }) =
 
   return (
     <div className="relative group">
-      <button
-        type="button"
-        onClick={onClick}
-        className={`${base} ${colors[color]}`}
-        title={label}
-        aria-label={label}
-        aria-pressed={active !== undefined ? active : undefined}
-      >
+      <button onClick={onClick} className={`${base} ${colors[color]}`} title={label}>
         <Icon size={20} />
       </button>
       <span className="absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-800 text-xs text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">

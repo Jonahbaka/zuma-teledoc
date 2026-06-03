@@ -6,9 +6,10 @@ import {
   Mic, MicOff, Video as VideoIcon, VideoOff,
   PhoneOff, ShieldCheck, User,
   MessageSquare, Sparkles,
-  X, Calendar, Clock, ArrowLeft, FileText
+  X, Calendar, Clock, ArrowLeft, FileText,
+  Maximize2, RefreshCw
 } from 'lucide-react';
-import api, { paymentsAPI } from '@/lib/api';
+import api, { appointmentsAPI, paymentsAPI } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/utils';
@@ -17,10 +18,6 @@ import { VIDEO_BG_PRESETS } from '@/lib/videoBackgrounds';
 import LiveCaptionsOverlay from '@/components/video/LiveCaptionsOverlay';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import useTelehealthSession from '@/lib/useTelehealthSession';
-import ConsultationChatPanel from '@/components/video/ConsultationChatPanel';
-
-// --- Assets & Constants ---
-const DOCTOR_VIDEO_URL = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
 
 const getProviderName = (appointment) =>
   `${appointment?.providerFirstName || ''} ${appointment?.providerLastName || ''}`.trim() || 'DoctaRx Care Team';
@@ -29,14 +26,14 @@ const getProviderLabel = (appointment) =>
   appointment?.isStandaloneTest ? 'DoctaRx Care Team' : `Dr. ${getProviderName(appointment)}`;
 
 const getLobbyHeading = (appointment) =>
-  appointment?.isStandaloneTest ? 'Your test call is ready' : 'Your appointment with';
+  appointment?.isStandaloneTest ? 'Your video room is ready' : 'Your appointment with';
 
 const getJoinButtonLabel = (appointment) =>
-  appointment?.isStandaloneTest ? 'Join Test Call' : 'Join Appointment';
+  appointment?.isStandaloneTest ? 'Join Secure Room' : 'Join Appointment';
 
 const getWaitingRoomCopy = (appointment) =>
   appointment?.isStandaloneTest
-    ? 'The care team can join this testing room at any time'
+    ? 'The care team can join this waiting room at any time'
     : `${getProviderLabel(appointment)} can join the waiting room at any time`;
 
 const getBgPreviewStyle = (preset) => {
@@ -62,32 +59,34 @@ const getBgPreviewStyle = (preset) => {
   return null;
 };
 
-const MEDIA_PERMISSION_TIPS = [
-  'Chrome on desktop or Android: open the lock icon beside the address bar, allow Camera and Microphone, then retry.',
-  'iPhone or iPad Safari: open iOS Settings, Safari, Camera and Microphone, then allow access for this site.',
-  'Close Zoom, Teams, WhatsApp, or any other app that may already be using the camera.',
-  'Use HTTPS and refresh the page after changing browser permissions.',
-];
-
-const MediaPermissionHelp = ({ message, compact = false }) => {
-  if (!message) {
-    return null;
+const playSpeakerTestTone = async () => {
+  if (typeof window === 'undefined') {
+    return;
   }
 
-  return (
-    <div className={`rounded-2xl border border-amber-400/25 bg-amber-400/10 text-amber-50 ${compact ? 'p-3' : 'p-4'}`}>
-      <p className="text-sm font-semibold">Camera or microphone access needs attention</p>
-      <p className="mt-1 text-xs leading-5 text-amber-100/90">{message}</p>
-      <ul className="mt-3 space-y-1.5 text-left text-xs leading-5 text-amber-100/80">
-        {MEDIA_PERMISSION_TIPS.map((tip) => (
-          <li key={tip} className="flex gap-2">
-            <span aria-hidden="true">-</span>
-            <span>{tip}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) {
+    throw new Error('Speaker test is not supported in this browser.');
+  }
+
+  const audioContext = new AudioContext();
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+
+  oscillator.frequency.value = 640;
+  gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.16, audioContext.currentTime + 0.03);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.45);
+
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start();
+  oscillator.stop(audioContext.currentTime + 0.5);
+
+  await new Promise((resolve) => {
+    oscillator.onended = resolve;
+  });
+  await audioContext.close();
 };
 
 export default function PatientVideoCallPage() {
@@ -122,15 +121,22 @@ export default function PatientVideoCallPage() {
   const [showSettings, setShowSettings] = useState(false);
   const {
     callError,
+    callPhase,
     connectionStatus,
+    connectionQuality,
     ensureLocalStream,
+    facingMode,
     joinCall,
     leaveCall,
     localStream,
     mediaError,
     mediaWarning,
+    messages,
+    reconnectCall,
     remoteParticipant,
-    remoteStream
+    remoteStream,
+    sendMessage,
+    switchCamera
   } = useTelehealthSession({ appointmentId: isStandalone ? null : appointmentId });
 
   useEffect(() => {
@@ -141,10 +147,10 @@ export default function PatientVideoCallPage() {
         status: 'in_progress',
         providerFirstName: 'Care',
         providerLastName: 'Team',
-        providerSpecialty: 'Standalone video test session',
+        providerSpecialty: 'Secure video session',
         scheduledAt: new Date().toISOString(),
         durationMinutes: 30,
-        reasonForVisit: 'Standalone patient video call for portal testing.',
+        reasonForVisit: 'Direct patient video call.',
         isStandaloneTest: true,
       });
       if (user?.firstName) {
@@ -165,13 +171,6 @@ export default function PatientVideoCallPage() {
       return;
     }
 
-    if (isNigeriaPortal) {
-      // Nigeria consultations use Nigeria pricing and partner confirmation flows.
-      // Do not block the video room with the US Stripe pay-per-visit gate.
-      setPaymentChecked(true);
-      return;
-    }
-
     try {
       const response = await paymentsAPI.getAppointmentPayment(appointmentId);
       if (response.data.success) {
@@ -188,8 +187,12 @@ export default function PatientVideoCallPage() {
       }
     } catch (error) {
       console.error('Failed to check payment:', error);
-      // Allow access if check fails (graceful degradation)
-      setPaymentChecked(true);
+      toast({
+        title: 'Payment Verification Failed',
+        description: 'We could not verify payment for this video visit. Please retry from the appointment details page.',
+        variant: 'destructive'
+      });
+      router.push(appointmentReturnPath);
     }
   };
 
@@ -226,10 +229,10 @@ export default function PatientVideoCallPage() {
     try {
       if (isStandalone) {
         if (camOn || micOn) {
-          await ensureLocalStream({ video: camOn, audio: micOn });
+          await ensureLocalStream();
         }
       } else {
-        await joinCall({ displayName: userName, mediaOptions: { video: camOn, audio: micOn } });
+        await joinCall({ displayName: userName });
       }
     } catch (error) {
       setIsInCall(false);
@@ -243,43 +246,18 @@ export default function PatientVideoCallPage() {
 
   const endCall = async () => {
     await leaveCall();
+    if (!isStandalone && appointment?.id && (connectionStatus === 'connected' || callPhase === 'in_progress' || appointment.status === 'in_progress')) {
+      await appointmentsAPI.update(appointment.id, { status: 'completed' }).catch(() => {
+        toast({
+          title: 'Visit status not updated',
+          description: 'The call ended, but the visit record could not be closed automatically.',
+          variant: 'destructive'
+        });
+      });
+    }
     setIsInCall(false);
     setActiveEffect(null);
     router.push(appointmentReturnPath);
-  };
-
-  const toggleMic = async () => {
-    const nextValue = !micOn;
-    if (nextValue) {
-      try {
-        await ensureLocalStream({ video: camOn, audio: true });
-      } catch (error) {
-        toast({
-          title: 'Microphone unavailable',
-          description: error.message || 'Please allow microphone access in your browser settings.',
-          variant: 'destructive'
-        });
-        return;
-      }
-    }
-    setMicOn(nextValue);
-  };
-
-  const toggleCam = async () => {
-    const nextValue = !camOn;
-    if (nextValue) {
-      try {
-        await ensureLocalStream({ video: true, audio: micOn });
-      } catch (error) {
-        toast({
-          title: 'Camera unavailable',
-          description: error.message || 'Please allow camera access in your browser settings.',
-          variant: 'destructive'
-        });
-        return;
-      }
-    }
-    setCamOn(nextValue);
   };
 
   useEffect(() => {
@@ -318,7 +296,7 @@ export default function PatientVideoCallPage() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-slate-600">{isStandalone ? 'Preparing test call...' : 'Loading appointment...'}</p>
+          <p className="text-slate-600">{isStandalone ? 'Preparing secure call...' : 'Loading appointment...'}</p>
         </div>
       </div>
     );
@@ -336,7 +314,7 @@ export default function PatientVideoCallPage() {
   }
 
   return (
-    <div className="flex contrast-dark h-[100dvh] flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_28%),radial-gradient(circle_at_85%_0%,rgba(15,23,42,0.42),transparent_34%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)] text-slate-100 font-sans selection:bg-cyan-500/20">
+    <div className="flex contrast-dark min-h-[100dvh] flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_28%),radial-gradient(circle_at_85%_0%,rgba(15,23,42,0.42),transparent_34%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)] text-slate-100 font-sans selection:bg-cyan-500/20">
       <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/72 px-4 pb-3 pt-[calc(0.7rem+env(safe-area-inset-top,0px))] backdrop-blur-xl sm:px-6">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -354,7 +332,7 @@ export default function PatientVideoCallPage() {
               </span>
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold text-white">
-                  {appointment?.isStandaloneTest ? 'Test Call' : `Appointment with ${getProviderLabel(appointment)}`}
+                  {appointment?.isStandaloneTest ? 'Video Room' : `Appointment with ${getProviderLabel(appointment)}`}
                 </div>
                 <div className="text-xs text-slate-400">
                   {appointment?.providerSpecialty || 'Secure telehealth visit'}
@@ -385,6 +363,8 @@ export default function PatientVideoCallPage() {
             setMicOn={setMicOn}
             camOn={camOn}
             setCamOn={setCamOn}
+            onSwitchCamera={switchCamera}
+            facingMode={facingMode}
             localStream={localStream}
             ensureLocalStream={ensureLocalStream}
             mediaError={mediaError}
@@ -392,8 +372,8 @@ export default function PatientVideoCallPage() {
         ) : (
           <ActiveCallRoom
             appointment={appointment}
-            micOn={micOn} toggleMic={toggleMic}
-            camOn={camOn} toggleCam={toggleCam}
+            micOn={micOn} toggleMic={() => setMicOn(!micOn)}
+            camOn={camOn} toggleCam={() => setCamOn(!camOn)}
             activeEffect={activeEffect}
             setActiveEffect={setActiveEffect}
             onEndCall={endCall}
@@ -411,7 +391,14 @@ export default function PatientVideoCallPage() {
             remoteStream={remoteStream}
             remoteParticipant={remoteParticipant}
             connectionStatus={connectionStatus}
+            callPhase={callPhase}
+            connectionQuality={connectionQuality}
             callError={callError}
+            onReconnect={reconnectCall}
+            onSwitchCamera={switchCamera}
+            facingMode={facingMode}
+            messages={messages}
+            onSendMessage={sendMessage}
           />
         )}
       </main>
@@ -429,10 +416,48 @@ const Lobby = ({
   setMicOn,
   camOn,
   setCamOn,
+  onSwitchCamera,
+  facingMode,
   localStream,
   ensureLocalStream,
   mediaError
 }) => {
+  const [switchingCamera, setSwitchingCamera] = useState(false);
+  const [testingSpeaker, setTestingSpeaker] = useState(false);
+
+  const handleSwitchCamera = async () => {
+    setSwitchingCamera(true);
+    try {
+      await onSwitchCamera?.();
+      if (!camOn) {
+        setCamOn(true);
+      }
+    } catch (error) {
+      toast({
+        title: 'Camera switch unavailable',
+        description: error.message || 'No alternate camera was found on this device.',
+        variant: 'destructive'
+      });
+    } finally {
+      setSwitchingCamera(false);
+    }
+  };
+
+  const handleSpeakerTest = async () => {
+    setTestingSpeaker(true);
+    try {
+      await playSpeakerTestTone();
+    } catch (error) {
+      toast({
+        title: 'Speaker test unavailable',
+        description: error.message || 'This browser does not support speaker testing.',
+        variant: 'destructive'
+      });
+    } finally {
+      setTestingSpeaker(false);
+    }
+  };
+
   return (
     <div className="flex-1 overflow-y-auto px-4 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-6 sm:pt-6">
       <div className="mx-auto grid max-w-6xl gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(22rem,0.9fr)] xl:items-center">
@@ -489,8 +514,6 @@ const Lobby = ({
               <span>{getWaitingRoomCopy(appointment)}</span>
             </div>
           </div>
-
-          <MediaPermissionHelp message={mediaError} />
 
           <div className="rounded-[1.6rem] border border-white/10 bg-slate-950/40 p-4 shadow-[0_18px_44px_rgba(2,6,23,0.22)] backdrop-blur-xl">
             <div className="space-y-4">
@@ -556,6 +579,20 @@ const Lobby = ({
               iconOff={VideoOff}
               label="Camera"
             />
+            <DeviceToggle
+              active
+              onClick={handleSwitchCamera}
+              iconOn={RefreshCw}
+              iconOff={RefreshCw}
+              label={switchingCamera ? 'Switching...' : facingMode === 'environment' ? 'Rear Camera' : 'Front Camera'}
+            />
+            <DeviceToggle
+              active
+              onClick={handleSpeakerTest}
+              iconOn={ShieldCheck}
+              iconOff={ShieldCheck}
+              label={testingSpeaker ? 'Testing...' : 'Speaker Test'}
+            />
           </div>
         </div>
       </div>
@@ -575,8 +612,14 @@ const ActiveCallRoom = ({
   processingEnabled, setProcessingEnabled,
   showCaptions, setShowCaptions,
   localStream, ensureLocalStream, mediaError,
-  remoteStream, remoteParticipant, connectionStatus, callError
+  remoteStream, remoteParticipant, connectionStatus, callPhase, connectionQuality, callError,
+  onReconnect, onSwitchCamera, facingMode,
+  messages = [], onSendMessage
 }) => {
+  const stageRef = useRef(null);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [switchingCamera, setSwitchingCamera] = useState(false);
+  const [chatDraft, setChatDraft] = useState('');
   const waitingCopy = callError
     ? 'Action needed'
     : connectionStatus === 'connected'
@@ -585,8 +628,72 @@ const ActiveCallRoom = ({
         ? 'Connecting'
         : 'Waiting room';
 
+  const handleReconnect = async () => {
+    setReconnecting(true);
+    try {
+      await onReconnect?.();
+    } catch (error) {
+      toast({
+        title: 'Reconnect failed',
+        description: error.message || 'Please leave and rejoin the appointment if the network does not recover.',
+        variant: 'destructive'
+      });
+    } finally {
+      setReconnecting(false);
+    }
+  };
+
+  const handleSwitchCamera = async () => {
+    setSwitchingCamera(true);
+    try {
+      await onSwitchCamera?.();
+    } catch (error) {
+      toast({
+        title: 'Camera switch unavailable',
+        description: error.message || 'No alternate camera was found on this device.',
+        variant: 'destructive'
+      });
+    } finally {
+      setSwitchingCamera(false);
+    }
+  };
+
+  const handleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      await stageRef.current?.requestFullscreen?.();
+    } catch {
+      toast({
+        title: 'Fullscreen unavailable',
+        description: 'This browser does not allow fullscreen from the current view.',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleSendChat = async (event) => {
+    event.preventDefault();
+    const text = chatDraft.trim();
+    if (!text) return;
+
+    try {
+      setChatDraft('');
+      await onSendMessage?.(text);
+    } catch (error) {
+      toast({
+        title: 'Message not sent',
+        description: error.message || 'Rejoin the call and try sending the message again.',
+        variant: 'destructive'
+      });
+      setChatDraft(text);
+    }
+  };
+
   return (
-    <div className="relative flex-1 min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_20%),radial-gradient(circle_at_bottom_right,rgba(14,116,144,0.22),transparent_28%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)]">
+    <div ref={stageRef} className="relative flex-1 min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_20%),radial-gradient(circle_at_bottom_right,rgba(14,116,144,0.22),transparent_28%),linear-gradient(180deg,#020617,#0f172a_52%,#111827)]">
       {(showSettings || isSidebarOpen) && (
         <button
           type="button"
@@ -626,7 +733,7 @@ const ActiveCallRoom = ({
 
               <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200 backdrop-blur-xl">
                 <span className={`h-2 w-2 rounded-full ${connectionStatus === 'connected' ? 'bg-emerald-400' : callError ? 'bg-rose-400' : 'bg-amber-300 animate-pulse'}`} />
-                {waitingCopy}
+                {callPhase === 'ended' ? 'Ended' : waitingCopy}
               </div>
             </div>
 
@@ -729,7 +836,7 @@ const ActiveCallRoom = ({
 
       {/* Control Bar */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.9rem+env(safe-area-inset-bottom,0px))] pt-6 sm:px-4">
-        <div className="pointer-events-auto mx-auto flex w-full max-w-[30rem] items-center justify-center gap-2 rounded-[1.9rem] border border-white/10 bg-slate-950/82 px-3 py-3 shadow-[0_26px_60px_rgba(2,6,23,0.54)] backdrop-blur-2xl sm:gap-3 sm:px-4">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-[34rem] flex-wrap items-center justify-center gap-2 rounded-[1.9rem] border border-white/10 bg-slate-950/82 px-3 py-3 shadow-[0_26px_60px_rgba(2,6,23,0.54)] backdrop-blur-2xl sm:gap-3 sm:px-4">
           <ControlBtn
             active={micOn}
             onClick={toggleMic}
@@ -762,25 +869,48 @@ const ActiveCallRoom = ({
             tooltip="Effects"
           />
           <ControlBtn
+            active={facingMode === 'environment'}
+            onClick={handleSwitchCamera}
+            onIcon={RefreshCw}
+            offIcon={RefreshCw}
+            tooltip={switchingCamera ? 'Switching camera' : 'Switch camera'}
+          />
+          <ControlBtn
             active={isSidebarOpen}
             onClick={toggleSidebar}
             onIcon={MessageSquare}
             offIcon={MessageSquare}
             tooltip="Chat"
           />
+          <ControlBtn
+            active={connectionStatus === 'connected'}
+            onClick={handleReconnect}
+            onIcon={RefreshCw}
+            offIcon={RefreshCw}
+            tooltip={reconnecting ? 'Reconnecting' : 'Reconnect'}
+          />
+          <ControlBtn
+            active
+            onClick={handleFullscreen}
+            onIcon={Maximize2}
+            offIcon={Maximize2}
+            tooltip="Fullscreen"
+          />
           <button
             onClick={onEndCall}
-            className="ml-1 flex h-14 w-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-[0_18px_42px_rgba(244,63,94,0.42)] transition-all hover:bg-rose-400"
+            data-testid="telehealth-leave-call"
+            className="ml-0 flex h-12 w-12 items-center justify-center rounded-full bg-rose-500 text-white shadow-[0_18px_42px_rgba(244,63,94,0.42)] transition-all hover:bg-rose-400 sm:ml-1 sm:h-14 sm:w-14"
             title="Leave call"
           >
             <PhoneOff size={20} fill="currentColor" />
           </button>
         </div>
+        <QualityBadge quality={connectionQuality} />
       </div>
 
       {/* Sidebar */}
       {isSidebarOpen && (
-        <div className="fixed inset-x-0 bottom-0 z-50 flex h-[74vh] max-h-[74vh] flex-col overflow-hidden rounded-t-[1.8rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_26px_60px_rgba(2,6,23,0.58)] backdrop-blur-2xl lg:absolute lg:inset-y-0 lg:right-0 lg:left-auto lg:h-auto lg:max-h-none lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l">
+        <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[74vh] flex-col overflow-hidden rounded-t-[1.8rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_26px_60px_rgba(2,6,23,0.58)] backdrop-blur-2xl lg:absolute lg:inset-y-0 lg:right-0 lg:left-auto lg:max-h-none lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l">
           <div className="mx-auto mt-3 h-1.5 w-14 rounded-full bg-white/15 lg:hidden" />
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
             <div>
@@ -794,9 +924,41 @@ const ActiveCallRoom = ({
               <X size={16} />
             </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <ConsultationChatPanel appointment={appointment} />
+          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4" data-testid="telehealth-chat-messages">
+            {messages.length ? messages.map((message) => (
+              <div
+                key={message.id}
+                className={`rounded-2xl border p-3 text-sm ${
+                  message.senderRole === 'patient'
+                    ? 'ml-8 border-cyan-400/20 bg-cyan-500/15 text-cyan-50'
+                    : 'mr-8 border-white/10 bg-white/5 text-slate-100'
+                }`}
+              >
+                <div className="mb-1 flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  <span>{message.senderRole === 'patient' ? 'You' : message.senderName || 'Provider'}</span>
+                  <span>{message.sentAt ? new Date(message.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                </div>
+                <p className="leading-5">{message.body}</p>
+              </div>
+            )) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center">
+                <p className="text-sm font-medium text-white">No secure messages yet</p>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  Messages sent during this visit stay attached to the consultation.
+                </p>
+              </div>
+            )}
           </div>
+          <form onSubmit={handleSendChat} className="border-t border-white/10 px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-4">
+            <input
+              type="text"
+              value={chatDraft}
+              onChange={(event) => setChatDraft(event.target.value)}
+              placeholder="Type a secure message..."
+              data-testid="telehealth-chat-input"
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-400/60 focus:bg-white/10"
+            />
+          </form>
         </div>
       )}
     </div>
@@ -834,19 +996,6 @@ const RemoteProviderStage = ({ appointment, stream, participant, connectionStatu
         ref={videoRef}
         className="w-full h-full object-cover"
         autoPlay
-        playsInline
-      />
-    );
-  }
-
-  if (appointment.isStandaloneTest) {
-    return (
-      <video
-        src={DOCTOR_VIDEO_URL}
-        className="w-full h-full object-cover opacity-80"
-        autoPlay
-        loop
-        muted
         playsInline
       />
     );
@@ -1159,7 +1308,7 @@ const SelfieCamera = ({
         }
 
         if (ensureLocalStream) {
-          const sharedStream = await ensureLocalStream({ video: true, audio: false });
+          const sharedStream = await ensureLocalStream();
           attachResolvedStream(sharedStream, false);
           return;
         }
@@ -1468,16 +1617,13 @@ const SelfieCamera = ({
         <VideoOff size={48} className="mb-3 text-red-400" />
         <p className="text-sm font-medium text-white mb-2">Camera Access Required</p>
         <p className="text-xs text-slate-400 mb-4 px-2">{cameraError}</p>
-        <div className="mb-4 w-full max-w-sm">
-          <MediaPermissionHelp message={cameraError} compact />
-        </div>
         <button
           onClick={async () => {
             setCameraError(null);
             setCameraLoading(true);
             try {
               const nextStream = ensureLocalStream
-                ? await ensureLocalStream({ video: true, audio: false })
+                ? await ensureLocalStream()
                 : await navigator.mediaDevices.getUserMedia({
                     video: {
                       width: { ideal: 1280 },
@@ -1594,7 +1740,7 @@ const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
         }
 
         if (ensureLocalStream) {
-          const sharedStream = await ensureLocalStream({ video: true, audio: false });
+          const sharedStream = await ensureLocalStream();
           ownsStreamRef.current = false;
           streamRef.current = sharedStream;
           setHasPermission(true);
@@ -1650,13 +1796,13 @@ const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
             }
           }
           resolve(stream);
-        } catch (mediaAccessError) {
+        } catch (mediaError) {
           // Handle getUserMedia errors
-          const errorObj = mediaAccessError instanceof Error ? mediaAccessError : new Error(String(mediaAccessError));
+          const errorObj = mediaError instanceof Error ? mediaError : new Error(String(mediaError));
           setIsLoading(false);
           setHasPermission(false);
           
-          let errorMessage = mediaError || errorObj.message || 'Camera access denied';
+          let errorMessage = mediaError || 'Camera access denied';
           let toastTitle = 'Camera Permission Denied';
           
           if (!ensureLocalStream && (errorObj.name === 'NotAllowedError' || errorObj.name === 'PermissionDeniedError')) {
@@ -1797,10 +1943,9 @@ const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
         <div className="text-center p-4">
           <VideoOff size={32} className="mx-auto mb-2 text-red-400" />
           <p className="text-xs text-slate-300 mb-4">{error.message}</p>
-          <MediaPermissionHelp message={error.message} compact />
           <button
             onClick={handleRequestCamera}
-            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs"
           >
             Try Again
           </button>
@@ -1833,6 +1978,27 @@ const CameraPreview = ({ stream, ensureLocalStream, mediaError }) => {
 }
 
 // --- UI HELPERS ---
+const QualityBadge = ({ quality }) => {
+  const level = quality?.level || 'idle';
+  const classes = {
+    good: 'border-emerald-400/25 bg-emerald-500/12 text-emerald-100',
+    fair: 'border-amber-400/25 bg-amber-500/12 text-amber-100',
+    poor: 'border-rose-400/25 bg-rose-500/12 text-rose-100',
+    error: 'border-rose-400/25 bg-rose-500/12 text-rose-100',
+    reconnecting: 'border-amber-400/25 bg-amber-500/12 text-amber-100',
+    connecting: 'border-amber-400/25 bg-amber-500/12 text-amber-100',
+    waiting: 'border-slate-400/25 bg-slate-500/12 text-slate-100',
+    idle: 'border-slate-400/20 bg-slate-500/10 text-slate-200',
+    ended: 'border-slate-400/20 bg-slate-500/10 text-slate-200'
+  };
+
+  return (
+    <div className={`pointer-events-auto mx-auto mt-2 w-fit rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] backdrop-blur-xl ${classes[level] || classes.idle}`}>
+      Quality: {quality?.label || 'Not connected'}
+    </div>
+  );
+};
+
 const DeviceToggle = ({ active, onClick, iconOn: IconOn, iconOff: IconOff, label }) => (
   <button
     onClick={onClick}
@@ -1857,12 +2023,9 @@ const ControlBtn = ({ active, onClick, onIcon: OnIcon, offIcon: OffIcon, tooltip
 
   return (
     <button
-      type="button"
       onClick={onClick}
       title={tooltip}
-      aria-label={tooltip}
-      aria-pressed={active}
-      className={`flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-200 sm:h-[3.25rem] sm:w-[3.25rem] ${stateClasses}`}
+      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-all duration-200 sm:h-[3.25rem] sm:w-[3.25rem] ${stateClasses}`}
     >
       <Icon size={19} />
     </button>

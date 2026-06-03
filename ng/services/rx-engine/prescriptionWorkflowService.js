@@ -13,7 +13,7 @@
  */
 
 const crypto = require('crypto');
-const { getPool } = require('../../../server/db');
+const { getPool, transaction } = require('../../../server/db');
 
 const TRANSITIONS = {
   drafted:             ['signed', 'cancelled'],
@@ -32,9 +32,39 @@ function isValidTransition(from, to) {
 }
 function isTerminal(s) { return (TRANSITIONS[s] || []).length === 0; }
 
-function generateRxNumber() {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const tail = crypto.randomBytes(2).toString('hex').toUpperCase();
+/**
+ * Pure dispense-completion decision, shared by the live service and the
+ * simulation harness so they can never drift. Given the current status and the
+ * item tallies, returns the next lifecycle status.
+ *   counts: { total, dispensed, finalized }
+ *     total     = all items
+ *     dispensed = items with status 'dispensed'
+ *     finalized = items dispensed | cancelled | unavailable
+ */
+function nextDispenseStatus(fromStatus, { total, dispensed, finalized }) {
+  if (!['received', 'partially_dispensed'].includes(fromStatus)) return fromStatus;
+  if (finalized === total && dispensed > 0) return 'fully_dispensed';
+  if (dispensed > 0 || finalized > 0)       return 'partially_dispensed';
+  return fromStatus;
+}
+
+let rxSequenceDate = null;
+let rxSequenceValue = 0;
+let rxSequenceCount = 0;
+
+function generateRxNumber(now = new Date()) {
+  const date = now.toISOString().slice(0, 10).replace(/-/g, '');
+  if (date !== rxSequenceDate) {
+    rxSequenceDate = date;
+    rxSequenceValue = crypto.randomInt(0x10000);
+    rxSequenceCount = 0;
+  }
+  if (rxSequenceCount >= 0x10000) {
+    throw new Error(`Daily prescription number space exhausted for ${date}`);
+  }
+  rxSequenceValue = (rxSequenceValue + 1) & 0xffff;
+  rxSequenceCount += 1;
+  const tail = rxSequenceValue.toString(16).padStart(4, '0').toUpperCase();
   return `NG-RX-${date}-${tail}`;
 }
 
@@ -47,7 +77,7 @@ function generateRxNumber() {
  *   items: [{ drug_id?, drug_name, generic_name?, brand_name?, dosage,
  *             frequency, duration_days?, quantity?, refills_authorized?, notes? }]
  */
-async function createDraft(input, pool = getPool()) {
+async function createDraft(input, existing = null) {
   if (!input.provider_id)     throw new Error('provider_id required');
   if (!input.patient_user_id) throw new Error('patient_user_id required');
   if (!Array.isArray(input.items) || input.items.length === 0) {
@@ -55,46 +85,54 @@ async function createDraft(input, pool = getPool()) {
   }
 
   const rxNumber = generateRxNumber();
-  const r = await pool.query(
-    `INSERT INTO ng_digital_prescriptions
-       (provider_id, patient_user_id, appointment_id, prescription_number,
-        items, preferred_pharmacy_id, diagnosis, notes, is_controlled,
-        lifecycle_status)
-     VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,COALESCE($9,false),'drafted')
-     RETURNING *`,
-    [
-      input.provider_id, input.patient_user_id, input.appointment_id || null,
-      rxNumber,
-      JSON.stringify(input.items),  // keep legacy JSONB blob in sync
-      input.preferred_pharmacy_id || null,
-      input.diagnosis || null,
-      input.notes || null,
-      input.is_controlled || false,
-    ]
-  );
-  const rx = r.rows[0];
-
-  // Normalized items
-  for (let i = 0; i < input.items.length; i++) {
-    const it = input.items[i];
-    await pool.query(
-      `INSERT INTO ng_rx_items
-         (prescription_id, position, drug_id, drug_name, generic_name, brand_name,
-          dosage, frequency, duration_days, quantity, refills_authorized,
-          refills_remaining, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,0),COALESCE($11,0),$12)`,
+  // Header + all item rows + the drafted event write atomically. Previously these
+  // were separate autocommit writes, so a failure partway through the item loop
+  // left an orphaned prescription header with partial items and no audit event.
+  const run = async (client) => {
+    const r = await client.query(
+      `INSERT INTO ng_digital_prescriptions
+         (provider_id, patient_user_id, appointment_id, prescription_number,
+          items, preferred_pharmacy_id, diagnosis, notes, is_controlled,
+          lifecycle_status)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,COALESCE($9,false),'drafted')
+       RETURNING *`,
       [
-        rx.id, i + 1, it.drug_id || null,
-        it.drug_name, it.generic_name || null, it.brand_name || null,
-        it.dosage, it.frequency,
-        it.duration_days || null, it.quantity || null,
-        it.refills_authorized || 0, it.notes || null,
+        input.provider_id, input.patient_user_id, input.appointment_id || null,
+        rxNumber,
+        JSON.stringify(input.items),  // keep legacy JSONB blob in sync
+        input.preferred_pharmacy_id || null,
+        input.diagnosis || null,
+        input.notes || null,
+        input.is_controlled || false,
       ]
     );
-  }
+    const rx = r.rows[0];
 
-  await logEvent(rx.id, null, { kind: 'system' }, 'drafted', null, 'drafted', 'prescription drafted', null, pool);
-  return getPrescription(rx.id, pool);
+    // Normalized items
+    for (let i = 0; i < input.items.length; i++) {
+      const it = input.items[i];
+      await client.query(
+        `INSERT INTO ng_rx_items
+           (prescription_id, position, drug_id, drug_name, generic_name, brand_name,
+            dosage, frequency, duration_days, quantity, refills_authorized,
+            refills_remaining, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,0),COALESCE($11,0),$12)`,
+        [
+          rx.id, i + 1, it.drug_id || null,
+          it.drug_name, it.generic_name || null, it.brand_name || null,
+          it.dosage, it.frequency,
+          it.duration_days || null, it.quantity || null,
+          it.refills_authorized || 0, it.notes || null,
+        ]
+      );
+    }
+
+    await logEvent(rx.id, null, { kind: 'system' }, 'drafted', null, 'drafted', 'prescription drafted', null, client);
+    return rx.id;
+  };
+
+  const rxId = existing ? await run(existing) : await transaction(run);
+  return getPrescription(rxId);
 }
 
 async function getPrescription(id, pool = getPool()) {
@@ -222,7 +260,27 @@ async function dispenseItem(prescriptionId, itemId, actor, opts = {}, pool = get
     [itemId, qty, opts.substitute_drug_id || null, opts.substitute_reason || null, opts.pharmacy_id || null]
   );
 
-  // Recompute prescription status
+  const advanced = await recomputeDispenseStatus(prescriptionId, rx.lifecycle_status, itemId, actor, pool, { quantity: qty });
+  if (!advanced) {
+    await logEvent(prescriptionId, itemId, actor, 'item_dispensed', null, null,
+      `item ${item.drug_name} dispensed`, { quantity: qty }, pool);
+  }
+
+  return getPrescription(prescriptionId, pool);
+}
+
+/**
+ * Recompute a prescription's lifecycle status from its item rows and persist any
+ * advance (partial → full). Returns true if the prescription status changed.
+ *
+ * Completion rule: every item must be finalized (dispensed / cancelled /
+ * unavailable) AND at least one item actually dispensed. The previous inline
+ * check used `dispensed === total`, which permanently stalled any prescription
+ * containing an unavailable or cancelled item — it could never reach
+ * fully_dispensed, and therefore never `completed`.
+ */
+async function recomputeDispenseStatus(prescriptionId, fromStatus, itemId, actor, pool = getPool(), meta = {}) {
+  if (!['received', 'partially_dispensed'].includes(fromStatus)) return false;
   const after = await pool.query(
     `SELECT
        COUNT(*)::int AS total,
@@ -231,25 +289,18 @@ async function dispenseItem(prescriptionId, itemId, actor, opts = {}, pool = get
      FROM ng_rx_items WHERE prescription_id = $1`, [prescriptionId]
   );
   const { total, dispensed, finalized } = after.rows[0];
-  let next = rx.lifecycle_status;
-  if (dispensed === total)                  next = 'fully_dispensed';
-  else if (dispensed > 0 || finalized > 0)  next = 'partially_dispensed';
+  const next = nextDispenseStatus(fromStatus, { total, dispensed, finalized });
 
-  if (next !== rx.lifecycle_status) {
-    await pool.query(
-      `UPDATE ng_digital_prescriptions SET lifecycle_status = $2, updated_at = NOW() WHERE id = $1`,
-      [prescriptionId, next]
-    );
-    await logEvent(prescriptionId, itemId, actor,
-      next === 'fully_dispensed' ? 'full' : 'partial',
-      rx.lifecycle_status, next,
-      `auto-advance after item dispense`, { item_id: itemId, quantity: qty }, pool);
-  } else {
-    await logEvent(prescriptionId, itemId, actor, 'item_dispensed', null, null,
-      `item ${item.drug_name} dispensed`, { quantity: qty }, pool);
-  }
-
-  return getPrescription(prescriptionId, pool);
+  if (next === fromStatus) return false;
+  await pool.query(
+    `UPDATE ng_digital_prescriptions SET lifecycle_status = $2, updated_at = NOW() WHERE id = $1`,
+    [prescriptionId, next]
+  );
+  await logEvent(prescriptionId, itemId, actor,
+    next === 'fully_dispensed' ? 'full' : 'partial',
+    fromStatus, next, `auto-advance after item ${meta.quantity != null ? 'dispense' : 'status change'}`,
+    { item_id: itemId, ...meta }, pool);
+  return true;
 }
 
 /**
@@ -265,6 +316,8 @@ async function markItemUnavailable(prescriptionId, itemId, actor, { notes } = {}
   );
   await logEvent(prescriptionId, itemId, actor, 'item_unavailable', null, null,
     'pharmacy reports item unavailable', { notes }, pool);
+  // Marking the last pending item unavailable can complete the dispense.
+  await recomputeDispenseStatus(prescriptionId, rx.lifecycle_status, itemId, actor, pool);
   return getPrescription(prescriptionId, pool);
 }
 
@@ -389,6 +442,7 @@ module.exports = {
   TRANSITIONS,
   isValidTransition,
   isTerminal,
+  nextDispenseStatus,
   generateRxNumber,
   createDraft,
   getPrescription,

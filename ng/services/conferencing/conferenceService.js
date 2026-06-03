@@ -11,6 +11,12 @@
 const crypto = require('crypto');
 const { getPool } = require('../../../server/db');
 const { effectivePermissions, can, canActOn, ROLE_RANK } = require('../../../lib/ng/conferencePermissions');
+const {
+  PEER_MESH_LIMIT,
+  assessConferenceMediaReadiness,
+  assertConferenceMediaReady,
+  suggestMediaServer,
+} = require('../../../lib/ng/conferenceMediaReadiness');
 
 // ─── State machine ───────────────────────────────────────────────────────────
 
@@ -23,15 +29,6 @@ const ROOM_TRANSITIONS = {
 
 function isValidRoomTransition(from, to) {
   return (ROOM_TRANSITIONS[from] || []).includes(to);
-}
-
-// Peer-mesh is sane up to ~3; above that the media plane must be SFU.
-const PEER_MESH_LIMIT = 3;
-
-function suggestMediaServer(maxParticipants) {
-  if (!maxParticipants || maxParticipants <= PEER_MESH_LIMIT) return 'peer_mesh';
-  // Use whatever the operator has configured; default to livekit
-  return process.env.NG_CONF_DEFAULT_MEDIA_SERVER || 'livekit';
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -69,6 +66,21 @@ async function createRoom(input, actor, pool = getPool()) {
   const code = genRoomCode();
   const maxParticipants = Math.max(2, Math.min(50, Number(input.max_participants || 10)));
   const mediaServer = input.media_server || suggestMediaServer(maxParticipants);
+  const mediaReadiness = assessConferenceMediaReadiness({ maxParticipants, mediaServer });
+  const baseMetadata = input.metadata_json && typeof input.metadata_json === 'object' && !Array.isArray(input.metadata_json)
+    ? input.metadata_json
+    : {};
+  const metadata = {
+    ...baseMetadata,
+    media_readiness: mediaReadiness,
+  };
+
+  if (!mediaReadiness.ready && input.require_media_ready === true) {
+    const e = new Error(`Conference media is not production-ready: ${mediaReadiness.blockers.join('; ')}`);
+    e.code = 'MEDIA_NOT_READY';
+    e.readiness = mediaReadiness;
+    throw e;
+  }
 
   const r = await pool.query(
     `INSERT INTO ng_conf_rooms
@@ -91,7 +103,7 @@ async function createRoom(input, actor, pool = getPool()) {
       input.allow_chat, input.allow_private_dm,
       mediaServer, input.media_server_url || null, input.signaling_namespace || `/conf:${code}`,
       input.scheduled_start || null, input.scheduled_end || null, input.parent_room_id || null,
-      input.metadata_json ? JSON.stringify(input.metadata_json) : null,
+      JSON.stringify(metadata),
     ]
   );
   const room = r.rows[0];
@@ -143,6 +155,7 @@ async function startRoom(id, actor, pool = getPool()) {
   const room = await getRoom(id, pool);
   if (!room) throwNotFound();
   if (!isValidRoomTransition(room.status, 'live')) throwInvalid(`Cannot start from ${room.status}`);
+  assertConferenceMediaReady({ maxParticipants: room.max_participants, mediaServer: room.media_server });
   const r = await pool.query(
     `UPDATE ng_conf_rooms SET status='live', started_at=NOW(), updated_at=NOW()
       WHERE id=$1 RETURNING *`, [id]
@@ -478,6 +491,7 @@ module.exports = {
   // state machine
   isValidRoomTransition,
   suggestMediaServer,
+  assessConferenceMediaReadiness,
   // rooms
   createRoom,
   getRoom,

@@ -10,7 +10,7 @@ export default function ScheduleRoomTab() {
   const [form, setForm] = useState({
     title: '',
     kind: 'consultation',
-    max_participants: 10,
+    max_participants: 3,
     requires_waiting_room: true,
     allow_chat: true,
     allow_private_dm: true,
@@ -73,7 +73,7 @@ export default function ScheduleRoomTab() {
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
           <p className="mt-1 text-[11px] text-slate-500">
-            ≤ 3 → peer mesh; &gt; 3 → SFU media server is auto-suggested.
+            Up to 3 uses peer mesh. 4+ requires configured SFU and TURN before the room can go live.
           </p>
         </div>
       </div>

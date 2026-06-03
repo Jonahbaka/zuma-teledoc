@@ -29,6 +29,7 @@
 const express = require('express');
 const router = express.Router();
 const svc = require('../services/referral-network/referralNetworkService');
+const { getPool } = require('../../server/db');
 
 // Auth import is provided by ng/routes/index.js wrapping. The route is mounted with
 // authenticate already applied for protected endpoints, and the public verify-qr
@@ -49,8 +50,6 @@ publicRouter.get('/verify-qr/:token', async (req, res) => {
         ref_code: row.ref_code,
         status: row.referral_status,
         specialty: row.specialty,
-        patient_name: row.patient_name,
-        patient_phone: row.patient_phone,
         destination_org: row.destination_org,
         scan_count: row.scan_count,
         scope: row.scope,
@@ -87,6 +86,72 @@ function requireAdmin(req, res, next) {
     return res.status(403).json({ error: 'Admin access required' });
   }
   next();
+}
+
+const ADMIN_ROLES = new Set(['admin', 'super_admin']);
+const PROVIDER_ROLES = new Set(['provider', 'doctor', 'consultant', 'physician', 'specialist']);
+const PATIENT_ROLES = new Set(['patient']);
+const AGENT_ROLES = new Set(['agent', 'referral_agent', 'referral_coordinator']);
+
+function roleOf(req) {
+  return String(req.user?.role || '').trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function forbidden(message = 'Referral access denied') {
+  const err = new Error(message);
+  err.code = 'FORBIDDEN';
+  return err;
+}
+
+function sendReferralError(res, err, label = '[DRN] route') {
+  if (err.code === 'FORBIDDEN') return res.status(403).json({ ok: false, error: err.message });
+  if (err.code === 'NOT_FOUND') return res.status(404).json({ ok: false, error: err.message });
+  if (err.code === 'INVALID_TRANSITION') return res.status(409).json({ ok: false, error: err.message });
+  console.error(label, err);
+  return res.status(500).json({ ok: false, error: err.message });
+}
+
+async function resolveProviderId(req, pool) {
+  const result = await pool.query('SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1', [req.user.id]);
+  return result.rows[0]?.id || null;
+}
+
+async function resolveAgentId(req, pool) {
+  const result = await pool.query('SELECT id FROM drn_agents WHERE user_id = $1 LIMIT 1', [req.user.id]);
+  return result.rows[0]?.id || null;
+}
+
+async function referralActorScope(req, pool) {
+  const role = roleOf(req);
+  const scope = { role, providerId: null, agentId: null, patientUserId: null };
+  if (PROVIDER_ROLES.has(role)) scope.providerId = await resolveProviderId(req, pool);
+  if (AGENT_ROLES.has(role)) scope.agentId = await resolveAgentId(req, pool);
+  if (PATIENT_ROLES.has(role)) scope.patientUserId = req.user.id;
+  return scope;
+}
+
+function canAccessReferral(scope, referral) {
+  if (ADMIN_ROLES.has(scope.role)) return true;
+  if (scope.patientUserId && referral.patient_user_id === scope.patientUserId) return true;
+  if (scope.providerId && [referral.originating_provider, referral.destination_provider].includes(scope.providerId)) return true;
+  if (scope.agentId && referral.originating_agent === scope.agentId) return true;
+  return false;
+}
+
+async function getScopedReferral(req, id, pool) {
+  const referral = await svc.getReferral(id, pool);
+  if (!referral) return null;
+  const scope = await referralActorScope(req, pool);
+  if (canAccessReferral(scope, referral)) return referral;
+  throw forbidden();
+}
+
+async function getScopedReferralByCode(req, refCode, pool) {
+  const referral = await svc.getReferralByCode(refCode, pool);
+  if (!referral) return null;
+  const scope = await referralActorScope(req, pool);
+  if (canAccessReferral(scope, referral)) return referral;
+  throw forbidden();
 }
 
 // ─── Orgs & listings ──────────────────────────────────────────────────────────
@@ -139,22 +204,36 @@ router.post('/match', requireAuth, async (req, res) => {
 // ─── Referrals ────────────────────────────────────────────────────────────────
 
 router.post('/referrals', requireAuth, async (req, res) => {
+  const pool = getPool();
   try {
     const { specialty, reason } = req.body || {};
     if (!specialty || !reason) {
       return res.status(400).json({ error: 'specialty and reason required' });
     }
-    const referral = await svc.createReferral(req.body, asActor(req));
+    const role = roleOf(req);
+    if (!ADMIN_ROLES.has(role) && !PROVIDER_ROLES.has(role) && !PATIENT_ROLES.has(role) && !AGENT_ROLES.has(role)) {
+      throw forbidden('Referral creation denied');
+    }
+    const scope = await referralActorScope(req, pool);
+    const input = { ...req.body };
+    if (!ADMIN_ROLES.has(role)) {
+      if (scope.patientUserId) input.patient_user_id = scope.patientUserId;
+      if (scope.providerId) input.originating_provider = scope.providerId;
+      if (scope.agentId) input.originating_agent = scope.agentId;
+    }
+    const referral = await svc.createReferral(input, asActor(req), pool);
     res.status(201).json({ ok: true, referral });
   } catch (err) {
-    console.error('[DRN] create referral', err);
-    res.status(500).json({ ok: false, error: err.message });
+    sendReferralError(res, err, '[DRN] create referral');
   }
 });
 
 router.get('/referrals', requireAuth, async (req, res) => {
+  const pool = getPool();
   try {
-    const rows = await svc.listReferrals({
+    const role = roleOf(req);
+    const scope = await referralActorScope(req, pool);
+    const filters = {
       destination_org: req.query.destination_org,
       originating_org: req.query.originating_org,
       originating_agent: req.query.originating_agent,
@@ -162,38 +241,60 @@ router.get('/referrals', requireAuth, async (req, res) => {
       urgency: req.query.urgency,
       since: req.query.since,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
-    });
+    };
+    if (!ADMIN_ROLES.has(role)) {
+      filters.destination_org = undefined;
+      filters.originating_org = undefined;
+      if (scope.patientUserId) {
+        filters.patient_user_id = scope.patientUserId;
+        filters.originating_agent = undefined;
+      } else if (scope.providerId) {
+        filters.provider_id = scope.providerId;
+        filters.originating_agent = undefined;
+      } else if (scope.agentId) {
+        filters.originating_agent = scope.agentId;
+      } else {
+        throw forbidden();
+      }
+    }
+    const rows = await svc.listReferrals({
+      ...filters,
+    }, pool);
     res.json({ ok: true, referrals: rows });
   } catch (err) {
-    console.error('[DRN] list referrals', err);
-    res.status(500).json({ ok: false, error: err.message });
+    sendReferralError(res, err, '[DRN] list referrals');
   }
 });
 
 router.get('/referrals/code/:refCode', requireAuth, async (req, res) => {
+  const pool = getPool();
   try {
-    const r = await svc.getReferralByCode(req.params.refCode);
+    const r = await getScopedReferralByCode(req, req.params.refCode, pool);
     if (!r) return res.status(404).json({ ok: false, error: 'Not found' });
     res.json({ ok: true, referral: r });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    sendReferralError(res, err, '[DRN] get referral by code');
   }
 });
 
 router.get('/referrals/:id', requireAuth, async (req, res) => {
+  const pool = getPool();
   try {
-    const r = await svc.getReferral(req.params.id);
+    const r = await getScopedReferral(req, req.params.id, pool);
     if (!r) return res.status(404).json({ ok: false, error: 'Not found' });
     res.json({ ok: true, referral: r });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    sendReferralError(res, err, '[DRN] get referral');
   }
 });
 
 router.post('/referrals/:id/transition', requireAuth, async (req, res) => {
+  const pool = getPool();
   try {
     const { to_status, scheduled_at, cancellation_reason, notes, payload } = req.body || {};
     if (!to_status) return res.status(400).json({ error: 'to_status required' });
+    const referral = await getScopedReferral(req, req.params.id, pool);
+    if (!referral) return res.status(404).json({ ok: false, error: 'Not found' });
     const updated = await svc.transitionReferral(
       req.params.id,
       to_status,
@@ -202,64 +303,80 @@ router.post('/referrals/:id/transition', requireAuth, async (req, res) => {
     );
     res.json({ ok: true, referral: updated });
   } catch (err) {
-    if (err.code === 'NOT_FOUND') return res.status(404).json({ ok: false, error: err.message });
-    if (err.code === 'INVALID_TRANSITION') return res.status(409).json({ ok: false, error: err.message });
-    console.error('[DRN] transition', err);
-    res.status(500).json({ ok: false, error: err.message });
+    sendReferralError(res, err, '[DRN] transition');
   }
 });
 
 router.post('/referrals/:id/qr', requireAuth, async (req, res) => {
+  const pool = getPool();
   try {
     const { scope, ttlDays } = req.body || {};
-    const out = await svc.mintQrToken(req.params.id, asActor(req), { scope, ttlDays });
+    const referral = await getScopedReferral(req, req.params.id, pool);
+    if (!referral) return res.status(404).json({ ok: false, error: 'Not found' });
+    const out = await svc.mintQrToken(req.params.id, asActor(req), { scope, ttlDays }, pool);
     res.status(201).json({ ok: true, ...out });
   } catch (err) {
-    console.error('[DRN] mint qr', err);
-    res.status(500).json({ ok: false, error: err.message });
+    sendReferralError(res, err, '[DRN] mint qr');
   }
 });
 
 router.get('/referrals/:id/events', requireAuth, async (req, res) => {
+  const pool = getPool();
   try {
-    const { getPool } = require('../../server/db');
-    const pool = getPool();
+    const referral = await getScopedReferral(req, req.params.id, pool);
+    if (!referral) return res.status(404).json({ ok: false, error: 'Not found' });
     const r = await pool.query(
       `SELECT * FROM drn_referral_events WHERE referral_id = $1 ORDER BY created_at ASC LIMIT 500`,
       [req.params.id]
     );
     res.json({ ok: true, events: r.rows });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    sendReferralError(res, err, '[DRN] referral events');
   }
 });
 
 // ─── KPIs / commissions / heatmap ─────────────────────────────────────────────
 
 router.get('/kpis', requireAuth, async (req, res) => {
+  const pool = getPool();
   try {
+    const role = roleOf(req);
+    if (!ADMIN_ROLES.has(role)) {
+      const agentId = await resolveAgentId(req, pool);
+      if (!agentId) throw forbidden('Referral KPI access denied');
+      const kpis = await svc.referralKpis({
+        scope: 'agent',
+        agent_id: agentId,
+        since: req.query.since || null,
+      }, pool);
+      return res.json({ ok: true, kpis });
+    }
     const kpis = await svc.referralKpis({
       scope: req.query.scope || 'platform',
       org_id: req.query.org_id || null,
       agent_id: req.query.agent_id || null,
       since: req.query.since || null,
-    });
+    }, pool);
     res.json({ ok: true, kpis });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    sendReferralError(res, err, '[DRN] kpis');
   }
 });
 
 router.get('/commissions', requireAuth, async (req, res) => {
+  const pool = getPool();
   try {
+    const role = roleOf(req);
+    const agentId = ADMIN_ROLES.has(role) ? req.query.agent_id : await resolveAgentId(req, pool);
+    if (!ADMIN_ROLES.has(role) && !agentId) throw forbidden('Commission access denied');
     const rows = await svc.listCommissions({
-      agent_id: req.query.agent_id,
+      agent_id: agentId,
       status: req.query.status,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
-    });
+    }, pool);
     res.json({ ok: true, commissions: rows });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    sendReferralError(res, err, '[DRN] commissions');
   }
 });
 
@@ -300,7 +417,7 @@ router.post('/agents', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-router.get('/agents', requireAuth, async (req, res) => {
+router.get('/agents', requireAuth, requireAdmin, async (req, res) => {
   try {
     const rows = await svc.listAgents({
       status: req.query.status,

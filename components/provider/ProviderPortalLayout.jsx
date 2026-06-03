@@ -9,6 +9,7 @@ import {
   getProviderPortalTheme,
 } from '@/components/provider/providerNavigation';
 import { getPortalBasePath } from '@/lib/portalPaths';
+import { normalizeProviderMarket } from '@/lib/providerPortal';
 
 const LOGIN_PATHS = {
   US: '/provider/login',
@@ -23,6 +24,19 @@ export default function ProviderPortalLayout({ children, market = 'US' }) {
   const providerPrefix = market === 'NG' ? '/ng/provider' : '/provider';
   const passwordChangePath = `${providerPrefix}/create-password`;
   const theme = getProviderPortalTheme(market);
+  const userMarket = normalizeProviderMarket(
+    user?.marketScope ||
+      user?.market_scope ||
+      user?.region ||
+      user?.country ||
+      user?.address?.country
+  );
+  const isProviderMarketMismatch =
+    Boolean(isAuthenticated && user?.role === 'provider') &&
+    ((userMarket && userMarket !== market) || (!userMarket && market === 'NG'));
+  const providerMarketDashboard = userMarket === 'NG'
+    ? '/ng/provider/dashboard'
+    : '/provider/dashboard';
   const isPublicProviderPath =
     normalizedPathname === LOGIN_PATHS[market] ||
     normalizedPathname === `${providerPrefix}/register`;
@@ -40,6 +54,11 @@ export default function ProviderPortalLayout({ children, market = 'US' }) {
 
     if (!loading && isAuthenticated && user?.role !== 'provider') {
       router.push(getPortalBasePath({ pathname, user }));
+      return;
+    }
+
+    if (!loading && isProviderMarketMismatch) {
+      router.replace(providerMarketDashboard);
       return;
     }
 
@@ -62,6 +81,8 @@ export default function ProviderPortalLayout({ children, market = 'US' }) {
     pathname,
     isPublicProviderPath,
     isPasswordChangePath,
+    isProviderMarketMismatch,
+    providerMarketDashboard,
     passwordChangePath,
     providerPrefix,
   ]);
@@ -78,7 +99,7 @@ export default function ProviderPortalLayout({ children, market = 'US' }) {
     );
   }
 
-  if (!isAuthenticated || user?.role !== 'provider') {
+  if (!isAuthenticated || user?.role !== 'provider' || isProviderMarketMismatch) {
     return null;
   }
 

@@ -50,6 +50,33 @@ function buildPrescriptionNumber() {
   return `DTRX-NG-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }
 
+const ADMIN_ROLES = new Set(['admin', 'super_admin']);
+
+function isAdmin(user) {
+  return ADMIN_ROLES.has(String(user?.role || '').toLowerCase());
+}
+
+async function requireProviderOwnerOrAdmin(req, res, next) {
+  if (!req.user?.id) return res.status(401).json({ error: 'Authentication required' });
+
+  const pool = getPool();
+  try {
+    const result = await pool.query(
+      'SELECT id, user_id FROM ng_providers WHERE id = $1',
+      [req.params.providerId]
+    );
+    const provider = result.rows[0];
+    if (!provider) return res.status(404).json({ error: 'Provider not found' });
+    if (isAdmin(req.user) || provider.user_id === req.user.id) {
+      req.ngProvider = provider;
+      return next();
+    }
+    return res.status(403).json({ error: 'Provider access denied' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+}
+
 // --- PROVIDER REGISTRATION ---
 
 router.post('/register', authenticate, requireRole(['provider']), async (req, res) => {
@@ -282,7 +309,7 @@ router.post('/prescriptions',
 
 // --- PROVIDER PROFILE ---
 
-router.get('/profile/:providerId', authenticate, async (req, res) => {
+router.get('/profile/:providerId', authenticate, requireProviderOwnerOrAdmin, async (req, res) => {
   const pool = getPool();
   try {
     const result = await pool.query(
@@ -296,7 +323,7 @@ router.get('/profile/:providerId', authenticate, async (req, res) => {
   }
 });
 
-router.patch('/profile/:providerId', authenticate, async (req, res) => {
+router.patch('/profile/:providerId', authenticate, requireProviderOwnerOrAdmin, async (req, res) => {
   const pool = getPool();
   try {
     const allowed = [
@@ -323,7 +350,7 @@ router.patch('/profile/:providerId', authenticate, async (req, res) => {
 
 // --- PROVIDER EARNINGS ---
 
-router.get('/:providerId/earnings', authenticate, async (req, res) => {
+router.get('/:providerId/earnings', authenticate, requireProviderOwnerOrAdmin, async (req, res) => {
   const pool = getPool();
   try {
     const summary = await pool.query(
@@ -342,7 +369,7 @@ router.get('/:providerId/earnings', authenticate, async (req, res) => {
 
 // --- PROVIDER APPOINTMENTS ---
 
-router.get('/:providerId/appointments', authenticate, async (req, res) => {
+router.get('/:providerId/appointments', authenticate, requireProviderOwnerOrAdmin, async (req, res) => {
   const pool = getPool();
   try {
     const { status, limit = 20, offset = 0 } = req.query;
@@ -368,7 +395,7 @@ router.get('/:providerId/appointments', authenticate, async (req, res) => {
 
 // --- PROVIDER PATIENTS ---
 
-router.get('/:providerId/patients', authenticate, async (req, res) => {
+router.get('/:providerId/patients', authenticate, requireProviderOwnerOrAdmin, async (req, res) => {
   const pool = getPool();
   try {
     const result = await pool.query(`

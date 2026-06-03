@@ -7,10 +7,34 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
-const { resolveNeonUrl } = require('./resolve-neon-url');
 
-// Pool is resolved asynchronously inside runMigrations()
-let pool;
+// Database configuration
+let connectionString = process.env.DATABASE_URL || '';
+let sslConfig = false;
+
+if (connectionString && connectionString.includes('sslmode=')) {
+  const certPath = process.env.PGSSLROOTCERT
+    ? path.resolve(process.cwd(), process.env.PGSSLROOTCERT)
+    : null;
+
+  if (connectionString.includes('sslmode=verify-full') && certPath && fs.existsSync(certPath)) {
+    sslConfig = {
+      rejectUnauthorized: true,
+      ca: fs.readFileSync(certPath).toString()
+    };
+  } else {
+    sslConfig = { rejectUnauthorized: false };
+  }
+
+  connectionString = connectionString.replace(/[?&]sslmode=[^&]+/, (match) =>
+    match.startsWith('?') ? '?' : ''
+  ).replace(/\?$/, '');
+}
+
+const pool = new Pool({
+  connectionString,
+  ssl: sslConfig
+});
 
 const migrations = [
   // Migration 001: Create extensions
@@ -2443,7 +2467,7 @@ const migrations = [
     name: '029_mini_ehr_schema_alignment',
     up: `
       -- =====================================================
-      -- PROVIDER ↔ PATIENT RELATIONSHIPS (access scoping)
+      -- PROVIDER <-> PATIENT RELATIONSHIPS (access scoping)
       -- =====================================================
       CREATE TABLE IF NOT EXISTS provider_patient_relationships (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2821,6 +2845,26 @@ const migrations = [
   {
     name: '031_agent_chat_uploads',
     up: `
+      CREATE TABLE IF NOT EXISTS ai_chat_messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        conversation_id UUID NOT NULL DEFAULT gen_random_uuid(),
+        sender_type VARCHAR(20) NOT NULL CHECK (sender_type IN ('operator', 'agent', 'system')),
+        sender_id VARCHAR(100) NOT NULL,
+        sender_name VARCHAR(200) NOT NULL,
+        recipient_type VARCHAR(20) NOT NULL CHECK (recipient_type IN ('operator', 'agent', 'all', 'group')),
+        recipient_id VARCHAR(100),
+        content TEXT NOT NULL,
+        message_type VARCHAR(30) DEFAULT 'text' CHECK (message_type IN ('text', 'report', 'alert', 'request', 'approval', 'result', 'credential_request')),
+        metadata JSONB DEFAULT '{}',
+        read_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON ai_chat_messages(conversation_id);
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_sender ON ai_chat_messages(sender_type, sender_id);
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_recipient ON ai_chat_messages(recipient_type, recipient_id);
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON ai_chat_messages(created_at DESC);
+
       CREATE TABLE IF NOT EXISTS ai_uploaded_files (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         uploader_id UUID,
@@ -2841,7 +2885,7 @@ const migrations = [
 
       CREATE TABLE IF NOT EXISTS ai_chat_message_attachments (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        message_id UUID NOT NULL,
+        message_id UUID NOT NULL REFERENCES ai_chat_messages(id) ON DELETE CASCADE,
         file_id UUID NOT NULL REFERENCES ai_uploaded_files(id) ON DELETE CASCADE,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE (message_id, file_id)
@@ -2850,37 +2894,126 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_chat_attachments_message ON ai_chat_message_attachments(message_id);
       CREATE INDEX IF NOT EXISTS idx_chat_attachments_file ON ai_chat_message_attachments(file_id);
     `
+  },
+
+  // Migration 032: Market-scoped admin test accounts and testing links
+  {
+    name: '032_market_scoped_admin_testing',
+    up: `
+      DO $$ BEGIN
+        CREATE TYPE region_code AS ENUM ('US', 'NG', 'GH', 'KE', 'ZA');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS region region_code DEFAULT 'US';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS market_scope VARCHAR(10) DEFAULT 'US';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS test_account_metadata JSONB DEFAULT '{}'::jsonb;
+
+      UPDATE users
+         SET market_scope = CASE
+           WHEN region::text = 'NG' OR UPPER(COALESCE(country, '')) IN ('NG', 'NIGERIA') THEN 'NG'
+           ELSE COALESCE(NULLIF(market_scope, ''), 'US')
+         END
+       WHERE market_scope IS NULL OR market_scope = '';
+
+      CREATE INDEX IF NOT EXISTS idx_users_market_scope ON users(market_scope);
+      CREATE INDEX IF NOT EXISTS idx_users_role_market_scope ON users(role, market_scope);
+
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS market_scope VARCHAR(10) DEFAULT 'US';
+      UPDATE testing_access_links SET market_scope = 'US' WHERE market_scope IS NULL OR market_scope = '';
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_market_scope ON testing_access_links(market_scope);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_type_market_scope ON testing_access_links(link_type, market_scope);
+
+      ALTER TABLE invitations ADD COLUMN IF NOT EXISTS market_scope VARCHAR(10) DEFAULT 'US';
+      UPDATE invitations SET market_scope = 'US' WHERE market_scope IS NULL OR market_scope = '';
+      CREATE INDEX IF NOT EXISTS idx_invitations_market_scope ON invitations(market_scope);
+      CREATE INDEX IF NOT EXISTS idx_invitations_email_role_market_scope ON invitations(email, role, market_scope);
+    `
+  },
+  {
+    name: '033_market_scoped_invitations',
+    up: `
+      ALTER TABLE invitations ADD COLUMN IF NOT EXISTS market_scope VARCHAR(10) DEFAULT 'US';
+      UPDATE invitations SET market_scope = 'US' WHERE market_scope IS NULL OR market_scope = '';
+      CREATE INDEX IF NOT EXISTS idx_invitations_market_scope ON invitations(market_scope);
+      CREATE INDEX IF NOT EXISTS idx_invitations_email_role_market_scope ON invitations(email, role, market_scope);
+    `
+  },
+  {
+    name: '034_users_ng_whatsapp_location_consent',
+    up: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(40);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_consent_service_updates BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_consent_service_updates_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_consent_marketing BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_consent_marketing_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS location_permission_status VARCHAR(30) DEFAULT 'not_requested';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS location_latitude DOUBLE PRECISION;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS location_longitude DOUBLE PRECISION;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS location_accuracy DOUBLE PRECISION;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS location_captured_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS manual_country VARCHAR(100);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS manual_state VARCHAR(100);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS manual_city VARCHAR(100);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS manual_lga VARCHAR(100);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS manual_area VARCHAR(150);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS manual_address VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS manual_landmark VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS provider_service_radius_km NUMERIC(6,2);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pharmacy_delivery_available BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pharmacy_pickup_available BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS lab_home_sample_collection_available BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS public_address_visible BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_contact_metadata JSONB DEFAULT '{}'::jsonb;
+
+      CREATE INDEX IF NOT EXISTS idx_users_whatsapp_number ON users(whatsapp_number) WHERE whatsapp_number IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_users_location_permission_status ON users(location_permission_status);
+      CREATE INDEX IF NOT EXISTS idx_users_manual_ng_location ON users(manual_state, manual_city, manual_lga);
+      CREATE INDEX IF NOT EXISTS idx_users_ng_provider_service_radius ON users(provider_service_radius_km) WHERE provider_service_radius_km IS NOT NULL;
+    `
+  },
+  {
+    name: '035_harden_testing_access_lifecycle',
+    up: `
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'active';
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS revoked_by UUID REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES users(id) ON DELETE SET NULL;
+
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1
+            FROM pg_constraint
+           WHERE conname = 'testing_access_links_link_type_check'
+             AND conrelid = 'testing_access_links'::regclass
+        ) THEN
+          ALTER TABLE testing_access_links DROP CONSTRAINT testing_access_links_link_type_check;
+        END IF;
+      END $$;
+
+      ALTER TABLE testing_access_links
+        ADD CONSTRAINT testing_access_links_link_type_check
+        CHECK (link_type IN ('provider', 'patient', 'pharmacy', 'admin'));
+
+      UPDATE testing_access_links
+         SET status = CASE
+           WHEN deleted_at IS NOT NULL THEN 'deleted'
+           WHEN revoked_at IS NOT NULL OR is_active = FALSE THEN 'revoked'
+           WHEN expires_at <= NOW() THEN 'expired'
+           WHEN max_uses IS NOT NULL AND current_uses >= max_uses THEN 'used'
+           ELSE COALESCE(NULLIF(status, ''), 'active')
+         END;
+
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_status ON testing_access_links(status);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_deleted_at ON testing_access_links(deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_created_by ON testing_access_links(created_by);
+      CREATE INDEX IF NOT EXISTS idx_testing_access_links_last_used_by ON testing_access_links(last_used_by);
+    `
   }
 ];
 
 async function runMigrations() {
-  // Initialize pool — resolves Neon hostname to IPv4 if needed
-  const rawUrl = process.env.DATABASE_URL || '';
-  const isNeon = rawUrl.includes('neon.tech');
-  let connectionString = rawUrl;
-  let ssl = false;
-
-  if (isNeon) {
-    ({ connectionString, ssl } = await resolveNeonUrl(rawUrl));
-  } else if (rawUrl.includes('sslmode=')) {
-    const certPath = process.env.PGSSLROOTCERT
-      ? path.resolve(process.cwd(), process.env.PGSSLROOTCERT)
-      : null;
-    ssl = rawUrl.includes('sslmode=verify-full') && certPath && fs.existsSync(certPath)
-      ? { rejectUnauthorized: true, ca: fs.readFileSync(certPath).toString() }
-      : { rejectUnauthorized: false };
-    connectionString = rawUrl
-      .replace(/[?&]sslmode=[^&]+/, (m) => (m.startsWith('?') ? '?' : ''))
-      .replace(/\?$/, '');
-  }
-
-  pool = new Pool({
-    connectionString,
-    ssl,
-    max: isNeon ? 5 : 10,
-    connectionTimeoutMillis: isNeon ? 15000 : 8000,
-  });
-
   const client = await pool.connect();
   
   try {
@@ -2929,42 +3062,10 @@ async function runMigrations() {
         throw error;
       }
     }
-    
+
     console.log('==========================================');
     console.log(`✅ Migrations complete! (${migrationsRun} new migrations run)`);
     console.log('==========================================\n');
-
-    // ── File-based migrations in server/db/migrations/*.sql ──────────────────
-    const migrationsDir = path.join(__dirname, 'migrations');
-    if (fs.existsSync(migrationsDir)) {
-      const sqlFiles = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
-      let filesMigrated = 0;
-
-      for (const file of sqlFiles) {
-        if (executedNames.has(file)) {
-          console.log(`⏭️  Skipping file migration ${file} (already executed)`);
-          continue;
-        }
-        console.log(`📦 Running file migration: ${file}`);
-        const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-        await client.query('BEGIN');
-        try {
-          await client.query(sql);
-          await client.query('INSERT INTO migrations (name) VALUES ($1)', [file]);
-          await client.query('COMMIT');
-          console.log(`✅ Completed file migration: ${file}\n`);
-          filesMigrated++;
-        } catch (err) {
-          await client.query('ROLLBACK');
-          // Non-fatal: log and skip — these files may have external dependencies
-          console.warn(`⚠️  Skipped file migration: ${file} — ${err.message}\n`);
-        }
-      }
-
-      if (filesMigrated > 0) {
-        console.log(`✅ File-based migrations complete! (${filesMigrated} new)\n`);
-      }
-    }
 
   } catch (error) {
     console.error('Migration failed:', error);

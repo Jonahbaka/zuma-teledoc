@@ -4,7 +4,7 @@
  * ng/scripts/simulate-live.js
  *
  * End-to-end agent-driven simulation that exercises the live DoctaRx
- * Nigeria service layer against the real Neon database.
+ * Nigeria service layer against an explicitly isolated Neon database.
  *
  * Unlike `simulate.js` (hermetic, ~50ms, pure functions), this one:
  *   • Creates real rows in ng_conf_rooms / ng_conf_participants /
@@ -21,8 +21,9 @@
  *   DATABASE_URL=postgres://... node ng/scripts/simulate-live.js
  *   DATABASE_URL=postgres://... node ng/scripts/simulate-live.js --keep
  *
- * Without --keep, the runner cleans up every row it created at the end,
- * leaving production unchanged.
+ * Without --keep, the runner cleans up every row it created at the end.
+ * Cleanup is best-effort, so this script intentionally refuses to run
+ * unless the target is identified as local/test/staging/synthetic.
  */
 
 require('dotenv').config();
@@ -31,6 +32,15 @@ const { getPool } = require('../../server/db');
 
 if (!process.env.DATABASE_URL) {
   console.error('FATAL: DATABASE_URL not set');
+  process.exit(2);
+}
+
+const LIVE_SIM_TARGET = (process.env.NG_LIVE_SIMULATION_TARGET || '').trim().toLowerCase();
+const ALLOWED_LIVE_SIM_TARGETS = new Set(['local', 'test', 'staging', 'synthetic']);
+if (!ALLOWED_LIVE_SIM_TARGETS.has(LIVE_SIM_TARGET)) {
+  console.error(
+    'FATAL: NG_LIVE_SIMULATION_TARGET must be one of local, test, staging, or synthetic. Refusing to mutate an unidentified database.'
+  );
   process.exit(2);
 }
 

@@ -55,6 +55,13 @@ export const conf = {
 
   // Events
   events:   (id) => call(`/rooms/${id}/events`),
+
+  // LiveKit SFU token (returns { token, livekitUrl } or 409 when not configured)
+  getLiveKitToken: (id, display_name) =>
+    call(`/rooms/${id}/token`, { method: 'POST', body: JSON.stringify({ display_name }) }),
+
+  // Per-room readiness (TURN + SFU status)
+  getMediaStatus: (id) => call(`/rooms/${id}/media-status`),
 };
 
 function prune(obj) {
