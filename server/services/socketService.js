@@ -6,7 +6,9 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const db = require('../db');
 const logger = require('../middleware/logger');
+const { logAuditEvent } = require('../middleware/audit');
 const {
   buildParticipantPayload,
   ensureAppointmentRoomId,
@@ -20,8 +22,8 @@ const userSockets = new Map(); // socketId -> userId
 const telehealthRooms = new Map(); // roomId -> Map(socketId, participant)
 const telehealthSocketMeta = new Map(); // socketId -> { appointmentId, roomId, roomKey, participant }
 
-// Multi-party NG conferencing — separate maps so telehealth + conference
-// don't share state. Each conference room is keyed by ng_conf_rooms.id.
+// Multi-party NG conferencing uses separate state so it cannot collide with
+// existing one-to-one telehealth rooms.
 const conferenceRooms = new Map(); // roomId -> Map(socketId, participant)
 const conferenceSocketMeta = new Map(); // socketId -> { roomId, roomKey, participant }
 const getConferenceRoomKey = (roomId) => `conference:${roomId}`;
@@ -42,19 +44,66 @@ const deriveStableJwtSecret = (purpose) => {
     process.env.JWT_DERIVATION_SEED ||
     process.env.SESSION_SECRET ||
     process.env.ENCRYPTION_KEY;
-    // DATABASE_URL deliberately excluded — it is not a cryptographic secret and
-    // leaks via logs/CI/Sentry; using it to sign tokens would allow forgery.
-    // Must match server/middleware/auth.js so socket + HTTP auth share a key.
+  // DATABASE_URL is deliberately excluded; it is not a signing secret and can
+  // leak through logs, CI, monitoring, or deployment diagnostics.
   if (!seed) return null;
   return crypto.createHmac('sha256', String(seed)).update(String(purpose)).digest('hex');
 };
 
 const getTelehealthRoomKey = (roomId) => `telehealth:${roomId}`;
 
+const markTelehealthAppointmentInProgress = async (appointmentId) => {
+  try {
+    await db.query(
+      `UPDATE appointments
+          SET status = 'in_progress',
+              started_at = COALESCE(started_at, NOW()),
+              updated_at = NOW()
+        WHERE id = $1
+          AND status IN ('scheduled', 'confirmed')`,
+      [appointmentId]
+    );
+  } catch (error) {
+    logger.warn('Failed to mark telehealth appointment in progress', {
+      appointmentId,
+      error: error.message
+    });
+  }
+};
+
 const emitSocketAck = (ack, payload) => {
   if (typeof ack === 'function') {
     ack(payload);
   }
+};
+
+const auditTelehealthSocketEvent = async ({
+  action,
+  appointmentId,
+  patientId,
+  userId,
+  role,
+  roomId,
+  socketId,
+  description,
+  metadata = {}
+}) => {
+  await logAuditEvent({
+    userId,
+    action,
+    resourceType: 'telehealth_session',
+    resourceId: appointmentId,
+    description,
+    newValues: {
+      roomId,
+      socketId,
+      role,
+      ...metadata
+    },
+    phiAccessed: true,
+    patientId,
+    success: true
+  });
 };
 
 const removeTelehealthMembership = (socket, { emitLeft = true } = {}) => {
@@ -75,15 +124,20 @@ const removeTelehealthMembership = (socket, { emitLeft = true } = {}) => {
   telehealthSocketMeta.delete(socket.id);
 
   if (emitLeft && io) {
+    const remainingCount = roomParticipants?.size || 0;
     socket.to(session.roomKey).emit('telehealth:participant-left', {
       appointmentId: session.appointmentId,
       roomId: session.roomId,
       participant: session.participant
     });
+    socket.to(session.roomKey).emit('telehealth:status', {
+      appointmentId: session.appointmentId,
+      roomId: session.roomId,
+      status: remainingCount > 0 ? 'waiting' : 'ended',
+      participantCount: remainingCount
+    });
   }
 };
-
-// ── NG Conference helpers ────────────────────────────────────────────────────
 
 const removeConferenceMembership = (socket, { emitLeft = true } = {}) => {
   const session = conferenceSocketMeta.get(socket.id);
@@ -346,6 +400,7 @@ const initializeSocket = (httpServer) => {
         telehealthRooms.set(roomId, roomParticipants);
         telehealthSocketMeta.set(socket.id, {
           appointmentId: appointment.id,
+          patientId: appointment.patientId,
           roomId,
           roomKey,
           participant
@@ -361,14 +416,49 @@ const initializeSocket = (httpServer) => {
           participants,
           iceServers: getTelehealthIceServers()
         };
+        const participantCount = roomParticipants.size;
+        const callStatus = participantCount > 1 ? 'in_progress' : 'waiting';
+
+        if (callStatus === 'in_progress') {
+          await markTelehealthAppointmentInProgress(appointment.id);
+        }
 
         socket.emit('telehealth:joined', response);
+        socket.emit('telehealth:status', {
+          appointmentId: appointment.id,
+          roomId,
+          status: callStatus,
+          participantCount
+        });
         socket.to(roomKey).emit('telehealth:participant-joined', {
           appointmentId: appointment.id,
           roomId,
           participant
         });
+        socket.to(roomKey).emit('telehealth:status', {
+          appointmentId: appointment.id,
+          roomId,
+          status: callStatus,
+          participantCount
+        });
         emitSocketAck(ack, response);
+        auditTelehealthSocketEvent({
+          action: 'join',
+          appointmentId: appointment.id,
+          patientId: appointment.patientId,
+          userId: socket.userId,
+          role: socket.userRole,
+          roomId,
+          socketId: socket.id,
+          description: 'Telehealth participant joined video session',
+          metadata: { participantCount, callStatus }
+        }).catch((auditError) => {
+          logger.warn('Failed to audit telehealth join', {
+            appointmentId: appointment.id,
+            userId: socket.userId,
+            error: auditError.message
+          });
+        });
       } catch (error) {
         logger.warn('Telehealth join failed', {
           userId: socket.userId,
@@ -413,16 +503,66 @@ const initializeSocket = (httpServer) => {
       emitSocketAck(ack, { ok: true });
     });
 
+    socket.on('telehealth:message', (payload = {}, ack) => {
+      const session = telehealthSocketMeta.get(socket.id);
+
+      if (!session) {
+        emitSocketAck(ack, { ok: false, error: 'Video session not initialized' });
+        return;
+      }
+
+      const body = String(payload.body || '').trim().slice(0, 1000);
+      if (!body) {
+        emitSocketAck(ack, { ok: false, error: 'Message text is required' });
+        return;
+      }
+
+      const message = {
+        id: crypto.randomUUID(),
+        appointmentId: session.appointmentId,
+        roomId: session.roomId,
+        senderSocketId: socket.id,
+        senderUserId: socket.userId,
+        senderRole: socket.userRole,
+        senderName: session.participant?.name || socket.userName || 'Participant',
+        body,
+        sentAt: new Date().toISOString()
+      };
+
+      io.to(session.roomKey).emit('telehealth:message', message);
+      emitSocketAck(ack, { ok: true, message });
+      auditTelehealthSocketEvent({
+        action: 'message',
+        appointmentId: session.appointmentId,
+        patientId: session.patientId,
+        userId: socket.userId,
+        role: socket.userRole,
+        roomId: session.roomId,
+        socketId: socket.id,
+        description: 'Telehealth in-call chat message sent',
+        metadata: {
+          messageId: message.id,
+          messageLength: body.length
+        }
+      }).catch((auditError) => {
+        logger.warn('Failed to audit telehealth message metadata', {
+          appointmentId: session.appointmentId,
+          userId: socket.userId,
+          error: auditError.message
+        });
+      });
+    });
+
     socket.on('telehealth:leave', (_, ack) => {
       removeTelehealthMembership(socket, { emitLeft: true });
       emitSocketAck(ack, { ok: true });
     });
 
     /**
-     * NG Multi-party conferencing signaling
-     *   conference:join     — validate participant against ng_conf_participants, return ICE
-     *   conference:signal   — relay WebRTC offer/answer/ice-candidate to a peer socket in the room
-     *   conference:leave    — leave the conference room
+     * NG multi-party conferencing signaling
+     *   conference:join     - validates admitted participants
+     *   conference:signal   - relays WebRTC offer/answer/ice-candidate
+     *   conference:leave    - leaves the conference room
      */
     socket.on('conference:join', async (payload = {}, ack) => {
       try {
@@ -431,31 +571,30 @@ const initializeSocket = (httpServer) => {
           return emitSocketAck(ack, { ok: false, error: 'roomId required' });
         }
 
-        // Validate via Neon — must be an admitted participant of this room
-        const db = require('../db');
-        const { rows: rRows } = await db.query(
+        const { rows: roomRows } = await db.query(
           `SELECT id, status, max_participants FROM ng_conf_rooms WHERE id = $1`,
           [roomId]
         );
-        if (!rRows.length) {
+        if (!roomRows.length) {
           return emitSocketAck(ack, { ok: false, error: 'Room not found' });
         }
-        const room = rRows[0];
+
+        const room = roomRows[0];
         if (room.status === 'ended' || room.status === 'cancelled') {
           return emitSocketAck(ack, { ok: false, error: `Room is ${room.status}` });
         }
 
-        const { rows: pRows } = await db.query(
+        const { rows: participantRows } = await db.query(
           `SELECT id, role, status, display_name, permissions_json
              FROM ng_conf_participants
             WHERE room_id = $1 AND user_id = $2`,
           [roomId, socket.userId]
         );
-        if (!pRows.length || pRows[0].status !== 'admitted') {
+        if (!participantRows.length || participantRows[0].status !== 'admitted') {
           return emitSocketAck(ack, { ok: false, error: 'Not admitted to this room' });
         }
 
-        const participantRow = pRows[0];
+        const participantRow = participantRows[0];
         const participant = {
           socketId: socket.id,
           participantId: participantRow.id,
@@ -467,11 +606,10 @@ const initializeSocket = (httpServer) => {
 
         const roomKey = getConferenceRoomKey(roomId);
 
-        // Clean up any prior membership
         removeConferenceMembership(socket, { emitLeft: true });
 
         const roomParticipants = conferenceRooms.get(roomId) || new Map();
-        const peers = Array.from(roomParticipants.values());
+        const participants = Array.from(roomParticipants.values());
         roomParticipants.set(socket.id, participant);
         conferenceRooms.set(roomId, roomParticipants);
         conferenceSocketMeta.set(socket.id, { roomId, roomKey, participant });
@@ -481,9 +619,10 @@ const initializeSocket = (httpServer) => {
           ok: true,
           roomId,
           participant,
-          participants: peers,           // peers already in the room (for mesh new-comer)
+          participants,
           iceServers: getTelehealthIceServers(),
         };
+
         socket.emit('conference:joined', response);
         socket.to(roomKey).emit('conference:participant-joined', { roomId, participant });
         emitSocketAck(ack, response);
@@ -502,6 +641,7 @@ const initializeSocket = (httpServer) => {
       if (!session) {
         return emitSocketAck(ack, { ok: false, error: 'Conference session not initialized' });
       }
+
       const targetSocketId = payload.toSocketId;
       const signalType = String(payload.signalType || '').trim();
       const roomParticipants = conferenceRooms.get(session.roomId);
@@ -509,6 +649,7 @@ const initializeSocket = (httpServer) => {
       if (!targetSocketId || !roomParticipants?.has(targetSocketId)) {
         return emitSocketAck(ack, { ok: false, error: 'Peer unavailable' });
       }
+
       if (!['offer', 'answer', 'ice-candidate'].includes(signalType)) {
         return emitSocketAck(ack, { ok: false, error: 'Unsupported signal type' });
       }
@@ -553,10 +694,8 @@ const initializeSocket = (httpServer) => {
       if (userData) {
         userData.lastSeen = new Date();
       }
-      
-      // This socket id is gone regardless of reconnection state — drop it now,
-      // otherwise on multi-tab/rapid-reconnect the guard below (which matches the
-      // *current* socket) skips it and the old id leaks in userSockets forever.
+
+      // This socket id is gone regardless of reconnection state.
       userSockets.delete(socket.id);
 
       // Remove from online users after a delay (to handle reconnections)

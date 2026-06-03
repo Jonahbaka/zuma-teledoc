@@ -24,38 +24,21 @@ const {
   getAuthorizedVideoAppointment,
   getTelehealthIceServers
 } = require('../services/telehealthSessionService');
-const {
-  ensureProviderAccessForUser,
-  recordProviderUsage,
-} = require('../../ng/services/providers/providerAccessService');
+const { normalizeMarketScope } = require('../utils/marketScope');
 
 const router = express.Router();
 const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
 const PROVIDER_UPCOMING_LOOKBACK_MS = 2 * 60 * 60 * 1000;
 const MAX_UPCOMING_LIMIT = 50;
-const BOOKABLE_PROVIDER_FILTER = `
-  role = 'provider'
-  AND provider_status = 'approved'
-  AND is_active = true
-  AND COALESCE(is_test_account, FALSE) = FALSE
-  AND COALESCE(account_status, 'active') NOT IN ('deleted', 'suspended', 'revoked', 'inactive')
-  AND COALESCE(test_account_metadata->>'testAccount', '') NOT IN ('true', 'TRUE')
-  AND COALESCE(test_account_metadata->>'isTestAccount', '') NOT IN ('true', 'TRUE')
-  AND COALESCE(test_account_metadata->>'createdFrom', '') NOT IN ('admin_portal', 'us_admin_portal', 'ng_admin_portal', 'admin_testing_access')
-  AND NOT EXISTS (
-    SELECT 1
-    FROM testing_access_links tal
-    WHERE tal.target_user_id = users.id
-       OR LOWER(COALESCE(tal.target_email, '')) = LOWER(users.email)
-       OR tal.last_used_by = users.id
-  )
-  AND EXISTS (
-    SELECT 1
-    FROM provider_credentialing pc
-    WHERE pc.provider_id = users.id
-      AND pc.status = 'approved'
-  )
-`;
+
+const getAuthenticatedMarketScope = (user = {}) =>
+  normalizeMarketScope(user.marketScope || user.market_scope || user.region || user.country, 'US');
+
+const userMarketScopeSql = (alias) => `CASE
+  WHEN UPPER(COALESCE(${alias}.market_scope, ${alias}.region::text, ${alias}.country, '')) IN ('NG', 'NIGERIA') THEN 'NG'
+  WHEN UPPER(COALESCE(${alias}.market_scope, ${alias}.region::text, ${alias}.country, '')) IN ('US', 'USA', 'UNITED STATES', 'UNITED STATES OF AMERICA') THEN 'US'
+  ELSE 'US'
+END`;
 
 /**
  * POST /api/appointments
@@ -72,7 +55,7 @@ router.post('/',
       // Verify provider exists and is approved
       const { rows: providers } = await db.query(
         `SELECT id, first_name, last_name FROM users 
-         WHERE id = $1 AND ${BOOKABLE_PROVIDER_FILTER}`,
+         WHERE id = $1 AND role = 'provider' AND provider_status = 'approved' AND is_active = true`,
         [data.providerId]
       );
       
@@ -388,6 +371,7 @@ router.get('/upcoming', authenticate, async (req, res) => {
 
     const userRole = String(req.user.role || '').toLowerCase().trim();
     let orderByClause = 'ORDER BY a.scheduled_at ASC';
+    const authenticatedMarketScope = getAuthenticatedMarketScope(req.user);
 
     if (!['patient', 'provider', 'admin', 'super_admin'].includes(userRole)) {
       return res.status(403).json({
@@ -403,6 +387,10 @@ router.get('/upcoming', authenticate, async (req, res) => {
       whereConditions.push(`a.status IN ('scheduled', 'confirmed', 'in_progress')`);
       whereConditions.push(`a.provider_id = $${paramIndex++}`);
       values.push(req.user.id);
+      whereConditions.push(`${userMarketScopeSql('pr')} = $${paramIndex++}`);
+      values.push(authenticatedMarketScope);
+      whereConditions.push(`${userMarketScopeSql('p')} = $${paramIndex++}`);
+      values.push(authenticatedMarketScope);
       orderByClause = `
         ORDER BY
           CASE
@@ -535,7 +523,9 @@ router.post('/smart-book',
           `SELECT id, first_name, last_name, specialty, credentials
            FROM users
            WHERE id = $1
-           AND ${BOOKABLE_PROVIDER_FILTER}
+           AND role = 'provider'
+           AND provider_status = 'approved'
+           AND is_active = true
            LIMIT 1`,
           [providerId]
         );
@@ -562,7 +552,9 @@ router.post('/smart-book',
           const { rows: providers } = await db.query(
             `SELECT id, first_name, last_name, specialty, credentials
              FROM users
-             WHERE ${BOOKABLE_PROVIDER_FILTER}
+             WHERE role = 'provider'
+             AND provider_status = 'approved'
+             AND is_active = true
              AND (specialty ILIKE $1 OR specialty ILIKE $2)
              ORDER BY RANDOM()
              LIMIT 1`,
@@ -582,7 +574,9 @@ router.post('/smart-book',
         const { rows: anyProviders } = await db.query(
           `SELECT id, first_name, last_name, specialty, credentials
            FROM users
-           WHERE ${BOOKABLE_PROVIDER_FILTER}
+           WHERE role = 'provider'
+           AND provider_status = 'approved'
+           AND is_active = true
            ORDER BY RANDOM()
            LIMIT 1`
         );
@@ -1111,31 +1105,6 @@ router.post('/:id/join', authenticate, async (req, res) => {
     const { id } = req.params;
 
     const appointment = await getAuthorizedVideoAppointment(id, req.user);
-    if (String(req.user.role || '').toLowerCase() === 'provider') {
-      const userMarket = await db.query(
-        `SELECT country, region, market_scope FROM users WHERE id = $1 LIMIT 1`,
-        [req.user.id]
-      );
-      const marketValue = String(
-        userMarket.rows[0]?.country || userMarket.rows[0]?.region || userMarket.rows[0]?.market_scope || ''
-      ).toLowerCase();
-      if (marketValue === 'ng' || marketValue === 'nigeria') {
-        const accessState = await ensureProviderAccessForUser(req.user.id, { startTrialIfEligible: true });
-        if (!accessState.access.allowed) {
-          return res.status(accessState.access.accessStatus === 'trial_expired' ? 402 : 403).json({
-            success: false,
-            error: accessState.access.blockReason,
-            code: accessState.access.accessStatus === 'trial_expired'
-              ? 'PROVIDER_SUBSCRIPTION_REQUIRED'
-              : 'PROVIDER_ACCESS_BLOCKED',
-            providerAccess: accessState,
-          });
-        }
-        await recordProviderUsage(req.user.id, 'video_call_started', {
-          metadata: { appointmentId: id },
-        }).catch(() => null);
-      }
-    }
     const roomId = await ensureAppointmentRoomId(appointment.id, appointment.roomId);
 
     res.json({

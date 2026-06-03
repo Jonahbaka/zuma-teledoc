@@ -27,6 +27,7 @@ const medicationsRoutes     = require('./medications');
 const soapRoutes            = require('./soap');
 const prescriptionsRoutes   = require('./prescriptions');
 const conferenceRoutes      = require('./conference');
+const clinicalRoutes        = require('./clinical');
 
 let discoverySeedScheduled = false;
 
@@ -81,6 +82,7 @@ router.get('/health', (req, res) => {
       medicationSearchV2: true,
       prescriptionLifecycle: true,
       multiPartyConferencing: true,
+      clinicalEmr: true,
     },
   });
 });
@@ -139,6 +141,7 @@ const requireAdmin = (req, res, next) => {
 
 // Mount routes
 router.use('/discovery', discoveryRoutes);
+router.use('/clinical', authenticate, clinicalRoutes);
 router.use('/pharmacy', authenticate, pharmacyRoutes);
 router.use('/prescriptions', authenticate, prescriptionsRoutes);
 router.use('/public-health',   authenticate, requireAdmin, publicHealthRoutes);

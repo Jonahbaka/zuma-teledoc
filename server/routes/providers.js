@@ -10,31 +10,18 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { auditMiddleware } = require('../middleware/audit');
 const { validate, createScheduleSchema, createTimeOffSchema, paginationSchema } = require('../../lib/validation');
 const { keysToCamel, parseQueryParams, getPaginationMeta } = require('../../lib/utils');
+const { normalizeMarketScope } = require('../utils/marketScope');
+
+const getAuthenticatedMarketScope = (user = {}) =>
+  normalizeMarketScope(user.marketScope || user.market_scope || user.region || user.country, 'US');
+
+const userMarketScopeSql = (alias) => `CASE
+  WHEN UPPER(COALESCE(${alias}.market_scope, ${alias}.region::text, ${alias}.country, '')) IN ('NG', 'NIGERIA') THEN 'NG'
+  WHEN UPPER(COALESCE(${alias}.market_scope, ${alias}.region::text, ${alias}.country, '')) IN ('US', 'USA', 'UNITED STATES', 'UNITED STATES OF AMERICA') THEN 'US'
+  ELSE 'US'
+END`;
 
 const router = express.Router();
-const PUBLIC_PROVIDER_FILTER = `
-  role = 'provider'
-  AND provider_status = 'approved'
-  AND is_active = true
-  AND COALESCE(is_test_account, FALSE) = FALSE
-  AND COALESCE(account_status, 'active') NOT IN ('deleted', 'suspended', 'revoked', 'inactive')
-  AND COALESCE(test_account_metadata->>'testAccount', '') NOT IN ('true', 'TRUE')
-  AND COALESCE(test_account_metadata->>'isTestAccount', '') NOT IN ('true', 'TRUE')
-  AND COALESCE(test_account_metadata->>'createdFrom', '') NOT IN ('admin_portal', 'us_admin_portal', 'ng_admin_portal', 'admin_testing_access')
-  AND NOT EXISTS (
-    SELECT 1
-    FROM testing_access_links tal
-    WHERE tal.target_user_id = users.id
-       OR LOWER(COALESCE(tal.target_email, '')) = LOWER(users.email)
-       OR tal.last_used_by = users.id
-  )
-  AND EXISTS (
-    SELECT 1
-    FROM provider_credentialing pc
-    WHERE pc.provider_id = users.id
-      AND pc.status = 'approved'
-  )
-`;
 
 /**
  * GET /api/providers
@@ -48,7 +35,7 @@ router.get('/', authenticate, async (req, res) => {
     
     const { specialty } = req.query;
     
-    let whereClause = `WHERE ${PUBLIC_PROVIDER_FILTER}`;
+    let whereClause = "WHERE role = 'provider' AND provider_status = 'approved' AND is_active = true";
     const values = [];
     let paramIndex = 1;
     
@@ -362,12 +349,18 @@ router.get('/me/patients',
       const filters = validate(paginationSchema, req.query);
       const { page, limit } = parseQueryParams(filters);
       const offset = (page - 1) * limit;
+      const marketScope = getAuthenticatedMarketScope(req.user);
       
       // Get patients who have had appointments with this provider
       const { rows: countResult } = await db.query(
-        `SELECT COUNT(DISTINCT patient_id) 
-         FROM appointments WHERE provider_id = $1`,
-        [req.user.id]
+        `SELECT COUNT(DISTINCT a.patient_id)
+         FROM appointments a
+         JOIN users p ON p.id = a.patient_id
+         JOIN users pr ON pr.id = a.provider_id
+         WHERE a.provider_id = $1
+           AND ${userMarketScopeSql('pr')} = $2
+           AND ${userMarketScopeSql('p')} = $2`,
+        [req.user.id, marketScope]
       );
       const total = parseInt(countResult[0].count);
       
@@ -379,11 +372,14 @@ router.get('/me/patients',
           COUNT(a.id) as total_appointments
          FROM users u
          JOIN appointments a ON a.patient_id = u.id
+         JOIN users pr ON pr.id = a.provider_id
          WHERE a.provider_id = $1
+           AND ${userMarketScopeSql('pr')} = $4
+           AND ${userMarketScopeSql('u')} = $4
          GROUP BY u.id
          ORDER BY u.id, last_visit DESC
          LIMIT $2 OFFSET $3`,
-        [req.user.id, limit, offset]
+        [req.user.id, limit, offset, marketScope]
       );
       
       res.json({
@@ -422,7 +418,7 @@ router.get('/:id', authenticate, async (req, res) => {
       `SELECT id, first_name, last_name, specialty, credentials, bio,
               city, state, npi_number
        FROM users
-       WHERE id = $1 AND ${PUBLIC_PROVIDER_FILTER}`,
+       WHERE id = $1 AND role = 'provider' AND provider_status = 'approved' AND is_active = true`,
       [id]
     );
     
