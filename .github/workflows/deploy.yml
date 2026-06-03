@@ -76,17 +76,23 @@ jobs:
           fi
           deploy_success=$(python3 -c 'import json,sys; print("true" if json.load(open("/tmp/deploy_response.json")).get("success") is True else "false")')
           if [ "$deploy_success" != "true" ]; then
-            echo "::error::Deploy webhook did not start a deployment."
-            exit 1
+            already=$(python3 -c 'import json,sys; d=json.load(open("/tmp/deploy_response.json")); print("true" if "already in progress" in d.get("message","") else "false")')
+            if [ "$already" = "true" ]; then
+              echo "Deploy already in progress on EC2 — will poll for completion"
+            else
+              echo "::error::Deploy webhook did not start a deployment."
+              exit 1
+            fi
+          else
+            echo "Deploy triggered successfully - build running in background on server"
           fi
-          echo "Deploy triggered successfully - build running in background on server"
 
       - name: Wait for deploy and verify NG platform
         env:
           DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
         run: |
-          echo "Polling /api/deploy/log until [deploy] complete (max 12 min)..."
-          DEADLINE=$(( $(date +%s) + 720 ))
+          echo "Polling /api/deploy/log until [deploy] complete (max 20 min)..."
+          DEADLINE=$(( $(date +%s) + 1200 ))
           COMPLETE=false
           while [ $(date +%s) -lt $DEADLINE ]; do
             if [ -n "$DEPLOY_SECRET" ]; then
@@ -113,5 +119,6 @@ jobs:
             sleep 30
           done
           if [ "$COMPLETE" != "true" ]; then
-            echo "::warning::Deploy did not complete within 12 min — check /tmp/doctarx-deploy.log on EC2"
+            echo "::error::Deploy did not complete within 20 min — check /tmp/doctarx-deploy.log on EC2"
+            exit 1
           fi
