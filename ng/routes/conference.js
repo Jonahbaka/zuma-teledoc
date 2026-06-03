@@ -187,4 +187,55 @@ router.get('/media-readiness', (req, res) => {
   } catch (e) { handleError(res, e); }
 });
 
+// ─── LiveKit Token ────────────────────────────────────────────────────────────
+// Issues a LiveKit participant access token so the browser can join an SFU room.
+// Returns 409 with code SFU_NOT_CONFIGURED when LiveKit env vars are absent.
+router.post('/rooms/:id/token', express.json(), async (req, res) => {
+  try {
+    const room = await svc.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ ok: false, error: 'Room not found' });
+
+    const lk = require('../services/conferencing/livekitService');
+    if (!lk.isLiveKitConfigured()) {
+      return res.status(409).json({
+        ok: false,
+        code: 'SFU_NOT_CONFIGURED',
+        error: 'LiveKit SFU is not configured on this server. Set NG_LIVEKIT_URL, NG_LIVEKIT_API_KEY, NG_LIVEKIT_API_SECRET.',
+      });
+    }
+
+    const userId      = req.user?.id || `guest-${Date.now()}`;
+    const displayName = (req.body?.display_name || req.user?.name || req.user?.display_name || 'Participant').slice(0, 80);
+
+    const token      = lk.generateRoomToken(room.id, userId, displayName, { canPublish: true, canSubscribe: true });
+    const { url }    = lk.getLiveKitConfig();
+
+    res.json({ ok: true, token, livekitUrl: url, roomId: room.id, displayName });
+  } catch (e) { handleError(res, e); }
+});
+
+// ─── Per-room media readiness ─────────────────────────────────────────────────
+// Returns TURN + SFU readiness for a specific room's configuration.
+router.get('/rooms/:id/media-status', async (req, res) => {
+  try {
+    const room = await svc.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ ok: false, error: 'Room not found' });
+
+    const readiness = svc.assessConferenceMediaReadiness({
+      maxParticipants: room.max_participants,
+      mediaServer:     room.media_server,
+    });
+
+    const lk = require('../services/conferencing/livekitService');
+    res.json({
+      ok: true,
+      readiness,
+      livekit: {
+        configured: lk.isLiveKitConfigured(),
+        url:        lk.isLiveKitConfigured() ? lk.getLiveKitConfig().url : null,
+      },
+    });
+  } catch (e) { handleError(res, e); }
+});
+
 module.exports = router;
