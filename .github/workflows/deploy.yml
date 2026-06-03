@@ -80,3 +80,38 @@ jobs:
             exit 1
           fi
           echo "Deploy triggered successfully - build running in background on server"
+
+      - name: Wait for deploy and verify NG platform
+        env:
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+        run: |
+          echo "Polling /api/deploy/log until [deploy] complete (max 12 min)..."
+          DEADLINE=$(( $(date +%s) + 720 ))
+          COMPLETE=false
+          while [ $(date +%s) -lt $DEADLINE ]; do
+            if [ -n "$DEPLOY_SECRET" ]; then
+              LOG_JSON=$(curl -s --max-time 15 -H "x-deploy-token: $DEPLOY_SECRET" "https://doctarx.com/api/deploy/log?lines=300" 2>/dev/null)
+            else
+              oidc_resp=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doctarx-deploy" 2>/dev/null)
+              oidc_tok=$(printf '%s' "$oidc_resp" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("value",""))' 2>/dev/null)
+              LOG_JSON=$(curl -s --max-time 15 -H "Authorization: Bearer $oidc_tok" "https://doctarx.com/api/deploy/log?lines=300" 2>/dev/null)
+            fi
+            DONE=$(printf '%s' "$LOG_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("complete",""))' 2>/dev/null)
+            FAILED=$(printf '%s' "$LOG_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("failed",""))' 2>/dev/null)
+            if [ "$DONE" = "True" ]; then
+              COMPLETE=true
+              echo "=== DEPLOY COMPLETE — verification output ==="
+              printf '%s' "$LOG_JSON" | python3 -c 'import json,sys; [print(l) for l in json.load(sys.stdin).get("lines",[]) if any(t in l for t in ["[verify","[deploy]","livekit","LiveKit","SFU","multiParty","configured","media","NG","pm2","status","HTTP"])]' 2>/dev/null
+              break
+            fi
+            if [ "$FAILED" = "True" ]; then
+              echo "::error::Deploy failed — printing last log lines"
+              printf '%s' "$LOG_JSON" | python3 -c 'import json,sys; [print(l) for l in json.load(sys.stdin).get("lines",[])]' 2>/dev/null
+              exit 1
+            fi
+            echo "$(date -u +%H:%M:%S) still deploying…"
+            sleep 30
+          done
+          if [ "$COMPLETE" != "true" ]; then
+            echo "::warning::Deploy did not complete within 12 min — check /tmp/doctarx-deploy.log on EC2"
+          fi

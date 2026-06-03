@@ -34,6 +34,20 @@ function buildDeployCommand() {
     // Falls back to start via ecosystem config if the app is not yet registered in PM2.
     `(pm2 reload ecosystem.config.js --only ${PM2_APP_NAME} --update-env 2>/dev/null || pm2 start ecosystem.config.js --only ${PM2_APP_NAME} --env production)`,
     `(pm2 reload ecosystem.config.js --only cronops --update-env 2>/dev/null || pm2 start ecosystem.config.js --only cronops --env production)`,
+    // ── Post-deploy self-verification (runs on EC2, not affected by sandbox IP block) ──
+    // Poll until the app is accepting requests (max 3 min), then verify NG endpoints.
+    'echo "[verify] waiting for app to be ready..."',
+    'for i in $(seq 1 90); do HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health 2>/dev/null); if [ "$HTTP" = "200" ] || [ "$HTTP" = "503" ]; then echo "[verify] app responded HTTP $HTTP after ${i}s"; break; fi; sleep 2; done',
+    // PM2 process status
+    'echo "[verify:pm2]" && pm2 jlist 2>/dev/null | python3 -c "import json,sys; procs=[{\'name\':p[\'name\'],\'status\':p[\'pm2_env\'][\'status\'],\'pid\':p[\'pid\'],\'uptime\':p[\'pm2_env\'].get(\'pm_uptime\')} for p in json.load(sys.stdin)]; [print(p) for p in procs]" 2>/dev/null || echo "[verify:pm2] pm2 jlist failed"',
+    // NG health — confirms Nigeria platform is mounted and features are active
+    'echo "[verify:ng-health]" && curl -s http://localhost:8080/api/ng/health',
+    // NG conference media-readiness — key LiveKit check
+    'echo "[verify:ng-media-readiness]" && curl -s http://localhost:8080/api/ng/conference/media-readiness',
+    // NG conference route reachable (HTML response expected from Next.js)
+    'echo "[verify:ng-conference-route] HTTP=$(curl -s -o /dev/null -w \'%{http_code}\' http://localhost:8080/ng/conference 2>/dev/null)" && HTTP=$(curl -s -o /dev/null -w \'%{http_code}\' http://localhost:8080/ng/conference 2>/dev/null) && echo "[verify:ng-conference-route] HTTP=$HTTP"',
+    // NG root route
+    'HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/ng 2>/dev/null) && echo "[verify:ng-root] HTTP=$HTTP"',
     'echo "[deploy] complete"',
   ].join(' && ');
 }

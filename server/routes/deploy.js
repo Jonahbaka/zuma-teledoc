@@ -232,4 +232,33 @@ router.post('/', async (req, res) => {
   });
 });
 
+// ── Deploy log reader ─────────────────────────────────────────────────────────
+// Returns the last N lines of the deploy log so GitHub Actions can poll for
+// verification results without needing SSH or a public-IP-accessible server.
+// Requires the same authentication as the deploy endpoint.
+router.get('/log', async (req, res) => {
+  try {
+    const auth = await authorizeDeployRequest(req);
+    if (!auth) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  } catch {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+
+  const lines = Math.min(parseInt(req.query.lines, 10) || 200, 1000);
+  try {
+    if (!fs.existsSync(DEPLOY_LOG)) {
+      return res.json({ ok: true, complete: false, lines: [], raw: '' });
+    }
+    const raw = fs.readFileSync(DEPLOY_LOG, 'utf8');
+    const all = raw.split('\n');
+    const tail = all.slice(-lines);
+    const complete  = raw.includes('[deploy] complete');
+    const failed    = raw.includes('npm ERR!') || raw.includes('Build failed');
+    const deploying_ = deploying;
+    res.json({ ok: true, complete, failed, deploying: deploying_, lines: tail, raw: tail.join('\n') });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;
