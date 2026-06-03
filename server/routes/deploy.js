@@ -1,10 +1,42 @@
 const express = require('express');
 const router = express.Router();
-const { buildDeployCommand } = require('./deploy-command');
+const path = require('path');
+const { buildDeployCommand, PROJECT_ROOT } = require('./deploy-command');
 const { runDetachedCommand } = require('./run-detached-command');
 const fs = require('fs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+
+// Keys that the deploy webhook is permitted to inject into the production .env.
+// Values for any other key are silently ignored — prevents arbitrary injection.
+const INJECTABLE_ENV_KEYS = new Set([
+  'NG_LIVEKIT_URL',
+  'NG_LIVEKIT_API_KEY',
+  'NG_LIVEKIT_API_SECRET',
+]);
+
+function mergeEnvFile(envPath, updates) {
+  const safe = Object.entries(updates).filter(([k]) => INJECTABLE_ENV_KEYS.has(k));
+  if (!safe.length) return;
+
+  let content = '';
+  try { content = fs.readFileSync(envPath, 'utf8'); } catch {}
+
+  for (const [key, rawVal] of safe) {
+    const val = String(rawVal).replace(/\r?\n/g, ''); // values must be single-line
+    const line = `${key}=${val}`;
+    if (new RegExp(`^${key}=`, 'm').test(content)) {
+      content = content.replace(new RegExp(`^${key}=.*$`, 'm'), line);
+    } else {
+      if (content && !content.endsWith('\n')) content += '\n';
+      content += line + '\n';
+    }
+  }
+
+  fs.writeFileSync(envPath, content, { mode: 0o600 });
+  // Log key names only — values are intentionally omitted
+  console.log('[deploy] .env updated — keys:', safe.map(([k]) => k).join(', '));
+}
 
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET;
 if (!DEPLOY_SECRET) {
@@ -131,6 +163,16 @@ router.post('/', async (req, res) => {
 
   deploying = true;
   deployStartedAt = Date.now();
+
+  // Merge any whitelisted env vars into .env before the deploy command runs.
+  // This happens synchronously in Node.js — values never touch a shell command.
+  if (req.body?.env && typeof req.body.env === 'object') {
+    try {
+      mergeEnvFile(path.join(PROJECT_ROOT, '.env'), req.body.env);
+    } catch (e) {
+      console.error('[deploy] .env merge failed:', e.message);
+    }
+  }
 
   const job = runDetachedCommand(buildDeployCommand(), { logFile: DEPLOY_LOG });
 

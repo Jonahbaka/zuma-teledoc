@@ -16,6 +16,9 @@ jobs:
       - name: Trigger deploy webhook
         env:
           DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+          NG_LIVEKIT_URL: ${{ secrets.NG_LIVEKIT_URL }}
+          NG_LIVEKIT_API_KEY: ${{ secrets.NG_LIVEKIT_API_KEY }}
+          NG_LIVEKIT_API_SECRET: ${{ secrets.NG_LIVEKIT_API_SECRET }}
         run: |
           auth_header=()
 
@@ -33,10 +36,24 @@ jobs:
             auth_header=(-H "Authorization: Bearer $oidc_token")
           fi
 
+          # Build env payload via Python — values come from the process environment,
+          # never appear as shell arguments, and GitHub Actions masks them in logs.
+          deploy_body=$(python3 - <<'PYEOF'
+import json, os
+env = {}
+for k in ['NG_LIVEKIT_URL', 'NG_LIVEKIT_API_KEY', 'NG_LIVEKIT_API_SECRET']:
+    v = os.environ.get(k, '')
+    if v:
+        env[k] = v
+print(json.dumps({'env': env}))
+PYEOF
+)
+
           response=$(curl -s -o /tmp/deploy_response.json -w "%{http_code}" \
             -X POST https://doctarx.com/api/deploy \
             -H "Content-Type: application/json" \
             "${auth_header[@]}" \
+            --data "$deploy_body" \
             --max-time 30)
           cat /tmp/deploy_response.json
           if [ "$response" != "200" ]; then
