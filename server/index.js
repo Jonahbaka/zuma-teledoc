@@ -26,6 +26,21 @@ let initialized = false;
 let nextInitStatus = 'pending';
 let nextInitError = null;
 let nextInitStartedAt = null;
+let processManagerReadySent = false;
+
+function notifyProcessManagerReady(reason) {
+  if (processManagerReadySent) return;
+  processManagerReadySent = true;
+
+  if (typeof process.send === 'function') {
+    try {
+      process.send('ready');
+      console.log(`[BOOT] Process manager ready signal sent (${reason})`);
+    } catch (err) {
+      console.warn('[BOOT] Process manager ready signal failed:', err.message);
+    }
+  }
+}
 
 function readNextBuildId() {
   try {
@@ -83,6 +98,11 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`🚀 SERVER LISTENING ON ${HOST}:${PORT}`);
   console.log(`🕒 ${new Date().toISOString()}`);
   console.log(`========================================\n`);
+
+  // PM2 runs with wait_ready=true. Signal after the HTTP server is bound so the
+  // process manager does not kill the app while Next.js warms asynchronously.
+  // /api/health and /readyz remain the application readiness sources.
+  notifyProcessManagerReady('http-listening');
   
   // STEP 3: Initialize everything else AFTER port is bound
   initializeApp().catch(err => {

@@ -175,6 +175,20 @@ test('auth guard: /ng/patient layout protects the portal', () => {
 });
 
 // ── Runner ────────────────────────────────────────────────────────────────────
+test('production runtime: PM2 wait_ready has an explicit server ready signal', () => {
+  const ecosystem = read('ecosystem.config.js');
+  const server = read('server/index.js');
+
+  assert.ok(/wait_ready:\s*true/.test(ecosystem),
+    'PM2 wait_ready is enabled and requires a ready signal');
+  assert.ok(/process\.send\('ready'\)/.test(server),
+    'server must notify PM2 after HTTP listen to avoid restart loops during Next warmup');
+  assert.ok(/notifyProcessManagerReady\('http-listening'\)/.test(server),
+    'server must signal PM2 from the app.listen callback');
+  assert.ok(/\/api\/health|\/readyz/.test(server),
+    'application readiness must remain exposed through health/readiness endpoints');
+});
+
 (async () => {
   let passed = 0, failed = 0;
   for (const { name, fn } of cases) {
