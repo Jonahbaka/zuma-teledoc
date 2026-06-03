@@ -78,6 +78,7 @@ let deploying = false;
 const DEPLOY_LOG = '/tmp/doctarx-deploy.log';
 const DEPLOY_LOCK_TIMEOUT_MS = 30 * 60 * 1000; // 30 min safety timeout
 let deployStartedAt = null;
+let deployPid = null; // PID of the detached bash process running the current deploy
 const GITHUB_OIDC_ISSUER = 'https://token.actions.githubusercontent.com';
 const GITHUB_OIDC_JWKS_URL = `${GITHUB_OIDC_ISSUER}/.well-known/jwks`;
 const GITHUB_OIDC_AUDIENCE = process.env.DEPLOY_GITHUB_OIDC_AUDIENCE || 'doctarx-deploy';
@@ -88,6 +89,69 @@ let githubJwksCache = { fetchedAt: 0, keys: [] };
 function isDeployStuck() {
   if (!deploying || !deployStartedAt) return false;
   return Date.now() - deployStartedAt > DEPLOY_LOCK_TIMEOUT_MS;
+}
+
+// True if `pid` refers to a live process. `kill(pid, 0)` sends no signal but
+// throws ESRCH if the process is gone (EPERM means it exists but is owned by
+// another user — still alive).
+function isPidAlive(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === 'EPERM';
+  }
+}
+
+function readDeployLog() {
+  try {
+    return fs.existsSync(DEPLOY_LOG) ? fs.readFileSync(DEPLOY_LOG, 'utf8') : '';
+  } catch {
+    return '';
+  }
+}
+
+// Derive the terminal/in-flight state of the current (or last) deploy from the
+// log markers plus PID liveness. The detached bash script is guaranteed to end
+// in exactly one of `[deploy] complete` / `[deploy] failed`; if neither marker
+// is present and the PID is dead, the process crashed (e.g. OOM-killed) and the
+// deploy is incomplete — never report that as success.
+function computeDeployStatus() {
+  const raw = readDeployLog();
+  const complete = raw.includes('[deploy] complete');
+  const verifyPass = raw.includes('[verify:result] PASS');
+  const verifyFail = raw.includes('[verify:result] FAIL');
+  const markedFailed =
+    raw.includes('[deploy] failed') ||
+    raw.includes('npm ERR!') ||
+    raw.includes('Build failed');
+  const pidAlive = isPidAlive(deployPid);
+  // Crashed: still flagged as deploying, the process is gone, and no terminal
+  // marker was ever written.
+  const crashed = !complete && !markedFailed && !pidAlive && deployPid !== null && deploying;
+  const timedOut = isDeployStuck();
+
+  let status;
+  if (complete && !verifyFail) status = 'success';
+  else if (markedFailed || verifyFail) status = 'failed';
+  else if (crashed) status = 'crashed';
+  else if (timedOut) status = 'timeout';
+  else if (deploying || pidAlive) status = 'running';
+  else status = 'idle';
+
+  return {
+    status,
+    complete,
+    failed: markedFailed || verifyFail || crashed || timedOut,
+    verify: verifyPass ? 'pass' : verifyFail ? 'fail' : 'unknown',
+    pid: deployPid,
+    pidAlive,
+    crashed,
+    timedOut,
+    deploying,
+    ageSeconds: deployStartedAt ? Math.round((Date.now() - deployStartedAt) / 1000) : null,
+  };
 }
 
 async function getGithubJwks() {
@@ -188,8 +252,29 @@ router.post('/', async (req, res) => {
     deployStartedAt = null;
   }
 
-  if (deploying) {
-    return res.json({ success: false, message: 'Deploy already in progress - skipping' });
+  // Release a stale lock left behind by a crashed deploy: the process is gone
+  // but no terminal marker was written (e.g. OOM-kill / instance reboot).
+  if (deploying && deployPid !== null && !isPidAlive(deployPid)) {
+    const log = readDeployLog();
+    if (!log.includes('[deploy] complete')) {
+      console.warn(`[deploy] Previous deploy PID ${deployPid} is dead without completing — clearing stale lock`);
+    }
+    deploying = false;
+    deployStartedAt = null;
+  }
+
+  // A deploy that is genuinely still running: do NOT start a second one. The
+  // caller should attach to the existing deploy by polling /api/deploy/log.
+  if (deploying && isPidAlive(deployPid)) {
+    const st = computeDeployStatus();
+    return res.json({
+      success: false,
+      message: 'Deploy already in progress - attach via /api/deploy/log',
+      inProgress: true,
+      pid: deployPid,
+      logFile: DEPLOY_LOG,
+      ageSeconds: st.ageSeconds,
+    });
   }
 
   deploying = true;
@@ -205,16 +290,34 @@ router.post('/', async (req, res) => {
     }
   }
 
-  const job = runDetachedCommand(buildDeployCommand(), { logFile: DEPLOY_LOG });
+  // Truncate the previous deploy's log so /api/deploy/log only ever reflects the
+  // current run — stale markers from a prior deploy must not be read as this
+  // run's terminal state.
+  try {
+    fs.writeFileSync(DEPLOY_LOG, '');
+  } catch (e) {
+    console.warn('[deploy] could not truncate deploy log:', e.message);
+  }
 
-  // Watch for deploy completion via log file tail and reset flag
+  const job = runDetachedCommand(buildDeployCommand(), { logFile: DEPLOY_LOG });
+  deployPid = job.pid;
+  console.log(`[deploy] launched detached deploy PID ${deployPid}`);
+
+  // Watch for a terminal state and release the lock. The detached script writes
+  // exactly one terminal marker; we also release if the process dies without a
+  // marker (crash) or the safety timeout is exceeded.
   const interval = setInterval(() => {
     try {
-      const log = fs.existsSync(DEPLOY_LOG) ? fs.readFileSync(DEPLOY_LOG, 'utf8') : '';
-      const done = log.includes('[deploy] complete')
-        || ((log.includes('pm2 start') || log.includes('pm2 restart')) && (log.includes('[PM2]') || log.includes('online')));
-      const failed = log.includes('npm ERR!') || log.includes('Build failed');
-      if (done || failed || isDeployStuck()) {
+      const log = readDeployLog();
+      const done = log.includes('[deploy] complete');
+      const failed = log.includes('[deploy] failed')
+        || log.includes('npm ERR!')
+        || log.includes('Build failed');
+      const crashed = !done && !failed && !isPidAlive(deployPid);
+      if (done || failed || crashed || isDeployStuck()) {
+        if (crashed) {
+          console.warn(`[deploy] PID ${deployPid} exited without a terminal marker — treating as failed`);
+        }
         deploying = false;
         deployStartedAt = null;
         clearInterval(interval);
@@ -246,19 +349,30 @@ router.get('/log', async (req, res) => {
 
   const lines = Math.min(parseInt(req.query.lines, 10) || 200, 1000);
   try {
+    const st = computeDeployStatus();
     if (!fs.existsSync(DEPLOY_LOG)) {
-      return res.json({ ok: true, complete: false, lines: [], raw: '' });
+      return res.json({ ok: true, ...st, lines: [], raw: '' });
     }
     const raw = fs.readFileSync(DEPLOY_LOG, 'utf8');
     const all = raw.split('\n');
     const tail = all.slice(-lines);
-    const complete  = raw.includes('[deploy] complete');
-    const failed    = raw.includes('npm ERR!') || raw.includes('Build failed');
-    const deploying_ = deploying;
-    res.json({ ok: true, complete, failed, deploying: deploying_, lines: tail, raw: tail.join('\n') });
+    // `complete`/`failed`/`deploying` kept at top level for backward
+    // compatibility with the polling workflow; `status` carries the full state.
+    res.json({ ok: true, ...st, lines: tail, raw: tail.join('\n') });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
+});
+
+// Lightweight status (no log body) — same auth, for quick supervision polls.
+router.get('/status', async (req, res) => {
+  try {
+    const auth = await authorizeDeployRequest(req);
+    if (!auth) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  } catch {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  res.json({ ok: true, ...computeDeployStatus() });
 });
 
 module.exports = router;

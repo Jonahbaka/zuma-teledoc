@@ -3,13 +3,18 @@ const CRONOPS_ROOT = `${PROJECT_ROOT}/cronops`;
 const DEPLOY_BUILD_MEMORY_MB = process.env.DEPLOY_BUILD_MEMORY_MB || '4096';
 const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
 
-function buildDeployCommand() {
+// Build + reload steps. Any non-zero exit here aborts the chain and the
+// terminal wrapper emits `[deploy] failed`. Steps that are intentionally
+// best-effort are individually guarded with `|| true`.
+function buildSteps() {
   return [
     `cd ${PROJECT_ROOT}`,
+    'echo "[deploy] start $(date -u +%Y-%m-%dT%H:%M:%SZ)"',
     // Production checkout should match origin/main exactly before building.
     'rm -f .git/index.lock',
     'git fetch --prune origin main',
     'git reset --hard origin/main',
+    'echo "[deploy] checkout $(git rev-parse --short HEAD)"',
     // Preserve production-only secrets and certificates that are intentionally untracked.
     'git clean -fd -e .env -e .env.* -e global-bundle.pem -e *.pem',
     'npm install --include=dev --prefer-offline --no-audit --no-fund',
@@ -34,22 +39,44 @@ function buildDeployCommand() {
     // Falls back to start via ecosystem config if the app is not yet registered in PM2.
     `(pm2 reload ecosystem.config.js --only ${PM2_APP_NAME} --update-env 2>/dev/null || pm2 start ecosystem.config.js --only ${PM2_APP_NAME} --env production)`,
     `(pm2 reload ecosystem.config.js --only cronops --update-env 2>/dev/null || pm2 start ecosystem.config.js --only cronops --env production)`,
-    // ── Post-deploy self-verification (runs on EC2, not affected by sandbox IP block) ──
-    // Poll until the app is accepting requests (max 3 min), then verify NG endpoints.
+  ];
+}
+
+// Verification steps run on EC2 (localhost:8080) so they bypass any sandbox /
+// public-IP allowlist. The chain ends with a hard gate: if NG platform health
+// is not "ok", the step exits non-zero and the deploy is marked failed.
+// Shell variables persist across these `&&`-joined steps (one bash process).
+function verifySteps() {
+  return [
     'echo "[verify] waiting for app to be ready..."',
-    'for i in $(seq 1 90); do HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health 2>/dev/null); if [ "$HTTP" = "200" ] || [ "$HTTP" = "503" ]; then echo "[verify] app responded HTTP $HTTP after ${i}s"; break; fi; sleep 2; done',
+    'APP_UP=no; for i in $(seq 1 90); do HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health 2>/dev/null); if [ "$HTTP" = "200" ] || [ "$HTTP" = "503" ]; then echo "[verify] app responded HTTP $HTTP after ${i}s"; APP_UP=yes; break; fi; sleep 2; done; echo "[verify:app-up] $APP_UP"',
+    // /api/health (US/base health) for completeness
+    'BASE_HEALTH_HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health 2>/dev/null); echo "[verify:api-health] HTTP=$BASE_HEALTH_HTTP"',
     // PM2 process status
-    'echo "[verify:pm2]" && pm2 jlist 2>/dev/null | python3 -c "import json,sys; procs=[{\'name\':p[\'name\'],\'status\':p[\'pm2_env\'][\'status\'],\'pid\':p[\'pid\'],\'uptime\':p[\'pm2_env\'].get(\'pm_uptime\')} for p in json.load(sys.stdin)]; [print(p) for p in procs]" 2>/dev/null || echo "[verify:pm2] pm2 jlist failed"',
-    // NG health — confirms Nigeria platform is mounted and features are active
-    'echo "[verify:ng-health]" && curl -s http://localhost:8080/api/ng/health',
-    // NG conference media-readiness — key LiveKit check
-    'echo "[verify:ng-media-readiness]" && curl -s http://localhost:8080/api/ng/conference/media-readiness',
-    // NG conference route reachable (HTML response expected from Next.js)
-    'echo "[verify:ng-conference-route] HTTP=$(curl -s -o /dev/null -w \'%{http_code}\' http://localhost:8080/ng/conference 2>/dev/null)" && HTTP=$(curl -s -o /dev/null -w \'%{http_code}\' http://localhost:8080/ng/conference 2>/dev/null) && echo "[verify:ng-conference-route] HTTP=$HTTP"',
-    // NG root route
-    'HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/ng 2>/dev/null) && echo "[verify:ng-root] HTTP=$HTTP"',
-    'echo "[deploy] complete"',
-  ].join(' && ');
+    'echo "[verify:pm2]" && (pm2 jlist 2>/dev/null | python3 -c "import json,sys; [print(\'[verify:pm2]\', {\'name\':p[\'name\'],\'status\':p[\'pm2_env\'][\'status\'],\'pid\':p[\'pid\'],\'restarts\':p[\'pm2_env\'].get(\'restart_time\')}) for p in json.load(sys.stdin)]" 2>/dev/null || echo "[verify:pm2] pm2 jlist failed")',
+    // NG platform health — retried; this is the hard gate for deploy success.
+    'NG_HEALTH=""; for i in $(seq 1 15); do NG_HEALTH=$(curl -s --max-time 10 http://localhost:8080/api/ng/health 2>/dev/null || true); echo "$NG_HEALTH" | grep -q \'"status":"ok"\' && break; sleep 2; done; echo "[verify:ng-health] $NG_HEALTH"',
+    'echo "$NG_HEALTH" | grep -q \'"multiPartyConferencing":true\' && echo "[verify:ng-multiparty] true" || echo "[verify:ng-multiparty] false"',
+    // NG conference media-readiness — LiveKit / SFU check (informational).
+    'NG_MEDIA=$(curl -s --max-time 10 http://localhost:8080/api/ng/conference/media-readiness 2>/dev/null || true); echo "[verify:ng-media-readiness] $NG_MEDIA"',
+    'if echo "$NG_MEDIA" | grep -q \'"configured":true\'; then echo "[verify:livekit] configured=true — SFU ready (5-10 participant conferencing enabled)"; echo "[verify:sfu-5] READY"; echo "[verify:sfu-10] READY"; else echo "[verify:livekit] configured=false — SFU NOT ready (check NG_LIVEKIT_URL/API_KEY/API_SECRET in .env)"; echo "[verify:sfu-5] NOT_READY"; echo "[verify:sfu-10] NOT_READY"; fi',
+    // NG routes
+    'HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/ng/conference 2>/dev/null); echo "[verify:ng-conference-route] HTTP=$HTTP"',
+    'HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/ng 2>/dev/null); echo "[verify:ng-root] HTTP=$HTTP"',
+    // ── Hard gate ──: NG platform must report healthy or the deploy is a failure.
+    'if echo "$NG_HEALTH" | grep -q \'"status":"ok"\'; then echo "[verify:result] PASS"; else echo "[verify:result] FAIL — /api/ng/health did not report status=ok"; exit 1; fi',
+  ];
+}
+
+// Returns a single shell command whose log is guaranteed to end in exactly one
+// terminal marker:
+//   [deploy] complete   → build succeeded AND verification gate passed
+//   [deploy] failed      → any build step or the verification gate failed
+// The supervising webhook / GitHub Actions treats anything else (no marker +
+// dead PID, or timeout) as an incomplete/unknown deploy and reports failure.
+function buildDeployCommand() {
+  const inner = [...buildSteps(), ...verifySteps()].join(' && ');
+  return `( ${inner} ) && echo "[deploy] complete $(date -u +%Y-%m-%dT%H:%M:%SZ)" || { rc=$?; echo "[deploy] failed (exit $rc) $(date -u +%Y-%m-%dT%H:%M:%SZ)"; exit 1; }`;
 }
 
 module.exports = {
