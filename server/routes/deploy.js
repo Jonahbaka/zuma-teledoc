@@ -10,9 +10,40 @@ const jwt = require('jsonwebtoken');
 // Keys that the deploy webhook is permitted to inject into the production .env.
 // Values for any other key are silently ignored — prevents arbitrary injection.
 const INJECTABLE_ENV_KEYS = new Set([
+  // LiveKit SFU
   'NG_LIVEKIT_URL',
   'NG_LIVEKIT_API_KEY',
   'NG_LIVEKIT_API_SECRET',
+  // Database
+  'DATABASE_URL',
+  // Auth / session
+  'JWT_ACCESS_SECRET',
+  'JWT_REFRESH_SECRET',
+  'ENCRYPTION_KEY',
+  'SESSION_SECRET',
+  // AI providers
+  'ANTHROPIC_API_KEY',
+  'GEMINI_API_KEY',
+  'CLAUDE_API_KEY',
+  // Payments
+  'STRIPE_SECRET_KEY',
+  'STRIPE_PUBLISHABLE_KEY',
+  'STRIPE_WEBHOOK_SECRET',
+  'PAYSTACK_SECRET_KEY',
+  'PAYSTACK_PUBLIC_KEY',
+  'FLUTTERWAVE_SECRET_KEY',
+  'FLUTTERWAVE_PUBLIC_KEY',
+  // Comms
+  'TERMII_API_KEY',
+  'SMTP_HOST',
+  'SMTP_USER',
+  'SMTP_PASSWORD',
+  'SMTP_FROM',
+  // TURN / WebRTC
+  'RTC_TURN_URLS',
+  'TURN_STATIC_AUTH_SECRET',
+  // Deploy
+  'DEPLOY_SECRET',
 ]);
 
 function mergeEnvFile(envPath, updates) {
