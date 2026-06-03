@@ -58,27 +58,10 @@ jobs:
             auth_header=(-H "Authorization: Bearer $oidc_token")
           fi
 
-          # Build env payload via Python — values come from process environment,
-          # never appear as shell arguments, and GitHub Actions masks them in logs.
-          # Keys absent from GitHub Secrets resolve to empty string and are skipped.
-          deploy_body=$(python3 - <<'PYEOF'
-import json, os
-INJECTABLE = [
-    'NG_LIVEKIT_URL', 'NG_LIVEKIT_API_KEY', 'NG_LIVEKIT_API_SECRET',
-    'DATABASE_URL',
-    'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'ENCRYPTION_KEY', 'SESSION_SECRET',
-    'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'CLAUDE_API_KEY',
-    'STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY', 'STRIPE_WEBHOOK_SECRET',
-    'PAYSTACK_SECRET_KEY', 'PAYSTACK_PUBLIC_KEY',
-    'FLUTTERWAVE_SECRET_KEY', 'FLUTTERWAVE_PUBLIC_KEY',
-    'TERMII_API_KEY',
-    'SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM',
-    'RTC_TURN_URLS', 'TURN_STATIC_AUTH_SECRET',
-]
-env = {k: v for k in INJECTABLE if (v := os.environ.get(k, ''))}
-print(json.dumps({'env': env}))
-PYEOF
-)
+          # Build env payload via Python — values read from process env, never
+          # appear as shell arguments, and GitHub Actions masks them in logs.
+          # Keys absent from GitHub Secrets are empty strings and are skipped.
+          deploy_body=$(python3 -c 'import json,os; keys=["NG_LIVEKIT_URL","NG_LIVEKIT_API_KEY","NG_LIVEKIT_API_SECRET","DATABASE_URL","JWT_ACCESS_SECRET","JWT_REFRESH_SECRET","ENCRYPTION_KEY","SESSION_SECRET","ANTHROPIC_API_KEY","GEMINI_API_KEY","CLAUDE_API_KEY","STRIPE_SECRET_KEY","STRIPE_PUBLISHABLE_KEY","STRIPE_WEBHOOK_SECRET","PAYSTACK_SECRET_KEY","PAYSTACK_PUBLIC_KEY","FLUTTERWAVE_SECRET_KEY","FLUTTERWAVE_PUBLIC_KEY","TERMII_API_KEY","SMTP_HOST","SMTP_USER","SMTP_PASSWORD","SMTP_FROM","RTC_TURN_URLS","TURN_STATIC_AUTH_SECRET"]; print(json.dumps({"env": {k: os.environ[k] for k in keys if os.environ.get(k)}}))')
 
           response=$(curl -s -o /tmp/deploy_response.json -w "%{http_code}" \
             -X POST https://doctarx.com/api/deploy \
