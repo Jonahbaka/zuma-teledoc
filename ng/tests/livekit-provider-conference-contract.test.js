@@ -38,6 +38,13 @@ test('provider room launcher defaults to immediate LiveKit SFU meetings', () => 
   const portal = read('components/ng/conference/ConferencePortal.jsx');
 
   assert.match(launcher, /max_participants: 10/);
+  assert.match(launcher, /max_participants: 2/);
+  assert.match(launcher, /label: '1:1 consult'/);
+  assert.match(launcher, /label: '3-way consultation'/);
+  assert.match(launcher, /label: 'Case review'/);
+  assert.match(launcher, /label: 'Hospital board'/);
+  assert.match(launcher, /DEFAULT_ROOM_TITLE/);
+  assert.match(launcher, /searchParams\.get\('preset'\)/);
   assert.match(launcher, /media_server: 'livekit'/);
   assert.match(launcher, /start_now: true/);
   assert.match(launcher, /require_media_ready: true/);
@@ -50,10 +57,12 @@ test('provider dashboard exposes no-appointment conference hub without internal 
   const dashboard = read('components/ng/provider/ProviderCommandCenter.jsx');
   const providerCall = read('app/ng/provider/call/page.js');
 
-  assert.match(dashboard, /href="\/ng\/conference"/);
-  assert.match(dashboard, /label="Conferencing" route="\/ng\/conference"/);
+  assert.match(dashboard, /const conferencePath = providerPath\('\/call'\)/);
+  assert.match(dashboard, /LiveKit Conference Rooms/);
+  assert.match(dashboard, /Start LiveKit Room/);
+  assert.match(dashboard, /label="Conferencing" route="\/call"/);
   assert.doesNotMatch(dashboard, /Provider Dashboard ->/);
-  assert.doesNotMatch(dashboard, /providerPath\('\/call'\)/);
+  assert.doesNotMatch(dashboard, /href="\/ng\/conference"/);
   assert.match(providerCall, /import ConferencePortal/);
   assert.match(providerCall, /<ConferencePortal initialTab="schedule" \/>/);
 });

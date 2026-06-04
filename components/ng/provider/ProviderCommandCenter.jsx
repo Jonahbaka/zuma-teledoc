@@ -15,6 +15,7 @@ import {
   Hospital,
   Loader2,
   Pill,
+  Radio,
   RefreshCw,
   Route,
   Share2,
@@ -34,6 +35,33 @@ import clinicalIntelligence from '@/lib/ng/providerClinicalIntelligence';
 const { deriveProviderClinicalIntelligence } = clinicalIntelligence;
 
 const REFRESH_INTERVAL_MS = 30000;
+
+const CONFERENCE_PRESETS = [
+  {
+    id: 'one_to_one',
+    label: '1:1 consult',
+    participants: 2,
+    detail: 'Provider-led clinical room without an appointment.',
+  },
+  {
+    id: 'live_consultation',
+    label: '3-way consultation',
+    participants: 3,
+    detail: 'Doctor, patient, and consultant or nurse escalation.',
+  },
+  {
+    id: 'case_review',
+    label: '5-person case review',
+    participants: 5,
+    detail: 'Care-team review with chat, roles, and screen sharing.',
+  },
+  {
+    id: 'hospital_board',
+    label: '10-person board',
+    participants: 10,
+    detail: 'Hospital board or multidisciplinary clinical review.',
+  },
+];
 
 function toArray(value) {
   return Array.isArray(value) ? value : [];
@@ -113,6 +141,29 @@ function Metric({ label, value, icon: Icon, detail }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ConferencePresetCard({ preset, conferencePath }) {
+  return (
+    <Link
+      href={`${conferencePath}?preset=${preset.id}`}
+      className="group rounded-2xl border border-border bg-background p-4 transition hover:border-emerald-300 hover:bg-emerald-50/60"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-foreground">{preset.label}</p>
+          <p className="mt-2 text-sm leading-5 text-muted-foreground">{preset.detail}</p>
+        </div>
+        <span className="flex h-11 w-11 flex-none items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700">
+          <Video className="h-5 w-5" />
+        </span>
+      </div>
+      <div className="mt-4 flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
+        <span>{preset.participants} participants</span>
+        <span>Start LiveKit SFU</span>
+      </div>
+    </Link>
   );
 }
 
@@ -203,6 +254,7 @@ function DataModelPill({ label, active }) {
 
 export default function ProviderCommandCenter() {
   const providerPath = useProviderPath();
+  const conferencePath = providerPath('/call');
   const [snapshot, setSnapshot] = useState({
     appointments: [],
     visits: [],
@@ -288,10 +340,10 @@ export default function ProviderCommandCenter() {
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               Refresh
             </Button>
-            <Link href="/ng/conference">
+            <Link href={conferencePath}>
               <Button className="bg-emerald-600 text-white hover:bg-emerald-500">
                 <Video className="mr-2 h-4 w-4" />
-                Start Meeting
+                Start LiveKit Room
               </Button>
             </Link>
           </div>
@@ -310,6 +362,21 @@ export default function ProviderCommandCenter() {
         <Metric label="Rx lifecycle" value={intelligence.counts.openPrescriptions} icon={Pill} detail="Open prescriptions" />
         <Metric label="Referral backlog" value={intelligence.counts.pendingReferrals} icon={Share2} detail={`${intelligence.counts.urgentReferrals} urgent`} />
       </div>
+
+      <Card className="border-border/70">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Radio className="h-5 w-5 text-emerald-700" />
+            LiveKit Conference Rooms
+          </CardTitle>
+          <CardDescription>Start provider-led clinical video rooms without an appointment.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {CONFERENCE_PRESETS.map((preset) => (
+            <ConferencePresetCard key={preset.id} preset={preset} conferencePath={conferencePath} />
+          ))}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <Card className="border-border/70">
@@ -333,8 +400,8 @@ export default function ProviderCommandCenter() {
               <div className="rounded-2xl border border-dashed border-border p-8 text-center">
                 <Video className="mx-auto h-10 w-10 text-emerald-600/70" />
                 <p className="mt-3 font-semibold text-foreground">No active consultation queue</p>
-                <Link href="/ng/conference" className="mt-4 inline-flex">
-                  <Button variant="outline">Start Meeting</Button>
+                <Link href={conferencePath} className="mt-4 inline-flex">
+                  <Button variant="outline">Start LiveKit Room</Button>
                 </Link>
               </div>
             )}
@@ -392,7 +459,7 @@ export default function ProviderCommandCenter() {
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <WorkflowStep icon={Calendar} label="Appointments" route="/schedule" action="Open schedule" providerPath={providerPath} />
-          <WorkflowStep icon={Video} label="Conferencing" route="/ng/conference" action="Start meeting" providerPath={providerPath} />
+          <WorkflowStep icon={Video} label="Conferencing" route="/call" action="Start LiveKit room" providerPath={providerPath} />
           <WorkflowStep icon={FileText} label="SOAP Notes" route="/visits" action="Document visit" providerPath={providerPath} />
           <WorkflowStep icon={Stethoscope} label="EMR Review" route="/patients" action="Open record" providerPath={providerPath} />
           <WorkflowStep icon={Pill} label="Prescriptions" route="/prescriptions" action="Track pharmacy" providerPath={providerPath} />
@@ -412,7 +479,7 @@ export default function ProviderCommandCenter() {
             <CardDescription>Visible provider-dashboard entry points for the major clinical subsystems</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-2">
-            <FeatureAction icon={Video} label="Conferencing" route="/ng/conference" detail="Clinical rooms for live consultations, case reviews, screen sharing, chat, and participant management." action="Open rooms" tone="emerald" />
+            <FeatureAction icon={Video} label="Conferencing" route={conferencePath} detail="Appointment-free LiveKit rooms for 1:1 consults, 3-way escalation, 5-person case reviews, and 10-person board meetings." action="Start room" tone="emerald" />
             <FeatureAction icon={FileText} label="SOAP Workflow" route={providerPath('/visits')} detail="Visit documentation attached to appointments, diagnoses, treatment plans, and follow-up tasks." action="Open visits" tone="sky" />
             <FeatureAction icon={Pill} label="Prescriptions + Pharmacy Status" route={providerPath('/prescriptions')} detail="Prescription creation, pharmacy routing, lifecycle status, refill, and audit log panels." action="Track prescriptions" tone="amber" />
             <FeatureAction icon={Share2} label="Referral Network" route={providerPath('/referrals')} detail="Patient-linked referral creation and status queues with specialist coordination fields." action="Manage referrals" tone="violet" />

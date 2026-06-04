@@ -2,6 +2,8 @@ const PROJECT_ROOT = '/home/ec2-user/zuma-teledoc';
 const CRONOPS_ROOT = `${PROJECT_ROOT}/cronops`;
 const DEPLOY_BUILD_MEMORY_MB = process.env.DEPLOY_BUILD_MEMORY_MB || '4096';
 const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
+const NEXT_STAGING_DIR = '.next.build';
+const NEXT_PREVIOUS_DIR = '.next.previous-good';
 
 // ── Phases ──────────────────────────────────────────────────────────────────
 // The deploy runs as four phases. Each phase is wrapped so it emits exactly one
@@ -23,20 +25,20 @@ function buildPhase() {
     'echo "[deploy] checkout $(git rev-parse --short HEAD)"',
     // Failed/manual artifact deploys can leave root-owned .next.broken files.
     // Remove those before git clean so stale build debris cannot block deploy.
-    '(sudo rm -rf .next.broken .next.failed .next.tmp 2>/dev/null || rm -rf .next.broken .next.failed .next.tmp || true)',
+    `(sudo rm -rf .next.broken .next.failed .next.tmp ${NEXT_STAGING_DIR} ${NEXT_PREVIOUS_DIR} 2>/dev/null || rm -rf .next.broken .next.failed .next.tmp ${NEXT_STAGING_DIR} ${NEXT_PREVIOUS_DIR} || true)`,
     // Preserve production-only secrets and certificates that are intentionally untracked.
     'git clean -fd -e .env -e .env.* -e global-bundle.pem -e *.pem',
     'npm install --include=dev --prefer-offline --no-audit --no-fund',
-    'rm -rf .turbo .next _next public/_next',
+    `rm -rf .turbo ${NEXT_STAGING_DIR} _next public/_next`,
     'npm run migrate',
     'node ng/migrations/migrate.js',
     'node ng/scripts/ingest-doctarx-nigeria-pack.js',
     'npm run test:deploy-gate',
-    `NODE_OPTIONS="--max-old-space-size=${DEPLOY_BUILD_MEMORY_MB}" npm run build`,
-    'test -n "$(find .next/static/chunks/app -path \'*/admin/testing-links/page-*.js\' -print -quit)"',
-    '(ln -sfn .next _next || true)',
-    '(rm -rf public/_next || true)',
-    '(rm -rf .next/_next .next/static/_next .next/static/chunks/_next || true)',
+    `NEXT_DIST_DIR=${NEXT_STAGING_DIR} NODE_OPTIONS="--max-old-space-size=${DEPLOY_BUILD_MEMORY_MB}" npm run build`,
+    `test -s ${NEXT_STAGING_DIR}/BUILD_ID`,
+    `test -n "$(find ${NEXT_STAGING_DIR}/static/chunks/app -path '*/admin/testing-links/page-*.js' -print -quit)"`,
+    `test -n "$(find ${NEXT_STAGING_DIR}/static/chunks/app -path '*/ng/provider/call/page-*.js' -print -quit)"`,
+    `(rm -rf ${NEXT_STAGING_DIR}/_next ${NEXT_STAGING_DIR}/static/_next ${NEXT_STAGING_DIR}/static/chunks/_next || true)`,
   ];
 }
 
@@ -46,6 +48,10 @@ function buildPhase() {
 // phase ends with a hard gate: the pm2 daemon must answer `pm2 jlist`.
 function pm2Phase() {
   return [
+    `test -d ${NEXT_STAGING_DIR}/static`,
+    `(rm -rf ${NEXT_PREVIOUS_DIR}; if [ -d .next ]; then mv .next ${NEXT_PREVIOUS_DIR}; fi; mv ${NEXT_STAGING_DIR} .next)`,
+    '(ln -sfn .next _next || true)',
+    '(rm -rf public/_next || true)',
     "(sudo mkdir -p /home/ubuntu 2>/dev/null && sudo ln -sfn /home/ec2-user/zuma-teledoc /home/ubuntu/zuma-teledoc 2>/dev/null || true)",
     "(sudo find /etc/nginx -name '*.conf' -exec grep -l '_next' {} \\; 2>/dev/null | xargs -r sudo sed -i 's|/home/ubuntu/zuma-teledoc|/home/ec2-user/zuma-teledoc|g' 2>/dev/null || true)",
     "(sudo find /etc/nginx -name '*.conf' -exec grep -l 'location[[:space:]]*/_next/static' {} \\; 2>/dev/null | xargs -r sudo perl -0pi -e 's#location\\s+/_next/static/?\\s*\\{[^}]*\\}#location /_next/static/ {\\n    alias /home/ec2-user/zuma-teledoc/.next/static/;\\n    expires 1y;\\n    access_log off;\\n    add_header Cache-Control \"public, immutable\";\\n}#sg' 2>/dev/null || true)",
@@ -118,7 +124,24 @@ function buildDeployCommand(deployId) {
   ].join(' && ');
   // `$$` is the PID of this bash (the detached process spawned by runDetachedCommand).
   const prefix = `echo "[deploy:id] ${id}"; echo "[deploy:pid] $$"; echo "[deploy] start $(date -u +%Y-%m-%dT%H:%M:%SZ)";`;
-  return `${prefix} ( ${chain} ) && echo "[deploy] complete $(date -u +%Y-%m-%dT%H:%M:%SZ)" || { rc=$?; echo "[deploy] failed (exit $rc) $(date -u +%Y-%m-%dT%H:%M:%SZ)"; exit $rc; }`;
+  const rollback = [
+    'restore_next_on_failure() {',
+    'rc=$?;',
+    `if [ "$rc" != "0" ] && [ -d ${PROJECT_ROOT}/${NEXT_PREVIOUS_DIR} ]; then`,
+    `cd ${PROJECT_ROOT};`,
+    'echo "[deploy:rollback] restoring previous .next";',
+    'rm -rf .next.failed;',
+    'if [ -d .next ]; then mv .next .next.failed; fi;',
+    `mv ${NEXT_PREVIOUS_DIR} .next;`,
+    'ln -sfn .next _next || true;',
+    `(pm2 reload ecosystem.config.js --only ${PM2_APP_NAME} --update-env 2>/dev/null || true);`,
+    'fi;',
+    'exit $rc;',
+    '};',
+    'trap restore_next_on_failure EXIT;',
+  ].join(' ');
+
+  return `${prefix} ${rollback} ( ${chain} ) && echo "[deploy] complete $(date -u +%Y-%m-%dT%H:%M:%SZ)" || { rc=$?; echo "[deploy] failed (exit $rc) $(date -u +%Y-%m-%dT%H:%M:%SZ)"; exit $rc; }`;
 }
 
 module.exports = {

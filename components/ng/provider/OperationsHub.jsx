@@ -34,7 +34,7 @@ const TOOL_GROUPS = [
   {
     title: 'Collaboration',
     items: [
-      { href: '/ng/conference',            icon: Video,       title: 'Conferencing',         sub: 'Case conferences · teaching rounds · boards' },
+      { href: '/ng/provider/call',            icon: Video,       title: 'Conferencing',         sub: 'Case conferences · teaching rounds · boards' },
       { href: '/ng/telehealth/diagnostics',icon: Activity,    title: 'Pre-call diagnostics', sub: 'Bandwidth probe · device check · adaptive' },
       { href: '/ng/referral-network',      icon: Network,     title: 'Referral network',     sub: 'Marketplace · compose · inbox · heatmap' },
     ],
@@ -172,11 +172,11 @@ export default function OperationsHub() {
         <section>
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">Recent rooms</h2>
-            <Link href="/ng/conference" className="text-xs font-semibold text-green-700 hover:underline">View all →</Link>
+            <Link href="/ng/provider/call" className="text-xs font-semibold text-green-700 hover:underline">View all →</Link>
           </div>
           {rooms.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-200 bg-white p-6 text-center text-xs text-slate-500">
-              No rooms scheduled. <Link href="/ng/conference" className="text-green-700 underline">Schedule one</Link>.
+              No rooms scheduled. <Link href="/ng/provider/call" className="text-green-700 underline">Schedule one</Link>.
             </p>
           ) : (
             <ul className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white">
@@ -194,7 +194,7 @@ export default function OperationsHub() {
 
         <footer className="pt-4 text-center text-[11px] text-slate-400">
           <Sparkles className="mr-1 inline h-3 w-3" />
-          Every tile is wired to a real backend. No mocks.
+          Provider operations are loaded from live platform services.
         </footer>
       </main>
     </div>

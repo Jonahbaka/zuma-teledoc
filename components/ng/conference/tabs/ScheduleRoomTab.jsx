@@ -1,14 +1,23 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, Calendar, CheckCircle2, PlayCircle, Radio, Users } from 'lucide-react';
 import { conf, KIND_OPTIONS } from '../conferenceApi';
 
+const DEFAULT_ROOM_TITLE = 'Provider clinical meeting';
+
 const ROOM_PRESETS = [
   {
+    id: 'one_to_one',
+    label: '1:1 consult',
+    kind: 'consultation',
+    max_participants: 2,
+    media_server: 'livekit',
+  },
+  {
     id: 'live_consultation',
-    label: 'Live consultation',
+    label: '3-way consultation',
     kind: 'consultation',
     max_participants: 3,
     media_server: 'livekit',
@@ -38,8 +47,10 @@ const ROOM_PRESETS = [
 
 export default function ScheduleRoomTab() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const presetId = searchParams.get('preset');
   const [form, setForm] = useState({
-    title: '',
+    title: DEFAULT_ROOM_TITLE,
     kind: 'board_review',
     max_participants: 10,
     media_server: 'livekit',
@@ -56,6 +67,21 @@ export default function ScheduleRoomTab() {
   const [err, setErr] = useState('');
   const [ok, setOk] = useState(null);
 
+  useEffect(() => {
+    const preset = ROOM_PRESETS.find((item) => item.id === presetId);
+    if (!preset) return;
+
+    setForm((current) => ({
+      ...current,
+      title: !current.title || current.title === DEFAULT_ROOM_TITLE ? preset.label : current.title,
+      kind: preset.kind,
+      max_participants: preset.max_participants,
+      media_server: preset.media_server,
+      start_now: true,
+      require_media_ready: true,
+    }));
+  }, [presetId]);
+
   function setField(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
   }
@@ -63,6 +89,7 @@ export default function ScheduleRoomTab() {
   function applyPreset(preset) {
     setForm((current) => ({
       ...current,
+      title: !current.title || current.title === DEFAULT_ROOM_TITLE ? preset.label : current.title,
       kind: preset.kind,
       max_participants: preset.max_participants,
       media_server: preset.media_server,
@@ -127,7 +154,7 @@ export default function ScheduleRoomTab() {
           </span>
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-4">
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {ROOM_PRESETS.map((preset) => {
             const active =
               form.kind === preset.kind &&

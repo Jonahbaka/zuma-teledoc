@@ -36,11 +36,16 @@ test('provider sidebar exposes command center and healthcare operating system la
 test('command center exposes operational provider dashboard actions', () => {
   const component = read('components/ng/provider/ProviderCommandCenter.jsx');
   for (const text of [
-    'Start Meeting',
-    'href="/ng/conference"',
+    'Start LiveKit Room',
+    "providerPath('/call')",
+    'LiveKit Conference Rooms',
+    '1:1 consult',
+    '3-way consultation',
+    '5-person case review',
+    '10-person board',
     'Appointments ready for clinical review and video consultation.',
-    'Clinical rooms for live consultations, case reviews, screen sharing, chat, and participant management.',
-    'Open rooms',
+    'Appointment-free LiveKit rooms for 1:1 consults, 3-way escalation, 5-person case reviews, and 10-person board meetings.',
+    'Start room',
     'Appointment -> Video -> SOAP -> Diagnosis -> Prescription -> Referral -> Pharmacy -> Follow-up -> EMR',
   ]) {
     assert.match(component, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

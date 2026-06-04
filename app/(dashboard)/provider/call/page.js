@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Calendar, ListOrdered, Users, Video } from 'lucide-react';
+import { Calendar, ListOrdered, Radio, Users, Video } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,14 +13,25 @@ export default function ProviderCallEntryPage() {
   return (
     <div className="space-y-6">
       <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-purple-700">Provider Visit Hub</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Launch live visits from the correct provider workflow</h1>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-purple-700">Provider Video Workspace</p>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Start clinical video rooms or open appointment visits</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Broken standalone-call redirects have been removed. Providers should open active video visits from schedule, triage, or patient appointment routes so charting and call context stay aligned.
+          Use LiveKit conference rooms for appointment-free clinical meetings, or open a scheduled appointment visit when the call must stay attached to charting context.
         </p>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-border/70">
+          <CardContent className="p-6">
+            <Radio className="h-8 w-8 text-emerald-600" />
+            <h2 className="mt-4 text-lg font-semibold text-foreground">LiveKit Conference Rooms</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Start 1:1, 3-way, 5-person, or 10-person rooms without an appointment.</p>
+            <Link href="/ng/provider/call" className="mt-4 inline-flex">
+              <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Start LiveKit Room</Button>
+            </Link>
+          </CardContent>
+        </Card>
+
         <Card className="border-border/70">
           <CardContent className="p-6">
             <Calendar className="h-8 w-8 text-purple-600" />
