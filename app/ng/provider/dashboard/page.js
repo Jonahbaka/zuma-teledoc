@@ -1,5 +1,5 @@
-import ProviderDashboardPage from '@/app/(dashboard)/provider/dashboard/page';
+import PremiumProviderDashboard from '@/components/provider/PremiumProviderDashboard';
 
 export default function NigeriaProviderDashboardPage() {
-  return <ProviderDashboardPage />;
+  return <PremiumProviderDashboard market="NG" />;
 }

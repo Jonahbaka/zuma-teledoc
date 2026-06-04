@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Calendar, ListOrdered, Users, Video } from 'lucide-react';
+import { Calendar, ListOrdered, ShieldCheck, Users, Video } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,14 +13,28 @@ export default function ProviderCallEntryPage() {
   return (
     <div className="space-y-6">
       <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-purple-700">Provider Visit Hub</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Launch live visits from the correct provider workflow</h1>
+        <p className="text-xs font-semibold uppercase text-blue-700">Clinical Video</p>
+        <h1 className="mt-2 text-3xl font-bold text-slate-950">Start secure video consultations</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Broken standalone-call redirects have been removed. Providers should open active video visits from schedule, triage, or patient appointment routes so charting and call context stay aligned.
+          Open active video visits from schedule, triage, or patient appointment routes so charting stays aligned. Use the self-test room to verify camera, microphone, speaker, and WebRTC readiness before seeing patients.
         </p>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-emerald-200 bg-emerald-50/70 dark:bg-emerald-950/20">
+          <CardContent className="p-6">
+            <ShieldCheck className="h-8 w-8 text-emerald-600" />
+            <h2 className="mt-4 text-lg font-semibold text-foreground">Video Readiness Test</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Start a no-appointment self-test room using real browser media and WebRTC checks.</p>
+            <Link href={toProviderPortalPath('/appointments/standalone/call', { pathname })} className="mt-4 inline-flex">
+              <Button className="bg-emerald-600 text-white hover:bg-emerald-500">
+                <Video className="mr-2 h-4 w-4" />
+                Start Test
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
         <Card className="border-border/70">
           <CardContent className="p-6">
             <Calendar className="h-8 w-8 text-purple-600" />

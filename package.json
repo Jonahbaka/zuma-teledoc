@@ -17,6 +17,22 @@
     "ng:seed:pack": "node ng/scripts/ingest-doctarx-nigeria-pack.js",
     "migrate:rollback": "node server/db/rollback.js",
     "seed:links": "node server/scripts/seed-testing-links.js",
+    "seed:dr-sandra": "node server/scripts/seed-dr-sandra-provider.js",
+    "verify:dr-sandra": "node server/scripts/seed-dr-sandra-provider.js --verify",
+    "verify:dr-sandra:flow": "node server/scripts/verify-dr-sandra-auth-flow.js",
+    "verify:admin-test-access": "node scripts/verify-admin-test-access-flow.cjs",
+    "verify:testing-link-lifecycle": "node scripts/verify-testing-link-lifecycle.cjs",
+    "e2e:video:ng": "node scripts/e2e-ng-video-call.cjs",
+    "ng:seed-demo": "node ng/scripts/seed-demo-accounts.js",
+    "ng:seed-demo:dry": "node ng/scripts/seed-demo-accounts.js --dry-run",
+    "ng:simulate:clinical": "node ng/scripts/simulate-live-clinical-workflows.js",
+    "ng:simulate:clinical:dry": "node ng/scripts/simulate-live-clinical-workflows.js --dry-run",
+    "ng:simulate:conference": "node ng/scripts/simulate-conference-workflows.js",
+    "ng:fixture:provider-dashboard": "node scripts/ng-provider-dashboard-fixture.cjs",
+    "test:provider-portal": "node --test ng/tests/provider-portal-contract.test.js",
+    "test:provider-intelligence": "node --test ng/tests/provider-clinical-intelligence.test.js",
+    "test:live-clinical-simulation": "node --test ng/tests/live-clinical-simulation.test.js",
+    "test:conference-simulation": "node --test ng/tests/conferencing-simulation.test.js",
     "lint": "eslint .",
     "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\""
   },
@@ -87,6 +103,7 @@
     "twitter-api-v2": "^1.29.0",
     "uuid": "^10.0.0",
     "winston": "^3.15.0",
+    "ws": "~8.18.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -101,5 +118,13 @@
   },
   "engines": {
     "node": ">=20.0.0"
-  }
+  },
+  "main": "next.config.js",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }
