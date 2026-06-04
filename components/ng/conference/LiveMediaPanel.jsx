@@ -127,9 +127,9 @@ export function UnsupportedSfuPanel({ room }) {
           <ServerCrash className="h-5 w-5" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-amber-900">SFU media client not available</p>
+          <p className="text-sm font-semibold text-amber-900">Adaptive media client not available</p>
           <p className="mt-1 text-sm text-amber-800">
-            This room is configured for <code>{room?.media_server}</code> with up to {room?.max_participants} participants.
+            This room is configured for managed clinical media with up to {room?.max_participants} participants.
             The browser panel only supports peer mesh rooms of 3 participants or fewer.
           </p>
         </div>

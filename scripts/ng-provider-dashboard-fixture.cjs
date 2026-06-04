@@ -128,6 +128,22 @@ app.get('/api/ng/clinical/prescriptions', authed, (_, res) => {
   });
 });
 
+app.get('/api/prescriptions', authed, (_, res) => {
+  res.json({
+    success: true,
+    prescriptions: [
+      {
+        id: 'us-rx-1',
+        patientFirstName: 'Chinedu',
+        patientLastName: 'Bello',
+        status: 'sent',
+        medicationName: 'Amlodipine',
+        refillsAllowed: 2,
+      },
+    ],
+  });
+});
+
 app.get('/api/ng/clinical/referrals', authed, (_, res) => {
   res.json({
     success: true,

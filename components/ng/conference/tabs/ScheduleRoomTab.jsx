@@ -24,26 +24,34 @@ const ROOM_PRESETS = [
   },
   {
     id: 'case_review',
-    label: 'Case review',
+    label: '5-person case review',
     kind: 'case_conference',
     max_participants: 5,
     media_server: 'livekit',
   },
   {
     id: 'hospital_board',
-    label: 'Hospital board',
+    label: '10-person board',
     kind: 'board_review',
     max_participants: 10,
     media_server: 'livekit',
   },
   {
     id: 'small_peer_mesh',
-    label: 'Small peer room',
+    label: 'Small direct room',
     kind: 'consultation',
     max_participants: 3,
     media_server: 'peer_mesh',
   },
 ];
+
+function userFacingMeetingError(message) {
+  return String(message || 'Meeting could not be started.')
+    .replace(/Conference media is not production-ready:/gi, 'Meeting media is not ready:')
+    .replace(/LiveKit SFU/gi, 'clinical media service')
+    .replace(/LiveKit/gi, 'clinical media service')
+    .replace(/\bSFU\b/gi, 'media service');
+}
 
 export default function ScheduleRoomTab() {
   const router = useRouter();
@@ -125,14 +133,14 @@ export default function ScheduleRoomTab() {
           started = true;
         } catch (startErr) {
           setOk({ room: created.room, started: false });
-          throw new Error(`Room created but media start failed: ${startErr.message}`);
+          throw new Error(`Meeting created but media start failed: ${userFacingMeetingError(startErr.message)}`);
         }
       }
 
       setOk({ room: activeRoom, started });
       setTimeout(() => router.push(`/ng/conference/${activeRoom.id}`), 600);
     } catch (error) {
-      setErr(error.message);
+      setErr(userFacingMeetingError(error.message));
     } finally {
       setBusy(false);
     }
@@ -150,7 +158,7 @@ export default function ScheduleRoomTab() {
           </div>
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
             <Radio className="h-3.5 w-3.5" />
-            {form.media_server}
+            Adaptive media
           </span>
         </div>
 
@@ -218,14 +226,14 @@ export default function ScheduleRoomTab() {
           />
         </div>
         <div>
-          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Media backend</label>
+          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Media mode</label>
           <select
             value={form.media_server}
             onChange={(event) => setField('media_server', event.target.value)}
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
-            <option value="livekit">LiveKit SFU</option>
-            <option value="peer_mesh">Peer mesh</option>
+            <option value="livekit">Adaptive clinical media</option>
+            <option value="peer_mesh">Small-room direct media</option>
           </select>
         </div>
       </div>

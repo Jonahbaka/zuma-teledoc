@@ -45,7 +45,7 @@ const STATIONS = [
   {
     href: '/ng/conference',
     icon: Video,
-    title: 'Multi-Party Conferencing',
+    title: 'Multi-Party Clinical Video',
     sub: 'Case conferences · teaching rounds · board reviews · role permissions · invites',
     tone: 'bg-green-50 border-green-200 text-green-900',
   },

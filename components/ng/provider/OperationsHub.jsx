@@ -34,7 +34,7 @@ const TOOL_GROUPS = [
   {
     title: 'Collaboration',
     items: [
-      { href: '/ng/provider/call',            icon: Video,       title: 'Conferencing',         sub: 'Case conferences · teaching rounds · boards' },
+      { href: '/ng/provider/call',            icon: Video,       title: 'Clinical Video',         sub: 'Case conferences · teaching rounds · boards' },
       { href: '/ng/telehealth/diagnostics',icon: Activity,    title: 'Pre-call diagnostics', sub: 'Bandwidth probe · device check · adaptive' },
       { href: '/ng/referral-network',      icon: Network,     title: 'Referral network',     sub: 'Marketplace · compose · inbox · heatmap' },
     ],

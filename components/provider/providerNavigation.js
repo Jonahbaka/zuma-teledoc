@@ -24,7 +24,7 @@ const PROVIDER_NAV_ITEMS = {
   dashboard: { href: 'dashboard', icon: LayoutDashboard, labels: { US: 'Dashboard', NG: 'Command Center' } },
   triageQueue: { href: 'triage-queue', icon: ListOrdered, labels: { US: 'Triage Queue', NG: 'Patient Queue' } },
   prescriptions: { href: 'prescriptions', icon: Pill, labels: { US: 'External eRx', NG: 'Prescriptions' } },
-  call: { href: 'call', icon: Video, labels: { US: 'Visit Hub', NG: 'Conferencing' } },
+  call: { href: 'call', icon: Video, labels: { US: 'Clinical Video', NG: 'Clinical Video' } },
   imaging: { href: 'imaging', icon: Eye, labels: { US: 'Medical Imaging', NG: 'Medical Imaging' } },
   triage: { href: 'triage', icon: BrainCircuit, labels: { US: 'AI Triage Results', NG: 'AI Triage Results' } },
   schedule: { href: 'schedule', icon: Calendar, labels: { US: 'Schedule', NG: 'Schedule' } },

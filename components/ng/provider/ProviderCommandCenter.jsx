@@ -161,7 +161,7 @@ function ConferencePresetCard({ preset, conferencePath }) {
       </div>
       <div className="mt-4 flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
         <span>{preset.participants} participants</span>
-        <span>Start LiveKit SFU</span>
+        <span>Start meeting</span>
       </div>
     </Link>
   );
@@ -343,7 +343,7 @@ export default function ProviderCommandCenter() {
             <Link href={conferencePath}>
               <Button className="bg-emerald-600 text-white hover:bg-emerald-500">
                 <Video className="mr-2 h-4 w-4" />
-                Start LiveKit Room
+                Start Meeting
               </Button>
             </Link>
           </div>
@@ -367,7 +367,7 @@ export default function ProviderCommandCenter() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Radio className="h-5 w-5 text-emerald-700" />
-            LiveKit Conference Rooms
+            Clinical Video Rooms
           </CardTitle>
           <CardDescription>Start provider-led clinical video rooms without an appointment.</CardDescription>
         </CardHeader>
@@ -401,7 +401,7 @@ export default function ProviderCommandCenter() {
                 <Video className="mx-auto h-10 w-10 text-emerald-600/70" />
                 <p className="mt-3 font-semibold text-foreground">No active consultation queue</p>
                 <Link href={conferencePath} className="mt-4 inline-flex">
-                  <Button variant="outline">Start LiveKit Room</Button>
+                  <Button variant="outline">Start Meeting</Button>
                 </Link>
               </div>
             )}
@@ -459,7 +459,7 @@ export default function ProviderCommandCenter() {
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <WorkflowStep icon={Calendar} label="Appointments" route="/schedule" action="Open schedule" providerPath={providerPath} />
-          <WorkflowStep icon={Video} label="Conferencing" route="/call" action="Start LiveKit room" providerPath={providerPath} />
+          <WorkflowStep icon={Video} label="Clinical Video" route="/call" action="Start meeting" providerPath={providerPath} />
           <WorkflowStep icon={FileText} label="SOAP Notes" route="/visits" action="Document visit" providerPath={providerPath} />
           <WorkflowStep icon={Stethoscope} label="EMR Review" route="/patients" action="Open record" providerPath={providerPath} />
           <WorkflowStep icon={Pill} label="Prescriptions" route="/prescriptions" action="Track pharmacy" providerPath={providerPath} />
@@ -479,7 +479,7 @@ export default function ProviderCommandCenter() {
             <CardDescription>Visible provider-dashboard entry points for the major clinical subsystems</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-2">
-            <FeatureAction icon={Video} label="Conferencing" route={conferencePath} detail="Appointment-free LiveKit rooms for 1:1 consults, 3-way escalation, 5-person case reviews, and 10-person board meetings." action="Start room" tone="emerald" />
+            <FeatureAction icon={Video} label="Clinical Video" route={conferencePath} detail="Appointment-free clinical rooms for 1:1 consults, 3-way escalation, 5-person case reviews, and 10-person board meetings." action="Start meeting" tone="emerald" />
             <FeatureAction icon={FileText} label="SOAP Workflow" route={providerPath('/visits')} detail="Visit documentation attached to appointments, diagnoses, treatment plans, and follow-up tasks." action="Open visits" tone="sky" />
             <FeatureAction icon={Pill} label="Prescriptions + Pharmacy Status" route={providerPath('/prescriptions')} detail="Prescription creation, pharmacy routing, lifecycle status, refill, and audit log panels." action="Track prescriptions" tone="amber" />
             <FeatureAction icon={Share2} label="Referral Network" route={providerPath('/referrals')} detail="Patient-linked referral creation and status queues with specialist coordination fields." action="Manage referrals" tone="violet" />

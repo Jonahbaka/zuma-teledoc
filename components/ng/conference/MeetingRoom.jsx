@@ -12,7 +12,7 @@
  *   meeting    → admitted, WebRTC signaling active
  *   left       → user left voluntarily (can rejoin)
  *   denied     → host denied the participant
- *   sfu-needed → room requires SFU but none is configured
+ *   media-needed → room requires the adaptive media service but none is configured
  *
  * UI:
  *   Header     – room name, live badge, participant count, network quality
@@ -529,7 +529,7 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
   const [lobbyStream, setLobbyStream] = useState(null);
   const isLiveKitRoom = String(room?.media_server || '').toLowerCase() === 'livekit';
 
-  // Peer-mesh signaling stays available for small rooms. LiveKit rooms use the SFU client.
+  // Direct signaling stays available for small rooms. Adaptive-media rooms use the managed media client.
   const signalingEnabled = phase === 'meeting' && !isLiveKitRoom;
   const {
     phase:             sigPhase,
@@ -734,10 +734,10 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
             <p className="rounded-xl bg-rose-900/30 px-4 py-2.5 text-sm text-rose-300">{joinError}</p>
           )}
 
-          {/* SFU notice */}
+          {/* Managed media notice */}
           {isLiveKitRoom && (
             <div className="rounded-xl bg-emerald-900/20 px-4 py-3 text-xs text-emerald-300">
-              <strong>LiveKit room:</strong> Joining connects through the configured SFU for multi-party audio, video, screen share, and adaptive media.
+              <strong>Adaptive media:</strong> Joining connects through the managed clinical media service for multi-party audio, video, screen share, and connection recovery.
             </div>
           )}
 

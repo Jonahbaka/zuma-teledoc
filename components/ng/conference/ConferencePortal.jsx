@@ -2,8 +2,8 @@
 
 /**
  * components/ng/conference/ConferencePortal.jsx
- * Multi-party video conferencing portal.
- * Tabs: Rooms | Start Room | Join
+ * Multi-party clinical video portal.
+ * Tabs: Rooms | Start Meeting | Join
  * Data source: /api/ng/conference/*
  */
 
@@ -16,7 +16,7 @@ import JoinTab from './tabs/JoinTab';
 
 const TABS = [
   { id: 'rooms', label: 'Rooms', icon: Radio },
-  { id: 'schedule', label: 'Start Room', icon: Calendar },
+  { id: 'schedule', label: 'Start Meeting', icon: Calendar },
   { id: 'join', label: 'Join', icon: LogIn },
 ];
 
@@ -32,9 +32,9 @@ export default function ConferencePortal({ initialTab = 'rooms' }) {
               <Video className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-lg font-black text-slate-900">Conferencing</h1>
+              <h1 className="text-lg font-black text-slate-900">Clinical Video</h1>
               <p className="text-xs text-slate-500">
-                Live clinical rooms for consultations, case reviews, teaching rounds, and board meetings.
+                Live clinical meetings for consultations, case reviews, teaching rounds, and board meetings.
               </p>
             </div>
           </div>

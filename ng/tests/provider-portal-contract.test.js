@@ -9,19 +9,28 @@ function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
-test('Nigeria provider dashboard uses the command center behind a rollback flag', () => {
-  const page = read('app/ng/provider/dashboard/page.js');
-  assert.match(page, /ProviderCommandCenter/);
-  assert.match(page, /NEXT_PUBLIC_NG_PROVIDER_COMMAND_CENTER_ENABLED/);
-  assert.match(page, /ProviderDashboardPage/);
+function escaped(text) {
+  return new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+}
+
+test('US and Nigeria provider dashboards use the shared premium operating workspace', () => {
+  const usPage = read('app/(dashboard)/provider/dashboard/page.js');
+  const ngPage = read('app/ng/provider/dashboard/page.js');
+
+  assert.match(usPage, /PremiumProviderDashboard/);
+  assert.match(usPage, /market="US"/);
+  assert.match(ngPage, /PremiumProviderDashboard/);
+  assert.match(ngPage, /market="NG"/);
+  assert.doesNotMatch(ngPage, /ProviderCommandCenter/);
+  assert.doesNotMatch(ngPage, /NEXT_PUBLIC_NG_PROVIDER_COMMAND_CENTER_ENABLED/);
 });
 
-test('provider sidebar exposes command center and healthcare operating system labels', () => {
+test('provider sidebar exposes healthcare operating system labels without old video hub copy', () => {
   const navigation = read('components/provider/providerNavigation.js');
   for (const label of [
     'Command Center',
     'Patient Queue',
-    'Conferencing',
+    'Clinical Video',
     'EMR',
     'SOAP & Visits',
     'Prescriptions',
@@ -29,28 +38,48 @@ test('provider sidebar exposes command center and healthcare operating system la
     'Care Teams',
     'Forecasts',
   ]) {
-    assert.match(navigation, new RegExp(label.replace(/[&]/g, '&')));
+    assert.match(navigation, escaped(label));
   }
+  assert.doesNotMatch(navigation, /Visit Hub/);
+  assert.doesNotMatch(navigation, /Conferencing/);
 });
 
-test('command center exposes operational provider dashboard actions', () => {
-  const component = read('components/ng/provider/ProviderCommandCenter.jsx');
+test('premium provider dashboard binds the pasted command center design to live provider APIs', () => {
+  const component = read('components/provider/PremiumProviderDashboard.jsx');
   for (const text of [
-    'Start LiveKit Room',
-    "providerPath('/call')",
-    'LiveKit Conference Rooms',
-    '1:1 consult',
-    '3-way consultation',
-    '5-person case review',
-    '10-person board',
-    'Appointments ready for clinical review and video consultation.',
-    'Appointment-free LiveKit rooms for 1:1 consults, 3-way escalation, 5-person case reviews, and 10-person board meetings.',
-    'Start room',
-    'Appointment -> Video -> SOAP -> Diagnosis -> Prescription -> Referral -> Pharmacy -> Follow-up -> EMR',
+    'DoctaRx OS',
+    'Command Center',
+    'Population Health',
+    'Clinical Records',
+    'Clinical Video',
+    'Start Secure Video Meeting',
+    'Healthcare Operating Workspace',
+    'Patient Flow & Capacity Forecast',
+    'providersAPI.getPatients',
+    '/ng/clinical/prescriptions',
+    '/ng/clinical/referrals',
+    "appointmentsAPI.getUpcoming(20)",
+    "visitsAPI.getRecent(20)",
   ]) {
-    assert.match(component, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(component, escaped(text));
   }
+  assert.doesNotMatch(component, /MOCK DATA/);
+  assert.doesNotMatch(component, /patientData/);
   assert.doesNotMatch(component, /Provider Dashboard ->/);
+});
+
+test('provider clinical video entry removes old visit hub and implementation-name language', () => {
+  const callPage = read('app/(dashboard)/provider/call/page.js');
+  assert.match(callPage, /Clinical Video/);
+  assert.match(callPage, /Video Readiness Test/);
+  assert.doesNotMatch(callPage, /Provider Visit Hub/);
+  assert.doesNotMatch(callPage, /Visit Hub/);
+  assert.doesNotMatch(callPage, /LiveKit/);
+  assert.doesNotMatch(callPage, /SFU/);
+});
+
+test('Nigeria clinical route loads required services', () => {
+  assert.doesNotThrow(() => require('../../ng/routes/clinical'));
 });
 
 test('referral route supports provider-visible lifecycle tracking', () => {
@@ -59,10 +88,6 @@ test('referral route supports provider-visible lifecycle tracking', () => {
   assert.match(route, /router\.patch\('\/referrals\/:id\/status'/);
   assert.match(route, /soapNoteIds/);
   assert.match(route, /prescriptionIds/);
-});
-
-test('Nigeria clinical route loads required services', () => {
-  assert.doesNotThrow(() => require('../../ng/routes/clinical'));
 });
 
 test('prescription creation enforces patient-scoped clinical write access before insert', () => {

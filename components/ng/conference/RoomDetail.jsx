@@ -137,7 +137,7 @@ export default function RoomDetail({ roomId }) {
                 </button>
                 <span>{room.kind}</span>
                 <span>Up to {room.max_participants}</span>
-                <span>media: {room.media_server}</span>
+                <span>media: adaptive</span>
                 {room.scheduled_start && <span>start: {fmtDateTime(room.scheduled_start)}</span>}
               </div>
             </div>
@@ -179,7 +179,7 @@ export default function RoomDetail({ roomId }) {
                     onClick={() => action(() => conf.startRoom(room.id), 'Start')}
                     className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                   >
-                    <Play className="h-3.5 w-3.5" /> Start room
+                    <Play className="h-3.5 w-3.5" /> Start meeting
                   </button>
                   <button
                     onClick={() =>
@@ -222,7 +222,7 @@ export default function RoomDetail({ roomId }) {
       {room.status === 'scheduled' && (
         <div className="mx-auto max-w-6xl px-6 pt-4">
           <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-            <strong>Scheduled room</strong> — Click <em>Start room</em> to open it for participants.
+            <strong>Scheduled meeting</strong> - click <em>Start meeting</em> to open it for participants.
             Once started, the full meeting room UI will launch automatically.
           </div>
         </div>
@@ -246,8 +246,7 @@ export default function RoomDetail({ roomId }) {
       </main>
 
       <footer className="mx-auto max-w-6xl px-6 pb-8 text-[11px] text-slate-400">
-        Media: <code>{room.media_server}</code> · signaling: <code>{room.signaling_namespace}</code>.
-        Peer mesh (≤ 3 participants) or SFU when <code>NG_LIVEKIT_URL</code> is configured.
+        Clinical media mode and signaling are configured for this room.
       </footer>
     </div>
   );

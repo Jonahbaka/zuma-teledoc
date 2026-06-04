@@ -161,7 +161,7 @@ const ArchitectureDiagram = () => (
           <div className="bg-slate-800 p-4 rounded-lg border border-slate-600 text-center hover:border-cyan-400 transition-colors">
             <Activity className="w-5 h-5 mx-auto mb-2 text-cyan-400" />
             <div className="font-bold text-sm">Live Stream</div>
-            <div className="text-xs text-slate-400">WebRTC / SFU</div>
+            <div className="text-xs text-slate-400">WebRTC media</div>
           </div>
         </div>
 

@@ -702,7 +702,20 @@ class CdpClient {
 
 async function launchBrowserAgent({ role, token, user, debugPort, width = 1280, height = 900 }) {
   const chromePath = findChromePath();
-  const fakeMedia = ensureFakeMediaFiles();
+  const sharedFakeMedia = ensureFakeMediaFiles();
+  const roleMediaDir = path.join(
+    os.tmpdir(),
+    'doctarx-video-e2e-media',
+    `${path.basename(ARTIFACT_DIR)}-${role}`
+  );
+  fs.rmSync(roleMediaDir, { recursive: true, force: true });
+  fs.mkdirSync(roleMediaDir, { recursive: true });
+  const fakeMedia = {
+    videoPath: path.join(roleMediaDir, `${role}-camera.y4m`),
+    audioPath: path.join(roleMediaDir, `${role}-microphone.wav`)
+  };
+  fs.copyFileSync(sharedFakeMedia.videoPath, fakeMedia.videoPath);
+  fs.copyFileSync(sharedFakeMedia.audioPath, fakeMedia.audioPath);
   const userDataDir = path.join(
     os.tmpdir(),
     'doctarx-video-e2e',
@@ -723,6 +736,7 @@ async function launchBrowserAgent({ role, token, user, debugPort, width = 1280, 
     '--use-fake-ui-for-media-stream',
     '--use-fake-device-for-media-stream',
     `--use-file-for-fake-video-capture=${fakeMedia.videoPath}`,
+    `--use-file-for-fake-audio-capture=${fakeMedia.audioPath}`,
     '--autoplay-policy=no-user-gesture-required',
     '--allow-insecure-localhost',
     `--unsafely-treat-insecure-origin-as-secure=http://localhost:${NEXT_PORT},http://localhost:${API_PORT}`,

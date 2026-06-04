@@ -436,7 +436,7 @@ export default function LiveKitMediaPanel({
     } catch (err) {
       setStatus('error');
       setConnectionState('disconnected');
-      setError(err?.message || 'LiveKit room connection failed.');
+      setError(err?.message || 'Media room connection failed.');
       roomRef.current = null;
       setLivekitRoom(null);
       bump();
@@ -538,14 +538,14 @@ export default function LiveKitMediaPanel({
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-3 py-2 text-xs text-slate-400">
         <span className="inline-flex items-center gap-1">
           <Radio className="h-3.5 w-3.5 text-emerald-400" />
-          LiveKit SFU
+          Adaptive media
         </span>
         <span className="inline-flex items-center gap-1">
           {currentNetwork.icon}
           <span className="capitalize">{currentNetwork.label}</span>
         </span>
         <span>{visibleParticipantCount} in room</span>
-        <span className="font-mono text-[11px]">{compactUrl(livekitUrl) || 'media server pending'}</span>
+        <span className="font-mono text-[11px]">{compactUrl(livekitUrl) || 'media service pending'}</span>
       </div>
 
       {(status === 'connecting' || status === 'reconnecting') && (
@@ -596,7 +596,7 @@ export default function LiveKitMediaPanel({
             <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
             <div>
               <p className="font-semibold text-white">Preparing media room</p>
-              <p className="mt-1 text-sm text-slate-400">Camera, microphone, and SFU subscription setup is in progress.</p>
+              <p className="mt-1 text-sm text-slate-400">Camera, microphone, and media subscription setup is in progress.</p>
             </div>
           </div>
         )}
