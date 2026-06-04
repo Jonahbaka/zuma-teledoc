@@ -216,6 +216,12 @@ jobs:
 
             echo "$(date -u +%H:%M:%S) status=$STATUS verified=$VERIFIED build=$CHECK_BUILD pm2=$CHECK_PM2 health=$CHECK_HEALTH ngHealth=$CHECK_NGHEALTH deployId=$DEPLOYID pid=$PID"
 
+            if { [ "$STATUS" = "running" ] || [ "$STATUS" = "idle" ]; } && bootstrap_check; then
+              echo "=== BOOTSTRAP: target commit and build are live while deploy status is $STATUS (gitCommit=$BOOT_GC, buildId=$BOOT_BI, health=$BOOT_HS) ==="
+              if run_production_verify; then OUTCOME=success; else OUTCOME=verify_failed; fi
+              break
+            fi
+
             case "$STATUS" in
               success)
                 echo "=== DEPLOY TERMINAL (status=$STATUS exitCode=$EXITCODE commit=$COMMIT deployId=$DEPLOYID) ==="

@@ -247,7 +247,15 @@ started_ats = []
 healthy_count = 0
 ready_count = 0
 for i in range(1, 6):
-    code, h, _ = _json(f"/api/health?stability={i}")
+    code, h, _ = 0, None, ""
+    attempts = []
+    for attempt in range(1, 4):
+        code, h, _ = _json(f"/api/health?stability={i}&attempt={attempt}")
+        attempts.append(code)
+        if isinstance(h, dict):
+            break
+        if attempt < 3:
+            time.sleep(3)
     if isinstance(h, dict):
         st = h.get("status")
         started_ats.append(h.get("startedAt"))
@@ -255,9 +263,10 @@ for i in range(1, 6):
             healthy_count += 1
         if h.get("nextReady") is True:
             ready_count += 1
-        print(f"  poll {i}: status={st} nextReady={h.get('nextReady')} startedAt={h.get('startedAt')}")
+        retry_note = "" if len(attempts) == 1 else f" attempts={attempts}"
+        print(f"  poll {i}: status={st} nextReady={h.get('nextReady')} startedAt={h.get('startedAt')}{retry_note}")
     else:
-        print(f"  poll {i}: HTTP={code} (unreachable)")
+        print(f"  poll {i}: HTTP={code} (unreachable after attempts={attempts})")
     if i < 5:
         time.sleep(15)
 
