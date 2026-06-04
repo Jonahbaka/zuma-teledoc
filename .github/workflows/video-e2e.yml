@@ -1,0 +1,83 @@
+name: Video WebRTC E2E (NG)
+
+# Real browser WebRTC verification. Launches two headless Chrome instances
+# (provider + patient) with fake media devices against a locally-served
+# production Next.js build, exchanges offer/answer/ICE over the telehealth
+# signaling channel, and asserts both peer connections reach `connected` with
+# remote audio+video tracks, in-call chat, and a clean leave.
+#
+# This is the closest executable browser harness in CI: it proves the 1:1 P2P
+# WebRTC path end-to-end. It does NOT exercise the production TURN relay or the
+# LiveKit SFU (multi-party) path — those require a real browser session against
+# production media with valid demo credentials and remain reported NOT VERIFIED.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  video-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Ensure Chrome is available
+        id: chrome
+        run: |
+          P=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || command -v chromium || true)
+          if [ -z "$P" ]; then
+            sudo apt-get update
+            sudo apt-get install -y google-chrome-stable || sudo apt-get install -y chromium-browser || true
+            P=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || command -v chromium || true)
+          fi
+          if [ -z "$P" ]; then echo "::error::No Chrome/Chromium found on runner"; exit 1; fi
+          echo "path=$P" >> "$GITHUB_OUTPUT"
+          echo "Using Chrome at: $P"
+          "$P" --version || true
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build Next.js (production)
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          # Build-time env (masked). The e2e talks to a local fixture server;
+          # the telehealth client auto-resolves the socket to localhost:8080 on
+          # localhost, so no NEXT_PUBLIC overrides are required. Secrets are
+          # passed only to satisfy any build-time references.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: npm run build
+
+      - name: Run browser WebRTC E2E (provider + patient, 1:1 P2P)
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.path }}
+        run: npm run e2e:video:ng
+
+      - name: Summarize WebRTC evidence
+        if: always()
+        run: |
+          f=$(ls -dt artifacts/video-e2e/*/result.json 2>/dev/null | head -1 || true)
+          if [ -z "$f" ]; then echo "::warning::no result.json was produced"; exit 0; fi
+          python3 .github/scripts/summarize_video_evidence.py "$f"
+
+      - name: Upload WebRTC evidence (result.json + screenshots + logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-e2e-evidence
+          path: artifacts/video-e2e/**
+          if-no-files-found: warn
