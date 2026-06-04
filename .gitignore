@@ -100,3 +100,7 @@ server/scripts/reset-*.js
 # Cursor IDE terminals
 terminals/
 
+
+# Python bytecode cache (from CI deploy scripts / local tests)
+__pycache__/
+*.pyc
