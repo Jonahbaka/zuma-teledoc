@@ -40,7 +40,10 @@ def _do(url, method="GET"):
     """Return (status_code, headers_dict, body_text). Does not follow redirects
     so we can observe 3xx (auth redirects, www->apex). Errors -> (code|0, {}, text)."""
     opener = urllib.request.build_opener(_NoRedirect)
-    req = urllib.request.Request(url, method=method, headers={"Cache-Control": "no-cache"})
+    req = urllib.request.Request(url, method=method, headers={
+        "Cache-Control": "no-cache",
+        "User-Agent": "Mozilla/5.0 DoctaRxProductionVerifier/1.0",
+    })
     try:
         with opener.open(req, timeout=20) as r:
             return r.getcode(), dict(r.headers), r.read(200000).decode("utf-8", "replace")
