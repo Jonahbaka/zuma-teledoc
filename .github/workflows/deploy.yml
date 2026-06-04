@@ -13,6 +13,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout (for the deploy status parser)
+        uses: actions/checkout@v4
+
       - name: Trigger deploy webhook
         env:
           DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
@@ -91,59 +94,91 @@ jobs:
         env:
           DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
         run: |
-          # Poll the EC2 deploy supervisor until it reaches a TERMINAL state.
-          # The job succeeds ONLY when the server reports complete=True AND the
-          # verification gate did not fail. Any of failed / crashed / timeout is
-          # a hard failure — a slow or detached build must never be reported to
-          # GitHub as success. All python is single-line to stay inside the YAML
-          # literal block (multi-line -c bodies at column 0 terminate the block).
+          # Poll the EC2 deploy status contract until it reaches a TERMINAL state.
+          # The poller and the server agree on ONE JSON shape (parsed by
+          # .github/scripts/deploy_status.py). The job succeeds ONLY when the
+          # server reports status=success AND verified=true. failed / timeout /
+          # unknown are hard failures; an unparseable contract is a hard failure;
+          # a slow or detached build is never reported to GitHub as success.
+          set -o pipefail
           echo "Polling /api/deploy/log until terminal state (max 40 min)..."
           DEADLINE=$(( $(date +%s) + 2400 ))
           OUTCOME=timeout
+          LAST_VERIFY=""
 
-          fetch_log() {
+          fetch_status() {
             if [ -n "$DEPLOY_SECRET" ]; then
-              curl -s --max-time 15 -H "x-deploy-token: $DEPLOY_SECRET" "https://doctarx.com/api/deploy/log?lines=400" 2>/dev/null || echo '{}'
+              curl -s --max-time 20 -H "x-deploy-token: $DEPLOY_SECRET" "https://doctarx.com/api/deploy/log?lines=400" 2>/dev/null || true
             else
               oidc_resp=$(curl -sS --max-time 10 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doctarx-deploy" 2>/dev/null || echo '{}')
               oidc_tok=$(printf '%s' "$oidc_resp" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read() or "{}").get("value",""))' 2>/dev/null || echo '')
-              curl -s --max-time 15 -H "Authorization: Bearer $oidc_tok" "https://doctarx.com/api/deploy/log?lines=400" 2>/dev/null || echo '{}'
+              curl -s --max-time 20 -H "Authorization: Bearer $oidc_tok" "https://doctarx.com/api/deploy/log?lines=400" 2>/dev/null || true
             fi
-          }
-
-          print_verify() {
-            printf '%s' "$1" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); [print(l) for l in d.get("lines",[]) if any(t in l for t in ["[verify","[deploy]","livekit","LiveKit","SFU","multiParty","configured","media","NG","pm2","HTTP"])]' 2>/dev/null || true
           }
 
           while [ $(date +%s) -lt $DEADLINE ]; do
-            LOG_JSON=$(fetch_log)
-            STATUS_LINE=$(printf '%s' "${LOG_JSON:-{}}" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); lines="\n".join(d.get("lines",[])); co=bool(d.get("complete",False) or "[deploy] complete" in lines); fa=bool(d.get("failed",False) or "[deploy] failed" in lines); ve=d.get("verify","?"); ve=("pass" if "[verify:result] PASS" in lines else "fail" if "[verify:result] FAIL" in lines else ve); st=d.get("status","?"); st=("success" if co and not fa else "failed" if fa else st); print(st, co, fa, ve)' 2>/dev/null || echo "? False False ?")
-            read -r STATUS DONE FAILED VERIFY <<< "$STATUS_LINE" || true
+            RESP="$(fetch_status || true)"
+            PARSED="$(printf '%s' "$RESP" | python3 .github/scripts/deploy_status.py || true)"
+            KV="$(printf '%s\n' "$PARSED" | sed '/^---VERIFY---$/,$d')"
+            LAST_VERIFY="$(printf '%s\n' "$PARSED" | sed -n '/^---VERIFY---$/,$p' | tail -n +2)"
 
-            if [ "$DONE" = "True" ] && [ "$VERIFY" != "fail" ]; then
-              OUTCOME=success
-              echo "=== DEPLOY COMPLETE (status=$STATUS verify=$VERIFY) — verification output ==="
-              print_verify "$LOG_JSON"
+            RESULT=""; STATUS=""; VERIFIED=""; DEPLOYID=""; PID=""; EXITCODE=""; COMMIT=""
+            CHECK_BUILD=""; CHECK_PM2=""; CHECK_HEALTH=""; CHECK_NGHEALTH=""
+            eval "$KV"
+
+            if [ "$RESULT" = "contract_error" ]; then
+              echo "::error::DEPLOY_STATUS_CONTRACT_ERROR — /api/deploy/log did not honor the status contract."
+              echo "----- raw (redacted) response, truncated to 2000 chars -----"
+              printf '%s' "$RESP" | head -c 2000
+              echo ""
+              OUTCOME=contract_error
               break
             fi
-            if [ "$FAILED" = "True" ] || [ "$VERIFY" = "fail" ]; then
-              OUTCOME=failed
-              echo "::error::Deploy reached terminal FAILURE (status=$STATUS verify=$VERIFY)"
-              print_verify "$LOG_JSON"
-              break
+
+            if [ "$RESULT" = "transient" ]; then
+              echo "$(date -u +%H:%M:%S) status endpoint unreachable/non-JSON (server may be mid-reload) — retrying…"
+              sleep 20
+              continue
             fi
-            echo "$(date -u +%H:%M:%S) status=$STATUS verify=$VERIFY — still deploying…"
-            sleep 30
+
+            echo "$(date -u +%H:%M:%S) status=$STATUS verified=$VERIFIED build=$CHECK_BUILD pm2=$CHECK_PM2 health=$CHECK_HEALTH ngHealth=$CHECK_NGHEALTH deployId=$DEPLOYID pid=$PID"
+
+            case "$STATUS" in
+              success)
+                if [ "$VERIFIED" = "true" ]; then
+                  OUTCOME=success
+                else
+                  OUTCOME=failed
+                  echo "::error::EC2 reported status=success but verification did not pass (verified=$VERIFIED)."
+                fi
+                echo "=== DEPLOY TERMINAL (status=$STATUS exitCode=$EXITCODE commit=$COMMIT deployId=$DEPLOYID) ==="
+                printf '%s\n' "$LAST_VERIFY"
+                break ;;
+              failed|timeout|unknown)
+                OUTCOME="$STATUS"
+                echo "::error::Deploy reached terminal non-success state (status=$STATUS exitCode=$EXITCODE)."
+                printf '%s\n' "$LAST_VERIFY"
+                break ;;
+              running|idle)
+                : ;;  # still deploying — keep polling
+              *)
+                echo "::error::DEPLOY_STATUS_CONTRACT_ERROR — unexpected status '$STATUS'."
+                printf '%s' "$RESP" | head -c 2000
+                echo ""
+                OUTCOME=contract_error
+                break ;;
+            esac
+            sleep 20
           done
 
-          # Final summary + outcome enforcement.
+          # Final outcome enforcement: ONLY success exits 0.
           if [ "$OUTCOME" = "success" ]; then
-            echo "Deployment SUCCESSFUL — EC2 reached [deploy] complete and verification passed."
+            echo "Deployment SUCCESSFUL — EC2 status=success and verification checks passed."
             exit 0
           fi
           echo "::error::Deployment did NOT succeed (outcome=$OUTCOME). Last EC2 deploy/verify lines:"
-          print_verify "$(fetch_log)"
+          printf '%s\n' "$LAST_VERIFY"
           if [ "$OUTCOME" = "timeout" ]; then
-            echo "::error::No terminal marker within 40 min — deploy is INCOMPLETE/UNKNOWN on EC2 (check /tmp/doctarx-deploy.log)."
+            echo "::error::No terminal state within 40 min — deploy is INCOMPLETE/UNKNOWN on EC2 (check /tmp/doctarx-deploy.log)."
           fi
           exit 1
