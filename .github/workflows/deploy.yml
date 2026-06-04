@@ -105,6 +105,26 @@ jobs:
           DEADLINE=$(( $(date +%s) + 2400 ))
           OUTCOME=timeout
           LAST_VERIFY=""
+          EXPECTED_SHA="${GITHUB_SHA:0:12}"
+
+          # Bootstrap fallback: when the live server is too old to expose
+          # /api/deploy/log, confirm the deploy via version-independent public
+          # endpoints. Success requires the exact target commit to be live AND
+          # the app healthy AND the NG platform reporting status=ok. Sets
+          # BOOT_GC / BOOT_HS / BOOT_NG / BOOT_MR for reporting; returns 0 on a
+          # fully verified bootstrap completion.
+          bootstrap_check() {
+            local H
+            BOOT_GC=""; BOOT_HS=""; BOOT_NG=""; BOOT_MR=""
+            H="$(curl -s --max-time 20 https://doctarx.com/api/health 2>/dev/null || true)"
+            BOOT_GC="$(printf '%s' "$H" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print((d.get("gitCommit") or "")[:12])' 2>/dev/null || true)"
+            BOOT_HS="$(printf '%s' "$H" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print(d.get("status",""))' 2>/dev/null || true)"
+            BOOT_NG="$(curl -s --max-time 20 https://doctarx.com/api/ng/health 2>/dev/null || true)"
+            BOOT_MR="$(curl -s --max-time 20 https://doctarx.com/api/ng/conference/media-readiness 2>/dev/null || true)"
+            [ -n "$BOOT_GC" ] && [ "${BOOT_GC:0:7}" = "${EXPECTED_SHA:0:7}" ] \
+              && { [ "$BOOT_HS" = "healthy" ] || [ "$BOOT_HS" = "ready" ]; } \
+              && printf '%s' "$BOOT_NG" | grep -q '"status":"ok"'
+          }
 
           fetch_status() {
             if [ -n "$DEPLOY_SECRET" ]; then
@@ -137,6 +157,21 @@ jobs:
 
             if [ "$RESULT" = "transient" ]; then
               echo "$(date -u +%H:%M:%S) status endpoint unreachable/non-JSON (server may be mid-reload) — retrying…"
+              sleep 20
+              continue
+            fi
+
+            if [ "$RESULT" = "route_missing" ]; then
+              # Old server without /api/deploy/log — confirm via /api/health.
+              if bootstrap_check; then
+                OUTCOME=success
+                echo "=== BOOTSTRAP DEPLOY COMPLETE — target commit is live and verified ==="
+                echo "gitCommit=$BOOT_GC (expected ${EXPECTED_SHA:0:7}) health=$BOOT_HS"
+                printf 'ng-health: %s\n' "${BOOT_NG:-<unreachable>}"
+                printf 'media-readiness: %s\n' "${BOOT_MR:-<unreachable>}"
+                break
+              fi
+              echo "$(date -u +%H:%M:%S) /api/deploy/log not on EC2 yet (old server). bootstrap: gitCommit=${BOOT_GC:-?} expected=${EXPECTED_SHA:0:7} health=${BOOT_HS:-?} — still deploying…"
               sleep 20
               continue
             fi

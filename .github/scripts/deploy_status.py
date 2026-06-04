@@ -53,8 +53,14 @@ if not isinstance(data, dict):
     finish("contract_error", "not_an_object", raw)
 
 # A well-formed error envelope (e.g. 401 {ok:false,error:...}) is a real
-# endpoint problem, not a transient one.
+# endpoint problem. The one exception is a 404 "Endpoint not found": that means
+# the live server predates the /api/deploy/log route (bootstrap — the very
+# deploy that installs the route cannot be observed through it yet). The poller
+# falls back to the version-independent /api/health gitCommit signal.
 if data.get("ok") is not True:
+    err = str(data.get("error", "")).lower()
+    if "not found" in err:
+        finish("route_missing", "log_endpoint_not_deployed", json.dumps(data))
     finish("contract_error", "ok_not_true", json.dumps(data))
 
 lines = data.get("lastLines")
