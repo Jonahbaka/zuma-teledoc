@@ -97,8 +97,8 @@ jobs:
           # a hard failure — a slow or detached build must never be reported to
           # GitHub as success. All python is single-line to stay inside the YAML
           # literal block (multi-line -c bodies at column 0 terminate the block).
-          echo "Polling /api/deploy/log until terminal state (max 20 min)..."
-          DEADLINE=$(( $(date +%s) + 1200 ))
+          echo "Polling /api/deploy/log until terminal state (max 40 min)..."
+          DEADLINE=$(( $(date +%s) + 2400 ))
           OUTCOME=timeout
 
           fetch_log() {
@@ -117,7 +117,7 @@ jobs:
 
           while [ $(date +%s) -lt $DEADLINE ]; do
             LOG_JSON=$(fetch_log)
-            STATUS_LINE=$(printf '%s' "${LOG_JSON:-{}}" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print(d.get("status","?"), d.get("complete",False), d.get("failed",False), d.get("verify","?"))' 2>/dev/null || echo "? False False ?")
+            STATUS_LINE=$(printf '%s' "${LOG_JSON:-{}}" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); lines="\n".join(d.get("lines",[])); co=bool(d.get("complete",False) or "[deploy] complete" in lines); fa=bool(d.get("failed",False) or "[deploy] failed" in lines); ve=d.get("verify","?"); ve=("pass" if "[verify:result] PASS" in lines else "fail" if "[verify:result] FAIL" in lines else ve); st=d.get("status","?"); st=("success" if co and not fa else "failed" if fa else st); print(st, co, fa, ve)' 2>/dev/null || echo "? False False ?")
             read -r STATUS DONE FAILED VERIFY <<< "$STATUS_LINE" || true
 
             if [ "$DONE" = "True" ] && [ "$VERIFY" != "fail" ]; then
@@ -144,6 +144,6 @@ jobs:
           echo "::error::Deployment did NOT succeed (outcome=$OUTCOME). Last EC2 deploy/verify lines:"
           print_verify "$(fetch_log)"
           if [ "$OUTCOME" = "timeout" ]; then
-            echo "::error::No terminal marker within 20 min — deploy is INCOMPLETE/UNKNOWN on EC2 (check /tmp/doctarx-deploy.log)."
+            echo "::error::No terminal marker within 40 min — deploy is INCOMPLETE/UNKNOWN on EC2 (check /tmp/doctarx-deploy.log)."
           fi
           exit 1
