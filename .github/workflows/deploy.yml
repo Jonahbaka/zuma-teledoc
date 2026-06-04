@@ -16,6 +16,16 @@ jobs:
       - name: Checkout (for the deploy status parser)
         uses: actions/checkout@v4
 
+      - name: Capture pre-deploy production build
+        id: predeploy
+        run: |
+          H="$(curl -s --max-time 20 https://doctarx.com/api/health 2>/dev/null || true)"
+          BUILD_ID="$(printf '%s' "$H" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print(d.get("buildId") or d.get("version") or "")' 2>/dev/null || true)"
+          GIT_COMMIT="$(printf '%s' "$H" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print(d.get("gitCommit") or "")' 2>/dev/null || true)"
+          echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+          echo "git_commit=$GIT_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "Pre-deploy production buildId=${BUILD_ID:-missing} gitCommit=${GIT_COMMIT:-missing}"
+
       - name: Trigger deploy webhook
         env:
           DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
@@ -108,6 +118,7 @@ jobs:
       - name: Wait for deploy and verify NG platform
         env:
           DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+          PRE_DEPLOY_BUILD_ID: ${{ steps.predeploy.outputs.build_id }}
         run: |
           # Poll the EC2 deploy status contract until it reaches a TERMINAL state.
           # The poller and the server agree on ONE JSON shape (parsed by
@@ -130,13 +141,15 @@ jobs:
           # fully verified bootstrap completion.
           bootstrap_check() {
             local H
-            BOOT_GC=""; BOOT_HS=""; BOOT_NG=""; BOOT_MR=""
+            BOOT_GC=""; BOOT_HS=""; BOOT_BI=""; BOOT_NG=""; BOOT_MR=""
             H="$(curl -s --max-time 20 https://doctarx.com/api/health 2>/dev/null || true)"
             BOOT_GC="$(printf '%s' "$H" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print((d.get("gitCommit") or "")[:12])' 2>/dev/null || true)"
             BOOT_HS="$(printf '%s' "$H" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print(d.get("status",""))' 2>/dev/null || true)"
+            BOOT_BI="$(printf '%s' "$H" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print(d.get("buildId") or d.get("version") or "")' 2>/dev/null || true)"
             BOOT_NG="$(curl -s --max-time 20 https://doctarx.com/api/ng/health 2>/dev/null || true)"
             BOOT_MR="$(curl -s --max-time 20 https://doctarx.com/api/ng/conference/media-readiness 2>/dev/null || true)"
             [ -n "$BOOT_GC" ] && [ "${BOOT_GC:0:7}" = "${EXPECTED_SHA:0:7}" ] \
+              && { [ -z "$PRE_DEPLOY_BUILD_ID" ] || { [ -n "$BOOT_BI" ] && [ "$BOOT_BI" != "$PRE_DEPLOY_BUILD_ID" ]; }; } \
               && { [ "$BOOT_HS" = "healthy" ] || [ "$BOOT_HS" = "ready" ]; } \
               && printf '%s' "$BOOT_NG" | grep -q '"status":"ok"'
           }
@@ -149,6 +162,7 @@ jobs:
           run_production_verify() {
             echo "=== Final production verification (verify_production.py) ==="
             EXPECT_COMMIT="$GITHUB_SHA" VERIFY_BASE="https://doctarx.com" \
+              PRE_DEPLOY_BUILD_ID="$PRE_DEPLOY_BUILD_ID" REQUIRE_BUILD_ID_CHANGE=1 \
               python3 .github/scripts/verify_production.py
           }
 
@@ -191,7 +205,7 @@ jobs:
               # Old server without /api/deploy/log — confirm the target commit
               # has gone live via /api/health, then run the full production gate.
               if bootstrap_check; then
-                echo "=== BOOTSTRAP: target commit is live (gitCommit=$BOOT_GC, health=$BOOT_HS) ==="
+                echo "=== BOOTSTRAP: target commit and build are live (gitCommit=$BOOT_GC, buildId=$BOOT_BI, health=$BOOT_HS) ==="
                 if run_production_verify; then OUTCOME=success; else OUTCOME=verify_failed; fi
                 break
               fi

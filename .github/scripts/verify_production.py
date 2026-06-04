@@ -21,6 +21,8 @@ import urllib.error
 
 BASE = os.environ.get("VERIFY_BASE", "https://doctarx.com").rstrip("/")
 EXPECT = (os.environ.get("EXPECT_COMMIT", "") or "")[:12]
+PRE_DEPLOY_BUILD_ID = os.environ.get("PRE_DEPLOY_BUILD_ID", "").strip()
+REQUIRE_BUILD_ID_CHANGE = os.environ.get("REQUIRE_BUILD_ID_CHANGE", "").lower() in ("1", "true", "yes")
 READY_DEADLINE_S = int(os.environ.get("VERIFY_READY_DEADLINE", "600"))
 WARMUP_MARKER = "Connecting to DoctaRx"
 BAD_DASHBOARD_COPY = "Live panels use the authenticated provider APIs where available"
@@ -84,6 +86,23 @@ def find_db_status(*objs):
     return None, None
 
 
+def db_value_is_healthy(value):
+    if value is True:
+        return True
+    if isinstance(value, str):
+        return value.lower() in ("ok", "healthy", "up", "connected", "true")
+    if isinstance(value, dict):
+        status = str(value.get("status", "")).lower()
+        if status in ("ok", "healthy", "up", "connected"):
+            return True
+        if value.get("healthy") is True or value.get("allHealthy") is True:
+            return True
+        primary = value.get("primary")
+        if isinstance(primary, dict) and primary.get("healthy") is True:
+            return True
+    return False
+
+
 # ── Phase 1: readiness wait ───────────────────────────────────────────────────
 print(f"== Verifying production at {BASE} (expect commit prefix '{EXPECT or 'any'}') ==")
 deadline = time.time() + READY_DEADLINE_S
@@ -124,6 +143,10 @@ evidence["startedAt"] = health.get("startedAt")
 
 gate("health_status_healthy", health.get("status") == "healthy", f"status={health.get('status')}")
 gate("build_id_present", bool(build_id) and build_id != "missing", f"buildId={build_id}")
+if REQUIRE_BUILD_ID_CHANGE or PRE_DEPLOY_BUILD_ID:
+    gate("build_id_changed_after_deploy",
+         bool(build_id) and bool(PRE_DEPLOY_BUILD_ID) and build_id != PRE_DEPLOY_BUILD_ID,
+         f"preDeployBuildId={PRE_DEPLOY_BUILD_ID or 'missing'} liveBuildId={build_id or 'missing'}")
 gate("next_ready", health.get("nextReady") is True, f"nextReady={health.get('nextReady')}")
 gate("next_init_status_ready", health.get("nextInitStatus") == "ready", f"nextInitStatus={health.get('nextInitStatus')}")
 gate("next_init_error_null", health.get("nextInitError") in (None, "", "null"), f"nextInitError={health.get('nextInitError')}")
@@ -132,20 +155,24 @@ if EXPECT:
 
 # ── Phase 2: NG platform + clinical route ─────────────────────────────────────
 ng_code, ng_health, ng_raw = _json(f"/api/ng/health?verify={int(time.time())}")
+ng_features = (ng_health or {}).get("features") if isinstance(ng_health, dict) else {}
+if not isinstance(ng_features, dict):
+    ng_features = {}
+ng_clinical_emr = (ng_health or {}).get("clinicalEmr") or ng_features.get("clinicalEmr")
+ng_multi_party = (ng_health or {}).get("multiPartyConferencing") or ng_features.get("multiPartyConferencing")
 evidence["ng_status"] = (ng_health or {}).get("status")
-evidence["ng_clinicalEmr"] = (ng_health or {}).get("clinicalEmr")
-evidence["ng_multiParty"] = (ng_health or {}).get("multiPartyConferencing")
+evidence["ng_clinicalEmr"] = ng_clinical_emr
+evidence["ng_multiParty"] = ng_multi_party
 gate("ng_health_ok", isinstance(ng_health, dict) and ng_health.get("status") == "ok",
      f"HTTP={ng_code} status={(ng_health or {}).get('status')}")
-gate("ng_clinical_emr_true", isinstance(ng_health, dict) and ng_health.get("clinicalEmr") is True,
-     f"clinicalEmr={(ng_health or {}).get('clinicalEmr')}")
+gate("ng_clinical_emr_true", ng_clinical_emr is True,
+     f"clinicalEmr={ng_clinical_emr}")
 
 # Database health (best-effort — only gate if a public signal exists).
 db_key, db_val = find_db_status(health, ng_health)
 if db_key is not None:
     evidence["database"] = {db_key: db_val}
-    healthy_db = (db_val is True) or (isinstance(db_val, str) and db_val.lower() in ("ok", "healthy", "up", "connected")) \
-        or (isinstance(db_val, dict) and str(db_val.get("status", "")).lower() in ("ok", "healthy", "up", "connected"))
+    healthy_db = db_value_is_healthy(db_val)
     gate("database_healthy", bool(healthy_db), f"{db_key}={db_val}")
 else:
     evidence["database"] = "not exposed via public health API"
@@ -263,12 +290,11 @@ print(f"Provider dashboard status: HTTP {evidence.get('provider_dashboard_http')
       f"({'ok' if results.get('provider_dashboard_real_or_auth', (False,))[0] else 'NOT ok'})")
 print(f"www /ng behavior: {'OK' if evidence.get('www_ng_ok') else 'NOT OK'} -> "
       + "; ".join(f"{k}:{v['verdict']}" for k, v in (evidence.get('www_ng') or {}).items()))
-print("Live Neon simulation: previously VERIFIED (run ng-clinical-1780506341962, 21/21) — not re-run from CI")
-print("Video E2E simulation: NOT VERIFIED from CI (requires browser WebRTC e2e:video:ng)")
-print("TURN relay: NOT VERIFIED")
-print("SFU: NOT VERIFIED (LiveKit configuration only; no real media session)")
-print("3/5/10-person media: NOT VERIFIED")
-print(f"Remaining blockers: {', '.join(blockers) if blockers else 'none (deploy gates passed; media verification still pending)'}")
+print("Live Neon simulation: not executed by this production gate; see Neon DB Verify workflow")
+print("Video E2E simulation: not executed by this production gate; see Video WebRTC E2E workflow")
+print("LiveKit SFU 3/5/10 media: not executed by this production gate; see LiveKit SFU E2E workflow")
+print("TURN relay: not asserted by this production gate")
+print(f"Remaining blockers: {', '.join(blockers) if blockers else 'none for this production gate'}")
 print(f"\nPRODUCTION_VERIFY={'PASS' if all_pass else 'FAIL'}")
 
 sys.exit(0 if all_pass else 1)
