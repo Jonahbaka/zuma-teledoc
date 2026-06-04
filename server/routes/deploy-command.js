@@ -21,6 +21,9 @@ function buildPhase() {
     'git fetch --prune origin main',
     'git reset --hard origin/main',
     'echo "[deploy] checkout $(git rev-parse --short HEAD)"',
+    // Failed/manual artifact deploys can leave root-owned .next.broken files.
+    // Remove those before git clean so stale build debris cannot block deploy.
+    '(sudo rm -rf .next.broken .next.failed .next.tmp 2>/dev/null || rm -rf .next.broken .next.failed .next.tmp || true)',
     // Preserve production-only secrets and certificates that are intentionally untracked.
     'git clean -fd -e .env -e .env.* -e global-bundle.pem -e *.pem',
     'npm install --include=dev --prefer-offline --no-audit --no-fund',
