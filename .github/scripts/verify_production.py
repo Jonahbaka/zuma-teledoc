@@ -29,28 +29,33 @@ results = {}   # gate_name -> (ok: bool, detail: str)
 evidence = {}  # free-form evidence for the report
 
 
-def _req(path, method="GET"):
-    """Return (status_code, body_text). Does not follow redirects so we can see
-    3xx auth redirects. Network/HTTP errors return (code or 0, text)."""
-    url = f"{BASE}{path}"
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
 
-    class NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, *a, **k):
-            return None
 
-    opener = urllib.request.build_opener(NoRedirect)
+def _do(url, method="GET"):
+    """Return (status_code, headers_dict, body_text). Does not follow redirects
+    so we can observe 3xx (auth redirects, www->apex). Errors -> (code|0, {}, text)."""
+    opener = urllib.request.build_opener(_NoRedirect)
     req = urllib.request.Request(url, method=method, headers={"Cache-Control": "no-cache"})
     try:
         with opener.open(req, timeout=20) as r:
-            return r.getcode(), r.read(200000).decode("utf-8", "replace")
+            return r.getcode(), dict(r.headers), r.read(200000).decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         try:
             body = e.read(200000).decode("utf-8", "replace")
         except Exception:
             body = ""
-        return e.code, body
+        return e.code, dict(e.headers or {}), body
     except Exception as e:
-        return 0, f"<request error: {e}>"
+        return 0, {}, f"<request error: {e}>"
+
+
+def _req(path, method="GET"):
+    """(status_code, body_text) against BASE — back-compat helper."""
+    code, _h, body = _do(f"{BASE}{path}", method)
+    return code, body
 
 
 def _json(path):
@@ -170,6 +175,42 @@ gate("provider_dashboard_real_or_auth",
 gate("provider_dashboard_no_unprofessional_copy", not dash_bad,
      f"badCopyPresent={dash_bad}")
 
+# Bare /ng landing must render past warmup (Nigeria platform path, not the root app).
+ng_root_code, ng_root_body = _req("/ng")
+ng_root_warm = WARMUP_MARKER in ng_root_body
+evidence["ng_root_http"] = ng_root_code
+gate("ng_root_real_page",
+     (ng_root_code == 200 or 300 <= ng_root_code < 400) and not ng_root_warm,
+     f"/ng HTTP={ng_root_code} warmup={ng_root_warm}")
+
+# ── Phase 3c: www.doctarx.com /ng behavior ────────────────────────────────────
+# Report whether www serves /ng, redirects to the apex /ng (verify final dest),
+# fails, or serves only root. Not a hard gate by itself (www->apex redirect is a
+# valid config), but a broken www/ng is surfaced as a blocker for the verdict.
+print("== www.doctarx.com /ng behavior ==")
+www = {}
+for p in ("/ng", "/ng/provider/login", "/ng/provider/dashboard"):
+    code, headers, body = _do(f"https://www.doctarx.com{p}")
+    loc = headers.get("Location") or headers.get("location") or ""
+    warm = WARMUP_MARKER in body
+    if 300 <= code < 400 and "doctarx.com" in loc:
+        # Follow the redirect target to confirm the final /ng destination works.
+        fcode, _fh, fbody = _do(loc if loc.startswith("http") else f"https://doctarx.com{loc}")
+        fwarm = WARMUP_MARKER in fbody
+        verdict = "redirect->apex OK" if (fcode == 200 or 300 <= fcode < 400) and not fwarm else f"redirect->apex BROKEN (dest HTTP {fcode}, warmup={fwarm})"
+        www[p] = {"http": code, "redirect": loc, "dest_http": fcode, "verdict": verdict}
+    elif code == 200 and not warm:
+        www[p] = {"http": code, "verdict": "serves /ng directly"}
+    elif warm:
+        www[p] = {"http": code, "verdict": "WARMUP page"}
+    else:
+        www[p] = {"http": code, "verdict": "FAIL/odd"}
+    print(f"  www{p}: HTTP={code} loc={loc or '-'} -> {www[p]['verdict']}")
+evidence["www_ng"] = www
+www_ok = all(("OK" in v["verdict"]) or ("serves /ng directly" in v["verdict"]) for v in www.values())
+evidence["www_ng_ok"] = www_ok
+print(f"www /ng overall: {'OK' if www_ok else 'NOT OK (see blockers)'}")
+
 # ── Phase 4: stability poll (5 × 15s) ─────────────────────────────────────────
 print("== Stability poll (5 × 15s) ==")
 started_ats = []
@@ -205,6 +246,8 @@ print(json.dumps(evidence, indent=2, default=str))
 
 deployed = "VERIFIED" if all_pass else "FAILED"
 blockers = [name for name, (ok, _) in results.items() if not ok]
+if not evidence.get("www_ng_ok"):
+    blockers.append("www_ng_behavior (see www section)")
 clin = evidence.get("clinical_route_http")
 print("\n================ FINAL REPORT ================")
 print(f"AWS deployment: {deployed}")
@@ -214,8 +257,12 @@ print(f"Health status: {health.get('status')}")
 print(f"Next ready: {health.get('nextReady')}")
 print(f"Database status: {evidence['database']}")
 print(f"NG clinical route: HTTP {clin} ({'mounted' if clin in (401, 403) else 'NOT mounted'})")
+print(f"NG /ng landing: HTTP {evidence.get('ng_root_http')} "
+      f"({'ok' if results.get('ng_root_real_page', (False,))[0] else 'NOT ok'})")
 print(f"Provider dashboard status: HTTP {evidence.get('provider_dashboard_http')} "
       f"({'ok' if results.get('provider_dashboard_real_or_auth', (False,))[0] else 'NOT ok'})")
+print(f"www /ng behavior: {'OK' if evidence.get('www_ng_ok') else 'NOT OK'} -> "
+      + "; ".join(f"{k}:{v['verdict']}" for k, v in (evidence.get('www_ng') or {}).items()))
 print("Live Neon simulation: previously VERIFIED (run ng-clinical-1780506341962, 21/21) — not re-run from CI")
 print("Video E2E simulation: NOT VERIFIED from CI (requires browser WebRTC e2e:video:ng)")
 print("TURN relay: NOT VERIFIED")
