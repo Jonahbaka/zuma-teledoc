@@ -66,29 +66,44 @@ jobs:
           # Keys absent from GitHub Secrets are empty strings and are skipped.
           deploy_body=$(python3 -c 'import json,os; keys=["NG_LIVEKIT_URL","NG_LIVEKIT_API_KEY","NG_LIVEKIT_API_SECRET","DATABASE_URL","JWT_ACCESS_SECRET","JWT_REFRESH_SECRET","ENCRYPTION_KEY","SESSION_SECRET","ANTHROPIC_API_KEY","GEMINI_API_KEY","CLAUDE_API_KEY","STRIPE_SECRET_KEY","STRIPE_PUBLISHABLE_KEY","STRIPE_WEBHOOK_SECRET","PAYSTACK_SECRET_KEY","PAYSTACK_PUBLIC_KEY","FLUTTERWAVE_SECRET_KEY","FLUTTERWAVE_PUBLIC_KEY","TERMII_API_KEY","SMTP_HOST","SMTP_USER","SMTP_PASSWORD","SMTP_FROM","RTC_TURN_URLS","TURN_STATIC_AUTH_SECRET"]; print(json.dumps({"env": {k: os.environ[k] for k in keys if os.environ.get(k)}}))')
 
+          # Send the trigger ONCE. We never re-POST on failure: a retry would
+          # pile a second concurrent build onto the server. A slow/no response
+          # almost always means the server is busy running an in-flight deploy
+          # (the request was received and a build started) — in that case we
+          # fall through to the poll step, which waits for the exact target
+          # commit to go live. Only a hard auth rejection fails fast here.
+          set +e
           response=$(curl -s -o /tmp/deploy_response.json -w "%{http_code}" \
             -X POST https://doctarx.com/api/deploy \
             -H "Content-Type: application/json" \
             "${auth_header[@]}" \
             --data "$deploy_body" \
-            --max-time 30)
-          cat /tmp/deploy_response.json
-          if [ "$response" != "200" ]; then
-            echo "Deploy webhook returned HTTP $response"
+            --max-time 60)
+          curl_rc=$?
+          set -e
+          echo "trigger: curl_rc=$curl_rc http_code=$response"
+          cat /tmp/deploy_response.json 2>/dev/null || true
+          echo ""
+
+          if [ "$curl_rc" != "0" ]; then
+            echo "::warning::Deploy webhook did not respond (curl rc=$curl_rc) — server is likely busy with an in-flight deploy. Proceeding to poll for completion (no re-POST)."
+            exit 0
+          fi
+          if [ "$response" = "401" ] || [ "$response" = "403" ]; then
+            echo "::error::Deploy webhook rejected the request (HTTP $response) — authorization failure."
             exit 1
           fi
-          deploy_success=$(python3 -c 'import json,sys; print("true" if json.load(open("/tmp/deploy_response.json")).get("success") is True else "false")')
-          if [ "$deploy_success" != "true" ]; then
-            already=$(python3 -c 'import json,sys; d=json.load(open("/tmp/deploy_response.json")); print("true" if "already in progress" in d.get("message","") else "false")')
-            if [ "$already" = "true" ]; then
-              echo "Deploy already in progress on EC2 — will poll for completion"
-            else
-              echo "::error::Deploy webhook did not start a deployment."
-              exit 1
-            fi
-          else
-            echo "Deploy triggered successfully - build running in background on server"
+          if [ "$response" != "200" ]; then
+            echo "::warning::Deploy webhook returned HTTP $response — proceeding to poll (server may be mid-deploy)."
+            exit 0
           fi
+          deploy_success=$(python3 -c 'import json,sys; print("true" if json.load(open("/tmp/deploy_response.json")).get("success") is True else "false")' 2>/dev/null || echo "false")
+          if [ "$deploy_success" = "true" ]; then
+            echo "Deploy triggered successfully - build running in background on server"
+          else
+            echo "Deploy not freshly started (already in progress or busy) - will poll for completion"
+          fi
+          exit 0
 
       - name: Wait for deploy and verify NG platform
         env:
