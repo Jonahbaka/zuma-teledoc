@@ -1,5 +1,5 @@
-import ProviderCallPage from '@/app/(dashboard)/provider/call/page';
+import ConferencePortal from '@/components/ng/conference/ConferencePortal';
 
 export default function NigeriaProviderCallPage() {
-  return <ProviderCallPage />;
+  return <ConferencePortal initialTab="schedule" />;
 }

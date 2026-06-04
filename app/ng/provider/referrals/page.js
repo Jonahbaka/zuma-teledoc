@@ -187,7 +187,7 @@ export default function NigeriaProviderReferralsPage() {
               <CheckCircle2 className="h-5 w-5 text-emerald-600" />
               Referral tracking
             </CardTitle>
-            <CardDescription>{'Provider Dashboard -> Referrals -> Status Tracking'}</CardDescription>
+            <CardDescription>Referral status, specialist assignment, and follow-up coordination.</CardDescription>
           </div>
           <Button type="button" variant="outline" onClick={loadData}>
             <RefreshCw className="mr-2 h-4 w-4" />

@@ -19,13 +19,14 @@
     "seed:links": "node server/scripts/seed-testing-links.js",
     "verify:admin-test-access": "node scripts/verify-admin-test-access-flow.cjs",
     "verify:testing-link-lifecycle": "node scripts/verify-testing-link-lifecycle.cjs",
-    "test": "node --test ng/tests/conferencing.test.js && node ng/tests/regression.test.js && node ng/tests/portal-contract.test.js",
+    "test": "node --test ng/tests/conferencing.test.js ng/tests/livekit-provider-conference-contract.test.js && node ng/tests/regression.test.js && node ng/tests/portal-contract.test.js",
     "test:regression": "node ng/tests/regression.test.js",
     "test:portal": "node ng/tests/portal-contract.test.js",
     "test:sim": "node ng/scripts/simulate.js",
     "test:live-sim": "node ng/scripts/simulate-live.js",
     "test:deploy-gate": "npm test && npm run test:sim",
     "e2e:video:ng": "node scripts/e2e-ng-video-call.cjs",
+    "e2e:livekit:sfu": "node scripts/e2e-livekit-sfu.cjs",
     "ng:seed-demo": "node ng/scripts/seed-demo-accounts.js",
     "ng:seed-demo:dry": "node ng/scripts/seed-demo-accounts.js --dry-run",
     "ng:simulate:clinical": "node ng/scripts/simulate-live-clinical-workflows.js",
@@ -35,7 +36,8 @@
     "test:provider-portal": "node --test ng/tests/provider-portal-contract.test.js",
     "test:provider-intelligence": "node --test ng/tests/provider-clinical-intelligence.test.js",
     "test:live-clinical-simulation": "node --test ng/tests/live-clinical-simulation.test.js",
-    "test:conference-simulation": "node --test ng/tests/conferencing-simulation.test.js",
+    "test:conference-simulation": "node --test ng/tests/conferencing-simulation.test.js ng/tests/livekit-provider-conference-contract.test.js",
+    "test:conference-sfu-contract": "node --test ng/tests/livekit-provider-conference-contract.test.js",
     "lint": "eslint .",
     "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\"",
     "validate:db": "node scripts/validate-db.js"
@@ -87,6 +89,7 @@
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^4.2.0",
+    "livekit-client": "^2.19.1",
     "lucide-react": "^0.562.0",
     "multer": "^2.0.2",
     "next": "^15.5.9",
@@ -117,7 +120,8 @@
     "nodemon": "^3.1.7",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=20.0.0"

@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { conf } from './conferenceApi';
 import { useConferenceSignaling } from './useConferenceSignaling';
+import LiveKitMediaPanel from './LiveKitMediaPanel';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -526,9 +527,10 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
 
   const lobbyVideoRef = useRef(null);
   const [lobbyStream, setLobbyStream] = useState(null);
+  const isLiveKitRoom = String(room?.media_server || '').toLowerCase() === 'livekit';
 
-  // WebRTC signaling — only active when phase === 'meeting'
-  const signalingEnabled = phase === 'meeting';
+  // Peer-mesh signaling stays available for small rooms. LiveKit rooms use the SFU client.
+  const signalingEnabled = phase === 'meeting' && !isLiveKitRoom;
   const {
     phase:             sigPhase,
     error:             sigError,
@@ -733,9 +735,9 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
           )}
 
           {/* SFU notice */}
-          {room?.media_server && room.media_server !== 'peer_mesh' && (
-            <div className="rounded-xl bg-amber-900/20 px-4 py-3 text-xs text-amber-300">
-              <strong>SFU room:</strong> This room uses <code>{room.media_server}</code>. Joining will use peer-mesh for signaling; an SFU client must be active for full multi-party media.
+          {isLiveKitRoom && (
+            <div className="rounded-xl bg-emerald-900/20 px-4 py-3 text-xs text-emerald-300">
+              <strong>LiveKit room:</strong> Joining connects through the configured SFU for multi-party audio, video, screen share, and adaptive media.
             </div>
           )}
 
@@ -832,7 +834,10 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
   }
 
   // ── Render: Active meeting ─────────────────────────────────────────────────
-  const participantCount = remotePeers.length + 1;
+  const admittedParticipantCount = participants.filter((p) => p.status === 'admitted').length;
+  const participantCount = isLiveKitRoom
+    ? Math.max(admittedParticipantCount, 1)
+    : remotePeers.length + 1;
 
   return (
     <div className="flex h-screen flex-col bg-slate-950 text-white">
@@ -846,7 +851,7 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-400">
           <span>{participantCount} in room</span>
-          {sigPhase === 'connecting' && (
+          {!isLiveKitRoom && sigPhase === 'connecting' && (
             <span className="flex items-center gap-1 text-amber-400">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> connecting…
             </span>
@@ -855,7 +860,7 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
       </div>
 
       {/* ─ Reconnect banner ─ */}
-      {sigPhase === 'error' && (
+      {!isLiveKitRoom && sigPhase === 'error' && (
         <div className="shrink-0 flex items-center justify-between bg-rose-950/80 px-4 py-2.5 text-sm">
           <span className="flex items-center gap-2 text-rose-300">
             <WifiOff className="h-4 w-4" />
@@ -891,18 +896,35 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
 
           {/* Video grid */}
           <div className="min-h-0 flex-1">
-            <VideoGrid
-              localStream={localStream}
-              localName={displayName || self?.name || 'You'}
-              audioMuted={audioMuted}
-              remotePeers={remotePeers}
-              streams={streams}
-              screenStream={screenStream}
-              isScreenSharing={isScreenSharing}
-              pinnedId={pinnedId}
-              onPin={handlePin}
-              connectionQuality={connectionQuality}
-            />
+            {isLiveKitRoom ? (
+              <LiveKitMediaPanel
+                room={room}
+                displayName={displayName || myParticipant?.display_name || 'Participant'}
+                isHost={isHost}
+                participantCount={participantCount}
+                waitingCount={waitingCount}
+                sidebarTab={sidebarTab}
+                unreadChat={unreadChat}
+                handRaised={handRaised}
+                onToggleHand={toggleHand}
+                onOpenSidebar={openSidebar}
+                onLeave={handleLeave}
+                onEndRoom={handleEndRoom}
+              />
+            ) : (
+              <VideoGrid
+                localStream={localStream}
+                localName={displayName || self?.name || 'You'}
+                audioMuted={audioMuted}
+                remotePeers={remotePeers}
+                streams={streams}
+                screenStream={screenStream}
+                isScreenSharing={isScreenSharing}
+                pinnedId={pinnedId}
+                onPin={handlePin}
+                connectionQuality={connectionQuality}
+              />
+            )}
           </div>
         </div>
 
@@ -965,25 +987,27 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
       </div>
 
       {/* ─ Control bar ─ */}
-      <ControlBar
-        audioMuted={audioMuted}
-        videoMuted={videoMuted}
-        isScreenSharing={isScreenSharing}
-        handRaised={handRaised}
-        sidebarTab={sidebarTab}
-        onToggleAudio={toggleAudio}
-        onToggleVideo={toggleVideo}
-        onToggleScreenShare={toggleScreenShare}
-        onToggleHand={toggleHand}
-        onOpenSidebar={openSidebar}
-        onLeave={handleLeave}
-        onEndRoom={handleEndRoom}
-        isHost={isHost}
-        participantCount={participantCount}
-        waitingCount={waitingCount}
-        connectionQuality={connectionQuality}
-        unreadChat={unreadChat}
-      />
+      {!isLiveKitRoom && (
+        <ControlBar
+          audioMuted={audioMuted}
+          videoMuted={videoMuted}
+          isScreenSharing={isScreenSharing}
+          handRaised={handRaised}
+          sidebarTab={sidebarTab}
+          onToggleAudio={toggleAudio}
+          onToggleVideo={toggleVideo}
+          onToggleScreenShare={toggleScreenShare}
+          onToggleHand={toggleHand}
+          onOpenSidebar={openSidebar}
+          onLeave={handleLeave}
+          onEndRoom={handleEndRoom}
+          isHost={isHost}
+          participantCount={participantCount}
+          waitingCount={waitingCount}
+          connectionQuality={connectionQuality}
+          unreadChat={unreadChat}
+        />
+      )}
     </div>
   );
 }

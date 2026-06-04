@@ -3,21 +3,21 @@
 /**
  * components/ng/conference/ConferencePortal.jsx
  * Multi-party video conferencing portal.
- * Tabs: Rooms | Schedule | Join
+ * Tabs: Rooms | Start Room | Join
  * Data source: /api/ng/conference/*
  */
 
 import { useState } from 'react';
-import { Video, Calendar, LogIn, Radio } from 'lucide-react';
+import { Calendar, LogIn, Radio, Video } from 'lucide-react';
 
 import RoomsListTab from './tabs/RoomsListTab';
 import ScheduleRoomTab from './tabs/ScheduleRoomTab';
 import JoinTab from './tabs/JoinTab';
 
 const TABS = [
-  { id: 'rooms',    label: 'Rooms',    icon: Radio    },
-  { id: 'schedule', label: 'Schedule', icon: Calendar },
-  { id: 'join',     label: 'Join',     icon: LogIn    },
+  { id: 'rooms', label: 'Rooms', icon: Radio },
+  { id: 'schedule', label: 'Start Room', icon: Calendar },
+  { id: 'join', label: 'Join', icon: LogIn },
 ];
 
 export default function ConferencePortal({ initialTab = 'rooms' }) {
@@ -34,7 +34,7 @@ export default function ConferencePortal({ initialTab = 'rooms' }) {
             <div>
               <h1 className="text-lg font-black text-slate-900">Conferencing</h1>
               <p className="text-xs text-slate-500">
-                Multi-party clinical rooms — consultations, case conferences, teaching rounds, board reviews
+                Live clinical rooms for consultations, case reviews, teaching rounds, and board meetings.
               </p>
             </div>
           </div>
@@ -58,9 +58,9 @@ export default function ConferencePortal({ initialTab = 'rooms' }) {
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-6">
-        {tab === 'rooms'    && <RoomsListTab />}
+        {tab === 'rooms' && <RoomsListTab />}
         {tab === 'schedule' && <ScheduleRoomTab />}
-        {tab === 'join'     && <JoinTab />}
+        {tab === 'join' && <JoinTab />}
       </main>
     </div>
   );

@@ -153,8 +153,12 @@ function QueueItem({ appointment, providerPath }) {
 }
 
 function WorkflowStep({ icon: Icon, label, route, action, providerPath }) {
+  const href = typeof route === 'string' && route.startsWith('/ng/')
+    ? route
+    : providerPath(route);
+
   return (
-    <Link href={providerPath(route)} className="rounded-2xl border border-border bg-background p-4 transition hover:border-emerald-300 hover:bg-emerald-50/60">
+    <Link href={href} className="rounded-2xl border border-border bg-background p-4 transition hover:border-emerald-300 hover:bg-emerald-50/60">
       <Icon className="h-5 w-5 text-emerald-700" />
       <p className="mt-3 font-semibold text-foreground">{label}</p>
       <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">{action}</p>
@@ -284,10 +288,10 @@ export default function ProviderCommandCenter() {
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               Refresh
             </Button>
-            <Link href={providerPath('/call')}>
+            <Link href="/ng/conference">
               <Button className="bg-emerald-600 text-white hover:bg-emerald-500">
                 <Video className="mr-2 h-4 w-4" />
-                Open Conferencing
+                Start Meeting
               </Button>
             </Link>
           </div>
@@ -314,7 +318,7 @@ export default function ProviderCommandCenter() {
               <Calendar className="h-5 w-5 text-emerald-700" />
               Active Consultations
             </CardTitle>
-            <CardDescription>{'Provider Dashboard -> Active Consultations -> Start Video Call'}</CardDescription>
+            <CardDescription>Appointments ready for clinical review and video consultation.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {loading ? (
@@ -329,8 +333,8 @@ export default function ProviderCommandCenter() {
               <div className="rounded-2xl border border-dashed border-border p-8 text-center">
                 <Video className="mx-auto h-10 w-10 text-emerald-600/70" />
                 <p className="mt-3 font-semibold text-foreground">No active consultation queue</p>
-                <Link href={providerPath('/call')} className="mt-4 inline-flex">
-                  <Button variant="outline">Open Conferencing</Button>
+                <Link href="/ng/conference" className="mt-4 inline-flex">
+                  <Button variant="outline">Start Meeting</Button>
                 </Link>
               </div>
             )}
@@ -388,7 +392,7 @@ export default function ProviderCommandCenter() {
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <WorkflowStep icon={Calendar} label="Appointments" route="/schedule" action="Open schedule" providerPath={providerPath} />
-          <WorkflowStep icon={Video} label="Conferencing" route="/call" action="Start call" providerPath={providerPath} />
+          <WorkflowStep icon={Video} label="Conferencing" route="/ng/conference" action="Start meeting" providerPath={providerPath} />
           <WorkflowStep icon={FileText} label="SOAP Notes" route="/visits" action="Document visit" providerPath={providerPath} />
           <WorkflowStep icon={Stethoscope} label="EMR Review" route="/patients" action="Open record" providerPath={providerPath} />
           <WorkflowStep icon={Pill} label="Prescriptions" route="/prescriptions" action="Track pharmacy" providerPath={providerPath} />
@@ -408,12 +412,12 @@ export default function ProviderCommandCenter() {
             <CardDescription>Visible provider-dashboard entry points for the major clinical subsystems</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-2">
-            <FeatureAction icon={Video} label="Conference System" route={providerPath('/call')} detail="Visit hub, self-test room, appointment call entry, reconnect controls, chat, and clinical side panel." action="Provider Dashboard -> Conferencing" tone="emerald" />
-            <FeatureAction icon={FileText} label="SOAP Workflow" route={providerPath('/visits')} detail="Live note workspace remains attached to appointment visits and the call side panel." action="Provider Dashboard -> SOAP & Visits" tone="sky" />
-            <FeatureAction icon={Pill} label="Prescriptions + Pharmacy Status" route={providerPath('/prescriptions')} detail="Digital prescription creation, pharmacy routing, lifecycle status, refill, and audit log panels." action="Provider Dashboard -> Prescriptions" tone="amber" />
-            <FeatureAction icon={Share2} label="Referral Network" route={providerPath('/referrals')} detail="Patient-linked referral creation and status queue with FHIR exchange fields where configured." action="Provider Dashboard -> Referrals" tone="violet" />
-            <FeatureAction icon={Users} label="Patient Records / EMR" route={providerPath('/patients')} detail="Patient list and record routes, including Nigeria longitudinal clinical record endpoints." action="Provider Dashboard -> EMR" tone="emerald" />
-            <FeatureAction icon={Hospital} label="Care Teams + Facility Network" route={providerPath('/hospital-network')} detail="Hospital, specialist, and care-team coordination entry point." action="Provider Dashboard -> Care Teams" tone="sky" />
+            <FeatureAction icon={Video} label="Conferencing" route="/ng/conference" detail="Clinical rooms for live consultations, case reviews, screen sharing, chat, and participant management." action="Open rooms" tone="emerald" />
+            <FeatureAction icon={FileText} label="SOAP Workflow" route={providerPath('/visits')} detail="Visit documentation attached to appointments, diagnoses, treatment plans, and follow-up tasks." action="Open visits" tone="sky" />
+            <FeatureAction icon={Pill} label="Prescriptions + Pharmacy Status" route={providerPath('/prescriptions')} detail="Prescription creation, pharmacy routing, lifecycle status, refill, and audit log panels." action="Track prescriptions" tone="amber" />
+            <FeatureAction icon={Share2} label="Referral Network" route={providerPath('/referrals')} detail="Patient-linked referral creation and status queues with specialist coordination fields." action="Manage referrals" tone="violet" />
+            <FeatureAction icon={Users} label="Patient Records / EMR" route={providerPath('/patients')} detail="Patient lists and longitudinal clinical records for Nigeria care teams." action="Review records" tone="emerald" />
+            <FeatureAction icon={Hospital} label="Care Teams + Facility Network" route={providerPath('/hospital-network')} detail="Hospital, specialist, and care-team coordination entry point." action="Coordinate care" tone="sky" />
           </CardContent>
         </Card>
 

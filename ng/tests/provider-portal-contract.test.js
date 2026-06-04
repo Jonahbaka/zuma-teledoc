@@ -33,19 +33,19 @@ test('provider sidebar exposes command center and healthcare operating system la
   }
 });
 
-test('command center exposes concrete provider dashboard action paths', () => {
+test('command center exposes operational provider dashboard actions', () => {
   const component = read('components/ng/provider/ProviderCommandCenter.jsx');
   for (const text of [
-    'Provider Dashboard -> Active Consultations -> Start Video Call',
-    'Provider Dashboard -> Conferencing',
-    'Provider Dashboard -> SOAP & Visits',
-    'Provider Dashboard -> Prescriptions',
-    'Provider Dashboard -> Referrals',
-    'Provider Dashboard -> EMR',
+    'Start Meeting',
+    'href="/ng/conference"',
+    'Appointments ready for clinical review and video consultation.',
+    'Clinical rooms for live consultations, case reviews, screen sharing, chat, and participant management.',
+    'Open rooms',
     'Appointment -> Video -> SOAP -> Diagnosis -> Prescription -> Referral -> Pharmacy -> Follow-up -> EMR',
   ]) {
     assert.match(component, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.doesNotMatch(component, /Provider Dashboard ->/);
 });
 
 test('referral route supports provider-visible lifecycle tracking', () => {
