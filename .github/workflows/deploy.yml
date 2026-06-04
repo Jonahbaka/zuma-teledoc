@@ -141,6 +141,17 @@ jobs:
               && printf '%s' "$BOOT_NG" | grep -q '"status":"ok"'
           }
 
+          # Final production gate. A deploy is "successful" ONLY after this
+          # passes: it proves the NG clinical route is mounted, provider pages
+          # render past the warmup loader, readiness flags are set, and health
+          # is stable across 5 polls — not merely that /api/health shows a new
+          # commit. Media (TURN/SFU/multi-party) is reported NOT VERIFIED.
+          run_production_verify() {
+            echo "=== Final production verification (verify_production.py) ==="
+            EXPECT_COMMIT="$GITHUB_SHA" VERIFY_BASE="https://doctarx.com" \
+              python3 .github/scripts/verify_production.py
+          }
+
           fetch_status() {
             if [ -n "$DEPLOY_SECRET" ]; then
               curl -s --max-time 20 -H "x-deploy-token: $DEPLOY_SECRET" "https://doctarx.com/api/deploy/log?lines=400" 2>/dev/null || true
@@ -177,13 +188,11 @@ jobs:
             fi
 
             if [ "$RESULT" = "route_missing" ]; then
-              # Old server without /api/deploy/log — confirm via /api/health.
+              # Old server without /api/deploy/log — confirm the target commit
+              # has gone live via /api/health, then run the full production gate.
               if bootstrap_check; then
-                OUTCOME=success
-                echo "=== BOOTSTRAP DEPLOY COMPLETE — target commit is live and verified ==="
-                echo "gitCommit=$BOOT_GC (expected ${EXPECTED_SHA:0:7}) health=$BOOT_HS"
-                printf 'ng-health: %s\n' "${BOOT_NG:-<unreachable>}"
-                printf 'media-readiness: %s\n' "${BOOT_MR:-<unreachable>}"
+                echo "=== BOOTSTRAP: target commit is live (gitCommit=$BOOT_GC, health=$BOOT_HS) ==="
+                if run_production_verify; then OUTCOME=success; else OUTCOME=verify_failed; fi
                 break
               fi
               echo "$(date -u +%H:%M:%S) /api/deploy/log not on EC2 yet (old server). bootstrap: gitCommit=${BOOT_GC:-?} expected=${EXPECTED_SHA:0:7} health=${BOOT_HS:-?} — still deploying…"
@@ -195,14 +204,15 @@ jobs:
 
             case "$STATUS" in
               success)
-                if [ "$VERIFIED" = "true" ]; then
-                  OUTCOME=success
-                else
-                  OUTCOME=failed
-                  echo "::error::EC2 reported status=success but verification did not pass (verified=$VERIFIED)."
-                fi
                 echo "=== DEPLOY TERMINAL (status=$STATUS exitCode=$EXITCODE commit=$COMMIT deployId=$DEPLOYID) ==="
                 printf '%s\n' "$LAST_VERIFY"
+                if [ "$VERIFIED" != "true" ]; then
+                  OUTCOME=failed
+                  echo "::error::EC2 reported status=success but the in-deploy verification gate did not pass (verified=$VERIFIED)."
+                  break
+                fi
+                # EC2-side gate passed; now run the authoritative public production gate.
+                if run_production_verify; then OUTCOME=success; else OUTCOME=verify_failed; fi
                 break ;;
               failed|timeout|unknown)
                 OUTCOME="$STATUS"
@@ -223,11 +233,14 @@ jobs:
 
           # Final outcome enforcement: ONLY success exits 0.
           if [ "$OUTCOME" = "success" ]; then
-            echo "Deployment SUCCESSFUL — EC2 status=success and verification checks passed."
+            echo "Deployment SUCCESSFUL — target commit live AND full production verification passed."
             exit 0
           fi
           echo "::error::Deployment did NOT succeed (outcome=$OUTCOME). Last EC2 deploy/verify lines:"
           printf '%s\n' "$LAST_VERIFY"
+          if [ "$OUTCOME" = "verify_failed" ]; then
+            echo "::error::The deploy landed but production verification FAILED — NG clinical route, provider pages, readiness, or stability did not pass (see verify_production.py report above)."
+          fi
           if [ "$OUTCOME" = "timeout" ]; then
             echo "::error::No terminal state within 40 min — deploy is INCOMPLETE/UNKNOWN on EC2 (check /tmp/doctarx-deploy.log)."
           fi
