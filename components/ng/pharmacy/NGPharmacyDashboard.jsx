@@ -14,16 +14,16 @@ import {
   formatNaira,
 } from '@/lib/ngPharmacyPortal';
 
-/* ---------- Gemini AI helper ---------- */
+/* ---------- AI insight helper — calls server-side route (key never exposed to browser) ---------- */
 const callGemini = async (prompt) => {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
-  if (!apiKey) return 'AI insights require NEXT_PUBLIC_GEMINI_API_KEY to be configured.';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-  const payload = { contents: [{ parts: [{ text: prompt }] }] };
   try {
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await fetch('/ng/ai-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
     const data = await res.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No insights generated.';
+    return data.text || 'No insights generated.';
   } catch (err) {
     return `AI Insight service unavailable: ${err.message}`;
   }

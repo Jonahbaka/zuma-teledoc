@@ -9,23 +9,18 @@ import {
   Stethoscope, ChevronRight, Loader,
 } from 'lucide-react';
 
-/* ---------- Gemini AI helper (API key injected by environment if configured) ---------- */
+/* ---------- AI notes helper — calls server-side route (key never exposed to browser) ---------- */
 const callGemini = async (prompt) => {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
-  if (!apiKey) return 'AI notes require NEXT_PUBLIC_GEMINI_API_KEY to be configured.';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-  const payload = { contents: [{ parts: [{ text: prompt }] }] };
-  const delays = [1000, 2000, 4000, 8000, 16000];
-  for (let i = 0; i < 5; i++) {
-    try {
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
-    } catch (err) {
-      if (i === 4) return `Error: ${err.message}`;
-      await new Promise(r => setTimeout(r, delays[i]));
-    }
+  try {
+    const res = await fetch('/ng/ai-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+    const data = await res.json();
+    return data.text || 'No response generated.';
+  } catch (err) {
+    return `AI service unavailable: ${err.message}`;
   }
 };
 
