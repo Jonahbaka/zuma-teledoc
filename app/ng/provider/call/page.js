@@ -1,5 +1,5 @@
-import ConferencePortal from '@/components/ng/conference/ConferencePortal';
+import NGVideoCall from '@/components/ng/conference/NGVideoCall';
 
 export default function NigeriaProviderCallPage() {
-  return <ConferencePortal initialTab="schedule" />;
+  return <NGVideoCall />;
 }
