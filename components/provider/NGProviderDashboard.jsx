@@ -82,6 +82,9 @@ function normalizePatient(p, index) {
     avatar,
     email: p.email,
     phone: p.phone_number,
+    // Carry appointment linkage so the PatientDrawer can route to the
+    // appointment-specific call and EMR visit page instead of generic routes.
+    currentAppointmentId: p.current_appointment_id || p.next_appointment_id || null,
   };
 }
 
@@ -237,7 +240,17 @@ function PatientDrawer({ patient, onClose, onStartCall }) {
       </div>
 
       <div className="p-4 border-t border-slate-200 bg-slate-50 grid grid-cols-2 gap-3">
-        <button className="flex items-center justify-center py-2.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm">
+        <button
+          onClick={() => {
+            // Link to appointment-specific EMR visit page if the patient has a current appointment
+            if (patient.currentAppointmentId) {
+              router.push(`/ng/provider/appointments/${patient.currentAppointmentId}/visit`);
+            } else {
+              router.push(`/ng/provider/patients/${patient.id}/ehr`);
+            }
+          }}
+          className="flex items-center justify-center py-2.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm"
+        >
           <FileText size={16} className="mr-2" /> View Chart
         </button>
         <button
@@ -252,7 +265,7 @@ function PatientDrawer({ patient, onClose, onStartCall }) {
 }
 
 /* ---------- Command Center ---------- */
-function CommandCenter({ appointments = [], patients = [], totalPatients = 0 }) {
+function CommandCenter({ appointments = [], patients = [], totalPatients = 0, onStartAppointmentCall }) {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -356,7 +369,9 @@ function CommandCenter({ appointments = [], patients = [], totalPatients = 0 }) 
               <div className="relative pl-4 border-l-2 border-slate-100 space-y-6">
                 {appointments.filter(a => a.status !== 'cancelled').slice(0, 5).map((appt, i) => {
                   const n = normalizeAppointment(appt);
-                  const color = appt.status === 'completed' ? 'emerald' : appt.appointment_type === 'video' ? 'blue' : 'slate';
+                  const isVideo = appt.appointment_type === 'video' || appt.appointment_type === 'telehealth';
+                  const isCompleted = appt.status === 'completed';
+                  const color = isCompleted ? 'emerald' : isVideo ? 'blue' : 'slate';
                   return (
                     <div key={i} className="relative">
                       <div className={`absolute -left-[25px] w-4 h-4 rounded-full bg-white border-2 border-${color}-500 ring-4 ring-white`} />
@@ -367,7 +382,17 @@ function CommandCenter({ appointments = [], patients = [], totalPatients = 0 }) 
                             <Video size={12} className="mr-1" /> {n.type}
                           </div>
                         </div>
-                        <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded">{n.time}</span>
+                        <div className="flex items-center gap-2">
+                          {!isCompleted && isVideo && onStartAppointmentCall && (
+                            <button
+                              onClick={() => onStartAppointmentCall(appt)}
+                              className="flex items-center text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded border border-blue-100 transition-colors"
+                            >
+                              <Video size={12} className="mr-1" /> Start
+                            </button>
+                          )}
+                          <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded">{n.time}</span>
+                        </div>
                       </div>
                     </div>
                   );
@@ -618,7 +643,7 @@ export default function NGProviderDashboard() {
         </header>
 
         <div className="flex-1 overflow-auto p-8 relative">
-          {activeTab === 'command' && <CommandCenter appointments={appointments} patients={patients} totalPatients={patients.length} />}
+          {activeTab === 'command' && <CommandCenter appointments={appointments} patients={patients} totalPatients={patients.length} onStartAppointmentCall={(appt) => router.push(`/ng/provider/appointments/${appt.id}/call`)} />}
           {activeTab === 'population' && <PatientDirectory onSelectPatient={setSelectedPatient} patients={patients} loading={dataLoading} />}
           {activeTab !== 'command' && activeTab !== 'population' && (
             <div className="flex flex-col items-center justify-center h-full text-slate-400">
@@ -632,7 +657,16 @@ export default function NGProviderDashboard() {
       <PatientDrawer
         patient={selectedPatient}
         onClose={() => setSelectedPatient(null)}
-        onStartCall={() => router.push('/ng/provider/call')}
+        onStartCall={() => {
+            // If the patient has a linked upcoming appointment, use the appointment-
+            // specific call page (preserves patient/appointment context in the room).
+            // Otherwise fall back to the generic ad-hoc conference page.
+            if (selectedPatient?.currentAppointmentId) {
+              router.push(`/ng/provider/appointments/${selectedPatient.currentAppointmentId}/call`);
+            } else {
+              router.push(`/ng/provider/call?patientId=${selectedPatient?.id || ''}&patientName=${encodeURIComponent(selectedPatient?.name || '')}`);
+            }
+          }}
       />
     </div>
   );

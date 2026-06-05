@@ -7,7 +7,7 @@ import {
   Mic, MicOff, Video, VideoOff, MonitorUp, MessageSquare,
   Activity, PhoneOff, MoreVertical, Sparkles, Send,
   Stethoscope, ChevronRight, Loader, Plus, LogIn, Users,
-  Wifi, WifiOff, AlertCircle,
+  Wifi, WifiOff, AlertCircle, FileText,
 } from 'lucide-react';
 
 /* ---------- server-side AI helper ---------- */
@@ -279,7 +279,7 @@ const ChatPanel = ({ messages, onSend, roomId }) => {
 };
 
 /* ---------- Pre-call: room selection ---------- */
-function PreCallScreen({ onJoin, displayName }) {
+function PreCallScreen({ onJoin, displayName, appointmentId, patientId, patientName }) {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -293,10 +293,18 @@ function PreCallScreen({ onJoin, displayName }) {
   const createAndJoin = async () => {
     setCreating(true); setError('');
     try {
+      const title = patientName
+        ? `Consultation with ${patientName} — ${new Date().toLocaleDateString()}`
+        : `Consultation — ${new Date().toLocaleString()}`;
       const res = await api.createRoom({
-        title: `Consultation — ${new Date().toLocaleString()}`,
+        title,
         kind: 'consultation',
         max_participants: 4,
+        // Pass appointment/patient linkage so the room is properly associated
+        // with the clinical record — not an orphaned ad-hoc session.
+        ...(appointmentId ? { appointment_id: appointmentId } : {}),
+        ...(patientId ? { patient_user_id: patientId } : {}),
+        ...(patientName ? { patient_name_snapshot: patientName } : {}),
       });
       if (!res.ok) throw new Error(res.error || 'Failed to create room');
       onJoin(res.room);
@@ -310,11 +318,14 @@ function PreCallScreen({ onJoin, displayName }) {
       <div className="w-full max-w-lg">
         <div className="flex items-center justify-center mb-8">
           <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center mr-4">
-            <Video size={28} className="text-white" />
+            <Stethoscope size={28} className="text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">DoctaRx Telehealth</h1>
-            <p className="text-gray-400 text-sm">Nigeria · Provider Session</p>
+            <h1 className="text-2xl font-bold">DoctaRx <span className="text-blue-400">Telehealth</span></h1>
+            <p className="text-gray-400 text-sm">
+              Nigeria · Provider Session
+              {patientName && <span className="ml-2 text-blue-400 font-semibold">· {patientName}</span>}
+            </p>
           </div>
         </div>
 
@@ -390,6 +401,12 @@ export default function NGVideoCall() {
   const initials = user
     ? `${(user.first_name || user.firstName || 'D')[0]}${(user.last_name || user.lastName || 'R')[0]}`.toUpperCase()
     : 'DR';
+
+  // Appointment / patient context from query params (set when launched from a
+  // specific appointment row rather than the generic Telehealth Center nav).
+  const appointmentId = searchParams?.get('appointmentId') || null;
+  const patientId = searchParams?.get('patientId') || null;
+  const patientName = searchParams?.get('patientName') ? decodeURIComponent(searchParams.get('patientName')) : null;
 
   // Clock
   useEffect(() => {
@@ -587,7 +604,15 @@ export default function NGVideoCall() {
   /* ---- RENDER ---- */
 
   if (phase === 'pre') {
-    return <PreCallScreen onJoin={handleJoin} displayName={displayName} />;
+    return (
+      <PreCallScreen
+        onJoin={handleJoin}
+        displayName={displayName}
+        appointmentId={appointmentId}
+        patientId={patientId}
+        patientName={patientName}
+      />
+    );
   }
 
   if (phase === 'connecting') {
@@ -609,13 +634,30 @@ export default function NGVideoCall() {
   if (phase === 'ended') {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#202124] text-white">
-        <h1 className="text-4xl font-light mb-4 text-gray-200">Consultation Ended</h1>
+        <div className="flex items-center mb-6">
+          <Stethoscope size={24} className="text-blue-400 mr-3" />
+          <span className="text-lg font-bold">DoctaRx <span className="text-blue-400">Telehealth</span></span>
+        </div>
+        <h1 className="text-4xl font-light mb-2 text-gray-200">Consultation Ended</h1>
+        {patientName && <p className="text-sm text-blue-400 mb-2 font-semibold">{patientName}</p>}
         {sfuAvailable === false && (
-          <p className="text-sm text-amber-400 mb-6 text-center max-w-sm">
-            LiveKit SFU was not configured — session ran in local-preview mode.
+          <p className="text-sm text-amber-400 mb-4 text-center max-w-sm">
+            DoctaRx SFU was not configured — session ran in local-preview mode.
           </p>
         )}
-        <div className="flex space-x-4">
+        <p className="text-sm text-gray-400 mb-8 text-center max-w-xs">
+          Elapsed: {elapsed}.{appointmentId ? ' Document visit notes to complete the clinical record.' : ''}
+        </p>
+        <div className="flex flex-wrap gap-3 justify-center">
+          {/* When launched from an appointment, go directly to the visit/EMR page */}
+          {appointmentId && (
+            <button
+              onClick={() => router.push(`/ng/provider/appointments/${appointmentId}/visit`)}
+              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-lg flex items-center"
+            >
+              <FileText size={16} className="mr-2" /> Open Visit Notes
+            </button>
+          )}
           <button onClick={() => { setPhase('pre'); setLivekitRoom(null); setRoom(null); setRemoteParticipants([]); setRemoteTracks({}); setCallStartedAt(null); setMediaError(''); setConnState('idle'); }}
             className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg">
             New Call
