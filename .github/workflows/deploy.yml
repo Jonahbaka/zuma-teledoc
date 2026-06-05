@@ -200,6 +200,20 @@ jobs:
             fi
 
             echo "$(date -u +%H:%M:%S) status=$STATUS verified=$VERIFIED build=$CHECK_BUILD pm2=$CHECK_PM2 health=$CHECK_HEALTH ngHealth=$CHECK_NGHEALTH deployId=$DEPLOYID pid=$PID"
+            if [ "$STATUS" = "running" ] || [ "$STATUS" = "idle" ] || [ "$STATUS" = "unknown" ]; then
+              if run_production_verify; then
+                echo "Public production verification passed while deploy log status=$STATUS; accepting production evidence."
+                OUTCOME=success
+                break
+              fi
+            fi
+
+            if [ "$STATUS" = "unknown" ] && [ -z "$DEPLOYID$PID" ] && [ "$CHECK_BUILD$CHECK_PM2$CHECK_HEALTH$CHECK_NGHEALTH" = "pendingpendingpendingpending" ]; then
+              echo "$(date -u +%H:%M:%S) deploy log has not received the detached process markers yet, retrying..."
+              sleep 10
+              continue
+            fi
+
             case "$STATUS" in
               success)
                 printf '%s\n' "$LAST_VERIFY"

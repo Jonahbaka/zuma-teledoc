@@ -294,7 +294,23 @@ router.post('/', upload.single('tarball'), async (req, res) => {
     return res.status(500).json({ success: false, error: error.message });
   }
 
-  const job = runDetachedCommand(`bash ${shQuote(scriptPath)}`, { logFile: DEPLOY_LOG });
+  let job;
+  try {
+    job = runDetachedCommand(`bash ${shQuote(scriptPath)}`, { logFile: DEPLOY_LOG });
+    fs.appendFileSync(
+      DEPLOY_LOG,
+      [
+        `[deploy:id] ${deployId}`,
+        `[deploy:pid] ${job.pid}`,
+        `[deploy] start ${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}`,
+        '[deploy:launcher] artifact upload accepted',
+      ].join('\n') + '\n'
+    );
+  } catch (error) {
+    try { fs.unlinkSync(req.file.path); } catch {}
+    try { fs.unlinkSync(scriptPath); } catch {}
+    return res.status(500).json({ success: false, error: error.message });
+  }
 
   res.json({
     success: true,
