@@ -1,8 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
+
+/* ---------- API helpers ---------- */
+async function fetchProviderWorkspace() {
+  const res = await fetch('/api/ng/providers/me/access');
+  if (!res.ok) return null;
+  const d = await res.json();
+  return d.providerAccess || null;
+}
+
+async function fetchProviderAppointments(providerId) {
+  const res = await fetch(`/api/ng/providers/${providerId}/appointments?limit=50`);
+  if (!res.ok) return [];
+  const d = await res.json();
+  return d.appointments || [];
+}
+
+async function fetchProviderPatients(providerId) {
+  const res = await fetch(`/api/ng/providers/${providerId}/patients`);
+  if (!res.ok) return [];
+  const d = await res.json();
+  return d.patients || [];
+}
 import {
   LayoutDashboard, Users, Activity, Settings, Bell, Search,
   Filter, Plus, MoreHorizontal, ArrowUpRight, ArrowDownRight,
@@ -14,7 +36,7 @@ import {
   ComposedChart, Bar, Line, Legend,
 } from 'recharts';
 
-/* ---------- mock data (replace with real API calls as needed) ---------- */
+/* ---------- chart data (static reference data, real patient data loaded dynamically) ---------- */
 const admissionData = [
   { time: '08:00', admissions: 12, discharges: 5, capacity: 80, predicted: 15 },
   { time: '10:00', admissions: 19, discharges: 8, capacity: 85, predicted: 22 },
@@ -35,15 +57,42 @@ const vitalsHistory = [
   { date: 'Sun', hr: 73, bpSys: 120 },
 ];
 
-const patientData = [
-  { id: 'PT-9821', name: 'Eleanor Pena', age: 64, gender: 'F', risk: 88, diagnosis: 'Heart Failure (CHF)', lastVisit: '2 hrs ago', status: 'Critical', nextAction: 'Cardio Consult', avatar: 'EP' },
-  { id: 'PT-1045', name: 'Robert Fox', age: 45, gender: 'M', risk: 42, diagnosis: 'Type 2 Diabetes', lastVisit: '1 day ago', status: 'Stable', nextAction: 'A1C Lab Test', avatar: 'RF' },
-  { id: 'PT-4428', name: 'Esther Howard', age: 28, gender: 'F', risk: 15, diagnosis: 'Routine Maternity', lastVisit: '3 days ago', status: 'Routine', nextAction: 'Ultrasound', avatar: 'EH' },
-  { id: 'PT-2910', name: 'Kristin Watson', age: 52, gender: 'F', risk: 65, diagnosis: 'Severe Asthma', lastVisit: '5 hrs ago', status: 'Monitoring', nextAction: 'Pulm Review', avatar: 'KW' },
-  { id: 'PT-8834', name: 'Cody Fisher', age: 71, gender: 'M', risk: 92, diagnosis: 'Post-op CABG', lastVisit: '10 mins ago', status: 'Critical', nextAction: 'Med Adjustment', avatar: 'CF' },
-  { id: 'PT-3392', name: 'Jane Cooper', age: 34, gender: 'F', risk: 28, diagnosis: 'Hypertension', lastVisit: '1 week ago', status: 'Stable', nextAction: 'BP Check', avatar: 'JC' },
-  { id: 'PT-7712', name: 'Cameron Williamson', age: 41, gender: 'M', risk: 55, diagnosis: 'Chronic Kidney Dis.', lastVisit: '2 days ago', status: 'Monitoring', nextAction: 'Nephrology', avatar: 'CW' },
-];
+/* Converts a real patient row from the API to a display-ready shape */
+function normalizePatient(p, index) {
+  const name = p.full_name || p.name || p.email || `Patient ${index + 1}`;
+  const parts = name.trim().split(' ');
+  const avatar = parts.length >= 2
+    ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+    : name.slice(0, 2).toUpperCase();
+  const totalVisits = parseInt(p.total_visits || 0);
+  const risk = Math.min(95, Math.max(5, totalVisits > 10 ? 65 : totalVisits > 5 ? 42 : 20));
+  const lastVisit = p.last_visit
+    ? new Date(p.last_visit).toLocaleDateString()
+    : 'Unknown';
+  return {
+    id: p.id || `PT-${index}`,
+    name,
+    age: p.age || '—',
+    gender: p.gender || '—',
+    risk,
+    diagnosis: p.diagnosis || p.chief_complaint || 'General Consultation',
+    lastVisit,
+    status: risk > 75 ? 'Critical' : risk > 40 ? 'Monitoring' : 'Stable',
+    nextAction: 'Follow-up',
+    avatar,
+    email: p.email,
+    phone: p.phone_number,
+  };
+}
+
+/* Converts a real appointment row to a display-ready consult shape */
+function normalizeAppointment(a) {
+  const name = a.patient_name || a.patient_email || 'Patient';
+  const dt = a.scheduled_at ? new Date(a.scheduled_at) : null;
+  const timeStr = dt ? dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+  const type = a.appointment_type === 'video' ? 'Video' : a.appointment_type === 'in_person' ? 'In-Person' : 'Telehealth';
+  return { time: timeStr, pt: name, type, id: a.id, appointmentId: a.id };
+}
 
 /* ---------- small reusable pieces ---------- */
 
@@ -203,15 +252,15 @@ function PatientDrawer({ patient, onClose, onStartCall }) {
 }
 
 /* ---------- Command Center ---------- */
-function CommandCenter() {
+function CommandCenter({ appointments = [], patients = [], totalPatients = 0 }) {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { title: 'Current Census', value: '248', sub: '82% Capacity', trend: '+12', isPositive: false, icon: Users, color: 'blue' },
-          { title: 'Critical Patients', value: '42', sub: '16 ICU / 26 Ward', trend: '-3', isPositive: true, icon: AlertTriangle, color: 'rose' },
-          { title: 'Avg Wait Time', value: '14m', sub: 'Emergency Dept', trend: '-2m', isPositive: true, icon: Clock, color: 'emerald' },
-          { title: 'Pending Discharges', value: '28', sub: 'By 5:00 PM', trend: '+5', isPositive: true, icon: ArrowUpRight, color: 'indigo' },
+          { title: 'Total Patients', value: String(totalPatients || patients.length), sub: 'Active patient base', trend: '', isPositive: true, icon: Users, color: 'blue' },
+          { title: 'Upcoming Consults', value: String(appointments.filter(a => a.status !== 'completed' && a.status !== 'cancelled').length), sub: 'Scheduled appointments', trend: '', isPositive: true, icon: AlertTriangle, color: 'rose' },
+          { title: 'Completed Today', value: String(appointments.filter(a => a.status === 'completed').length), sub: 'Consultations done', trend: '', isPositive: true, icon: Clock, color: 'emerald' },
+          { title: 'Active Prescriptions', value: '—', sub: 'Via DoctaRx Nigeria', trend: '', isPositive: true, icon: ArrowUpRight, color: 'indigo' },
         ].map((kpi, i) => (
           <div key={i} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden group hover:border-slate-300 transition-colors">
             <div className={`absolute top-0 right-0 w-24 h-24 bg-${kpi.color}-50 rounded-bl-full -mr-4 -mt-4 opacity-50`} />
@@ -301,26 +350,30 @@ function CommandCenter() {
 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h3 className="text-base font-bold text-slate-900 mb-4">Upcoming Consults</h3>
-            <div className="relative pl-4 border-l-2 border-slate-100 space-y-6">
-              {[
-                { time: '09:00', pt: 'Eleanor Pena', type: 'Video', icon: Video, color: 'blue' },
-                { time: '09:30', pt: 'Robert Fox', type: 'In-Person', icon: MapPin, color: 'emerald' },
-                { time: '10:15', pt: 'Kristin Watson', type: 'Urgent', icon: AlertTriangle, color: 'rose' },
-              ].map((appt, i) => (
-                <div key={i} className="relative">
-                  <div className={`absolute -left-[25px] w-4 h-4 rounded-full bg-white border-2 border-${appt.color}-500 ring-4 ring-white`} />
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">{appt.pt}</p>
-                      <div className="flex items-center text-xs text-slate-500 mt-1">
-                        <appt.icon size={12} className="mr-1" /> {appt.type}
+            {appointments.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-4">No scheduled appointments.</p>
+            ) : (
+              <div className="relative pl-4 border-l-2 border-slate-100 space-y-6">
+                {appointments.filter(a => a.status !== 'cancelled').slice(0, 5).map((appt, i) => {
+                  const n = normalizeAppointment(appt);
+                  const color = appt.status === 'completed' ? 'emerald' : appt.appointment_type === 'video' ? 'blue' : 'slate';
+                  return (
+                    <div key={i} className="relative">
+                      <div className={`absolute -left-[25px] w-4 h-4 rounded-full bg-white border-2 border-${color}-500 ring-4 ring-white`} />
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">{n.pt}</p>
+                          <div className="flex items-center text-xs text-slate-500 mt-1">
+                            <Video size={12} className="mr-1" /> {n.type}
+                          </div>
+                        </div>
+                        <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded">{n.time}</span>
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded">{appt.time}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -329,19 +382,26 @@ function CommandCenter() {
 }
 
 /* ---------- Patient Directory ---------- */
-function PatientDirectory({ onSelectPatient }) {
+function PatientDirectory({ onSelectPatient, patients = [], loading = false }) {
+  const [query, setQuery] = useState('');
+  const filtered = patients.filter(p =>
+    !query || p.name.toLowerCase().includes(query.toLowerCase()) || String(p.id).includes(query)
+  );
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm animate-in fade-in duration-500 flex flex-col h-[calc(100vh-140px)]">
       <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-slate-900">Population Health Grid</h2>
-          <p className="text-sm text-slate-500">Manage active patients with risk stratification.</p>
+          <p className="text-sm text-slate-500">Manage {patients.length} active patients with risk stratification.</p>
         </div>
         <div className="flex items-center space-x-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
               placeholder="Search patients, IDs..."
               className="pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-64"
             />
@@ -364,7 +424,11 @@ function PatientDirectory({ onSelectPatient }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
-            {patientData.map((patient, i) => (
+            {loading ? (
+              <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400">Loading patients…</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400">No patients found.</td></tr>
+            ) : filtered.map((patient, i) => (
               <tr key={i} className="hover:bg-indigo-50/30 transition-colors group cursor-pointer" onClick={() => onSelectPatient(patient)}>
                 <td className="px-6 py-4">
                   <div className="flex items-center">
@@ -373,7 +437,7 @@ function PatientDirectory({ onSelectPatient }) {
                     </div>
                     <div>
                       <div className="font-bold text-slate-900 text-sm">{patient.name}</div>
-                      <div className="text-xs text-slate-500 mt-0.5 font-medium">ID: {patient.id} • {patient.age}y {patient.gender}</div>
+                      <div className="text-xs text-slate-500 mt-0.5 font-medium">ID: {patient.id} • {patient.age !== '—' ? `${patient.age}y ` : ''}{patient.gender}</div>
                     </div>
                   </div>
                 </td>
@@ -401,7 +465,7 @@ function PatientDirectory({ onSelectPatient }) {
       </div>
 
       <div className="p-4 border-t border-slate-200 bg-white flex items-center justify-between text-sm text-slate-500">
-        <span>Showing 1 to {patientData.length} of 2,451 patients</span>
+        <span>Showing {filtered.length} of {patients.length} patients</span>
         <div className="flex space-x-1">
           <button className="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50" disabled>Prev</button>
           <button className="px-3 py-1 border border-slate-200 bg-indigo-50 text-indigo-700 font-bold rounded">1</button>
@@ -420,6 +484,33 @@ export default function NGProviderDashboard() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('command');
   const [selectedPatient, setSelectedPatient] = useState(null);
+
+  // Real data state
+  const [providerAccess, setProviderAccess] = useState(null);
+  const [appointments, setAppointments] = useState([]);
+  const [patients, setPatients] = useState([]);
+  const [dataLoading, setDataLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const access = await fetchProviderWorkspace().catch(() => null);
+        setProviderAccess(access);
+        const providerId = access?.provider?.id || access?.providerId || access?.id;
+        if (providerId) {
+          const [appts, pts] = await Promise.all([
+            fetchProviderAppointments(providerId).catch(() => []),
+            fetchProviderPatients(providerId).catch(() => []),
+          ]);
+          setAppointments(appts);
+          setPatients(pts.map(normalizePatient));
+        }
+      } finally {
+        setDataLoading(false);
+      }
+    };
+    load();
+  }, []);
 
   const initials = user
     ? `${(user.first_name || user.firstName || 'D')[0]}${(user.last_name || user.lastName || 'R')[0]}`.toUpperCase()
@@ -527,8 +618,8 @@ export default function NGProviderDashboard() {
         </header>
 
         <div className="flex-1 overflow-auto p-8 relative">
-          {activeTab === 'command' && <CommandCenter />}
-          {activeTab === 'population' && <PatientDirectory onSelectPatient={setSelectedPatient} />}
+          {activeTab === 'command' && <CommandCenter appointments={appointments} patients={patients} totalPatients={patients.length} />}
+          {activeTab === 'population' && <PatientDirectory onSelectPatient={setSelectedPatient} patients={patients} loading={dataLoading} />}
           {activeTab !== 'command' && activeTab !== 'population' && (
             <div className="flex flex-col items-center justify-center h-full text-slate-400">
               <Settings size={48} className="mb-4 opacity-20" />
