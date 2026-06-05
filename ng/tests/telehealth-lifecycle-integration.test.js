@@ -128,11 +128,15 @@ function makePool() {
 
       // ── Prescriptions ─────────────────────────────────────────────────────
       if (/INSERT INTO ng_digital_prescriptions/i.test(text)) {
+        // Capture the real INSERT params (provider_id, patient_user_id,
+        // appointment_id, prescription_number, ...) so linkage assertions are
+        // meaningful, falling back to constants when params are absent.
         const rx = {
           id: uid('rx'),
-          prescription_number: `RX-${Date.now()}`,
-          provider_id:         PROVIDER_ID,
-          patient_user_id:     PATIENT_ID,
+          provider_id:         params[0] !== undefined ? params[0] : PROVIDER_ID,
+          patient_user_id:     params[1] !== undefined ? params[1] : PATIENT_ID,
+          appointment_id:      params[2] !== undefined ? params[2] : null,
+          prescription_number: params[3] || `RX-${Date.now()}`,
           lifecycle_status:    'drafted',
           dispense_status:     'pending',
           routed_pharmacy_id:  null,
@@ -260,7 +264,7 @@ describe('Step 1 — Video conference room creation with appointment linkage', (
     assert.equal(room.patient_name_snapshot, 'Chioma Okonkwo', 'patient name snapshot must be stored');
     assert.equal(room.host_provider_id,  PROVIDER_ID,    'host_provider_id must match');
     assert.ok(activePool._state.rooms.length >= 1, 'room should be in the pool state');
-    assert.ok(activePool._ops.includes('INSERT INTO NG_CONF_ROOMS'), 'INSERT should have been executed');
+    assert.ok(activePool._ops.some(op => op.startsWith('INSERT INTO NG_CONF_ROOMS')), 'INSERT should have been executed');
   });
 });
 
@@ -379,19 +383,55 @@ describe('Step 4 — EMR encounter SQL linkage to appointment', () => {
 // LIFECYCLE STEP 5 — Prescription is created and linked to the patient
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Step 5 — Prescription creation linked to patient', () => {
-  it('createDraft writes prescription with patient linkage', async () => {
-    activePool = makePool();
-    const result = await rx.createDraft(
-      {
-        patient_user_id: PATIENT_ID,
-        items: [{ drug_name: 'Artemether-Lumefantrine 80/480mg', quantity: 6, dose: '2 tablets BD × 3 days' }],
-      },
-      { id: PROVIDER_USER, role: 'provider' },
-      activePool,
+  // The real createDraft(input, existingClient) reads the result back through
+  // getPool(), so full persistence is exercised by the DB-backed lifecycle test
+  // (ng/tests/telehealth-lifecycle-db.test.js). Here we hermetically assert the
+  // service's input contract — that a prescription cannot be drafted without the
+  // provider, patient, and at least one item linkage.
+  it('rejects a draft with no provider_id (provider linkage is mandatory)', async () => {
+    await assert.rejects(
+      () => rx.createDraft({ patient_user_id: PATIENT_ID, items: [{ drug_name: 'X', dosage: '1', frequency: 'BD' }] }),
+      /provider_id required/,
     );
-    assert.ok(result.prescription, 'prescription must be returned');
-    assert.ok(result.prescription.id, 'prescription must have an id');
-    assert.equal(result.prescription.patient_user_id, PATIENT_ID, 'prescription must link to patient');
+  });
+
+  it('rejects a draft with no patient_user_id (patient linkage is mandatory)', async () => {
+    await assert.rejects(
+      () => rx.createDraft({ provider_id: PROVIDER_USER, items: [{ drug_name: 'X', dosage: '1', frequency: 'BD' }] }),
+      /patient_user_id required/,
+    );
+  });
+
+  it('rejects a draft with no items', async () => {
+    await assert.rejects(
+      () => rx.createDraft({ provider_id: PROVIDER_USER, patient_user_id: PATIENT_ID, items: [] }),
+      /at least one item required/,
+    );
+  });
+
+  it('writes the prescription against an injected client when fully linked', async () => {
+    activePool = makePool();
+    try {
+      await rx.createDraft(
+        {
+          provider_id: PROVIDER_USER,
+          patient_user_id: PATIENT_ID,
+          appointment_id: APPOINTMENT_ID,
+          items: [{ drug_name: 'Artemether-Lumefantrine 80/480mg', dosage: '80/480mg', frequency: 'BD', quantity: 6, duration_days: 3 }],
+        },
+        activePool, // injected client → header + items run on the fake client
+      );
+    } catch (_e) {
+      // createDraft finishes with getPrescription(rxId), which reads back through
+      // the real getPool() — not configured in this hermetic context. The header
+      // INSERT already executed on the injected client, which is what we assert.
+    }
+    const stored = activePool._state.prescriptions[0];
+    assert.ok(stored, 'prescription header must be written');
+    assert.equal(stored.patient_user_id, PATIENT_ID, 'prescription must link to patient');
+    assert.equal(stored.provider_id, PROVIDER_USER, 'prescription must link to provider');
+    assert.equal(stored.appointment_id, APPOINTMENT_ID, 'prescription must link to the consultation');
+    assert.ok(activePool._ops.some(op => op.startsWith('INSERT INTO NG_DIGITAL_PRESCRIPTIONS')), 'header INSERT executed');
   });
 });
 

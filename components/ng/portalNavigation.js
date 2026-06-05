@@ -1,4 +1,5 @@
 import {
+  Activity,
   BarChart3,
   Building2,
   Calendar,
@@ -45,6 +46,7 @@ export const nigeriaPharmacyNavigation = [
 
 export const nigeriaAdminNavigation = [
   { name: 'Dashboard', href: '/ng/admin', icon: LayoutDashboard },
+  { name: 'Consultation Lifecycle', href: '/ng/admin/consultations', icon: Activity },
   { name: 'Providers', href: '/ng/admin/providers', icon: Stethoscope },
   { name: 'Hospitals', href: '/ng/admin/hospitals', icon: Building2 },
   { name: 'Pharmacies', href: '/ng/admin/pharmacies', icon: Pill },

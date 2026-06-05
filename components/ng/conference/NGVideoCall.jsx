@@ -157,6 +157,38 @@ function LocalVideoTile({ isVideoOff, isMuted, displayName, initials, livekitRoo
   );
 }
 
+/* ---------- Participants sidebar ---------- */
+const ParticipantsPanel = ({ localName, remoteParticipants, sfuAvailable }) => {
+  const everyone = [
+    { identity: `${localName} (You)`, isLocal: true },
+    ...remoteParticipants.map(p => ({ identity: p.identity, isLocal: false })),
+  ];
+  return (
+    <div className="flex flex-col h-full bg-white">
+      <div className="p-6 border-b border-gray-200">
+        <h3 className="font-bold text-gray-900 text-lg">In this consultation</h3>
+        <p className="text-sm text-gray-500 mt-1">
+          {everyone.length} participant{everyone.length !== 1 ? 's' : ''} · {sfuAvailable === true ? 'SFU (multi-party ready)' : 'local preview'}
+        </p>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {everyone.map((p, i) => (
+          <div key={i} className="flex items-center px-4 py-3 rounded-xl bg-slate-50 border border-slate-100">
+            <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold mr-3">
+              {String(p.identity).slice(0, 2).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 truncate">{p.identity}</p>
+              <p className="text-xs text-gray-500">{p.isLocal ? 'Host · Clinician' : 'Connected'}</p>
+            </div>
+            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 /* ---------- Vitals sidebar ---------- */
 const VitalsPanel = ({ hr, remoteParticipants }) => (
   <div className="flex flex-col h-full bg-slate-50/50 overflow-y-auto">
@@ -199,7 +231,7 @@ const VitalsPanel = ({ hr, remoteParticipants }) => (
 );
 
 /* ---------- Notes sidebar ---------- */
-const NotesPanel = ({ messages, hr }) => {
+const NotesPanel = ({ messages, hr, appointmentId, patientId, onOpenSoap, onCreateRx }) => {
   const [note, setNote] = useState('');
   const [generating, setGenerating] = useState(false);
 
@@ -231,10 +263,19 @@ const NotesPanel = ({ messages, hr }) => {
           className="flex-1 w-full bg-white border border-gray-200 rounded-2xl p-5 resize-none text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 leading-relaxed"
           value={note} onChange={e => setNote(e.target.value)}
           placeholder="AI notes appear here. Use Chat to simulate a conversation, then click a generate button." />
-        <div className="mt-4 flex space-x-4">
-          <button className="flex-1 bg-white border border-gray-300 text-gray-700 rounded-xl py-3 text-sm font-bold hover:bg-gray-50">Edit</button>
-          <button className="flex-1 bg-purple-600 text-white rounded-xl py-3 text-sm font-bold hover:bg-purple-700">Export to EHR</button>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <button onClick={onOpenSoap} className="bg-white border border-emerald-300 text-emerald-700 rounded-xl py-3 text-sm font-bold hover:bg-emerald-50 flex items-center justify-center">
+            <FileText size={15} className="mr-2" /> Open SOAP / EMR
+          </button>
+          <button onClick={onCreateRx} className="bg-emerald-600 text-white rounded-xl py-3 text-sm font-bold hover:bg-emerald-700 flex items-center justify-center">
+            <Stethoscope size={15} className="mr-2" /> Create Prescription
+          </button>
         </div>
+        {!appointmentId && (
+          <p className="mt-3 text-xs text-amber-600 text-center">
+            Launch this room from an appointment to link the SOAP note and prescription to the clinical record.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -381,6 +422,7 @@ export default function NGVideoCall() {
 
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const [activePanel, setActivePanel] = useState('vitals');
 
   const [remoteParticipants, setRemoteParticipants] = useState([]);
@@ -572,6 +614,20 @@ export default function NGVideoCall() {
     setIsVideoOff(!isVideoOff);
   };
 
+  const toggleScreenShare = async () => {
+    if (livekitRoom) {
+      try {
+        await livekitRoom.localParticipant.setScreenShareEnabled(!isSharing);
+        setIsSharing(!isSharing);
+      } catch (e) {
+        console.warn('[NGVideoCall] screen share error:', e.message);
+      }
+    } else {
+      // Local-preview mode without SFU — toggle state for UI feedback only.
+      setIsSharing(!isSharing);
+    }
+  };
+
   const endCall = async () => {
     if (livekitRoom) { livekitRoom.disconnect(); }
     if (roomId) { api.endRoom(roomId).catch(() => {}); }
@@ -589,6 +645,22 @@ export default function NGVideoCall() {
   };
 
   const togglePanel = (panel) => setActivePanel(p => p === panel ? null : panel);
+
+  // Open the appointment-linked EMR/SOAP page (preserves clinical context).
+  const openClinicalRecord = () => {
+    if (appointmentId) router.push(`/ng/provider/appointments/${appointmentId}/visit`);
+    else if (patientId) router.push(`/ng/provider/patients/${patientId}/ehr`);
+    else router.push('/ng/soap');
+  };
+
+  // Create a prescription from the same consultation context.
+  const createPrescription = () => {
+    const q = new URLSearchParams();
+    if (appointmentId) q.set('appointmentId', appointmentId);
+    if (patientId) q.set('patientId', patientId);
+    const qs = q.toString();
+    router.push(`/ng/provider/prescriptions${qs ? `?${qs}` : ''}`);
+  };
 
   // Auto-join if roomId in query param
   useEffect(() => {
@@ -734,6 +806,12 @@ export default function NGVideoCall() {
         {/* Controls */}
         <div className="h-24 w-full flex items-center justify-between px-6 md:px-8 bg-[#202124]">
           <div className="hidden md:flex items-center text-sm font-medium text-gray-300">
+            <button
+              onClick={() => router.push('/ng/provider/dashboard')}
+              className="flex items-center mr-3 px-3 py-1.5 rounded-lg bg-[#3c4043] hover:bg-[#4d5154] text-gray-200 text-xs font-bold"
+            >
+              <ChevronRight size={14} className="mr-1 rotate-180" /> Dashboard
+            </button>
             {timeString} <span className="mx-3 text-gray-600">|</span>
             {room?.title || 'DoctaRx Nigeria'}
           </div>
@@ -741,7 +819,7 @@ export default function NGVideoCall() {
           <div className="flex items-center space-x-3 md:space-x-4 mx-auto md:mx-0">
             <CtrlBtn active={isMuted} onClick={toggleMute} icon={Mic} activeIcon={MicOff} />
             <CtrlBtn active={isVideoOff} onClick={toggleVideo} icon={Video} activeIcon={VideoOff} />
-            <CtrlBtn active={false} icon={MonitorUp} activeIcon={MonitorUp} />
+            <CtrlBtn active={isSharing} activeBg="bg-blue-600" onClick={toggleScreenShare} icon={MonitorUp} activeIcon={MonitorUp} />
             <CtrlBtn active={false} icon={MoreVertical} activeIcon={MoreVertical} />
             <button onClick={endCall}
               className="w-16 md:w-20 h-12 ml-2 bg-[#ea4335] hover:bg-[#d93025] flex items-center justify-center rounded-full shadow-lg">
@@ -750,6 +828,7 @@ export default function NGVideoCall() {
           </div>
 
           <div className="hidden md:flex items-center space-x-2">
+            <SideBtn panelName="participants" currentPanel={activePanel} onClick={togglePanel} icon={Users} />
             <SideBtn panelName="vitals" currentPanel={activePanel} onClick={togglePanel} icon={Activity} />
             <SideBtn panelName="notes" currentPanel={activePanel} onClick={togglePanel} icon={Sparkles} />
             <SideBtn panelName="chat" currentPanel={activePanel} onClick={togglePanel} icon={MessageSquare} />
@@ -762,15 +841,16 @@ export default function NGVideoCall() {
         <div className="w-[420px] h-screen bg-white shadow-2xl flex flex-col z-20 border-l border-gray-200 shrink-0">
           <div className="h-20 flex items-center justify-between px-6 border-b border-gray-200 bg-white text-gray-900">
             <h2 className="font-bold text-lg">
-              {activePanel === 'vitals' ? 'Clinical Dashboard' : activePanel === 'notes' ? 'AI Notes' : 'Chat'}
+              {activePanel === 'participants' ? 'Participants' : activePanel === 'vitals' ? 'Clinical Dashboard' : activePanel === 'notes' ? 'AI Notes & SOAP' : 'Chat'}
             </h2>
             <button onClick={() => setActivePanel(null)} className="p-2 text-gray-500 hover:bg-gray-100 rounded-full">
               <ChevronRight size={20} />
             </button>
           </div>
           <div className="flex-1 overflow-hidden">
+            {activePanel === 'participants' && <ParticipantsPanel localName={displayName} remoteParticipants={remoteParticipants} sfuAvailable={sfuAvailable} />}
             {activePanel === 'vitals' && <VitalsPanel hr={hr} remoteParticipants={remoteParticipants} />}
-            {activePanel === 'notes' && <NotesPanel messages={messages} hr={hr} />}
+            {activePanel === 'notes' && <NotesPanel messages={messages} hr={hr} appointmentId={appointmentId} patientId={patientId} onOpenSoap={openClinicalRecord} onCreateRx={createPrescription} />}
             {activePanel === 'chat' && <ChatPanel messages={messages} onSend={sendMessage} roomId={roomId} />}
           </div>
         </div>

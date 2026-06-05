@@ -30,6 +30,7 @@ import {
   Filter, Plus, MoreHorizontal, ArrowUpRight, ArrowDownRight,
   Clock, Calendar as CalendarIcon, Video, MapPin, Pill, Syringe,
   AlertTriangle, CheckCircle2, ChevronRight, X, FileText,
+  Stethoscope, ClipboardList, Share2,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -558,6 +559,22 @@ export default function NGProviderDashboard() {
     );
   };
 
+  // Navigates to a real workflow route (not an in-dashboard tab). `highlight`
+  // styles the primary Video Calling entry point so it is immediately visible.
+  const LinkItem = ({ icon: Icon, label, onClick, highlight = false }) => (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
+        highlight
+          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200 hover:bg-emerald-700'
+          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+      }`}
+    >
+      <Icon size={20} className={highlight ? 'text-white' : 'text-slate-400'} />
+      <span className={`text-sm ${highlight ? 'font-bold' : ''}`}>{label}</span>
+    </button>
+  );
+
   return (
     /* fixed overlay so this full-screen UI renders on top of any parent layout wrapper */
     <div className="fixed inset-0 z-50 flex h-screen w-screen bg-[#F8FAFC] font-sans text-slate-900 overflow-hidden">
@@ -580,21 +597,19 @@ export default function NGProviderDashboard() {
           </div>
         </div>
 
-        <div className="p-4 space-y-1.5 flex-1 mt-2">
+        <div className="p-4 space-y-1.5 flex-1 mt-2 overflow-y-auto">
           <div className="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Dashboards</div>
           <NavItem id="command" icon={LayoutDashboard} label="Command Center" />
-          <NavItem id="population" icon={Users} label="Population Health" />
-          <NavItem id="documents" icon={FileText} label="Clinical Records" />
+          <NavItem id="population" icon={Users} label="Patient Queue" />
 
-          <div className="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-6">Workspace</div>
-          <NavItem id="schedule" icon={CalendarIcon} label="Schedule" />
-          <button
-            onClick={() => router.push('/ng/provider/call')}
-            className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 text-slate-500 hover:bg-slate-100 hover:text-slate-900 font-medium"
-          >
-            <Video size={20} className="text-slate-400" />
-            <span className="text-sm">Telehealth Center</span>
-          </button>
+          <div className="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-6">Clinical Workspace</div>
+          <LinkItem icon={Video} label="Video Calling" onClick={() => router.push('/ng/provider/call')} highlight />
+          <LinkItem icon={CalendarIcon} label="Appointments" onClick={() => router.push('/ng/provider/appointments')} />
+          <LinkItem icon={Stethoscope} label="Visits / Encounters" onClick={() => router.push('/ng/provider/visits')} />
+          <LinkItem icon={FileText} label="EMR / SOAP Notes" onClick={() => router.push('/ng/soap')} />
+          <LinkItem icon={Pill} label="Prescriptions" onClick={() => router.push('/ng/provider/prescriptions')} />
+          <LinkItem icon={Share2} label="Referrals" onClick={() => router.push('/ng/provider/referrals')} />
+          <LinkItem icon={ClipboardList} label="Pharmacy Status" onClick={() => router.push('/ng/provider/prescriptions')} />
         </div>
 
         <div className="p-4 border-t border-slate-100 m-4 bg-slate-50 rounded-2xl border flex items-center">

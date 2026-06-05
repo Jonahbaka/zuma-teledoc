@@ -855,4 +855,46 @@ router.get('/fraud/suspicious', async (req, res) => {
   }
 });
 
+// --- CONSULTATION LIFECYCLE OVERSIGHT ---
+
+router.get('/consultations/lifecycle', async (req, res) => {
+  try {
+    const pool = getPool();
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const result = await pool.query(`
+      SELECT
+        a.id                        AS appointment_id,
+        a.scheduled_at,
+        a.status                    AS appointment_status,
+        COALESCE(pu.first_name || ' ' || pu.last_name, a.patient_user_id::text) AS patient_name,
+        a.patient_user_id           AS patient_id,
+        COALESCE(prov.first_name || ' ' || prov.last_name, a.provider_user_id::text) AS provider_name,
+        a.provider_user_id          AS provider_id,
+        cr.id                       AS room_id,
+        cr.status                   AS room_status,
+        cr.started_at               AS call_started_at,
+        cr.ended_at                 AS call_ended_at,
+        ce.id                       AS encounter_id,
+        ce.status                   AS encounter_status,
+        dp.id                       AS prescription_id,
+        dp.status                   AS rx_status,
+        dp.dispense_status,
+        pu.account_status           AS patient_status
+      FROM ng_appointments a
+      LEFT JOIN users pu   ON pu.id = a.patient_user_id
+      LEFT JOIN users prov ON prov.id = a.provider_user_id
+      LEFT JOIN ng_conf_rooms     cr ON cr.appointment_id = a.id
+      LEFT JOIN ng_clinical_encounters ce ON ce.appointment_id = a.id
+      LEFT JOIN ng_digital_prescriptions dp ON dp.patient_user_id = a.patient_user_id
+        AND dp.created_at >= a.scheduled_at - INTERVAL '1 hour'
+        AND dp.created_at <= COALESCE(cr.ended_at, NOW()) + INTERVAL '2 hours'
+      ORDER BY a.scheduled_at DESC
+      LIMIT $1
+    `, [limit]);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

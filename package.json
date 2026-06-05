@@ -19,7 +19,7 @@
     "seed:links": "node server/scripts/seed-testing-links.js",
     "verify:admin-test-access": "node scripts/verify-admin-test-access-flow.cjs",
     "verify:testing-link-lifecycle": "node scripts/verify-testing-link-lifecycle.cjs",
-    "test": "node --test ng/tests/conferencing.test.js ng/tests/livekit-provider-conference-contract.test.js && node ng/tests/regression.test.js && node ng/tests/portal-contract.test.js",
+    "test": "node --test ng/tests/conferencing.test.js ng/tests/livekit-provider-conference-contract.test.js ng/tests/provider-workflow-discovery.test.js ng/tests/telehealth-lifecycle-integration.test.js ng/tests/telehealth-lifecycle-db.test.js && node ng/tests/regression.test.js && node ng/tests/portal-contract.test.js",
     "test:regression": "node ng/tests/regression.test.js",
     "test:portal": "node ng/tests/portal-contract.test.js",
     "test:sim": "node ng/scripts/simulate.js",
@@ -38,6 +38,9 @@
     "test:live-clinical-simulation": "node --test ng/tests/live-clinical-simulation.test.js",
     "test:conference-simulation": "node --test ng/tests/conferencing-simulation.test.js ng/tests/livekit-provider-conference-contract.test.js",
     "test:conference-sfu-contract": "node --test ng/tests/livekit-provider-conference-contract.test.js",
+    "test:ng:lifecycle:hermetic": "node --test ng/tests/telehealth-lifecycle-integration.test.js",
+    "test:ng:lifecycle:db": "node --test ng/tests/telehealth-lifecycle-db.test.js",
+    "test:ng:lifecycle:browser": "node scripts/e2e-ng-lifecycle-browser.cjs",
     "lint": "eslint .",
     "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\"",
     "validate:db": "node scripts/validate-db.js"

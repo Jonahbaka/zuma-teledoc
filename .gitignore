@@ -104,3 +104,6 @@ terminals/
 # Python bytecode cache (from CI deploy scripts / local tests)
 __pycache__/
 *.pyc
+
+# Local browser/e2e evidence artifacts
+artifacts/
