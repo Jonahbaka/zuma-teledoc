@@ -12,9 +12,16 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
-      - name: Checkout (for the deploy status parser)
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
 
       - name: Capture pre-deploy production build
         id: predeploy
@@ -26,7 +33,27 @@ jobs:
           echo "git_commit=$GIT_COMMIT" >> "$GITHUB_OUTPUT"
           echo "Pre-deploy production buildId=${BUILD_ID:-missing} gitCommit=${GIT_COMMIT:-missing}"
 
-      - name: Trigger deploy webhook
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run deploy gate
+        run: npm run test:deploy-gate
+
+      - name: Build production frontend in CI
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npm run build
+
+      - name: Package verified frontend artifact
+        run: |
+          test -s .next/BUILD_ID
+          test -d .next/static
+          rm -f /tmp/doctarx-next-artifact.tar.gz
+          tar --exclude='.next/cache' -czf /tmp/doctarx-next-artifact.tar.gz .next public/robots.txt public/sitemap.xml
+          ls -lh /tmp/doctarx-next-artifact.tar.gz
+          echo "Artifact BUILD_ID=$(cat .next/BUILD_ID)"
+
+      - name: Upload artifact and start EC2 deploy
         env:
           DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
           NG_LIVEKIT_URL: ${{ secrets.NG_LIVEKIT_URL }}
@@ -55,6 +82,7 @@ jobs:
           RTC_TURN_URLS: ${{ secrets.RTC_TURN_URLS }}
           TURN_STATIC_AUTH_SECRET: ${{ secrets.TURN_STATIC_AUTH_SECRET }}
         run: |
+          set -euo pipefail
           auth_header=()
 
           if [ -n "$DEPLOY_SECRET" ]; then
@@ -71,112 +99,83 @@ jobs:
             auth_header=(-H "Authorization: Bearer $oidc_token")
           fi
 
-          # Build env payload via Python — values read from process env, never
-          # appear as shell arguments, and GitHub Actions masks them in logs.
-          # Keys absent from GitHub Secrets are empty strings and are skipped.
-          deploy_body=$(python3 -c 'import json,os; keys=["NG_LIVEKIT_URL","NG_LIVEKIT_API_KEY","NG_LIVEKIT_API_SECRET","DATABASE_URL","JWT_ACCESS_SECRET","JWT_REFRESH_SECRET","ENCRYPTION_KEY","SESSION_SECRET","ANTHROPIC_API_KEY","GEMINI_API_KEY","CLAUDE_API_KEY","STRIPE_SECRET_KEY","STRIPE_PUBLISHABLE_KEY","STRIPE_WEBHOOK_SECRET","PAYSTACK_SECRET_KEY","PAYSTACK_PUBLIC_KEY","FLUTTERWAVE_SECRET_KEY","FLUTTERWAVE_PUBLIC_KEY","TERMII_API_KEY","SMTP_HOST","SMTP_USER","SMTP_PASSWORD","SMTP_FROM","RTC_TURN_URLS","TURN_STATIC_AUTH_SECRET"]; print(json.dumps({"env": {k: os.environ[k] for k in keys if os.environ.get(k)}}))')
+          env_json=$(python3 - <<'PY'
+          import json, os
+          keys = [
+              "NG_LIVEKIT_URL","NG_LIVEKIT_API_KEY","NG_LIVEKIT_API_SECRET",
+              "DATABASE_URL","JWT_ACCESS_SECRET","JWT_REFRESH_SECRET",
+              "ENCRYPTION_KEY","SESSION_SECRET","ANTHROPIC_API_KEY",
+              "GEMINI_API_KEY","CLAUDE_API_KEY","STRIPE_SECRET_KEY",
+              "STRIPE_PUBLISHABLE_KEY","STRIPE_WEBHOOK_SECRET",
+              "PAYSTACK_SECRET_KEY","PAYSTACK_PUBLIC_KEY",
+              "FLUTTERWAVE_SECRET_KEY","FLUTTERWAVE_PUBLIC_KEY",
+              "TERMII_API_KEY","SMTP_HOST","SMTP_USER","SMTP_PASSWORD",
+              "SMTP_FROM","RTC_TURN_URLS","TURN_STATIC_AUTH_SECRET"
+          ]
+          print(json.dumps({k: os.environ[k] for k in keys if os.environ.get(k)}))
+          PY
+          )
 
-          # Send the trigger ONCE. We never re-POST on failure: a retry would
-          # pile a second concurrent build onto the server. A slow/no response
-          # almost always means the server is busy running an in-flight deploy
-          # (the request was received and a build started) — in that case we
-          # fall through to the poll step, which waits for the exact target
-          # commit to go live. Only a hard auth rejection fails fast here.
           set +e
-          response=$(curl -s -o /tmp/deploy_response.json -w "%{http_code}" \
-            -X POST https://doctarx.com/api/deploy \
-            -H "Content-Type: application/json" \
+          response=$(curl -sS -o /tmp/artifact_deploy_response.json -w "%{http_code}" \
+            -X POST https://doctarx.com/api/upload-build-binary \
             "${auth_header[@]}" \
-            --data "$deploy_body" \
-            --max-time 60)
+            -F "tarball=@/tmp/doctarx-next-artifact.tar.gz;type=application/gzip" \
+            -F "gitSha=${GITHUB_SHA}" \
+            -F "branch=${GITHUB_REF_NAME}" \
+            --form-string "envJson=${env_json}" \
+            --max-time 180)
           curl_rc=$?
           set -e
-          echo "trigger: curl_rc=$curl_rc http_code=$response"
-          cat /tmp/deploy_response.json 2>/dev/null || true
-          echo ""
-
-          if [ "$curl_rc" != "0" ]; then
-            echo "::warning::Deploy webhook did not respond (curl rc=$curl_rc) — server is likely busy with an in-flight deploy. Proceeding to poll for completion (no re-POST)."
-            exit 0
-          fi
-          if [ "$response" = "401" ] || [ "$response" = "403" ]; then
-            echo "::error::Deploy webhook rejected the request (HTTP $response) — authorization failure."
+          echo "artifact-upload: curl_rc=$curl_rc http_code=$response"
+          python3 - /tmp/artifact_deploy_response.json <<'PY'
+          import json, sys
+          path = sys.argv[1]
+          try:
+              data = json.load(open(path))
+          except Exception:
+              print(open(path, errors="replace").read()[:1000])
+              raise SystemExit(0)
+          redacted = {k: data.get(k) for k in ("success", "message", "deployId", "pid", "fileSize", "auth", "gitSha", "branch", "envKeys")}
+          print(json.dumps(redacted, indent=2))
+          PY
+          if [ "$curl_rc" != "0" ] || [ "$response" != "200" ]; then
+            echo "::error::Artifact deploy upload failed."
             exit 1
           fi
-          if [ "$response" != "200" ]; then
-            echo "::warning::Deploy webhook returned HTTP $response — proceeding to poll (server may be mid-deploy)."
-            exit 0
-          fi
-          deploy_success=$(python3 -c 'import json,sys; print("true" if json.load(open("/tmp/deploy_response.json")).get("success") is True else "false")' 2>/dev/null || echo "false")
-          if [ "$deploy_success" = "true" ]; then
-            echo "Deploy triggered successfully - build running in background on server"
-          else
-            echo "Deploy not freshly started (already in progress or busy) - will poll for completion"
-          fi
-          exit 0
 
-      - name: Wait for deploy and verify NG platform
+      - name: Wait for artifact deploy and verify production
         env:
           DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
           PRE_DEPLOY_BUILD_ID: ${{ steps.predeploy.outputs.build_id }}
         run: |
-          # Poll the EC2 deploy status contract until it reaches a TERMINAL state.
-          # The poller and the server agree on ONE JSON shape (parsed by
-          # .github/scripts/deploy_status.py). The job succeeds ONLY when the
-          # server reports status=success AND verified=true. failed / timeout /
-          # unknown are hard failures; an unparseable contract is a hard failure;
-          # a slow or detached build is never reported to GitHub as success.
-          set -o pipefail
-          echo "Polling /api/deploy/log until terminal state (max 40 min)..."
-          DEADLINE=$(( $(date +%s) + 2400 ))
+          set -euo pipefail
+          DEADLINE=$(( $(date +%s) + 900 ))
           OUTCOME=timeout
           LAST_VERIFY=""
-          EXPECTED_SHA="${GITHUB_SHA:0:12}"
 
-          # Bootstrap fallback: when the live server is too old to expose
-          # /api/deploy/log, confirm the deploy via version-independent public
-          # endpoints. Success requires the exact target commit to be live AND
-          # the app healthy AND the NG platform reporting status=ok. Sets
-          # BOOT_GC / BOOT_HS / BOOT_NG / BOOT_MR for reporting; returns 0 on a
-          # fully verified bootstrap completion.
-          bootstrap_check() {
-            local H
-            BOOT_GC=""; BOOT_HS=""; BOOT_BI=""; BOOT_NG=""; BOOT_MR=""
-            H="$(curl -s --max-time 20 https://doctarx.com/api/health 2>/dev/null || true)"
-            BOOT_GC="$(printf '%s' "$H" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print((d.get("gitCommit") or "")[:12])' 2>/dev/null || true)"
-            BOOT_HS="$(printf '%s' "$H" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print(d.get("status",""))' 2>/dev/null || true)"
-            BOOT_BI="$(printf '%s' "$H" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print(d.get("buildId") or d.get("version") or "")' 2>/dev/null || true)"
-            BOOT_NG="$(curl -s --max-time 20 https://doctarx.com/api/ng/health 2>/dev/null || true)"
-            BOOT_MR="$(curl -s --max-time 20 https://doctarx.com/api/ng/conference/media-readiness 2>/dev/null || true)"
-            [ -n "$BOOT_GC" ] && [ "${BOOT_GC:0:7}" = "${EXPECTED_SHA:0:7}" ] \
-              && { [ -z "$PRE_DEPLOY_BUILD_ID" ] || { [ -n "$BOOT_BI" ] && [ "$BOOT_BI" != "$PRE_DEPLOY_BUILD_ID" ]; }; } \
-              && { [ "$BOOT_HS" = "healthy" ] || [ "$BOOT_HS" = "ready" ]; } \
-              && printf '%s' "$BOOT_NG" | grep -q '"status":"ok"'
+          get_oidc_header() {
+            if [ -n "${DEPLOY_SECRET:-}" ]; then
+              printf 'x-deploy-token: %s' "$DEPLOY_SECRET"
+              return
+            fi
+            oidc_resp=$(curl -sS --max-time 10 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doctarx-deploy" 2>/dev/null || echo '{}')
+            oidc_tok=$(printf '%s' "$oidc_resp" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read() or "{}").get("value",""))' 2>/dev/null || echo '')
+            printf 'Authorization: Bearer %s' "$oidc_tok"
           }
 
-          # Final production gate. A deploy is "successful" ONLY after this
-          # passes: it proves the NG clinical route is mounted, provider pages
-          # render past the warmup loader, readiness flags are set, and health
-          # is stable across 5 polls — not merely that /api/health shows a new
-          # commit. Media (TURN/SFU/multi-party) is reported NOT VERIFIED.
+          fetch_status() {
+            header="$(get_oidc_header)"
+            curl -s --max-time 20 -H "$header" "https://doctarx.com/api/deploy/log?lines=400" 2>/dev/null || true
+          }
+
           run_production_verify() {
-            echo "=== Final production verification (verify_production.py) ==="
             EXPECT_COMMIT="$GITHUB_SHA" VERIFY_BASE="https://doctarx.com" \
               PRE_DEPLOY_BUILD_ID="$PRE_DEPLOY_BUILD_ID" REQUIRE_BUILD_ID_CHANGE=1 \
               python3 .github/scripts/verify_production.py
           }
 
-          fetch_status() {
-            if [ -n "$DEPLOY_SECRET" ]; then
-              curl -s --max-time 20 -H "x-deploy-token: $DEPLOY_SECRET" "https://doctarx.com/api/deploy/log?lines=400" 2>/dev/null || true
-            else
-              oidc_resp=$(curl -sS --max-time 10 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doctarx-deploy" 2>/dev/null || echo '{}')
-              oidc_tok=$(printf '%s' "$oidc_resp" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read() or "{}").get("value",""))' 2>/dev/null || echo '')
-              curl -s --max-time 20 -H "Authorization: Bearer $oidc_tok" "https://doctarx.com/api/deploy/log?lines=400" 2>/dev/null || true
-            fi
-          }
-
-          while [ $(date +%s) -lt $DEADLINE ]; do
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
             RESP="$(fetch_status || true)"
             PARSED="$(printf '%s' "$RESP" | python3 .github/scripts/deploy_status.py || true)"
             KV="$(printf '%s\n' "$PARSED" | sed '/^---VERIFY---$/,$d')"
@@ -188,80 +187,47 @@ jobs:
 
             if [ "$RESULT" = "contract_error" ]; then
               echo "::error::DEPLOY_STATUS_CONTRACT_ERROR — /api/deploy/log did not honor the status contract."
-              echo "----- raw (redacted) response, truncated to 2000 chars -----"
               printf '%s' "$RESP" | head -c 2000
               echo ""
               OUTCOME=contract_error
               break
             fi
 
-            if [ "$RESULT" = "transient" ]; then
-              echo "$(date -u +%H:%M:%S) status endpoint unreachable/non-JSON (server may be mid-reload) — retrying…"
-              sleep 20
-              continue
-            fi
-
-            if [ "$RESULT" = "route_missing" ]; then
-              # Old server without /api/deploy/log — confirm the target commit
-              # has gone live via /api/health, then run the full production gate.
-              if bootstrap_check; then
-                echo "=== BOOTSTRAP: target commit and build are live (gitCommit=$BOOT_GC, buildId=$BOOT_BI, health=$BOOT_HS) ==="
-                if run_production_verify; then OUTCOME=success; else OUTCOME=verify_failed; fi
-                break
-              fi
-              echo "$(date -u +%H:%M:%S) /api/deploy/log not on EC2 yet (old server). bootstrap: gitCommit=${BOOT_GC:-?} expected=${EXPECTED_SHA:0:7} health=${BOOT_HS:-?} — still deploying…"
-              sleep 20
+            if [ "$RESULT" = "transient" ] || [ "$RESULT" = "route_missing" ]; then
+              echo "$(date -u +%H:%M:%S) deploy status unavailable ($RESULT), retrying..."
+              sleep 10
               continue
             fi
 
             echo "$(date -u +%H:%M:%S) status=$STATUS verified=$VERIFIED build=$CHECK_BUILD pm2=$CHECK_PM2 health=$CHECK_HEALTH ngHealth=$CHECK_NGHEALTH deployId=$DEPLOYID pid=$PID"
-
-            if { [ "$STATUS" = "running" ] || [ "$STATUS" = "idle" ]; } && bootstrap_check; then
-              echo "=== BOOTSTRAP: target commit and build are live while deploy status is $STATUS (gitCommit=$BOOT_GC, buildId=$BOOT_BI, health=$BOOT_HS) ==="
-              if run_production_verify; then OUTCOME=success; else OUTCOME=verify_failed; fi
-              break
-            fi
-
             case "$STATUS" in
               success)
-                echo "=== DEPLOY TERMINAL (status=$STATUS exitCode=$EXITCODE commit=$COMMIT deployId=$DEPLOYID) ==="
                 printf '%s\n' "$LAST_VERIFY"
                 if [ "$VERIFIED" != "true" ]; then
                   OUTCOME=failed
-                  echo "::error::EC2 reported status=success but the in-deploy verification gate did not pass (verified=$VERIFIED)."
+                  echo "::error::EC2 reported success without verified=true."
                   break
                 fi
-                # EC2-side gate passed; now run the authoritative public production gate.
                 if run_production_verify; then OUTCOME=success; else OUTCOME=verify_failed; fi
                 break ;;
               failed|timeout|unknown)
                 OUTCOME="$STATUS"
-                echo "::error::Deploy reached terminal non-success state (status=$STATUS exitCode=$EXITCODE)."
                 printf '%s\n' "$LAST_VERIFY"
                 break ;;
               running|idle)
-                : ;;  # still deploying — keep polling
+                sleep 10 ;;
               *)
-                echo "::error::DEPLOY_STATUS_CONTRACT_ERROR — unexpected status '$STATUS'."
-                printf '%s' "$RESP" | head -c 2000
-                echo ""
                 OUTCOME=contract_error
+                echo "::error::Unexpected deploy status '$STATUS'."
                 break ;;
             esac
-            sleep 20
           done
 
-          # Final outcome enforcement: ONLY success exits 0.
           if [ "$OUTCOME" = "success" ]; then
-            echo "Deployment SUCCESSFUL — target commit live AND full production verification passed."
+            echo "Deployment SUCCESSFUL — CI-built artifact installed and full production verification passed."
             exit 0
           fi
-          echo "::error::Deployment did NOT succeed (outcome=$OUTCOME). Last EC2 deploy/verify lines:"
+
+          echo "::error::Deployment did NOT succeed (outcome=$OUTCOME). Last deploy log evidence:"
           printf '%s\n' "$LAST_VERIFY"
-          if [ "$OUTCOME" = "verify_failed" ]; then
-            echo "::error::The deploy landed but production verification FAILED — NG clinical route, provider pages, readiness, or stability did not pass (see verify_production.py report above)."
-          fi
-          if [ "$OUTCOME" = "timeout" ]; then
-            echo "::error::No terminal state within 40 min — deploy is INCOMPLETE/UNKNOWN on EC2 (check /tmp/doctarx-deploy.log)."
-          fi
           exit 1
