@@ -31,6 +31,49 @@ function isValidRoomTransition(from, to) {
   return (ROOM_TRANSITIONS[from] || []).includes(to);
 }
 
+// Real coercion function from the service (pure; getPool is lazy)
+const { coerceConfRole } = require('../services/conferencing/conferenceService');
+
+// ─── ng_conf_role coercion (regression: enum "provider" error) ────────────────
+
+describe('coerceConfRole — maps platform roles to valid ng_conf_role', () => {
+  const VALID = ['host', 'consultant', 'doctor', 'nurse', 'pharmacist', 'patient', 'family', 'observer'];
+
+  it('passes through every valid enum member unchanged', () => {
+    for (const r of VALID) assert.equal(coerceConfRole(r), r);
+  });
+
+  it('maps the platform role "provider" to "doctor" (the bug fix)', () => {
+    assert.equal(coerceConfRole('provider'), 'doctor');
+  });
+
+  it('maps admin-family platform roles to "host"', () => {
+    for (const r of ['admin', 'super_admin', 'hospital_admin', 'clinic_admin', 'facility_admin']) {
+      assert.equal(coerceConfRole(r), 'host');
+    }
+  });
+
+  it('maps clinician synonyms and is case/whitespace insensitive', () => {
+    assert.equal(coerceConfRole('Clinician'), 'doctor');
+    assert.equal(coerceConfRole('  PHYSICIAN '), 'doctor');
+    assert.equal(coerceConfRole('specialist'), 'consultant');
+    assert.equal(coerceConfRole('pharmacy'), 'pharmacist');
+  });
+
+  it('falls back safely for unknown/empty values', () => {
+    assert.equal(coerceConfRole('totally-unknown'), 'observer');
+    assert.equal(coerceConfRole(''), 'observer');
+    assert.equal(coerceConfRole(null), 'observer');
+    assert.equal(coerceConfRole(undefined, 'patient'), 'patient');
+  });
+
+  it('never returns a value outside the enum', () => {
+    for (const r of ['provider', 'x', '', 'admin', 'nurse', null, 'GUEST', 'intern']) {
+      assert.ok(VALID.includes(coerceConfRole(r)), `coerced ${String(r)} must be a valid enum member`);
+    }
+  });
+});
+
 // ─── Permissions ─────────────────────────────────────────────────────────────
 
 describe('conferencePermissions — role defaults', () => {

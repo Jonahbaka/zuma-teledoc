@@ -36,7 +36,10 @@ const api = {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ display_name: displayName }),
   }).then(r => r.json()),
   joinRoom: (id, displayName) => fetch(`/api/ng/conference/rooms/${id}/join`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ display_name: displayName, role: 'provider' }),
+    // 'doctor' is the conference-participant role (ng_conf_role) for a clinician.
+    // The DoctaRx platform role 'provider' is NOT a valid ng_conf_role; the server
+    // also coerces, but we send the correct clinical role explicitly.
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ display_name: displayName, role: 'doctor' }),
   }).then(r => r.json()),
   endRoom: (id) => fetch(`/api/ng/conference/rooms/${id}/end`, { method: 'POST' }).then(r => r.json()),
   sendChat: (id, text) => fetch(`/api/ng/conference/rooms/${id}/chat`, {
@@ -377,6 +380,12 @@ export default function NGVideoCall() {
   const [messages, setMessages] = useState([]);
   const [roomId, setRoomId] = useState(null);
 
+  const [callStartedAt, setCallStartedAt] = useState(null);
+  const [elapsed, setElapsed] = useState('00:00');
+  const [mediaError, setMediaError] = useState('');     // camera/mic permission problems
+  const [connState, setConnState] = useState('idle');   // idle|connecting|connected|reconnecting|failed
+  const lastRoomRef = useRef(null);                     // for retry
+
   const displayName = user ? `Dr. ${user.last_name || user.lastName || user.name || 'Provider'}` : 'Dr. Provider';
   const initials = user
     ? `${(user.first_name || user.firstName || 'D')[0]}${(user.last_name || user.lastName || 'R')[0]}`.toUpperCase()
@@ -393,6 +402,21 @@ export default function NGVideoCall() {
     const t = setInterval(() => setHr(p => Math.min(78, Math.max(68, p + Math.floor(Math.random() * 5) - 2))), 2000);
     return () => clearInterval(t);
   }, []);
+
+  // Elapsed call timer (counts up from the moment media connects)
+  useEffect(() => {
+    if (!callStartedAt) { setElapsed('00:00'); return; }
+    const fmt = () => {
+      const s = Math.max(0, Math.floor((Date.now() - callStartedAt) / 1000));
+      const hh = Math.floor(s / 3600);
+      const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      setElapsed(hh > 0 ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`);
+    };
+    fmt();
+    const t = setInterval(fmt, 1000);
+    return () => clearInterval(t);
+  }, [callStartedAt]);
 
   // Poll chat messages once in a room
   useEffect(() => {
@@ -414,8 +438,11 @@ export default function NGVideoCall() {
   const handleJoin = useCallback(async (conferenceRoom) => {
     setRoom(conferenceRoom);
     setRoomId(conferenceRoom.id);
+    lastRoomRef.current = conferenceRoom;
     setPhase('connecting');
     setConnectError('');
+    setMediaError('');
+    setConnState('connecting');
 
     try {
       // Ensure room is live
@@ -432,6 +459,8 @@ export default function NGVideoCall() {
       if (!tokenRes.ok || tokenRes.code === 'SFU_NOT_CONFIGURED') {
         // LiveKit not configured — fall back to getUserMedia-only preview
         setSfuAvailable(false);
+        setConnState('connected');
+        setCallStartedAt(Date.now());
         setPhase('call');
         return;
       }
@@ -463,11 +492,14 @@ export default function NGVideoCall() {
         .on(RoomEvent.TrackUnsubscribed, updateParticipants)
         .on(RoomEvent.ParticipantConnected, updateParticipants)
         .on(RoomEvent.ParticipantDisconnected, updateParticipants)
-        .on(RoomEvent.Disconnected, () => { setPhase('ended'); });
+        .on(RoomEvent.Reconnecting, () => setConnState('reconnecting'))
+        .on(RoomEvent.Reconnected, () => setConnState('connected'))
+        .on(RoomEvent.Disconnected, () => { setConnState('idle'); setPhase('ended'); });
 
       await lkRoom.connect(tokenRes.livekitUrl, tokenRes.token);
 
-      // Publish camera + mic
+      // Publish camera + mic — surface a clear, production-grade error if the
+      // browser denies media or no device is present, rather than failing silently.
       try {
         const [videoTrack, audioTrack] = await Promise.all([
           createLocalVideoTrack(),
@@ -477,17 +509,36 @@ export default function NGVideoCall() {
         await lkRoom.localParticipant.publishTrack(audioTrack);
       } catch (mediaErr) {
         console.warn('[NGVideoCall] media publish error:', mediaErr.message);
+        const denied = /permission|denied|notallowed/i.test(mediaErr.name + mediaErr.message);
+        const missing = /notfound|devicesnotfound|overconstrained/i.test(mediaErr.name + mediaErr.message);
+        setMediaError(
+          denied
+            ? 'Camera/microphone access was blocked. Enable permissions in your browser and rejoin.'
+            : missing
+              ? 'No camera or microphone was detected. Connect a device and rejoin.'
+              : `Media error: ${mediaErr.message}. You are connected but others may not see/hear you.`
+        );
       }
 
       setLivekitRoom(lkRoom);
+      setConnState('connected');
+      setCallStartedAt(Date.now());
       setPhase('call');
     } catch (err) {
       console.error('[NGVideoCall] connect error:', err);
       setConnectError(err.message);
       setSfuAvailable(false);
+      setConnState('connected');
+      setCallStartedAt(Date.now());
       setPhase('call'); // still show camera-only UI
     }
   }, [displayName]);
+
+  const retryConnect = useCallback(() => {
+    const r = lastRoomRef.current;
+    if (r) handleJoin(r);
+    else setPhase('pre');
+  }, [handleJoin]);
 
   // Mute / video toggle via LiveKit
   const toggleMute = async () => {
@@ -507,6 +558,8 @@ export default function NGVideoCall() {
   const endCall = async () => {
     if (livekitRoom) { livekitRoom.disconnect(); }
     if (roomId) { api.endRoom(roomId).catch(() => {}); }
+    setCallStartedAt(null);
+    setConnState('idle');
     setPhase('ended');
   };
 
@@ -540,9 +593,15 @@ export default function NGVideoCall() {
   if (phase === 'connecting') {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#202124] text-white">
+        <div className="flex items-center mb-8">
+          <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center mr-3">
+            <Stethoscope size={24} className="text-white" />
+          </div>
+          <span className="text-lg font-bold tracking-tight">DoctaRx <span className="text-blue-400">Telehealth</span></span>
+        </div>
         <Loader size={48} className="animate-spin text-blue-400 mb-6" />
         <p className="text-xl font-semibold">Connecting to room…</p>
-        <p className="text-gray-400 mt-2 text-sm">{room?.title || 'Consultation'}</p>
+        <p className="text-gray-400 mt-2 text-sm">{room?.title || 'Consultation'} · Nigeria</p>
       </div>
     );
   }
@@ -557,7 +616,7 @@ export default function NGVideoCall() {
           </p>
         )}
         <div className="flex space-x-4">
-          <button onClick={() => { setPhase('pre'); setLivekitRoom(null); setRoom(null); setRemoteParticipants([]); setRemoteTracks({}); }}
+          <button onClick={() => { setPhase('pre'); setLivekitRoom(null); setRoom(null); setRemoteParticipants([]); setRemoteTracks({}); setCallStartedAt(null); setMediaError(''); setConnState('idle'); }}
             className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg">
             New Call
           </button>
@@ -579,22 +638,48 @@ export default function NGVideoCall() {
       <div className="flex flex-col flex-1 min-w-0">
 
         {/* Header badges */}
-        <div className="absolute top-6 left-6 z-10 flex space-x-3">
+        <div className="absolute top-6 left-6 z-10 flex flex-wrap gap-3 items-center">
           <div className="bg-black/50 backdrop-blur-md border border-white/10 px-4 py-2 rounded-xl flex items-center shadow-lg">
-            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse mr-3" />
-            <span className="text-sm font-semibold tracking-wide">SECURE · DOCTARX NG</span>
+            <Stethoscope size={15} className="mr-2 text-blue-400" />
+            <span className="text-sm font-bold tracking-wide">DoctaRx <span className="text-blue-400">Telehealth</span></span>
           </div>
-          {sfuAvailable === true && (
-            <div className="bg-black/50 backdrop-blur-md border border-green-500/30 px-3 py-2 rounded-xl flex items-center text-green-400 text-xs font-bold">
-              <Wifi size={14} className="mr-2" /> LiveKit SFU
+          <div className="bg-black/50 backdrop-blur-md border border-white/10 px-3 py-2 rounded-xl flex items-center text-xs font-semibold text-gray-200">
+            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse mr-2" /> SECURE · NG
+          </div>
+          {/* Live elapsed call timer */}
+          <div className="bg-black/50 backdrop-blur-md border border-white/10 px-3 py-2 rounded-xl flex items-center text-xs font-mono font-bold text-gray-100">
+            {elapsed}
+          </div>
+          {/* Connection status */}
+          {connState === 'reconnecting' ? (
+            <div className="bg-black/50 backdrop-blur-md border border-amber-500/40 px-3 py-2 rounded-xl flex items-center text-amber-400 text-xs font-bold">
+              <Loader size={13} className="mr-2 animate-spin" /> Reconnecting…
             </div>
-          )}
-          {sfuAvailable === false && (
+          ) : sfuAvailable === true ? (
+            <div className="bg-black/50 backdrop-blur-md border border-green-500/30 px-3 py-2 rounded-xl flex items-center text-green-400 text-xs font-bold">
+              <Wifi size={14} className="mr-2" /> Connected · SFU
+            </div>
+          ) : (
             <div className="bg-black/50 backdrop-blur-md border border-amber-500/30 px-3 py-2 rounded-xl flex items-center text-amber-400 text-xs font-bold">
               <WifiOff size={14} className="mr-2" /> Local Preview
             </div>
           )}
         </div>
+
+        {/* Media-permission / connection error banner */}
+        {(mediaError || connectError) && (
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 max-w-md w-[90%]">
+            <div className="bg-red-950/90 backdrop-blur-md border border-red-500/50 rounded-xl px-4 py-3 flex items-start text-sm text-red-200 shadow-2xl">
+              <AlertCircle size={18} className="mr-2 shrink-0 mt-0.5 text-red-400" />
+              <div className="flex-1">
+                <p>{mediaError || `Connection issue: ${connectError}`}</p>
+                <button onClick={retryConnect} className="mt-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg">
+                  Retry connection
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Video grid */}
         <div className="flex-1 p-4 md:p-6 flex items-center justify-center min-h-0 overflow-hidden">

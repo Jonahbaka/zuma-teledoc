@@ -46,6 +46,47 @@ function mintToken() {
   return crypto.randomBytes(24).toString('base64url');
 }
 
+// ─── Conference role coercion ────────────────────────────────────────────────
+// `ng_conf_role` is the conference-participant role enum and is INTENTIONALLY
+// distinct from the DoctaRx platform role (e.g. a platform 'provider' is a
+// clinical 'doctor' inside a room). Any value reaching the DB must be a valid
+// enum member, so we whitelist + map here. This is the authoritative guard:
+// never trust a client-supplied role to be a valid enum value.
+const VALID_CONF_ROLES = new Set([
+  'host', 'consultant', 'doctor', 'nurse',
+  'pharmacist', 'patient', 'family', 'observer',
+]);
+
+// Platform / synonym role → conference role
+const CONF_ROLE_ALIASES = {
+  provider: 'doctor',
+  clinician: 'doctor',
+  physician: 'doctor',
+  gp: 'doctor',
+  specialist: 'consultant',
+  attending: 'consultant',
+  admin: 'host',
+  super_admin: 'host',
+  hospital_admin: 'host',
+  clinic_admin: 'host',
+  facility_admin: 'host',
+  pharmacy: 'pharmacist',
+  pharmacist_user: 'pharmacist',
+  rn: 'nurse',
+  caregiver: 'family',
+  guardian: 'family',
+  intern: 'observer',
+  guest: 'observer',
+};
+
+function coerceConfRole(role, fallback = 'observer') {
+  if (!role) return fallback;
+  const normalized = String(role).trim().toLowerCase();
+  if (VALID_CONF_ROLES.has(normalized)) return normalized;
+  if (CONF_ROLE_ALIASES[normalized]) return CONF_ROLE_ALIASES[normalized];
+  return fallback;
+}
+
 async function logEvent(roomId, participantId, actor, eventKind, payload, pool = getPool()) {
   await pool.query(
     `INSERT INTO ng_conf_events
@@ -204,6 +245,11 @@ async function joinRoom(roomId, actor, { display_name, role = 'observer', user_a
   if (!room) throwNotFound();
   if (room.status === 'cancelled' || room.status === 'ended') throwInvalid(`Room is ${room.status}`);
 
+  // Map platform/synonym roles → valid ng_conf_role; never let an invalid enum
+  // value reach the DB. Prefer the actor's platform role when no explicit role
+  // is supplied so a logged-in provider joins as a clinician, not an observer.
+  role = coerceConfRole(role || actor?.role, 'observer');
+
   // Count current admitted
   const c = await pool.query(
     `SELECT COUNT(*)::int AS n FROM ng_conf_participants WHERE room_id=$1 AND status='admitted'`,
@@ -313,6 +359,8 @@ async function promoteParticipant(roomId, participantId, actor, { role, permissi
   if (actorPart?.role !== 'host' && actorPart?.role !== 'consultant') {
     const e = new Error('Only host or consultant can promote'); e.code = 'FORBIDDEN'; throw e;
   }
+  // Coerce to a valid enum member; null leaves the existing role untouched.
+  role = role ? coerceConfRole(role, 'observer') : null;
   const r = await pool.query(
     `UPDATE ng_conf_participants
         SET role = COALESCE($3::ng_conf_role, role),
@@ -436,6 +484,7 @@ async function listChat(roomId, { user_id, since, limit = 200 } = {}, pool = get
 // ─── Invites (hashed token, parallels portal_access_tokens) ──────────────────
 
 async function createInvite(roomId, actor, { role = 'observer', email, phone, display_name, ttlHours = 24 } = {}, pool = getPool()) {
+  role = coerceConfRole(role, 'observer');
   const raw = mintToken();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
   await pool.query(
@@ -490,6 +539,7 @@ module.exports = {
   ROOM_TRANSITIONS,
   // state machine
   isValidRoomTransition,
+  coerceConfRole,
   suggestMediaServer,
   assessConferenceMediaReadiness,
   // rooms
