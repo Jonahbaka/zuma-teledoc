@@ -28,9 +28,10 @@ const adminRedirect = read('app/ng/admin/dashboard/page.js');
 const adminApi = read('ng/routes/admin.js');
 
 describe('Provider dashboard exposes the operating workspace (discoverable)', () => {
-  it('shows a Video Calling entry point that routes to the clinical room', () => {
-    assert.match(dashboard, /Video Calling/);
-    assert.match(dashboard, /\/ng\/provider\/call/);
+  it('shows a Telehealth entry point that routes to the clinical room', () => {
+    assert.match(dashboard, /Telehealth Center/);
+    // market-aware base resolves to /ng/provider or /provider at runtime
+    assert.match(dashboard, /\$\{base\}\/call/);
   });
 
   it('exposes EMR/SOAP, Prescriptions, Referrals, and Pharmacy status', () => {
@@ -43,16 +44,15 @@ describe('Provider dashboard exposes the operating workspace (discoverable)', ()
   it('exposes Appointments and Visits/Encounters', () => {
     assert.match(dashboard, /Appointments/);
     assert.match(dashboard, /Visits \/ Encounters/);
-    assert.match(dashboard, /\/ng\/provider\/visits/);
+    assert.match(dashboard, /\$\{base\}\/visits/);
   });
 
-  it('routes "Start" on a video appointment to the appointment-specific call page', () => {
-    assert.match(dashboard, /\/ng\/provider\/appointments\/\$\{appt\.id\}\/call/);
+  it('routes "Start" on a video appointment to a call page with appointment context', () => {
+    assert.match(dashboard, /\$\{base\}\/call\?appointmentId=\$\{appt\.id\}/);
   });
 
-  it('no longer ships a "Module under configuration" dead-end for workspace items', () => {
-    // Command + Population remain tabs; everything else is a real route link.
-    assert.doesNotMatch(dashboard, /Telehealth Center/);
+  it('no longer ships a "Module Viewer" dead-end header for workspace items', () => {
+    assert.doesNotMatch(dashboard, /Module Viewer/);
   });
 });
 

@@ -147,7 +147,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 /* ---------- Patient Drawer ---------- */
-function PatientDrawer({ patient, onClose, onStartCall }) {
+function PatientDrawer({ patient, onClose, onStartCall, base = '/ng/provider' }) {
   if (!patient) return null;
   return (
     <div className="fixed inset-y-0 right-0 w-[500px] bg-white shadow-2xl border-l border-slate-200 z-[60] flex flex-col">
@@ -245,9 +245,9 @@ function PatientDrawer({ patient, onClose, onStartCall }) {
           onClick={() => {
             // Link to appointment-specific EMR visit page if the patient has a current appointment
             if (patient.currentAppointmentId) {
-              router.push(`/ng/provider/appointments/${patient.currentAppointmentId}/visit`);
+              router.push(`${base}/appointments/${patient.currentAppointmentId}/visit`);
             } else {
-              router.push(`/ng/provider/patients/${patient.id}/ehr`);
+              router.push(`${base}/patients/${patient.id}/ehr`);
             }
           }}
           className="flex items-center justify-center py-2.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm"
@@ -505,7 +505,8 @@ function PatientDirectory({ onSelectPatient, patients = [], loading = false }) {
 }
 
 /* ---------- Main export ---------- */
-export default function NGProviderDashboard() {
+export default function NGProviderDashboard({ market = 'ng' }) {
+  const base = market === 'us' ? '/provider' : '/ng/provider';
   const router = useRouter();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('command');
@@ -593,7 +594,7 @@ export default function NGProviderDashboard() {
           </div>
           <div>
             <span className="font-extrabold tracking-tight text-xl text-slate-900 block leading-none">DoctaRx</span>
-            <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mt-1 block">Nigeria · Provider</span>
+            <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mt-1 block">{market === 'us' ? 'Provider · HealthOS' : 'Nigeria · Provider'}</span>
           </div>
         </div>
 
@@ -603,13 +604,13 @@ export default function NGProviderDashboard() {
           <NavItem id="population" icon={Users} label="Patient Queue" />
 
           <div className="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-6">Clinical Workspace</div>
-          <LinkItem icon={Video} label="Video Calling" onClick={() => router.push('/ng/provider/call')} highlight />
-          <LinkItem icon={CalendarIcon} label="Appointments" onClick={() => router.push('/ng/provider/appointments')} />
-          <LinkItem icon={Stethoscope} label="Visits / Encounters" onClick={() => router.push('/ng/provider/visits')} />
-          <LinkItem icon={FileText} label="EMR / SOAP Notes" onClick={() => router.push('/ng/soap')} />
-          <LinkItem icon={Pill} label="Prescriptions" onClick={() => router.push('/ng/provider/prescriptions')} />
-          <LinkItem icon={Share2} label="Referrals" onClick={() => router.push('/ng/provider/referrals')} />
-          <LinkItem icon={ClipboardList} label="Pharmacy Status" onClick={() => router.push('/ng/provider/prescriptions')} />
+          <LinkItem icon={Video} label="Telehealth Center" onClick={() => router.push(`${base}/call`)} highlight />
+          <LinkItem icon={CalendarIcon} label="Appointments" onClick={() => router.push(`${base}/appointments`)} />
+          <LinkItem icon={Stethoscope} label="Visits / Encounters" onClick={() => router.push(`${base}/visits`)} />
+          <LinkItem icon={FileText} label="EMR / SOAP Notes" onClick={() => router.push(market === 'us' ? `${base}/visits` : '/ng/soap')} />
+          <LinkItem icon={Pill} label="Prescriptions" onClick={() => router.push(`${base}/prescriptions`)} />
+          <LinkItem icon={Share2} label="Referrals" onClick={() => router.push(`${base}/referrals`)} />
+          <LinkItem icon={ClipboardList} label="Pharmacy Status" onClick={() => router.push(market === 'us' ? `${base}/prescriptions` : '/ng/pharmacy/dashboard')} />
         </div>
 
         <div className="p-4 border-t border-slate-100 m-4 bg-slate-50 rounded-2xl border flex items-center">
@@ -630,7 +631,6 @@ export default function NGProviderDashboard() {
             <h1 className="text-xl font-extrabold text-slate-800 mr-4">
               {activeTab === 'command' && 'Command Center'}
               {activeTab === 'population' && 'Population Directory'}
-              {activeTab !== 'command' && activeTab !== 'population' && 'Module Viewer'}
             </h1>
             {activeTab === 'command' && (
               <span className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100">
@@ -658,7 +658,7 @@ export default function NGProviderDashboard() {
         </header>
 
         <div className="flex-1 overflow-auto p-8 relative">
-          {activeTab === 'command' && <CommandCenter appointments={appointments} patients={patients} totalPatients={patients.length} onStartAppointmentCall={(appt) => router.push(`/ng/provider/appointments/${appt.id}/call`)} />}
+          {activeTab === 'command' && <CommandCenter appointments={appointments} patients={patients} totalPatients={patients.length} onStartAppointmentCall={(appt) => router.push(`${base}/call?appointmentId=${appt.id}`)} />}
           {activeTab === 'population' && <PatientDirectory onSelectPatient={setSelectedPatient} patients={patients} loading={dataLoading} />}
           {activeTab !== 'command' && activeTab !== 'population' && (
             <div className="flex flex-col items-center justify-center h-full text-slate-400">
@@ -670,6 +670,7 @@ export default function NGProviderDashboard() {
       </main>
 
       <PatientDrawer
+        base={base}
         patient={selectedPatient}
         onClose={() => setSelectedPatient(null)}
         onStartCall={() => {
@@ -677,9 +678,9 @@ export default function NGProviderDashboard() {
             // specific call page (preserves patient/appointment context in the room).
             // Otherwise fall back to the generic ad-hoc conference page.
             if (selectedPatient?.currentAppointmentId) {
-              router.push(`/ng/provider/appointments/${selectedPatient.currentAppointmentId}/call`);
+              router.push(`${base}/call?appointmentId=${selectedPatient.currentAppointmentId}&patientId=${selectedPatient?.id || ''}&patientName=${encodeURIComponent(selectedPatient?.name || '')}`);
             } else {
-              router.push(`/ng/provider/call?patientId=${selectedPatient?.id || ''}&patientName=${encodeURIComponent(selectedPatient?.name || '')}`);
+              router.push(`${base}/call?patientId=${selectedPatient?.id || ''}&patientName=${encodeURIComponent(selectedPatient?.name || '')}`);
             }
           }}
       />

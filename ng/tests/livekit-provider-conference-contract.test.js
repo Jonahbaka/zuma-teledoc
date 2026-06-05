@@ -54,19 +54,21 @@ test('provider room launcher defaults to immediate adaptive-media meetings', () 
   assert.match(portal, /Clinical Video/);
 });
 
-test('provider dashboard exposes no-appointment clinical video without internal route-copy', () => {
-  const dashboard = read('components/provider/PremiumProviderDashboard.jsx');
-  const commandCenter = read('components/ng/provider/ProviderCommandCenter.jsx');
+test('provider dashboard exposes clinical telehealth entry that opens the Meet-style room', () => {
+  const dashboard = read('components/provider/NGProviderDashboard.jsx');
   const providerCall = read('app/ng/provider/call/page.js');
+  const usProviderCall = read('app/(dashboard)/provider/call/page.js');
 
-  assert.match(dashboard, /Start Secure Video Meeting/);
-  assert.match(dashboard, /Clinical Video/);
-  assert.match(commandCenter, /Clinical Video Rooms/);
-  assert.match(commandCenter, /Start Meeting/);
-  assert.doesNotMatch(dashboard, /Provider Dashboard ->/);
-  assert.doesNotMatch(dashboard, /href="\/ng\/conference"/);
-  assert.doesNotMatch(commandCenter, /Start LiveKit Room/);
-  assert.doesNotMatch(commandCenter, /LiveKit Conference Rooms/);
+  // The dashboard sidebar must lead directly into the supplied Meet-style room
+  // using clinical language, never internal implementation route-copy.
+  assert.match(dashboard, /Telehealth Center/);
+  assert.match(dashboard, /\$\{base\}\/call/);
+  assert.doesNotMatch(dashboard, /Start LiveKit Room/);
+  assert.doesNotMatch(dashboard, /Module Viewer/);
+
+  // Both US and NG call routes mount the supplied Meet-style room component.
   assert.match(providerCall, /import NGVideoCall/);
   assert.match(providerCall, /<NGVideoCall/);
+  assert.match(usProviderCall, /import NGVideoCall/);
+  assert.match(usProviderCall, /<NGVideoCall/);
 });

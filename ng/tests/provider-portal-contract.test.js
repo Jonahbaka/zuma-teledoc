@@ -13,16 +13,27 @@ function escaped(text) {
   return new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 }
 
-test('US and Nigeria provider dashboards use the shared premium operating workspace', () => {
+test('US and Nigeria provider dashboards use the shared HealthOS operating workspace', () => {
   const usPage = read('app/(dashboard)/provider/dashboard/page.js');
   const ngPage = read('app/ng/provider/dashboard/page.js');
 
-  assert.match(usPage, /PremiumProviderDashboard/);
-  assert.match(usPage, /market="US"/);
-  assert.match(ngPage, /PremiumProviderDashboard/);
-  assert.match(ngPage, /market="NG"/);
-  assert.doesNotMatch(ngPage, /ProviderCommandCenter/);
-  assert.doesNotMatch(ngPage, /NEXT_PUBLIC_NG_PROVIDER_COMMAND_CENTER_ENABLED/);
+  // Both markets mount the single supplied HealthOS dashboard component.
+  assert.match(usPage, /NGProviderDashboard/);
+  assert.match(usPage, /market="us"/);
+  assert.match(ngPage, /NGProviderDashboard/);
+  // The old premium dashboard must no longer power any active provider route.
+  assert.doesNotMatch(usPage, /PremiumProviderDashboard/);
+  assert.doesNotMatch(ngPage, /PremiumProviderDashboard/);
+});
+
+test('US and Nigeria provider visits routes are folded into the new workspace, not the old shell', () => {
+  const usVisits = read('app/(dashboard)/provider/visits/page.js');
+  const ngVisits = read('app/ng/provider/visits/page.js');
+
+  assert.match(usVisits, /NGProviderDashboard/);
+  assert.match(ngVisits, /NGProviderDashboard/);
+  assert.doesNotMatch(usVisits, /Visit Notes/);
+  assert.doesNotMatch(ngVisits, /Visit Notes/);
 });
 
 test('provider sidebar exposes healthcare operating system labels without old video hub copy', () => {
@@ -44,34 +55,27 @@ test('provider sidebar exposes healthcare operating system labels without old vi
   assert.doesNotMatch(navigation, /Conferencing/);
 });
 
-test('premium provider dashboard binds the pasted command center design to live provider APIs', () => {
-  const component = read('components/provider/PremiumProviderDashboard.jsx');
+test('HealthOS provider dashboard binds the pasted command center design to live provider APIs', () => {
+  const component = read('components/provider/NGProviderDashboard.jsx');
   for (const text of [
-    'DoctaRx OS',
     'Command Center',
-    'Population Health',
-    'Clinical Records',
-    'Clinical Video',
-    'Start Secure Video Meeting',
-    'Healthcare Operating Workspace',
+    'Telehealth Center',
     'Patient Flow & Capacity Forecast',
-    'providersAPI.getPatients',
-    '/ng/clinical/prescriptions',
-    '/ng/clinical/referrals',
-    "appointmentsAPI.getUpcoming(20)",
-    "visitsAPI.getRecent(20)",
+    'Population Health Grid',
+    'fetchProviderPatients',
+    'fetchProviderAppointments',
   ]) {
     assert.match(component, escaped(text));
   }
-  assert.doesNotMatch(component, /MOCK DATA/);
-  assert.doesNotMatch(component, /patientData/);
-  assert.doesNotMatch(component, /Provider Dashboard ->/);
+  // Real patient data must be loaded dynamically, not from a hardcoded array.
+  assert.doesNotMatch(component, /const patientData = \[/);
+  assert.doesNotMatch(component, /Module Viewer/);
 });
 
-test('provider clinical video entry removes old visit hub and implementation-name language', () => {
+test('provider clinical video entry mounts the Meet-style room without implementation-name language', () => {
   const callPage = read('app/(dashboard)/provider/call/page.js');
-  assert.match(callPage, /Clinical Video/);
-  assert.match(callPage, /Video Readiness Test/);
+  assert.match(callPage, /import NGVideoCall/);
+  assert.match(callPage, /<NGVideoCall/);
   assert.doesNotMatch(callPage, /Provider Visit Hub/);
   assert.doesNotMatch(callPage, /Visit Hub/);
   assert.doesNotMatch(callPage, /LiveKit/);

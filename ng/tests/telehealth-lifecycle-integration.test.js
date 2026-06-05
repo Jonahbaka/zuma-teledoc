@@ -559,7 +559,8 @@ describe('Step 9 — Navigation: Return-to-dashboard contract', () => {
 
   it('NGProviderDashboard appointment rows have Start Call action links', () => {
     const src = readFile('components/provider/NGProviderDashboard.jsx');
-    assert.match(src, /\/ng\/provider\/appointments\//, 'appointment rows must link to appointment call');
+    // market-aware base path resolves to /ng/provider or /provider at runtime
+    assert.match(src, /\$\{base\}\/(call|appointments)/, 'appointment rows must link to call/appointment');
     assert.match(src, /onStartAppointmentCall/, 'dashboard must pass start-call handler');
   });
 

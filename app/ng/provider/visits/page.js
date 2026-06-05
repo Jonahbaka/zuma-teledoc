@@ -1,5 +1,5 @@
-import ProviderVisitsPage from '@/app/(dashboard)/provider/visits/page';
+import NGProviderDashboard from '@/components/provider/NGProviderDashboard';
 
 export default function NigeriaProviderVisitsPage() {
-  return <ProviderVisitsPage />;
+  return <NGProviderDashboard market="ng" />;
 }

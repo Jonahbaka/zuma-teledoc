@@ -68,7 +68,14 @@ async function visibleText(page) {
   if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE) {
     launchOpts.executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
   }
-  const browser = await chromium.launch(launchOpts);
+  let browser;
+  try {
+    browser = await chromium.launch(launchOpts);
+  } catch (e) {
+    console.log(`[lifecycle-browser] SKIP — Playwright browser binary unavailable: ${e.message.split('\n')[0]}`);
+    console.log('[lifecycle-browser] Install with `npx playwright install chromium` or set PLAYWRIGHT_CHROMIUM_EXECUTABLE.');
+    process.exit(0);
+  }
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true });
   const page = await ctx.newPage();
 
@@ -107,8 +114,8 @@ async function visibleText(page) {
     const dashText = await visibleText(page);
     await shot(page, '02-provider-dashboard');
     if (authed) {
-      record('dashboard shows Video Calling menu', /video calling/i.test(dashText),
-        'looked for "Video Calling" in sidebar');
+      record('dashboard shows Telehealth Center menu', /telehealth center/i.test(dashText),
+        'looked for "Telehealth Center" in sidebar');
       record('dashboard shows clinical workspace', /soap|prescription|referral|pharmacy/i.test(dashText),
         'workspace menu items visible');
     } else {

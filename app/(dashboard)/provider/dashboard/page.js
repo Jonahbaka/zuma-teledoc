@@ -1,5 +1,5 @@
-import PremiumProviderDashboard from '@/components/provider/PremiumProviderDashboard';
+import NGProviderDashboard from '@/components/provider/NGProviderDashboard';
 
 export default function ProviderDashboardPage() {
-  return <PremiumProviderDashboard market="US" />;
+  return <NGProviderDashboard market="us" />;
 }
