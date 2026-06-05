@@ -67,6 +67,6 @@ test('provider dashboard exposes no-appointment clinical video without internal 
   assert.doesNotMatch(dashboard, /href="\/ng\/conference"/);
   assert.doesNotMatch(commandCenter, /Start LiveKit Room/);
   assert.doesNotMatch(commandCenter, /LiveKit Conference Rooms/);
-  assert.match(providerCall, /import ConferencePortal/);
-  assert.match(providerCall, /<ConferencePortal initialTab="schedule" \/>/);
+  assert.match(providerCall, /import NGVideoCall/);
+  assert.match(providerCall, /<NGVideoCall/);
 });
