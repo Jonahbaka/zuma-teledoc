@@ -27,10 +27,11 @@ async function fetchProviderPatients(providerId) {
 }
 import {
   LayoutDashboard, Users, Activity, Settings, Bell, Search,
-  Filter, Plus, MoreHorizontal, ArrowUpRight, ArrowDownRight,
-  Clock, Calendar as CalendarIcon, Video, MapPin, Pill, Syringe,
+  Filter, Plus, ArrowUpRight, ArrowDownRight,
+  Clock, Calendar as CalendarIcon, Video, Pill, Syringe,
   AlertTriangle, CheckCircle2, ChevronRight, X, FileText,
-  Stethoscope, ClipboardList, Share2,
+  Stethoscope, ClipboardList, Share2, BarChart3, Wallet,
+  Building2, MessageSquare, UserCircle, CalendarDays,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -598,19 +599,31 @@ export default function NGProviderDashboard({ market = 'ng' }) {
           </div>
         </div>
 
-        <div className="p-4 space-y-1.5 flex-1 mt-2 overflow-y-auto">
-          <div className="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Dashboards</div>
+        <div className="p-4 space-y-1 flex-1 mt-1 overflow-y-auto">
+          <div className="px-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5">Dashboards</div>
           <NavItem id="command" icon={LayoutDashboard} label="Command Center" />
           <NavItem id="population" icon={Users} label="Patient Queue" />
 
-          <div className="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-6">Clinical Workspace</div>
+          <div className="px-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 mt-5">Telehealth</div>
           <LinkItem icon={Video} label="Telehealth Center" onClick={() => router.push(`${base}/call`)} highlight />
-          <LinkItem icon={CalendarIcon} label="Appointments" onClick={() => router.push(`${base}/appointments`)} />
+          <LinkItem icon={CalendarDays} label="Appointments" onClick={() => router.push(`${base}/appointments`)} />
+          <LinkItem icon={CalendarIcon} label="Schedule" onClick={() => router.push(`${base}/schedule`)} />
+
+          <div className="px-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 mt-5">Clinical</div>
           <LinkItem icon={Stethoscope} label="Visits / Encounters" onClick={() => router.push(`${base}/visits`)} />
           <LinkItem icon={FileText} label="EMR / SOAP Notes" onClick={() => router.push(market === 'us' ? `${base}/visits` : '/ng/soap')} />
           <LinkItem icon={Pill} label="Prescriptions" onClick={() => router.push(`${base}/prescriptions`)} />
           <LinkItem icon={Share2} label="Referrals" onClick={() => router.push(`${base}/referrals`)} />
           <LinkItem icon={ClipboardList} label="Pharmacy Status" onClick={() => router.push(market === 'us' ? `${base}/prescriptions` : '/ng/pharmacy/dashboard')} />
+
+          <div className="px-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 mt-5">Practice</div>
+          <LinkItem icon={BarChart3} label="Analytics" onClick={() => router.push(`${base}/analytics`)} />
+          <LinkItem icon={Wallet} label="Earnings" onClick={() => router.push(`${base}/earnings`)} />
+          <LinkItem icon={Building2} label="Care Teams" onClick={() => router.push(`${base}/hospital-network`)} />
+          <LinkItem icon={MessageSquare} label="Messages" onClick={() => router.push(`${base}/messages`)} />
+          <LinkItem icon={Bell} label="Notifications" onClick={() => router.push(`${base}/notifications`)} />
+          <LinkItem icon={UserCircle} label="Profile" onClick={() => router.push(`${base}/profile`)} />
+          <LinkItem icon={Settings} label="Settings" onClick={() => router.push(`${base}/settings`)} />
         </div>
 
         <div className="p-4 border-t border-slate-100 m-4 bg-slate-50 rounded-2xl border flex items-center">

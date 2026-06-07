@@ -88,13 +88,15 @@ function coerceConfRole(role, fallback = 'observer') {
 }
 
 async function logEvent(roomId, participantId, actor, eventKind, payload, pool = getPool()) {
+  // actor_role is ng_conf_role enum; coerce platform roles (e.g. 'provider') before insert
+  const actorRole = actor?.role ? coerceConfRole(actor.role, null) : null;
   await pool.query(
     `INSERT INTO ng_conf_events
        (room_id, participant_id, actor_user_id, actor_role, event_kind, payload_json)
      VALUES ($1,$2,$3,$4,$5,COALESCE($6::jsonb,'{}'::jsonb))`,
     [
       roomId, participantId || null,
-      actor?.user_id || null, actor?.role || null,
+      actor?.user_id || null, actorRole,
       eventKind,
       payload ? JSON.stringify(payload) : null,
     ]
