@@ -697,7 +697,6 @@ async function initializeApp() {
   loadRoute('/api/upload-build-chunked', './routes/upload-build-chunked');
   loadRoute('/api/restart', './routes/restart');
   loadRoute('/api/diagnose', './routes/diagnose');
-  loadRoute('/api/neon-verify', './routes/neonVerify');
   loadRoute('/api/creator', './routes/creator');
   loadRoute('/api/social', './routes/social');
   loadRoute('/pitch-deck', './routes/pitch-deck');
