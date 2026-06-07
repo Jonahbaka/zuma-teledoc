@@ -6,7 +6,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import {
   Mic, MicOff, Video, VideoOff, MonitorUp, MessageSquare,
   Activity, PhoneOff, MoreVertical, Sparkles, Send,
-  Stethoscope, ChevronRight, Loader, Plus, LogIn, Users,
+  Stethoscope, ChevronRight, Loader, Users,
   Wifi, WifiOff, AlertCircle, FileText,
 } from 'lucide-react';
 
@@ -319,90 +319,175 @@ const ChatPanel = ({ messages, onSend, roomId }) => {
   );
 };
 
-/* ---------- Pre-call: room selection ---------- */
+/* ---------- Pre-call: Google Meet-style camera preview lobby ---------- */
 function PreCallScreen({ onJoin, displayName, appointmentId, patientId, patientName }) {
-  const [rooms, setRooms] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [camOn, setCamOn] = useState(true);
+  const [micOn, setMicOn] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [joinCode, setJoinCode] = useState('');
   const [error, setError] = useState('');
+  const [camReady, setCamReady] = useState(false);
 
+  // Start local camera preview
   useEffect(() => {
-    api.getRooms().then(d => { setRooms(d.rooms || []); setLoading(false); }).catch(() => setLoading(false));
+    let active = true;
+    navigator.mediaDevices?.getUserMedia({ video: true, audio: false })
+      .then(stream => {
+        if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) videoRef.current.srcObject = stream;
+        setCamReady(true);
+      })
+      .catch(() => setCamReady(false));
+    return () => {
+      active = false;
+      streamRef.current?.getTracks().forEach(t => t.stop());
+    };
   }, []);
 
-  const createAndJoin = async () => {
+  const toggleCam = () => {
+    const enabled = !camOn;
+    setCamOn(enabled);
+    streamRef.current?.getVideoTracks().forEach(t => { t.enabled = enabled; });
+  };
+
+  const toggleMic = () => setMicOn(m => !m);
+
+  const startCall = async () => {
     setCreating(true); setError('');
+    // Release preview stream before the call engine claims the devices
+    streamRef.current?.getTracks().forEach(t => t.stop());
     try {
       const title = patientName
-        ? `Consultation with ${patientName} — ${new Date().toLocaleDateString()}`
-        : `Consultation — ${new Date().toLocaleString()}`;
+        ? `Consultation with ${patientName}`
+        : `Consultation — ${new Date().toLocaleDateString()}`;
       const res = await api.createRoom({
         title,
         kind: 'consultation',
         max_participants: 4,
-        // Pass appointment/patient linkage so the room is properly associated
-        // with the clinical record — not an orphaned ad-hoc session.
         ...(appointmentId ? { appointment_id: appointmentId } : {}),
         ...(patientId ? { patient_user_id: patientId } : {}),
         ...(patientName ? { patient_name_snapshot: patientName } : {}),
       });
       if (!res.ok) throw new Error(res.error || 'Failed to create room');
       onJoin(res.room);
-    } catch (e) { setError(e.message); setCreating(false); }
+    } catch (e) {
+      setError(e.message);
+      setCreating(false);
+      // Re-open preview on error
+      navigator.mediaDevices?.getUserMedia({ video: camOn, audio: false })
+        .then(s => { streamRef.current = s; if (videoRef.current) videoRef.current.srcObject = s; })
+        .catch(() => {});
+    }
   };
 
-  const joinExisting = (room) => onJoin(room);
+  const initials = displayName.replace(/^Dr\.\s*/i, '').trim().split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#202124] text-white p-6">
-      <div className="w-full max-w-lg">
-        <div className="flex items-center justify-center mb-8">
-          <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center mr-4">
-            <Stethoscope size={28} className="text-white" />
+    <div className="fixed inset-0 z-50 flex bg-[#1a1b1e] text-white overflow-hidden">
+      {/* Left: camera preview */}
+      <div className="flex-1 flex flex-col items-center justify-center p-8 relative">
+        {/* DoctaRx wordmark */}
+        <div className="absolute top-6 left-8 flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
+            <Stethoscope size={16} className="text-white" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold">DoctaRx <span className="text-blue-400">Telehealth</span></h1>
-            <p className="text-gray-400 text-sm">
-              Nigeria · Provider Session
-              {patientName && <span className="ml-2 text-blue-400 font-semibold">· {patientName}</span>}
-            </p>
-          </div>
+          <span className="font-extrabold text-lg tracking-tight">DoctaRx</span>
+          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest bg-emerald-900/40 px-2 py-0.5 rounded border border-emerald-700/40">Nigeria</span>
         </div>
 
-        {error && (
-          <div className="mb-4 flex items-center bg-red-900/40 border border-red-500/40 rounded-xl px-4 py-3 text-red-300 text-sm">
-            <AlertCircle size={16} className="mr-2 shrink-0" /> {error}
+        {/* Video preview */}
+        <div className="relative w-full max-w-2xl aspect-video rounded-2xl overflow-hidden bg-[#28292d] shadow-2xl border border-white/5">
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className={`w-full h-full object-cover ${!camOn ? 'opacity-0' : ''}`}
+            style={{ transform: 'scaleX(-1)' }}
+          />
+          {(!camOn || !camReady) && (
+            <div className="absolute inset-0 flex items-center justify-center bg-[#28292d]">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-20 h-20 rounded-full bg-slate-700 border-2 border-slate-600 flex items-center justify-center text-2xl font-extrabold text-slate-300">
+                  {initials}
+                </div>
+                <p className="text-sm text-slate-400">{camOn ? 'Camera unavailable' : 'Camera is off'}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Display name overlay */}
+          <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-lg text-sm font-semibold">
+            {displayName} <span className="text-xs text-emerald-400 ml-1.5">(You)</span>
           </div>
-        )}
 
-        <button onClick={createAndJoin} disabled={creating}
-          className="w-full flex items-center justify-center py-4 bg-blue-600 hover:bg-blue-700 rounded-2xl font-bold text-lg mb-6 disabled:opacity-60">
-          {creating ? <><Loader size={20} className="mr-3 animate-spin" />Creating room…</> : <><Plus size={20} className="mr-3" />Start New Consultation</>}
-        </button>
+          {/* Device controls row */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3">
+            <button
+              onClick={toggleMic}
+              title={micOn ? 'Mute' : 'Unmute'}
+              className={`w-11 h-11 rounded-full flex items-center justify-center shadow-lg transition-all ${micOn ? 'bg-[#3c4043] hover:bg-[#4d5154]' : 'bg-red-600 hover:bg-red-700'}`}
+            >
+              {micOn ? <Mic size={18} className="text-white" /> : <MicOff size={18} className="text-white" />}
+            </button>
+            <button
+              onClick={toggleCam}
+              title={camOn ? 'Turn off camera' : 'Turn on camera'}
+              className={`w-11 h-11 rounded-full flex items-center justify-center shadow-lg transition-all ${camOn ? 'bg-[#3c4043] hover:bg-[#4d5154]' : 'bg-red-600 hover:bg-red-700'}`}
+            >
+              {camOn ? <Video size={18} className="text-white" /> : <VideoOff size={18} className="text-white" />}
+            </button>
+          </div>
+        </div>
+      </div>
 
-        {!loading && rooms.filter(r => r.status !== 'ended' && r.status !== 'cancelled').length > 0 && (
+      {/* Right: join panel */}
+      <div className="w-[340px] shrink-0 flex flex-col items-center justify-center p-8 border-l border-white/5 bg-[#202124]">
+        <div className="w-full space-y-6">
           <div>
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Active & Scheduled Rooms</p>
-            <div className="space-y-2 max-h-56 overflow-y-auto">
-              {rooms.filter(r => r.status !== 'ended' && r.status !== 'cancelled').map(room => (
-                <button key={room.id} onClick={() => joinExisting(room)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-[#3c4043] hover:bg-[#4d5154] rounded-xl text-left transition-colors">
-                  <div>
-                    <p className="font-semibold text-sm">{room.title || 'Consultation Room'}</p>
-                    <p className="text-xs text-gray-400 mt-0.5 capitalize">{room.status} · {room.kind || 'consultation'}</p>
-                  </div>
-                  <div className="flex items-center text-xs text-gray-400">
-                    <Users size={14} className="mr-1" /> {room.participant_count || 0}
-                    <LogIn size={14} className="ml-3 text-blue-400" />
-                  </div>
-                </button>
-              ))}
+            <h2 className="text-2xl font-extrabold tracking-tight">
+              {patientName ? `Consult with ${patientName}` : 'New Consultation'}
+            </h2>
+            <p className="text-slate-400 text-sm mt-1">
+              {patientName ? 'Patient session ready to start' : 'Your consultation room will be created instantly'}
+            </p>
+          </div>
+
+          <div className="space-y-3 text-sm">
+            <div className="flex items-center gap-3 text-slate-300">
+              <div className={`w-2 h-2 rounded-full ${micOn ? 'bg-emerald-400' : 'bg-red-500'}`} />
+              Microphone {micOn ? 'on' : 'muted'}
+            </div>
+            <div className="flex items-center gap-3 text-slate-300">
+              <div className={`w-2 h-2 rounded-full ${camOn && camReady ? 'bg-emerald-400' : 'bg-red-500'}`} />
+              Camera {camOn && camReady ? 'on' : camOn ? 'unavailable' : 'off'}
             </div>
           </div>
-        )}
 
-        {loading && <div className="flex justify-center mt-4"><Loader size={24} className="animate-spin text-gray-400" /></div>}
+          {error && (
+            <div className="flex items-start gap-2 bg-red-900/40 border border-red-500/40 rounded-xl px-4 py-3 text-red-300 text-sm">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" /> {error}
+            </div>
+          )}
+
+          <button
+            onClick={startCall}
+            disabled={creating}
+            className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 rounded-xl font-bold text-base flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-900/30 transition-all"
+          >
+            {creating
+              ? <><Loader size={18} className="animate-spin" /> Starting…</>
+              : <><Video size={18} /> Start Consultation</>
+            }
+          </button>
+
+          <p className="text-xs text-slate-500 text-center leading-relaxed">
+            Secure end-to-end encrypted · NDPA compliant<br />
+            A private room is created for this session only
+          </p>
+        </div>
       </div>
     </div>
   );
