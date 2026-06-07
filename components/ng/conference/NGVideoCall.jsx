@@ -479,7 +479,7 @@ function PreCallScreen({ onJoin, displayName, appointmentId, patientId, patientN
           >
             {creating
               ? <><Loader size={18} className="animate-spin" /> Starting…</>
-              : <><Video size={18} /> Start Consultation</>
+              : <><Video size={18} /> Start New Consultation</>
             }
           </button>
 
