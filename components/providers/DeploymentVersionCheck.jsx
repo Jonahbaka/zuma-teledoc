@@ -70,13 +70,21 @@ export function DeploymentVersionCheck() {
       }
     };
 
-    checkDeployment();
-    checkIntervalRef.current = setInterval(checkDeployment, 5000);
+    const scheduleCheck = () => {
+      if (document.visibilityState === 'visible') {
+        checkDeployment();
+      }
+    };
+
+    scheduleCheck();
+    checkIntervalRef.current = setInterval(scheduleCheck, 60000);
+    document.addEventListener('visibilitychange', scheduleCheck);
 
     return () => {
       if (checkIntervalRef.current) {
         clearInterval(checkIntervalRef.current);
       }
+      document.removeEventListener('visibilitychange', scheduleCheck);
     };
   }, []);
 

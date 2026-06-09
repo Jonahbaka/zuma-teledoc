@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, Mail, Lock, Heart, Shield, Loader2, Zap } from 'lucide-react';
 import { authAPI, testingLinksAPI } from '@/lib/api';
@@ -14,7 +14,6 @@ import { Badge } from '@/components/ui/badge';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 
 function PatientLoginContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const testToken = searchParams.get('test_token');
   const { login } = useAuth();
@@ -77,8 +76,6 @@ function PatientLoginContent() {
             description: 'Successfully signed in to your patient portal.',
           });
         }
-        
-        router.push('/patient/dashboard');
       } else {
         toast({
           title: 'Login Failed',

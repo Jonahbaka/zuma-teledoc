@@ -30,7 +30,15 @@ const MOBILE_NAV_PRIORITIES = {
 };
 
 function isActivePath(pathname, href) {
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const normalizedPathname = normalizeHref(pathname);
+  const normalizedHref = normalizeHref(href);
+  return normalizedPathname === normalizedHref || normalizedPathname.startsWith(`${normalizedHref}/`);
+}
+
+function normalizeHref(href = '') {
+  const value = String(href || '/').trim();
+  if (!value || value === '/') return '/';
+  return value.replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
 }
 
 function getMobileLabel(name) {
@@ -213,12 +221,13 @@ export default function DashboardLayout({
       return null;
     }
 
-    const isActive = isActivePath(pathname, item.href);
+    const href = normalizeHref(item.href);
+    const isActive = isActivePath(pathname, href);
     
     return (
       <Link
-        key={item.name}
-        href={item.href}
+        key={`${item.name}-${href}`}
+        href={href}
         className={cn(
           'flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all active:scale-[0.98]',
           inGroup && 'ml-4 rounded-xl px-3 py-2.5',
@@ -263,7 +272,9 @@ export default function DashboardLayout({
           return (
             <div key={group.name} className="space-y-1">
               <button
+                type="button"
                 onClick={() => toggleGroup(group.name)}
+                aria-expanded={Boolean(isExpanded)}
                 className={cn(
                   "w-full flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition-all",
                   hasActiveItem 
@@ -609,9 +620,9 @@ export default function DashboardLayout({
         {!useImmersiveVideoLayout && mobileNavigation.length > 0 ? (
           <nav className="app-mobile-dock lg:hidden" aria-label={`${portalName} quick navigation`}>
             {mobileNavigation.map((item) => (
-              <div key={item.href} className="app-mobile-dock__item">
+              <div key={normalizeHref(item.href)} className="app-mobile-dock__item">
                 <Link
-                  href={item.href}
+                  href={normalizeHref(item.href)}
                   className="app-mobile-dock__link"
                   data-active={isActivePath(pathname, item.href)}
                 >

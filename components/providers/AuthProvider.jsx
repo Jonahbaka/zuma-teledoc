@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { getProviderLoginPath, toProviderPortalPath } from '@/lib/providerPortal';
@@ -60,6 +60,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const router = useRouter();
+  const authRequestId = useRef(0);
 
   // Check auth status on mount
   useEffect(() => {
@@ -67,18 +68,25 @@ export function AuthProvider({ children }) {
   }, []);
 
   const checkAuth = async () => {
+    const requestId = ++authRequestId.current;
+
+    const isCurrentRequest = () => requestId === authRequestId.current;
+
     try {
       // Skip auth check if no token exists (user is definitely not logged in)
       if (typeof window !== 'undefined') {
         const token = localStorage.getItem('accessToken');
         if (!token) {
-          setLoading(false);
+          if (isCurrentRequest()) {
+            setUser(null);
+            setLoading(false);
+          }
           return;
         }
       }
       
       const response = await api.get('/auth/me');
-      if (response.data.success) {
+      if (isCurrentRequest() && response.data.success) {
         setUser(response.data.user);
       }
     } catch (err) {
@@ -90,7 +98,10 @@ export function AuthProvider({ children }) {
           localStorage.removeItem('refreshToken');
           localStorage.removeItem('user');
         }
-        setLoading(false);
+        if (isCurrentRequest()) {
+          setUser(null);
+          setLoading(false);
+        }
         return;
       }
       
@@ -103,19 +114,27 @@ export function AuthProvider({ children }) {
         }
       }
       // Not authenticated - this is fine
-      setUser(null);
+      if (isCurrentRequest()) {
+        setUser(null);
+      }
     } finally {
-      setLoading(false);
+      if (isCurrentRequest()) {
+        setLoading(false);
+      }
     }
   };
 
   const login = async (email, password, mfaCode = null, role = null) => {
+    const requestId = ++authRequestId.current;
+
     try {
       setError(null);
+      setLoading(true);
       // Avoid sending stale/oversized auth headers on login
       if (typeof window !== 'undefined') {
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
       }
       // Only include mfaCode if it has a value
       const payload = { email, password };
@@ -128,12 +147,13 @@ export function AuthProvider({ children }) {
       const response = await api.post('/auth/login', payload, { skipAuth: true });
       
       if (response.data.mfaRequired) {
+        if (requestId === authRequestId.current) {
+          setLoading(false);
+        }
         return { mfaRequired: true };
       }
       
       if (response.data.success) {
-        setUser(response.data.user);
-        
         // Store tokens in localStorage for API client
         if (response.data.accessToken) {
           localStorage.setItem('accessToken', response.data.accessToken);
@@ -141,16 +161,32 @@ export function AuthProvider({ children }) {
         if (response.data.refreshToken) {
           localStorage.setItem('refreshToken', response.data.refreshToken);
         }
+
+        if (requestId !== authRequestId.current) {
+          return { error: 'A newer sign-in request is already in progress' };
+        }
+
+        setUser(response.data.user);
+        setLoading(false);
         
         // Redirect based on role + access level
         const redirectPath = getRedirectPath(response.data.user);
-        router.push(redirectPath);
+        router.replace(redirectPath);
         
-        return { success: true };
+        return { success: true, redirectPath };
       }
+
+      if (requestId === authRequestId.current) {
+        setLoading(false);
+      }
+      return { error: 'Login failed' };
     } catch (err) {
       const message = err.response?.data?.error || 'Login failed';
       setError(message);
+      if (requestId === authRequestId.current) {
+        setUser(null);
+        setLoading(false);
+      }
       return { error: message };
     }
   };
@@ -158,11 +194,10 @@ export function AuthProvider({ children }) {
   const register = async (userData) => {
     try {
       setError(null);
+      setLoading(true);
       const response = await api.post('/auth/register', userData);
       
       if (response.data.success) {
-        setUser(response.data.user);
-        
         // Store tokens
         if (response.data.accessToken) {
           localStorage.setItem('accessToken', response.data.accessToken);
@@ -170,17 +205,24 @@ export function AuthProvider({ children }) {
         if (response.data.refreshToken) {
           localStorage.setItem('refreshToken', response.data.refreshToken);
         }
+
+        setUser(response.data.user);
+        setLoading(false);
         
         // Redirect based on role + access level
         const redirectPath = getRedirectPath(response.data.user);
-        router.push(redirectPath);
+        router.replace(redirectPath);
         
-        return { success: true, message: response.data.message };
+        return { success: true, message: response.data.message, redirectPath };
       }
+
+      setLoading(false);
+      return { error: 'Registration failed' };
     } catch (err) {
       const message = err.response?.data?.error || 'Registration failed';
       const errors = err.response?.data?.errors;
       setError(message);
+      setLoading(false);
       return { error: message, errors };
     }
   };

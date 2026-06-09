@@ -4,6 +4,7 @@ const nextConfig = {
   poweredByHeader: false,
   compress: true,
   distDir: process.env.NEXT_DIST_DIR || '.next',
+  productionBrowserSourceMaps: false,
   outputFileTracingRoot: __dirname,
   
   // Security headers
@@ -106,6 +107,7 @@ const nextConfig = {
 
   // Experimental features
   experimental: {
+    optimizePackageImports: ['lucide-react'],
     serverActions: {
       allowedOrigins: ['doctarx.com', 'www.doctarx.com', 'localhost:3000']
     }
