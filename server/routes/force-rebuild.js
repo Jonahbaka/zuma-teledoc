@@ -3,7 +3,7 @@ const router = express.Router();
 const { buildDeployCommand } = require('./deploy-command');
 const { runDetachedCommand } = require('./run-detached-command');
 
-const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
+const DEPLOY_SECRET = process.env.DEPLOY_SECRET;
 let rebuilding = false;
 
 /**
@@ -16,7 +16,7 @@ let rebuilding = false;
 
 router.post('/', (req, res) => {
   const token = req.headers['x-deploy-token'];
-  if (token !== DEPLOY_SECRET) {
+  if (!DEPLOY_SECRET || token !== DEPLOY_SECRET) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 

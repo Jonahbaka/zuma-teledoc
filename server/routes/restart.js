@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { runDetachedCommand } = require('./run-detached-command');
 
-const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
+const DEPLOY_SECRET = process.env.DEPLOY_SECRET;
 const CRONOPS_ROOT = '/home/ec2-user/zuma-teledoc/cronops';
 const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
 
@@ -16,7 +16,7 @@ const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
 
 router.post('/', (req, res) => {
   const token = req.headers['x-deploy-token'] || req.query.token;
-  if (token !== DEPLOY_SECRET) {
+  if (!DEPLOY_SECRET || token !== DEPLOY_SECRET) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 

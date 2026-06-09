@@ -9,7 +9,8 @@ const { runDetachedCommand } = require('./run-detached-command');
 
 const PROJECT_ROOT = '/home/ec2-user/zuma-teledoc';
 const DEPLOY_LOG = '/tmp/doctarx-deploy.log';
-const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
+const DEPLOY_SECRET = process.env.DEPLOY_SECRET;
+const DEPLOY_LOCK_TIMEOUT_MS = 30 * 60 * 1000;
 const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
 const CRONOPS_ROOT = `${PROJECT_ROOT}/cronops`;
 const GITHUB_OIDC_ISSUER = 'https://token.actions.githubusercontent.com';
@@ -70,6 +71,70 @@ function safeSha(value) {
 function newDeployId() {
   const ts = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
   return `${ts}-${crypto.randomBytes(3).toString('hex')}`;
+}
+
+function isPidAlive(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
+}
+
+function firstMatch(raw, re) {
+  const match = raw.match(re);
+  return match ? match[1] : null;
+}
+
+function parseDeployLog(raw = '') {
+  const pid = firstMatch(raw, /\[deploy:pid\]\s+(\d+)/);
+  const startedAt = firstMatch(raw, /\[deploy\] start\s+(\S+)/);
+  const failedExit = firstMatch(raw, /\[deploy\] failed \(exit (\d+)\)/);
+
+  return {
+    deployId: firstMatch(raw, /\[deploy:id\]\s+(\S+)/),
+    pid: pid ? parseInt(pid, 10) : null,
+    startedAt,
+    startedAtMs: startedAt ? Date.parse(startedAt) : null,
+    complete: raw.includes('[deploy] complete'),
+    failed: raw.includes('[deploy] failed') || raw.includes('[verify:result] FAIL'),
+    exitCode: failedExit ? parseInt(failedExit, 10) : null,
+  };
+}
+
+function readDeployLog(logPath = DEPLOY_LOG) {
+  try {
+    return fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8') : '';
+  } catch {
+    return '';
+  }
+}
+
+function getActiveDeploy(options = {}) {
+  const logPath = options.logPath || DEPLOY_LOG;
+  const now = typeof options.now === 'function' ? options.now() : Date.now();
+  const pidAlive = options.isPidAlive || isPidAlive;
+  const parsed = parseDeployLog(readDeployLog(logPath));
+  const ageMs = parsed.startedAtMs ? Math.max(0, now - parsed.startedAtMs) : null;
+  const timedOut = ageMs !== null && ageMs > DEPLOY_LOCK_TIMEOUT_MS;
+  const terminal = parsed.complete || parsed.failed;
+  const alive = parsed.pid ? pidAlive(parsed.pid) : false;
+
+  if (terminal || timedOut) return null;
+  if (!parsed.deployId && !parsed.pid && !parsed.startedAt) return null;
+  if (parsed.pid && !alive) return null;
+  if (!parsed.pid && !parsed.startedAtMs) return null;
+
+  return {
+    deployId: parsed.deployId,
+    pid: parsed.pid,
+    startedAt: parsed.startedAt,
+    ageSeconds: ageMs === null ? null : Math.round(ageMs / 1000),
+    logPath,
+    status: 'running',
+  };
 }
 
 function mergeEnvFile(envPath, updates) {
@@ -213,8 +278,8 @@ git reset --hard ${quotedTarget}
 echo "[deploy] checkout $(git rev-parse --short=12 HEAD)"
 git clean -fd -e .env -e .env.* -e global-bundle.pem -e '*.pem'
 npm install --include=dev --prefer-offline --no-audit --no-fund
-node -e "const ensure=require('./server/db/ensureAgentTables'); const db=require('./server/db'); ensure().then(async ok=>{ await db.close(); process.exit(ok?0:1); }).catch(async err=>{ console.error(err); try{ await db.close(); }catch{} process.exit(1); })"
 npm run migrate
+node -e "const ensure=require('./server/db/ensureAgentTables'); const db=require('./server/db'); ensure().then(async ok=>{ await db.close(); process.exit(ok?0:1); }).catch(async err=>{ console.error(err); try{ await db.close(); }catch{} process.exit(1); })"
 node ng/migrations/migrate.js
 node ng/scripts/ingest-doctarx-nigeria-pack.js
 rm -rf .next.artifact-staging ${quotedPrevious}
@@ -274,6 +339,18 @@ router.post('/', upload.single('tarball'), async (req, res) => {
     return res.status(400).json({ success: false, error: 'No file uploaded' });
   }
 
+  const activeDeploy = getActiveDeploy();
+  if (activeDeploy) {
+    try { fs.unlinkSync(req.file.path); } catch {}
+    return res.status(409).json({
+      success: false,
+      error: 'Deploy already in progress',
+      inProgress: true,
+      message: 'Deploy already in progress - attach via /api/deploy/log',
+      ...activeDeploy,
+    });
+  }
+
   const gitSha = safeSha(req.body?.gitSha || req.headers['x-git-sha']);
   const branch = safeBranch(req.body?.branch || req.headers['x-git-branch']);
   const envKeys = mergeEnvFile(path.join(PROJECT_ROOT, '.env'), parseEnvJson(req.body?.envJson));
@@ -324,5 +401,13 @@ router.post('/', upload.single('tarball'), async (req, res) => {
     envKeys,
   });
 });
+
+router._test = {
+  DEPLOY_LOCK_TIMEOUT_MS,
+  parseDeployLog,
+  getActiveDeploy,
+  isPidAlive,
+  authorizeDeployRequest,
+};
 
 module.exports = router;

@@ -18,7 +18,7 @@
 | PM2 App (Next.js) | `doctarx` |
 | PM2 App (Cron) | `cronops` |
 | Deploy Webhook | `POST https://doctarx.com/api/deploy` |
-| Deploy Token Header | `x-deploy-token: doctarx-deploy-2026` |
+| Deploy Token Header | `x-deploy-token: $DEPLOY_SECRET` |
 | Server Port | `3001` |
 | Health Check | `GET https://doctarx.com/api/health` |
 
@@ -98,7 +98,7 @@ The deploy webhook will:
 ```bash
 curl -s -X POST https://doctarx.com/api/deploy \
   -H "Content-Type: application/json" \
-  -H "x-deploy-token: doctarx-deploy-2026" \
+  -H "x-deploy-token: $DEPLOY_SECRET" \
   -d '{}'
 ```
 

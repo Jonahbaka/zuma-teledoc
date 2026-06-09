@@ -19,16 +19,16 @@ const { exec } = require('child_process');
  * curl -X POST https://doctarx.com/api/upload-build \
  *   -H "Content-Type: application/json" \
  *   -d @- < next.b64 \
- *   -H "x-deploy-token: doctarx-deploy-2026"
+ *   -H "x-deploy-token: $DEPLOY_SECRET"
  */
 
-const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
+const DEPLOY_SECRET = process.env.DEPLOY_SECRET;
 const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
 const CRONOPS_ROOT = '/home/ec2-user/zuma-teledoc/cronops';
 
 router.post('/', (req, res) => {
   const token = req.headers['x-deploy-token'];
-  if (token !== DEPLOY_SECRET) {
+  if (!DEPLOY_SECRET || token !== DEPLOY_SECRET) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 

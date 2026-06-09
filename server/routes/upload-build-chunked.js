@@ -5,7 +5,7 @@ const path = require('path');
 const { exec } = require('child_process');
 const multer = require('multer');
 
-const DEPLOY_SECRET = process.env.DEPLOY_SECRET || 'doctarx-deploy-2026';
+const DEPLOY_SECRET = process.env.DEPLOY_SECRET;
 const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
 const CRONOPS_ROOT = '/home/ec2-user/zuma-teledoc/cronops';
 const CHUNK_DIR = '/tmp/build-chunks';
@@ -22,17 +22,17 @@ const upload = multer({
  * Chunked upload endpoint
  * Upload chunks, then call /assemble?token=X to reconstruct and deploy
  *
- * curl -F "chunk=@chunk_aa" -H "x-deploy-token: doctarx-deploy-2026" \
+ * curl -F "chunk=@chunk_aa" -H "x-deploy-token: $DEPLOY_SECRET" \
  *      https://doctarx.com/api/upload-build-chunked
- * curl -F "chunk=@chunk_ab" -H "x-deploy-token: doctarx-deploy-2026" \
+ * curl -F "chunk=@chunk_ab" -H "x-deploy-token: $DEPLOY_SECRET" \
  *      https://doctarx.com/api/upload-build-chunked
  * curl -X POST https://doctarx.com/api/upload-build-chunked?assemble=1 \
- *      -H "x-deploy-token: doctarx-deploy-2026"
+ *      -H "x-deploy-token: $DEPLOY_SECRET"
  */
 
 router.post('/', upload.single('chunk'), (req, res) => {
   const token = req.headers['x-deploy-token'];
-  if (token !== DEPLOY_SECRET) {
+  if (!DEPLOY_SECRET || token !== DEPLOY_SECRET) {
     if (req.file) fs.unlinkSync(req.file.path);
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
@@ -60,7 +60,7 @@ router.post('/', upload.single('chunk'), (req, res) => {
 // Assemble chunks and deploy
 router.post('/assemble', (req, res) => {
   const token = req.headers['x-deploy-token'];
-  if (token !== DEPLOY_SECRET) {
+  if (!DEPLOY_SECRET || token !== DEPLOY_SECRET) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 

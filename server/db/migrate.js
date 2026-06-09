@@ -3013,7 +3013,29 @@ const migrations = [
   }
 ];
 
-async function runMigrations() {
+const SQL_FILE_MIGRATIONS = [
+  {
+    name: '400_agent_orchestrator_schema',
+    file: '400_agent_orchestrator_schema.sql'
+  }
+];
+
+function loadSqlFileMigrations(migrationsDir = path.join(__dirname, 'migrations')) {
+  return SQL_FILE_MIGRATIONS.map((migration) => ({
+    name: migration.name,
+    up: fs.readFileSync(path.join(migrationsDir, migration.file), 'utf8')
+  }));
+}
+
+function getMigrations() {
+  return [
+    ...migrations,
+    ...loadSqlFileMigrations()
+  ];
+}
+
+async function runMigrations(options = {}) {
+  const migrationList = options.migrations || getMigrations();
   const client = await pool.connect();
   
   try {
@@ -3036,7 +3058,7 @@ async function runMigrations() {
     
     let migrationsRun = 0;
     
-    for (const migration of migrations) {
+    for (const migration of migrationList) {
       if (executedNames.has(migration.name)) {
         console.log(`⏭️  Skipping ${migration.name} (already executed)`);
         continue;
@@ -3076,6 +3098,15 @@ async function runMigrations() {
   }
 }
 
-// Run migrations
-runMigrations();
+if (require.main === module) {
+  runMigrations();
+}
+
+module.exports = {
+  migrations,
+  SQL_FILE_MIGRATIONS,
+  loadSqlFileMigrations,
+  getMigrations,
+  runMigrations,
+};
 

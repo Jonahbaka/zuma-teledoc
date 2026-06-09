@@ -17,6 +17,103 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../../server/db');
 
+const CLINICAL_WRITE_ROLES = new Set(['provider', 'doctor', 'consultant', 'physician', 'specialist']);
+const CLINICAL_ADMIN_ROLES = new Set(['admin', 'super_admin', 'administrator', 'platform_admin']);
+
+function requestUserId(req) {
+  return req.user?.id || req.user?.userId || req.user?.sub;
+}
+
+function requestRole(req) {
+  return String(req.user?.role || '').trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function httpError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function buildPrescriptionNumber() {
+  const ts = new Date().toISOString().replace(/[^0-9]/g, '').slice(2, 14);
+  const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
+  return `NGRX-${ts}-${rand}`;
+}
+
+async function assertClinicalWriteAccess(req, patientUserId) {
+  const pool = getPool();
+  const userId = requestUserId(req);
+  const role = requestRole(req);
+
+  if (!patientUserId) {
+    throw httpError(400, 'patientUserId is required for clinical writes');
+  }
+
+  if (CLINICAL_ADMIN_ROLES.has(role)) {
+    req.clinicalWriteAccess = {
+      providerId: req.body?.providerId || req.body?.provider_id || null,
+      providerUserId: userId,
+      adminOverride: true,
+    };
+    return req.clinicalWriteAccess;
+  }
+
+  if (!CLINICAL_WRITE_ROLES.has(role)) {
+    throw httpError(403, 'Clinical write access requires a provider role');
+  }
+
+  const provider = await pool.query('SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1', [userId]);
+  const providerId = provider.rows[0]?.id;
+  if (!providerId) {
+    throw httpError(403, 'Nigeria provider profile is required for clinical writes');
+  }
+
+  const appointmentId = req.body?.appointmentId || req.body?.appointment_id || null;
+  const encounterId = req.body?.encounterId || req.body?.encounter_id || null;
+
+  if (appointmentId) {
+    const appointment = await pool.query(
+      `SELECT id FROM ng_appointments
+       WHERE id = $1 AND patient_user_id = $2 AND provider_id = $3
+       LIMIT 1`,
+      [appointmentId, patientUserId, providerId]
+    );
+    if (!appointment.rows.length) {
+      throw httpError(403, 'Provider does not have access to this patient appointment');
+    }
+  }
+
+  if (encounterId) {
+    const encounter = await pool.query(
+      `SELECT id FROM ng_clinical_encounters
+       WHERE id = $1 AND patient_user_id = $2 AND provider_user_id = $3
+       LIMIT 1`,
+      [encounterId, patientUserId, userId]
+    );
+    if (!encounter.rows.length) {
+      throw httpError(403, 'Provider does not have access to this clinical encounter');
+    }
+  }
+
+  if (!appointmentId && !encounterId) {
+    const relationship = await pool.query(
+      `SELECT id FROM ng_appointments
+        WHERE patient_user_id = $1 AND provider_id = $2
+       UNION
+       SELECT id FROM ng_clinical_encounters
+        WHERE patient_user_id = $1 AND provider_user_id = $3
+       LIMIT 1`,
+      [patientUserId, providerId, userId]
+    );
+    if (!relationship.rows.length) {
+      throw httpError(403, 'Provider does not have an active clinical relationship with this patient');
+    }
+  }
+
+  req.clinicalWriteAccess = { providerId, providerUserId: userId, adminOverride: false };
+  return req.clinicalWriteAccess;
+}
+
 function asyncHandler(fn) {
   return async (req, res) => {
     try {
@@ -78,6 +175,70 @@ router.get('/prescriptions', asyncHandler(async (req, res) => {
 
   const { rows } = await pool.query(query, params);
   res.json({ ok: true, prescriptions: rows, count: rows.length });
+}));
+
+// POST /clinical/prescriptions
+router.post('/prescriptions', express.json(), asyncHandler(async (req, res) => {
+  req.body = req.body || {};
+  req.body.patientUserId = req.body.patientUserId || req.body.patient_user_id;
+  await assertClinicalWriteAccess(req, req.body.patientUserId);
+
+  const pool = getPool();
+  const access = req.clinicalWriteAccess || {};
+  const items = Array.isArray(req.body.items) ? req.body.items : [];
+  const pharmacyId = req.body.pharmacyId || req.body.pharmacy_id || null;
+  const prescriptionNumber = req.body.prescriptionNumber || req.body.prescription_number || buildPrescriptionNumber();
+  const encounterId = req.body.encounterId || req.body.encounter_id || null;
+  const appointmentId = req.body.appointmentId || req.body.appointment_id || null;
+  const isControlled = items.some((item) => item?.isControlled === true || item?.controlledOrSpecialHandling === true);
+
+  if (!items.length) {
+    return res.status(400).json({ error: 'At least one medication item is required' });
+  }
+
+  const { rows } = await pool.query(
+    `INSERT INTO ng_digital_prescriptions
+       (provider_id, patient_user_id, appointment_id, prescription_number,
+        items, preferred_pharmacy_id, routed_pharmacy_id, routed_at,
+        status, dispense_status, pharmacy_response_status,
+        diagnosis, notes, fulfillment_preference, is_controlled,
+        provider_user_id, encounter_id, pharmacy_id,
+        patient_instructions, pharmacy_notes, audit_metadata)
+     VALUES
+       ($1,$2,$3,$4,$5,$6,$7,CASE WHEN $7 IS NOT NULL THEN NOW() ELSE NULL END,
+        $8,'pending','pending_pharmacy_confirmation',
+        $9,$10,$11,$12,
+        $13,$14,$15,
+        $16,$17,$18)
+     RETURNING *`,
+    [
+      access.providerId,
+      req.body.patientUserId,
+      appointmentId,
+      prescriptionNumber,
+      JSON.stringify(items),
+      req.body.preferredPharmacyId || req.body.preferred_pharmacy_id || pharmacyId,
+      req.body.routedPharmacyId || req.body.routed_pharmacy_id || pharmacyId,
+      pharmacyId ? 'routed' : 'active',
+      req.body.diagnosis || null,
+      req.body.notes || null,
+      req.body.fulfillmentPreference || req.body.fulfillment_preference || 'pickup_or_delivery',
+      isControlled,
+      access.providerUserId,
+      encounterId,
+      pharmacyId,
+      req.body.patientInstructions || req.body.patient_instructions || null,
+      req.body.pharmacyNotes || req.body.pharmacy_notes || null,
+      {
+        source: 'clinical_route',
+        actorUserId: requestUserId(req),
+        soapNoteIds: req.body.soapNoteIds || req.body.soap_note_ids || [],
+        prescriptionIds: req.body.prescriptionIds || req.body.prescription_ids || [],
+      },
+    ]
+  );
+
+  res.status(201).json({ ok: true, prescription: rows[0] });
 }));
 
 // GET /clinical/encounters
@@ -223,6 +384,51 @@ router.get('/referrals', asyncHandler(async (req, res) => {
     params
   );
   res.json({ ok: true, referrals: rows, count: rows.length });
+}));
+
+// PATCH /clinical/referrals/:id/status
+router.patch('/referrals/:id/status', express.json(), asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const { status, response_summary } = req.body || {};
+  const soapNoteIds = req.body?.soapNoteIds || req.body?.soap_note_ids || [];
+  const prescriptionIds = req.body?.prescriptionIds || req.body?.prescription_ids || [];
+
+  if (!status) {
+    return res.status(400).json({ error: 'status is required' });
+  }
+
+  const referral = await pool.query('SELECT * FROM ng_referrals WHERE id = $1', [req.params.id]);
+  if (!referral.rows.length) {
+    return res.status(404).json({ error: 'Referral not found' });
+  }
+
+  req.body.patientUserId = referral.rows[0].patient_user_id;
+  await assertClinicalWriteAccess(req, req.body.patientUserId);
+
+  const auditMetadata = {
+    ...(referral.rows[0].audit_metadata || {}),
+    lastStatusUpdate: {
+      status,
+      actorUserId: requestUserId(req),
+      soapNoteIds,
+      prescriptionIds,
+      updatedAt: new Date().toISOString(),
+    },
+  };
+
+  const { rows } = await pool.query(
+    `UPDATE ng_referrals
+        SET status = $1,
+            response_summary = COALESCE($2, response_summary),
+            audit_metadata = $3,
+            completed_at = CASE WHEN $1 = 'completed' THEN NOW() ELSE completed_at END,
+            updated_at = NOW()
+      WHERE id = $4
+      RETURNING *`,
+    [status, response_summary || null, auditMetadata, req.params.id]
+  );
+
+  res.json({ ok: true, referral: rows[0], soapNoteIds, prescriptionIds });
 }));
 
 // POST /clinical/referrals

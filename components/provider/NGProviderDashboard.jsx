@@ -303,7 +303,7 @@ function CommandCenter({ appointments = [], patients = [], totalPatients = 0, on
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col">
           <div className="p-6 border-b border-slate-100 flex justify-between items-center">
             <div>
-              <h3 className="text-base font-bold text-slate-900">Patient Flow &amp; Capacity Forecast</h3>
+              <h3 className="text-base font-bold text-slate-900">Patient Flow & Capacity Forecast</h3>
               <p className="text-xs text-slate-500 mt-1">Real-time tracking of admissions vs. discharges</p>
             </div>
             <div className="flex bg-slate-100 p-1 rounded-lg">
