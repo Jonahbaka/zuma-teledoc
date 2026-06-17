@@ -53,9 +53,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
           # Build-time env (masked). The e2e talks to a local fixture server;
           # the telehealth client auto-resolves the socket to localhost:8080 on
-          # localhost, so no NEXT_PUBLIC overrides are required. Secrets are
-          # passed only to satisfy any build-time references.
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # localhost, so no NEXT_PUBLIC overrides are required.
           JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
           JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}

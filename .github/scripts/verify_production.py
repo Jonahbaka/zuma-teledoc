@@ -78,13 +78,13 @@ def gate(name, ok, detail=""):
 
 
 def find_db_status(*objs):
-    """Best-effort: locate a database/Neon health signal in any health JSON."""
+    """Best-effort: locate a database health signal in any health JSON."""
     for o in objs:
         if not isinstance(o, dict):
             continue
         for k, v in o.items():
             kl = k.lower()
-            if any(t in kl for t in ("database", "neon", "postgres", "db")):
+            if any(t in kl for t in ("database", "postgres", "db")):
                 return k, v
     return None, None
 
@@ -302,7 +302,7 @@ print(f"Provider dashboard status: HTTP {evidence.get('provider_dashboard_http')
       f"({'ok' if results.get('provider_dashboard_real_or_auth', (False,))[0] else 'NOT ok'})")
 print(f"www /ng behavior: {'OK' if evidence.get('www_ng_ok') else 'NOT OK'} -> "
       + "; ".join(f"{k}:{v['verdict']}" for k, v in (evidence.get('www_ng') or {}).items()))
-print("Live Neon simulation: not executed by this production gate; see Neon DB Verify workflow")
+print("Live database simulation: not executed by this production gate")
 print("Video E2E simulation: not executed by this production gate; see Video WebRTC E2E workflow")
 print("LiveKit SFU 3/5/10 media: not executed by this production gate; see LiveKit SFU E2E workflow")
 print("TURN relay: not asserted by this production gate")
