@@ -217,10 +217,12 @@ jobs:
           sudo systemctl enable --now postgresql || sudo systemctl enable --now postgresql-16 || sudo systemctl enable --now postgresql-15
 
           PGDATA_DIR="$(sudo -iu postgres psql -tAc 'SHOW data_directory;' | tr -d '[:space:]')"
-          if ! sudo grep -q '^host[[:space:]]\+doctarx[[:space:]]\+doctarx_app[[:space:]]\+127\.0\.0\.1/32' "$PGDATA_DIR/pg_hba.conf"; then
-            echo 'host doctarx doctarx_app 127.0.0.1/32 scram-sha-256' | sudo tee -a "$PGDATA_DIR/pg_hba.conf" >/dev/null
-            sudo systemctl reload postgresql || sudo systemctl reload postgresql-16 || sudo systemctl reload postgresql-15
-          fi
+          HBA_TMP="$(mktemp)"
+          printf '%s\n' 'host doctarx doctarx_app 127.0.0.1/32 scram-sha-256' > "$HBA_TMP"
+          sudo sed '/^host[[:space:]]\+doctarx[[:space:]]\+doctarx_app[[:space:]]\+127\.0\.0\.1\/32/d' "$PGDATA_DIR/pg_hba.conf" >> "$HBA_TMP"
+          sudo install -o postgres -g postgres -m 600 "$HBA_TMP" "$PGDATA_DIR/pg_hba.conf"
+          rm -f "$HBA_TMP"
+          sudo systemctl reload postgresql || sudo systemctl reload postgresql-16 || sudo systemctl reload postgresql-15
 
           sudo -iu postgres psql -v ON_ERROR_STOP=1 -v db_password="$POSTGRES_PASSWORD" <<'SQL'
           DO $$
