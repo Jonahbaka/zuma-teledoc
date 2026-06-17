@@ -63,7 +63,6 @@ jobs:
           NG_LIVEKIT_URL: ${{ secrets.NG_LIVEKIT_URL }}
           NG_LIVEKIT_API_KEY: ${{ secrets.NG_LIVEKIT_API_KEY }}
           NG_LIVEKIT_API_SECRET: ${{ secrets.NG_LIVEKIT_API_SECRET }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
           JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
@@ -107,7 +106,7 @@ jobs:
           import json, os
           keys = [
               "NG_LIVEKIT_URL","NG_LIVEKIT_API_KEY","NG_LIVEKIT_API_SECRET",
-              "DATABASE_URL","JWT_ACCESS_SECRET","JWT_REFRESH_SECRET",
+              "JWT_ACCESS_SECRET","JWT_REFRESH_SECRET",
               "ENCRYPTION_KEY","SESSION_SECRET","ANTHROPIC_API_KEY",
               "GEMINI_API_KEY","CLAUDE_API_KEY","STRIPE_SECRET_KEY",
               "STRIPE_PUBLISHABLE_KEY","STRIPE_WEBHOOK_SECRET",

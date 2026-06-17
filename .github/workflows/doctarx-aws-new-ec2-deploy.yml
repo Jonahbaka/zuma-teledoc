@@ -314,6 +314,7 @@ jobs:
           echo "[remote] pm2"
           pm2 delete zuma-teledoc || true
           pm2 start ecosystem.config.js --only zuma-teledoc --env production
+          sudo env PATH="$PATH:/usr/bin" pm2 startup systemd -u ec2-user --hp /home/ec2-user || true
           pm2 save
           pm2 list
 
