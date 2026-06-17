@@ -1,0 +1,171 @@
+name: Recover EC2 (out-of-band)
+
+# Recovery path for when https://doctarx.com is NOT reachable on 443 and the
+# normal push/webhook deploy (which POSTs to the live site) therefore cannot run.
+#
+# This workflow does NOT touch the public HTTPS endpoint. It reaches the box via
+# the AWS control plane + EC2 Instance Connect (the path documented in
+# server/services/agent-orchestrator/skills/devops_deploy.md), so it works even
+# when nginx/PM2 are down or the instance is stopped.
+#
+# AUTH: GitHub OIDC only — NO long-lived AWS keys. The runner assumes a
+# least-privilege IAM role via web identity (permissions: id-token: write below).
+# REQUIRED repo VARIABLE:
+#   AWS_ROLE_ARN  — ARN of the recovery IAM role (an ARN is not a secret)
+# Optional repo VARIABLES (sane defaults below, from the deploy runbook):
+#   EC2_INSTANCE_ID (i-067815cf18600a570), EC2_AZ (us-east-2b),
+#   AWS_REGION (us-east-2), EC2_HOST (3.141.34.168), EC2_OS_USER (ec2-user)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do on the host
+        type: choice
+        default: restart-services
+        options:
+          - restart-services   # nginx + PM2 reload, no rebuild (fastest recovery)
+          - start-instance     # start the EC2 instance if it is stopped, then restart services
+          - diagnose-only      # gather state (instance status, nginx, pm2, disk, cert) and stop
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ec2-recovery
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-2' }}
+  EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID || 'i-067815cf18600a570' }}
+  EC2_AZ: ${{ vars.EC2_AZ || 'us-east-2b' }}
+  EC2_HOST: ${{ vars.EC2_HOST || '3.141.34.168' }}
+  EC2_OS_USER: ${{ vars.EC2_OS_USER || 'ec2-user' }}
+  APP_DIR: /home/ec2-user/zuma-teledoc
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Configure AWS credentials (GitHub OIDC — no long-lived keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: ec2-recovery-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Report current instance state
+        id: state
+        run: |
+          set -euo pipefail
+          STATE=$(aws ec2 describe-instances \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].State.Name' --output text)
+          PUBIP=$(aws ec2 describe-instances \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+          echo "Instance $EC2_INSTANCE_ID state=$STATE publicIp=$PUBIP (DNS expects $EC2_HOST)"
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+          echo "public_ip=$PUBIP" >> "$GITHUB_OUTPUT"
+          echo "Inbound 80/443 rules on attached security groups:"
+          for sg in $(aws ec2 describe-instances --instance-ids "$EC2_INSTANCE_ID" \
+              --query 'Reservations[0].Instances[0].SecurityGroups[].GroupId' --output text); do
+            echo "  SG $sg:"
+            aws ec2 describe-security-groups --group-ids "$sg" \
+              --query "SecurityGroups[0].IpPermissions[?ToPort==\`443\` || ToPort==\`80\`]" \
+              --output json || true
+          done
+
+      - name: Start instance if stopped
+        if: ${{ inputs.action == 'start-instance' }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.state.outputs.state }}" != "running" ]; then
+            echo "Starting instance $EC2_INSTANCE_ID (current=${{ steps.state.outputs.state }})..."
+            aws ec2 start-instances --instance-ids "$EC2_INSTANCE_ID"
+            aws ec2 wait instance-running --instance-ids "$EC2_INSTANCE_ID"
+            aws ec2 wait instance-status-ok --instance-ids "$EC2_INSTANCE_ID"
+            echo "Instance is running. NOTE: without an Elastic IP the public IP may have changed —"
+            echo "verify DNS for doctarx.com points at the address above."
+          else
+            echo "Instance already running; nothing to start."
+          fi
+
+      - name: Fail fast if instance is not running
+        if: ${{ inputs.action != 'start-instance' && steps.state.outputs.state != 'running' }}
+        run: |
+          echo "::error::Instance state is '${{ steps.state.outputs.state }}', not 'running'. Re-run with action=start-instance."
+          exit 1
+
+      - name: Push ephemeral SSH key via EC2 Instance Connect
+        run: |
+          set -euo pipefail
+          ssh-keygen -t rsa -b 2048 -f /tmp/ec2_recover -N "" -q
+          aws ec2-instance-connect send-ssh-public-key \
+            --instance-id "$EC2_INSTANCE_ID" \
+            --instance-os-user "$EC2_OS_USER" \
+            --availability-zone "$EC2_AZ" \
+            --ssh-public-key "file:///tmp/ec2_recover.pub"
+          # Prefer the live public IP from the API over the static default.
+          TARGET="${{ steps.state.outputs.public_ip }}"
+          [ -z "$TARGET" ] || [ "$TARGET" = "None" ] && TARGET="$EC2_HOST" || true
+          echo "TARGET_HOST=$TARGET" >> "$GITHUB_ENV"
+
+      - name: Diagnose host (instance status, nginx, pm2, disk, TLS)
+        run: |
+          set -euo pipefail
+          ssh -i /tmp/ec2_recover -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
+            "$EC2_OS_USER@$TARGET_HOST" bash -s <<'REMOTE'
+            echo "== uptime =="; uptime
+            echo "== disk =="; df -h / /tmp 2>/dev/null
+            echo "== nginx =="; sudo systemctl is-active nginx || true; sudo nginx -t 2>&1 || true
+            echo "== listeners 80/443/8080 =="; sudo ss -ltnp 2>/dev/null | grep -E ':80|:443|:8080' || echo "  none"
+            echo "== pm2 =="; pm2 list 2>/dev/null || echo "  pm2 not responding"
+            echo "== local health =="; curl -s --max-time 8 http://localhost:8080/api/health || curl -s --max-time 8 http://localhost:3001/api/health || echo "  app not answering on 8080/3001"
+            echo "== TLS cert =="; sudo certbot certificates 2>/dev/null | grep -E 'Certificate Name|Expiry' || echo "  certbot info unavailable"
+          REMOTE
+
+      - name: Restart nginx + PM2 (recovery, no rebuild)
+        if: ${{ inputs.action != 'diagnose-only' }}
+        run: |
+          set -euo pipefail
+          ssh -i /tmp/ec2_recover -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
+            "$EC2_OS_USER@$TARGET_HOST" bash -s <<'REMOTE'
+            set -e
+            cd /home/ec2-user/zuma-teledoc
+            echo "[recover] reloading nginx"
+            sudo nginx -t && sudo systemctl restart nginx
+            echo "[recover] (re)starting PM2 apps"
+            pm2 reload ecosystem.config.js --only zuma-teledoc --update-env \
+              || pm2 start ecosystem.config.js --only zuma-teledoc --env production
+            pm2 reload ecosystem.config.js --only cronops --update-env \
+              || pm2 start ecosystem.config.js --only cronops --env production || true
+            pm2 save || true
+            echo "[recover] waiting for local health"
+            OK=no
+            for i in $(seq 1 30); do
+              H=$(curl -s --max-time 8 http://localhost:8080/api/health || true)
+              echo "$H" | grep -q '"status":"healthy"' && echo "$H" | grep -q '"nextReady":true' && OK=yes && break
+              sleep 3
+            done
+            [ "$OK" = "yes" ] && echo "[recover] LOCAL HEALTH OK" || { echo "[recover] LOCAL HEALTH FAILED"; pm2 logs zuma-teledoc --lines 40 --nostream || true; exit 1; }
+          REMOTE
+
+      - name: Verify public endpoint is back
+        if: ${{ inputs.action != 'diagnose-only' }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            CODE=$(curl -s -o /tmp/h.json -w "%{http_code}" --max-time 15 https://doctarx.com/api/health || echo 000)
+            echo "attempt $i: https://doctarx.com/api/health -> $CODE"
+            if [ "$CODE" = "200" ]; then
+              cat /tmp/h.json; echo
+              echo "Public site recovered."
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::Public /api/health still not 200 after restart — likely DNS/IP mismatch or security group blocking 443. See the diagnose step output above."
+          exit 1
