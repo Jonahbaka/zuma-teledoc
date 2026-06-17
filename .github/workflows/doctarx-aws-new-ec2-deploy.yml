@@ -1,0 +1,244 @@
+name: Fresh AWS EC2 Deploy DoctaRx
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance_type:
+        description: EC2 instance type
+        required: false
+        default: t3.medium
+
+permissions:
+  contents: read
+
+concurrency:
+  group: doctarx-fresh-aws-ec2-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      AWS_DEFAULT_REGION: us-east-2
+      AWS_REGION: us-east-2
+      INSTANCE_TYPE: ${{ inputs.instance_type || 't3.medium' }}
+      APP_ROOT: /home/ec2-user/zuma-teledoc
+      DOMAIN: doctarx.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Launch and deploy fresh EC2
+        env:
+          AWS_ACCESS_KEY_ID_RAW: ${{ secrets.ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY_RAW: ${{ secrets.SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN_RAW: ${{ secrets.AWS_SESSION_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -Eeuo pipefail
+
+          if [ -z "${AWS_ACCESS_KEY_ID_RAW:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY_RAW:-}" ]; then
+            echo "::error::ACCESS_KEY_ID or SECRET_ACCESS_KEY is not configured."
+            exit 1
+          fi
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "::error::DATABASE_URL is not configured."
+            exit 1
+          fi
+
+          export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+          AWS_ACCESS_KEY_ID="$(printf '%s' "$AWS_ACCESS_KEY_ID_RAW" | tr -d '[:space:]')"
+          AWS_SECRET_ACCESS_KEY="$(printf '%s' "$AWS_SECRET_ACCESS_KEY_RAW" | tr -d '[:space:]')"
+          AWS_SESSION_TOKEN="$(printf '%s' "${AWS_SESSION_TOKEN_RAW:-}" | tr -d '[:space:]')"
+          unset AWS_ACCESS_KEY_ID_RAW AWS_SECRET_ACCESS_KEY_RAW AWS_SESSION_TOKEN_RAW
+          if [ -z "$AWS_SESSION_TOKEN" ]; then unset AWS_SESSION_TOKEN; fi
+
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "[deploy] aws_identity_account=$ACCOUNT_ID"
+
+          RUNNER_IP="$(curl -fsS --max-time 20 https://checkip.amazonaws.com | tr -d '[:space:]')"
+          RUNNER_CIDR="$RUNNER_IP/32"
+          echo "[deploy] runner_cidr=$RUNNER_CIDR"
+
+          VPC_ID="$(aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)"
+          if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+            echo "[deploy] no default VPC found; creating default VPC"
+            VPC_ID="$(aws ec2 create-default-vpc --query 'Vpc.VpcId' --output text)"
+          fi
+          echo "[deploy] vpc_id=$VPC_ID"
+
+          SUBNET_ID="$(aws ec2 describe-subnets --filters Name=vpc-id,Values="$VPC_ID" Name=default-for-az,Values=true --query 'Subnets[0].SubnetId' --output text)"
+          if [ -z "$SUBNET_ID" ] || [ "$SUBNET_ID" = "None" ]; then
+            AZ="$(aws ec2 describe-availability-zones --query 'AvailabilityZones[0].ZoneName' --output text)"
+            echo "[deploy] no default subnet found; creating default subnet in $AZ"
+            SUBNET_ID="$(aws ec2 create-default-subnet --availability-zone "$AZ" --query 'Subnet.SubnetId' --output text)"
+          fi
+          echo "[deploy] subnet_id=$SUBNET_ID"
+
+          SG_NAME="doctarx-web-${GITHUB_RUN_ID}"
+          SG_ID="$(aws ec2 create-security-group --group-name "$SG_NAME" --description "DoctaRx web recovery ${GITHUB_RUN_ID}" --vpc-id "$VPC_ID" --query 'GroupId' --output text)"
+          echo "[deploy] security_group_id=$SG_ID"
+          aws ec2 create-tags --resources "$SG_ID" --tags Key=Name,Value="$SG_NAME" Key=App,Value=DoctaRx >/dev/null
+          aws ec2 authorize-security-group-ingress --group-id "$SG_ID" --ip-permissions \
+            "IpProtocol=tcp,FromPort=80,ToPort=80,IpRanges=[{CidrIp=0.0.0.0/0,Description=HTTP}]" \
+            "IpProtocol=tcp,FromPort=443,ToPort=443,IpRanges=[{CidrIp=0.0.0.0/0,Description=HTTPS}]" \
+            "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$RUNNER_CIDR,Description=GitHubActionsRecovery}]" >/dev/null
+
+          KEY_NAME="doctarx-recovery-${GITHUB_RUN_ID}"
+          aws ec2 create-key-pair --key-name "$KEY_NAME" --key-type rsa --key-format pem --query 'KeyMaterial' --output text > /tmp/doctarx_recovery_key.pem
+          chmod 600 /tmp/doctarx_recovery_key.pem
+
+          AMI_ID="$(aws ec2 describe-images \
+            --owners amazon \
+            --filters 'Name=name,Values=al2023-ami-2023.*-kernel-6.1-x86_64' 'Name=state,Values=available' \
+            --query 'sort_by(Images,&CreationDate)[-1].ImageId' \
+            --output text)"
+          if [ -z "$AMI_ID" ] || [ "$AMI_ID" = "None" ]; then
+            echo "::error::Could not resolve latest Amazon Linux 2023 AMI."
+            exit 1
+          fi
+          echo "[deploy] ami_id=$AMI_ID instance_type=$INSTANCE_TYPE"
+
+          INSTANCE_ID="$(aws ec2 run-instances \
+            --image-id "$AMI_ID" \
+            --instance-type "$INSTANCE_TYPE" \
+            --key-name "$KEY_NAME" \
+            --security-group-ids "$SG_ID" \
+            --subnet-id "$SUBNET_ID" \
+            --block-device-mappings '[{"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":40,"VolumeType":"gp3","DeleteOnTermination":true}}]' \
+            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=doctarx-web-${GITHUB_RUN_ID}},{Key=App,Value=DoctaRx},{Key=ManagedBy,Value=GitHubActions}]" \
+            --query 'Instances[0].InstanceId' \
+            --output text)"
+          echo "[deploy] instance_id=$INSTANCE_ID"
+
+          aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
+          aws ec2 wait instance-status-ok --instance-ids "$INSTANCE_ID"
+          PUBLIC_IP="$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)"
+          echo "[deploy] public_ip=$PUBLIC_IP"
+          echo "::notice::New DoctaRx EC2 public IP: $PUBLIC_IP"
+
+          echo "[deploy] waiting for ssh"
+          for attempt in $(seq 1 36); do
+            if ssh -i /tmp/doctarx_recovery_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 "ec2-user@$PUBLIC_IP" 'printf ssh_ok'; then
+              echo
+              break
+            fi
+            if [ "$attempt" = "36" ]; then
+              echo "::error::SSH did not become reachable."
+              exit 1
+            fi
+            sleep 10
+          done
+
+          JWT_ACCESS_SECRET="$(openssl rand -hex 32)"
+          JWT_REFRESH_SECRET="$(openssl rand -hex 32)"
+          SESSION_SECRET="$(openssl rand -hex 32)"
+          ENCRYPTION_KEY="$(openssl rand -hex 32)"
+          DEPLOY_SECRET="$(openssl rand -hex 32)"
+
+          cat > /tmp/doctarx-fresh-deploy.sh <<'REMOTE'
+          #!/usr/bin/env bash
+          set -Eeuo pipefail
+
+          APP_ROOT="${APP_ROOT:-/home/ec2-user/zuma-teledoc}"
+          LOG="/tmp/doctarx-fresh-ec2-deploy-$(date -u +%Y%m%dT%H%M%SZ).log"
+          exec > >(tee -a "$LOG") 2>&1
+
+          echo "[remote] start $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          sudo dnf update -y
+          sudo dnf install -y git nginx gcc-c++ make python3 openssl tar gzip
+          curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
+          sudo dnf install -y nodejs
+          sudo npm install -g pm2
+          sudo systemctl enable --now nginx
+
+          sudo mkdir -p "$(dirname "$APP_ROOT")"
+          sudo chown -R ec2-user:ec2-user "$(dirname "$APP_ROOT")"
+          rm -rf "$APP_ROOT"
+          git clone --depth=1 --branch main https://github.com/Jonahbaka/zuma-teledoc.git "$APP_ROOT"
+          cd "$APP_ROOT"
+
+          cat > .env <<ENV
+          NODE_ENV=production
+          PORT=3001
+          NEXT_PUBLIC_APP_URL=https://doctarx.com
+          NEXT_PUBLIC_API_URL=https://doctarx.com/api
+          DATABASE_URL=$DATABASE_URL
+          JWT_ACCESS_SECRET=$JWT_ACCESS_SECRET
+          JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET
+          JWT_SECRET=$JWT_ACCESS_SECRET
+          SESSION_SECRET=$SESSION_SECRET
+          ENCRYPTION_KEY=$ENCRYPTION_KEY
+          DEPLOY_SECRET=$DEPLOY_SECRET
+          PGSSLROOTCERT=
+          ENV
+          chmod 600 .env
+
+          echo "[remote] versions"
+          node --version
+          npm --version
+
+          echo "[remote] install"
+          npm install --include=dev --no-audit --no-fund
+
+          echo "[remote] migrate"
+          npm run migrate
+          node ng/migrations/migrate.js
+          node ng/scripts/ingest-doctarx-nigeria-pack.js
+
+          echo "[remote] deploy_gate"
+          npm run test:deploy-gate
+
+          echo "[remote] build"
+          NODE_OPTIONS="--max-old-space-size=4096" npm run build
+
+          echo "[remote] nginx"
+          sudo tee /etc/nginx/conf.d/doctarx.conf >/dev/null <<'NGINX'
+          server {
+            listen 80 default_server;
+            server_name doctarx.com www.doctarx.com _;
+            client_max_body_size 100m;
+
+            location / {
+              proxy_pass http://127.0.0.1:3001;
+              proxy_http_version 1.1;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection "upgrade";
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+              proxy_read_timeout 300;
+              proxy_send_timeout 300;
+            }
+          }
+          NGINX
+          sudo rm -f /etc/nginx/conf.d/default.conf
+          sudo nginx -t
+          sudo systemctl reload nginx
+
+          echo "[remote] pm2"
+          pm2 delete zuma-teledoc || true
+          pm2 start ecosystem.config.js --only zuma-teledoc --env production
+          pm2 save
+          pm2 list
+
+          echo "[remote] health"
+          for i in 1 2 3 4 5; do
+            curl -sS --max-time 20 http://127.0.0.1:3001/api/health || true
+            echo
+            sleep 5
+          done
+          echo "[remote] complete $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          REMOTE
+
+          chmod +x /tmp/doctarx-fresh-deploy.sh
+          scp -i /tmp/doctarx_recovery_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR /tmp/doctarx-fresh-deploy.sh "ec2-user@$PUBLIC_IP:/tmp/doctarx-fresh-deploy.sh"
+          ssh -i /tmp/doctarx_recovery_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=6 "ec2-user@$PUBLIC_IP" \
+            "APP_ROOT='$APP_ROOT' DATABASE_URL='$DATABASE_URL' JWT_ACCESS_SECRET='$JWT_ACCESS_SECRET' JWT_REFRESH_SECRET='$JWT_REFRESH_SECRET' SESSION_SECRET='$SESSION_SECRET' ENCRYPTION_KEY='$ENCRYPTION_KEY' DEPLOY_SECRET='$DEPLOY_SECRET' bash /tmp/doctarx-fresh-deploy.sh"
+
+          echo "[deploy] public HTTP check"
+          curl -sS --max-time 30 "http://$PUBLIC_IP/api/health"
+          echo
+          echo "::notice::Update Cloudflare A records for doctarx.com and www.doctarx.com to $PUBLIC_IP, then rerun TLS/certbot."
