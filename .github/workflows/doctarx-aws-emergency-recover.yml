@@ -1,0 +1,389 @@
+name: Emergency AWS Recover DoctaRx
+
+on:
+  push:
+    branches:
+      - codex/doctarx-aws-recover
+    paths:
+      - .github/workflows/doctarx-aws-emergency-recover.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: doctarx-aws-emergency-recover
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      AWS_DEFAULT_REGION: us-east-2
+      AWS_REGION: us-east-2
+      INSTANCE_ID: i-067815cf18600a570
+      SSH_USER: ec2-user
+      APP_ROOT: /home/ec2-user/zuma-teledoc
+      VAULT_PATH: /home/ec2-user/PromptPay/config/secure/secrets-vault.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Recover EC2 host and DoctaRx service
+        env:
+          AWS_ACCESS_KEY_ID_RAW: ${{ secrets.ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY_RAW: ${{ secrets.SECRET_ACCESS_KEY }}
+          EC2_SSH_KEY_RAW: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          set -Eeuo pipefail
+
+          if [ -z "${AWS_ACCESS_KEY_ID_RAW:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY_RAW:-}" ]; then
+            echo "::error::ACCESS_KEY_ID or SECRET_ACCESS_KEY is not configured in GitHub Actions secrets."
+            exit 1
+          fi
+
+          export AWS_ACCESS_KEY_ID
+          export AWS_SECRET_ACCESS_KEY
+          AWS_ACCESS_KEY_ID="$(printf '%s' "$AWS_ACCESS_KEY_ID_RAW" | tr -d '[:space:]')"
+          AWS_SECRET_ACCESS_KEY="$(printf '%s' "$AWS_SECRET_ACCESS_KEY_RAW" | tr -d '[:space:]')"
+          unset AWS_ACCESS_KEY_ID_RAW AWS_SECRET_ACCESS_KEY_RAW
+
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::error::AWS credentials are empty after whitespace normalization."
+            exit 1
+          fi
+
+          echo "[recover] start $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "[recover] aws_identity_account=$ACCOUNT_ID"
+
+          cat > /tmp/doctarx-recover.sh <<'REMOTE'
+          #!/usr/bin/env bash
+          set -Eeuo pipefail
+
+          APP_ROOT="${APP_ROOT:-/home/ec2-user/zuma-teledoc}"
+          VAULT_PATH="${VAULT_PATH:-/home/ec2-user/PromptPay/config/secure/secrets-vault.json}"
+          LOG="/tmp/doctarx-emergency-recover-$(date -u +%Y%m%dT%H%M%SZ).log"
+          exec > >(tee -a "$LOG") 2>&1
+
+          echo "[remote] start $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "[remote] host $(hostname)"
+          echo "[remote] log $LOG"
+          echo "[remote] uptime $(uptime || true)"
+          echo "[remote] disk"
+          df -h "$HOME" /tmp "$APP_ROOT" 2>/dev/null || df -h
+          echo "[remote] memory"
+          free -h || true
+
+          if [ -f "$VAULT_PATH" ]; then
+            stat -c '[remote] vault present path=%n mode=%a owner=%U group=%G bytes=%s' "$VAULT_PATH"
+          else
+            echo "[remote] vault missing path=$VAULT_PATH"
+          fi
+
+          cd "$APP_ROOT"
+          echo "[remote] app_root $(pwd)"
+          echo "[remote] git_before $(git rev-parse --short=12 HEAD 2>/dev/null || echo missing)"
+          echo "[remote] build_before $(cat .next/BUILD_ID 2>/dev/null || echo missing)"
+          if [ -f .env ] && grep -q '^DEPLOY_SECRET=' .env; then
+            echo "[remote] deploy_secret present"
+          else
+            echo "[remote] deploy_secret missing"
+          fi
+          if [ -f .env ] && grep -q '^DATABASE_URL=' .env; then
+            echo "[remote] database_url present"
+          else
+            echo "[remote] database_url missing"
+          fi
+
+          echo "[remote] pm2_before"
+          pm2 list || true
+          echo "[remote] node_build_processes_before"
+          ps -eo pid,ppid,etime,pcpu,pmem,args | grep -E 'next build|npm run build|node .*next.*build' | grep -v grep || true
+
+          echo "[remote] stop stale build processes"
+          pkill -f 'next build' || true
+          pkill -f 'npm run build' || true
+          pkill -f 'node .*next.*build' || true
+          sleep 3
+
+          echo "[remote] sync origin/main"
+          rm -f .git/index.lock
+          git fetch --prune origin main
+          git reset --hard origin/main
+          git clean -fd -e .env -e .env.* -e global-bundle.pem -e '*.pem'
+          echo "[remote] git_after $(git rev-parse --short=12 HEAD)"
+
+          echo "[remote] install"
+          npm install --include=dev --prefer-offline --no-audit --no-fund
+
+          echo "[remote] migrate"
+          npm run migrate
+          node ng/migrations/migrate.js
+          node ng/scripts/ingest-doctarx-nigeria-pack.js
+
+          echo "[remote] deploy_gate"
+          npm run test:deploy-gate
+
+          echo "[remote] build"
+          rm -rf .turbo .next _next public/_next
+          NODE_OPTIONS="--max-old-space-size=4096" npm run build
+          test -s .next/BUILD_ID
+          ln -sfn .next _next || true
+          rm -rf public/_next || true
+          echo "[remote] build_after $(cat .next/BUILD_ID)"
+
+          echo "[remote] nginx"
+          sudo nginx -t 2>&1 && sudo nginx -s reload 2>&1 || true
+
+          echo "[remote] pm2_reload"
+          pm2 reload ecosystem.config.js --only zuma-teledoc --update-env || pm2 start ecosystem.config.js --only zuma-teledoc --env production
+          pm2 reload ecosystem.config.js --only cronops --update-env || pm2 start ecosystem.config.js --only cronops --env production || true
+          pm2 save
+          pm2 list
+
+          echo "[remote] local_health"
+          for port in 8080 3001; do
+            echo "[remote] checking localhost:$port /api/health"
+            curl -sS --max-time 20 "http://localhost:$port/api/health" || true
+            echo
+            echo "[remote] checking localhost:$port /api/ng/health"
+            curl -sS --max-time 20 "http://localhost:$port/api/ng/health" || true
+            echo
+          done
+
+          echo "[remote] public_health"
+          curl -k -sS --max-time 30 "https://doctarx.com/api/health?recover=$(date +%s)" || true
+          echo
+          curl -k -sS --max-time 30 "https://doctarx.com/api/ng/health?recover=$(date +%s)" || true
+          echo
+          echo "[remote] complete $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          REMOTE
+          chmod 755 /tmp/doctarx-recover.sh
+
+          describe_instance() {
+            aws ec2 describe-instances \
+              --instance-ids "$INSTANCE_ID" \
+              --query 'Reservations[0].Instances[0].{State:State.Name,PublicIp:PublicIpAddress,PrivateIp:PrivateIpAddress,InstanceType:InstanceType,LaunchTime:LaunchTime,AZ:Placement.AvailabilityZone,SecurityGroups:SecurityGroups[*].GroupId}' \
+              --output json
+          }
+
+          echo "[recover] instance_before"
+          describe_instance | tee /tmp/doctarx-instance-before.json
+
+          STATE="$(jq -r '.State // "missing"' /tmp/doctarx-instance-before.json)"
+          case "$STATE" in
+            running)
+              echo "[recover] instance is already running"
+              ;;
+            stopped)
+              echo "[recover] instance is stopped; starting"
+              aws ec2 start-instances --instance-ids "$INSTANCE_ID" >/tmp/doctarx-start-instance.json
+              aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
+              ;;
+            stopping|pending)
+              echo "[recover] instance state is $STATE; waiting for running"
+              aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
+              ;;
+            terminated|shutting-down)
+              echo "::error::instance is $STATE and cannot be recovered in place."
+              exit 1
+              ;;
+            *)
+              echo "::error::unexpected instance state '$STATE'."
+              exit 1
+              ;;
+          esac
+
+          echo "[recover] waiting for EC2 status checks"
+          if ! aws ec2 wait instance-status-ok --instance-ids "$INSTANCE_ID"; then
+            echo "::warning::instance-status-ok waiter did not complete; continuing to inspect SSM and SSH reachability."
+          fi
+          aws ec2 describe-instance-status --instance-ids "$INSTANCE_ID" --include-all-instances --output table || true
+
+          echo "[recover] instance_after"
+          describe_instance | tee /tmp/doctarx-instance-after.json
+          PUBLIC_IP="$(jq -r '.PublicIp // empty' /tmp/doctarx-instance-after.json)"
+          mapfile -t SECURITY_GROUP_IDS < <(jq -r '.SecurityGroups[]' /tmp/doctarx-instance-after.json)
+
+          ssm_recovered=0
+          SSM_STATUS="$(aws ssm describe-instance-information \
+            --filters "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --query 'InstanceInformationList[0].PingStatus' \
+            --output text 2>/tmp/doctarx-ssm-describe.err || true)"
+
+          if [ "$SSM_STATUS" = "Online" ]; then
+            echo "[recover] ssm_status=Online"
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          app_root = "/home/ec2-user/zuma-teledoc"
+          vault_path = "/home/ec2-user/PromptPay/config/secure/secrets-vault.json"
+          script = Path("/tmp/doctarx-recover.sh").read_text()
+          wrapper = (
+              "cat > /tmp/doctarx-recover.sh <<'REMOTE'\n"
+              + script
+              + "\nREMOTE\n"
+              + "chmod 755 /tmp/doctarx-recover.sh\n"
+              + "sudo -iu ec2-user bash -lc "
+              + repr(f"APP_ROOT={app_root!r} VAULT_PATH={vault_path!r} bash /tmp/doctarx-recover.sh")
+          )
+          Path("/tmp/doctarx-ssm-params.json").write_text(
+              json.dumps({"commands": [wrapper], "executionTimeout": ["5400"]})
+          )
+          PY
+            COMMAND_ID="$(aws ssm send-command \
+              --document-name AWS-RunShellScript \
+              --instance-ids "$INSTANCE_ID" \
+              --comment "DoctaRx emergency recovery ${GITHUB_RUN_ID}" \
+              --parameters file:///tmp/doctarx-ssm-params.json \
+              --query 'Command.CommandId' \
+              --output text)"
+            echo "[recover] ssm_command_id=$COMMAND_ID"
+
+            final_status=""
+            for attempt in $(seq 1 270); do
+              final_status="$(aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$INSTANCE_ID" \
+                --query 'Status' \
+                --output text 2>/tmp/doctarx-ssm-get.err || true)"
+              echo "[recover] ssm_attempt=$attempt status=${final_status:-pending}"
+              case "$final_status" in
+                Success|Failed|Cancelled|TimedOut|Cancelling)
+                  break
+                  ;;
+              esac
+              sleep 20
+            done
+
+            echo "[recover] ssm_stdout"
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query 'StandardOutputContent' \
+              --output text 2>/dev/null || true
+            echo "[recover] ssm_stderr"
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query 'StandardErrorContent' \
+              --output text 2>/dev/null || true
+
+            if [ "$final_status" != "Success" ]; then
+              echo "::error::SSM recovery command ended with status=${final_status:-unknown}."
+              exit 1
+            fi
+            ssm_recovered=1
+          else
+            echo "[recover] ssm_status=${SSM_STATUS:-Unavailable}"
+            if [ -s /tmp/doctarx-ssm-describe.err ]; then
+              cat /tmp/doctarx-ssm-describe.err
+            fi
+          fi
+
+          if [ "$ssm_recovered" != "1" ]; then
+            if [ -z "$PUBLIC_IP" ]; then
+              echo "::error::instance has no public IP address and SSM is unavailable."
+              exit 1
+            fi
+            if [ "${#SECURITY_GROUP_IDS[@]}" -eq 0 ]; then
+              echo "::error::instance has no attached security groups and SSM is unavailable."
+              exit 1
+            fi
+            if [ -z "${EC2_SSH_KEY_RAW:-}" ]; then
+              echo "::error::SSM is unavailable and EC2_SSH_KEY is not configured."
+              exit 1
+            fi
+
+            mkdir -p ~/.ssh
+            if printf '%s' "$EC2_SSH_KEY_RAW" | grep -q -- '-----BEGIN .*PRIVATE KEY-----'; then
+              printf '%s\n' "$EC2_SSH_KEY_RAW" | sed 's/\r$//' > ~/.ssh/doctarx_ec2_key
+            elif printf '%s' "$EC2_SSH_KEY_RAW" | tr -d ' \t\n\r' | base64 -d > ~/.ssh/doctarx_ec2_key 2>/tmp/doctarx-key-decode.err; then
+              true
+            else
+              echo "::error::SSM is unavailable and EC2_SSH_KEY is not valid PEM or base64."
+              exit 1
+            fi
+            chmod 600 ~/.ssh/doctarx_ec2_key
+
+            RUNNER_IP="$(curl -fsS --max-time 20 https://checkip.amazonaws.com | tr -d '[:space:]')"
+            if ! [[ "$RUNNER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::unable to determine GitHub runner IPv4 address."
+              exit 1
+            fi
+            RUNNER_CIDR="$RUNNER_IP/32"
+            printf '%s\n' "${SECURITY_GROUP_IDS[@]}" > /tmp/doctarx-security-groups.txt
+
+            revoke_runner_ssh() {
+              set +e
+              while IFS= read -r sg_id; do
+                [ -n "$sg_id" ] || continue
+                aws ec2 revoke-security-group-ingress \
+                  --group-id "$sg_id" \
+                  --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$RUNNER_CIDR}]" >/dev/null 2>&1 || true
+              done < /tmp/doctarx-security-groups.txt
+              echo "[recover] revoked temporary SSH ingress for $RUNNER_CIDR"
+            }
+            trap revoke_runner_ssh EXIT
+
+            for sg_id in "${SECURITY_GROUP_IDS[@]}"; do
+              echo "[recover] authorizing temporary SSH ingress on $sg_id for $RUNNER_CIDR"
+              aws ec2 authorize-security-group-ingress \
+                --group-id "$sg_id" \
+                --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$RUNNER_CIDR,Description=codex-doctarx-recovery-${GITHUB_RUN_ID}}]" >/tmp/doctarx-sg-authorize.json 2>/tmp/doctarx-sg-authorize.err || {
+                  if grep -q 'InvalidPermission.Duplicate' /tmp/doctarx-sg-authorize.err; then
+                    echo "[recover] SSH ingress already allowed on $sg_id for $RUNNER_CIDR"
+                  else
+                    cat /tmp/doctarx-sg-authorize.err
+                    exit 1
+                  fi
+                }
+            done
+
+            echo "[recover] waiting for SSH on $PUBLIC_IP"
+            ssh_ok=0
+            for attempt in $(seq 1 24); do
+              if ssh -i ~/.ssh/doctarx_ec2_key \
+                -o StrictHostKeyChecking=no \
+                -o UserKnownHostsFile=/dev/null \
+                -o LogLevel=ERROR \
+                -o ConnectTimeout=10 \
+                "$SSH_USER@$PUBLIC_IP" 'printf ssh_ok'; then
+                echo
+                ssh_ok=1
+                break
+              fi
+              echo "[recover] SSH attempt $attempt failed; retrying"
+              sleep 10
+            done
+            if [ "$ssh_ok" != "1" ]; then
+              echo "::error::SSH did not become reachable after AWS instance and security-group recovery."
+              exit 1
+            fi
+
+            scp -i ~/.ssh/doctarx_ec2_key \
+              -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              -o LogLevel=ERROR \
+              -o ConnectTimeout=20 \
+              /tmp/doctarx-recover.sh "$SSH_USER@$PUBLIC_IP:/tmp/doctarx-recover.sh"
+
+            ssh -i ~/.ssh/doctarx_ec2_key \
+              -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              -o LogLevel=ERROR \
+              -o ServerAliveInterval=30 \
+              -o ServerAliveCountMax=4 \
+              "$SSH_USER@$PUBLIC_IP" \
+              "APP_ROOT='$APP_ROOT' VAULT_PATH='$VAULT_PATH' bash /tmp/doctarx-recover.sh"
+          fi
+
+          echo "[recover] verifying public health from GitHub runner"
+          curl -k -sS --max-time 30 "https://doctarx.com/api/health?runner=$(date +%s)"
+          echo
+          curl -k -sS --max-time 30 "https://doctarx.com/api/ng/health?runner=$(date +%s)"
+          echo
+          echo "[recover] complete $(date -u +%Y-%m-%dT%H:%M:%SZ)"
