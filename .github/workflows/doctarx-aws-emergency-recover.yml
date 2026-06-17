@@ -34,6 +34,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID_RAW: ${{ secrets.ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY_RAW: ${{ secrets.SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN_RAW: ${{ secrets.AWS_SESSION_TOKEN }}
           EC2_SSH_KEY_RAW: ${{ secrets.EC2_SSH_KEY }}
         run: |
           set -Eeuo pipefail
@@ -45,9 +46,14 @@ jobs:
 
           export AWS_ACCESS_KEY_ID
           export AWS_SECRET_ACCESS_KEY
+          export AWS_SESSION_TOKEN
           AWS_ACCESS_KEY_ID="$(printf '%s' "$AWS_ACCESS_KEY_ID_RAW" | tr -d '[:space:]')"
           AWS_SECRET_ACCESS_KEY="$(printf '%s' "$AWS_SECRET_ACCESS_KEY_RAW" | tr -d '[:space:]')"
-          unset AWS_ACCESS_KEY_ID_RAW AWS_SECRET_ACCESS_KEY_RAW
+          AWS_SESSION_TOKEN="$(printf '%s' "${AWS_SESSION_TOKEN_RAW:-}" | tr -d '[:space:]')"
+          unset AWS_ACCESS_KEY_ID_RAW AWS_SECRET_ACCESS_KEY_RAW AWS_SESSION_TOKEN_RAW
+          if [ -z "$AWS_SESSION_TOKEN" ]; then
+            unset AWS_SESSION_TOKEN
+          fi
 
           if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
             echo "::error::AWS credentials are empty after whitespace normalization."
