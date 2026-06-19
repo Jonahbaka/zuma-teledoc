@@ -121,10 +121,7 @@ log "active_port=${active_port} candidate_port=${candidate_port} slot=${candidat
 if [ "$SOURCE_DIST" != "$candidate_dist" ]; then
   rm -rf "${candidate_dist}.incoming"
   mv "$SOURCE_DIST" "${candidate_dist}.incoming"
-  rm -rf "${candidate_dist}.previous"
-  if [ -d "$candidate_dist" ]; then
-    mv "$candidate_dist" "${candidate_dist}.previous"
-  fi
+  rm -rf "$candidate_dist"
   mv "${candidate_dist}.incoming" "$candidate_dist"
 fi
 

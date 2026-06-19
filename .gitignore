@@ -112,3 +112,7 @@ artifacts/
 .next.blue/
 .next.green/
 .next.bootstrap*/
+.next.artifact-staging/
+.next.*.incoming/
+.next.*.previous/
+.next.verify-build/
