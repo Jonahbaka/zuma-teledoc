@@ -49,19 +49,7 @@ function buildPhase() {
 function pm2Phase() {
   return [
     `test -d ${NEXT_STAGING_DIR}/static`,
-    `(rm -rf ${NEXT_PREVIOUS_DIR}; if [ -d .next ]; then mv .next ${NEXT_PREVIOUS_DIR}; fi; mv ${NEXT_STAGING_DIR} .next)`,
-    '(ln -sfn .next _next || true)',
-    '(rm -rf public/_next || true)',
-    "(sudo mkdir -p /home/ubuntu 2>/dev/null && sudo ln -sfn /home/ec2-user/zuma-teledoc /home/ubuntu/zuma-teledoc 2>/dev/null || true)",
-    "(sudo find /etc/nginx -name '*.conf' -exec grep -l '_next' {} \\; 2>/dev/null | xargs -r sudo sed -i 's|/home/ubuntu/zuma-teledoc|/home/ec2-user/zuma-teledoc|g' 2>/dev/null || true)",
-    "(sudo find /etc/nginx -name '*.conf' -exec grep -l 'location[[:space:]]*/_next/static' {} \\; 2>/dev/null | xargs -r sudo perl -0pi -e 's#location\\s+/_next/static/?\\s*\\{[^}]*\\}#location /_next/static/ {\\n    alias /home/ec2-user/zuma-teledoc/.next/static/;\\n    expires 1y;\\n    access_log off;\\n    add_header Cache-Control \"public, immutable\";\\n}#sg' 2>/dev/null || true)",
-    "(sudo find /etc/nginx -name '*.conf' -exec grep -l '_next/static' {} \\; 2>/dev/null | xargs -r sudo perl -0pi -e 's#location\\s+(?:\\^~\\s+)?/_next/static/?\\s*\\{[^}]*\\}#location ^~ /_next/static/ {\\n    alias /home/ec2-user/zuma-teledoc/.next/static/;\\n    expires 1y;\\n    access_log off;\\n    add_header Cache-Control \"public, immutable\";\\n}#sg' 2>/dev/null || true)",
-    "(sudo find /etc/nginx -name '*.conf' -exec grep -l 'location.*_next' {} \\; 2>/dev/null | xargs -r sudo perl -0pi -e 's#location\\s+(?:\\^~\\s+)?/_next/\\s*\\{[^}]*\\}#location ^~ /_next/ {\\n    alias /home/ec2-user/zuma-teledoc/.next/;\\n    expires 1y;\\n    access_log off;\\n    add_header Cache-Control \"public, immutable\";\\n}#sg' 2>/dev/null || true)",
-    "(sudo find /etc/nginx -name '*.conf' -exec grep -l 'server_name.*doctarx' {} \\; 2>/dev/null | xargs -r sudo perl -0pi -e 's#location\\s+(?:=\\s+|~\\*?\\s+|\\^~\\s+)?[^\\{]*_next[^\\{]*\\{[^}]*\\}\\s*##sg; s#(server_name[^;]*doctarx[^;]*;)#$1\\n    location ^~ /_next/static/ {\\n        alias /home/ec2-user/zuma-teledoc/.next/static/;\\n        expires 1y;\\n        access_log off;\\n        add_header Cache-Control \"public, immutable\";\\n    }\\n    location ^~ /_next/ {\\n        alias /home/ec2-user/zuma-teledoc/.next/;\\n        expires 1y;\\n        access_log off;\\n        add_header Cache-Control \"public, immutable\";\\n    }\\n#sg' 2>/dev/null || true)",
-    '(sudo nginx -t 2>&1 && sudo nginx -s reload 2>&1 || true)',
-    // Zero-downtime reload: reload respawns workers one-by-one without dropping
-    // connections. Falls back to start via ecosystem config if not yet registered.
-    `(pm2 reload ecosystem.config.js --only ${PM2_APP_NAME} --update-env 2>/dev/null || pm2 start ecosystem.config.js --only ${PM2_APP_NAME} --env production)`,
+    `bash scripts/doctarx-blue-green-switch.sh ${NEXT_STAGING_DIR}`,
     `(pm2 reload ecosystem.config.js --only cronops --update-env 2>/dev/null || pm2 start ecosystem.config.js --only cronops --env production)`,
     // Informational PM2 snapshot (never fails the phase).
     'echo "[verify:pm2]" && (pm2 jlist 2>/dev/null | python3 -c "import json,sys; [print(\'[verify:pm2]\', {\'name\':p[\'name\'],\'status\':p[\'pm2_env\'][\'status\'],\'pid\':p[\'pid\'],\'restarts\':p[\'pm2_env\'].get(\'restart_time\')}) for p in json.load(sys.stdin)]" 2>/dev/null || echo "[verify:pm2] pm2 jlist failed")',
@@ -74,9 +62,9 @@ function pm2Phase() {
 function healthPhase() {
   return [
     'echo "[verify] waiting for app to be ready..."',
-    'APP_UP=no; for i in $(seq 1 90); do HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health 2>/dev/null); if [ "$HTTP" = "200" ] || [ "$HTTP" = "503" ]; then echo "[verify] app responded HTTP $HTTP after ${i}s"; APP_UP=yes; break; fi; sleep 2; done; echo "[verify:app-up] $APP_UP"; [ "$APP_UP" = "yes" ]',
+    'APP_UP=no; for i in $(seq 1 90); do HTTP=$(curl -s -o /dev/null -w "%{http_code}" --resolve doctarx.com:443:127.0.0.1 https://doctarx.com/api/health 2>/dev/null); if [ "$HTTP" = "200" ] || [ "$HTTP" = "503" ]; then echo "[verify] app responded HTTP $HTTP after ${i}s"; APP_UP=yes; break; fi; sleep 2; done; echo "[verify:app-up] $APP_UP"; [ "$APP_UP" = "yes" ]',
     // Hard gate: base health must be 200.
-    'BASE_HEALTH_HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health 2>/dev/null); echo "[verify:api-health] HTTP=$BASE_HEALTH_HTTP"; [ "$BASE_HEALTH_HTTP" = "200" ]',
+    'BASE_HEALTH_HTTP=$(curl -s -o /dev/null -w "%{http_code}" --resolve doctarx.com:443:127.0.0.1 https://doctarx.com/api/health 2>/dev/null); echo "[verify:api-health] HTTP=$BASE_HEALTH_HTTP"; [ "$BASE_HEALTH_HTTP" = "200" ]',
   ];
 }
 
@@ -84,14 +72,14 @@ function healthPhase() {
 // IP allowlist). Ends with a hard gate: /api/ng/health must report status=ok.
 function ngHealthPhase() {
   return [
-    'NG_HEALTH=""; for i in $(seq 1 15); do NG_HEALTH=$(curl -s --max-time 10 http://localhost:8080/api/ng/health 2>/dev/null || true); echo "$NG_HEALTH" | grep -q \'"status":"ok"\' && break; sleep 2; done; echo "[verify:ng-health] $NG_HEALTH"',
+    'NG_HEALTH=""; for i in $(seq 1 15); do NG_HEALTH=$(curl -s --max-time 10 --resolve doctarx.com:443:127.0.0.1 https://doctarx.com/api/ng/health 2>/dev/null || true); echo "$NG_HEALTH" | grep -q \'"status":"ok"\' && break; sleep 2; done; echo "[verify:ng-health] $NG_HEALTH"',
     'echo "$NG_HEALTH" | grep -q \'"multiPartyConferencing":true\' && echo "[verify:ng-multiparty] true" || echo "[verify:ng-multiparty] false"',
     // NG conference media-readiness — LiveKit / SFU check (informational).
-    'NG_MEDIA=$(curl -s --max-time 10 http://localhost:8080/api/ng/conference/media-readiness 2>/dev/null || true); echo "[verify:ng-media-readiness] $NG_MEDIA"',
+    'NG_MEDIA=$(curl -s --max-time 10 --resolve doctarx.com:443:127.0.0.1 https://doctarx.com/api/ng/conference/media-readiness 2>/dev/null || true); echo "[verify:ng-media-readiness] $NG_MEDIA"',
     'if echo "$NG_MEDIA" | grep -q \'"configured":true\'; then echo "[verify:livekit] configured=true — SFU ready (5-10 participant conferencing enabled)"; echo "[verify:sfu-5] READY"; echo "[verify:sfu-10] READY"; else echo "[verify:livekit] configured=false — SFU NOT ready (check NG_LIVEKIT_URL/API_KEY/API_SECRET in .env)"; echo "[verify:sfu-5] NOT_READY"; echo "[verify:sfu-10] NOT_READY"; fi',
     // NG routes (informational)
-    'HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/ng/conference 2>/dev/null); echo "[verify:ng-conference-route] HTTP=$HTTP"',
-    'HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/ng 2>/dev/null); echo "[verify:ng-root] HTTP=$HTTP"',
+    'HTTP=$(curl -s -o /dev/null -w "%{http_code}" --resolve doctarx.com:443:127.0.0.1 https://doctarx.com/ng/conference 2>/dev/null); echo "[verify:ng-conference-route] HTTP=$HTTP"',
+    'HTTP=$(curl -s -o /dev/null -w "%{http_code}" --resolve doctarx.com:443:127.0.0.1 https://doctarx.com/ng 2>/dev/null); echo "[verify:ng-root] HTTP=$HTTP"',
     // ── Hard gate ──: NG platform must report healthy or the deploy is a failure.
     'if echo "$NG_HEALTH" | grep -q \'"status":"ok"\'; then echo "[verify:result] PASS"; else echo "[verify:result] FAIL — /api/ng/health did not report status=ok"; exit 1; fi',
   ];

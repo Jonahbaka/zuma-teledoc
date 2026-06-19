@@ -42,9 +42,13 @@ function notifyProcessManagerReady(reason) {
   }
 }
 
+function getNextDistDir() {
+  return process.env.NEXT_DIST_DIR || '.next';
+}
+
 function readNextBuildId() {
   try {
-    const buildIdPath = path.join(process.cwd(), '.next', 'BUILD_ID');
+    const buildIdPath = path.join(process.cwd(), getNextDistDir(), 'BUILD_ID');
     if (!fs.existsSync(buildIdPath)) return null;
     const buildId = fs.readFileSync(buildIdPath, 'utf8').trim();
     return buildId || null;
@@ -386,7 +390,7 @@ app.get('/api/health', (req, res) => {
   if (!nextReady) {
     const fs = require('fs');
     const path = require('path');
-    const nextPath = path.join(process.cwd(), '.next');
+    const nextPath = path.join(process.cwd(), getNextDistDir());
     try {
       health.debug = {
         nextDirExists: fs.existsSync(nextPath),
@@ -934,11 +938,11 @@ async function initializeApp() {
     console.error('⚠️  Social Scheduler failed to start:', err.message);
   }
   
-  // Next.js deferred initialization (skip on startup, load async only if .next exists)
+  // Next.js deferred initialization (skip on startup, load async only if the active dist exists)
   console.log('⏳ Deferring Next.js initialization...');
   
-  // Check if .next directory exists
-  const nextDirExists = fs.existsSync(path.join(process.cwd(), '.next'));
+  // Check if the configured Next dist directory exists
+  const nextDirExists = fs.existsSync(path.join(process.cwd(), getNextDistDir()));
   
   if (nextDirExists) {
     try {

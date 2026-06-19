@@ -288,28 +288,20 @@ tar -xzf ${quotedTmp} -C .next.artifact-staging
 rm -f ${quotedTmp}
 test -s .next.artifact-staging/.next/BUILD_ID
 echo "[deploy:artifact] buildId=$(cat .next.artifact-staging/.next/BUILD_ID)"
-if [ -d .next ]; then mv .next ${quotedPrevious}; fi
-mv .next.artifact-staging/.next .next
 mkdir -p public
 [ -f .next.artifact-staging/public/robots.txt ] && cp .next.artifact-staging/public/robots.txt public/robots.txt || true
 [ -f .next.artifact-staging/public/sitemap.xml ] && cp .next.artifact-staging/public/sitemap.xml public/sitemap.xml || true
+bash scripts/doctarx-blue-green-switch.sh .next.artifact-staging/.next
 rm -rf .next.artifact-staging
-ln -sfn .next _next || true
-rm -rf public/_next || true
-sudo mkdir -p /home/ubuntu 2>/dev/null && sudo ln -sfn /home/ec2-user/zuma-teledoc /home/ubuntu/zuma-teledoc 2>/dev/null || true
-sudo find /etc/nginx -name '*.conf' -exec grep -l '_next' {} \\; 2>/dev/null | xargs -r sudo sed -i 's|/home/ubuntu/zuma-teledoc|/home/ec2-user/zuma-teledoc|g' 2>/dev/null || true
-sudo find /etc/nginx -name '*.conf' -exec grep -l 'server_name.*doctarx' {} \\; 2>/dev/null | xargs -r sudo perl -0pi -e 's#location\\s+(?:=\\s+|~\\*?\\s+|\\^~\\s+)?[^\\{]*_next[^\\{]*\\{[^}]*\\}\\s*##sg; s#(server_name[^;]*doctarx[^;]*;)#$1\\n    location ^~ /_next/static/ {\\n        alias /home/ec2-user/zuma-teledoc/.next/static/;\\n        expires 1y;\\n        access_log off;\\n        add_header Cache-Control "public, immutable";\\n    }\\n    location ^~ /_next/ {\\n        alias /home/ec2-user/zuma-teledoc/.next/;\\n        expires 1y;\\n        access_log off;\\n        add_header Cache-Control "public, immutable";\\n    }\\n#sg' 2>/dev/null || true
-sudo nginx -t 2>&1 && sudo nginx -s reload 2>&1 || true
-pm2 reload ecosystem.config.js --only ${PM2_APP_NAME} --update-env || pm2 start ecosystem.config.js --only ${PM2_APP_NAME} --env production
 pm2 reload ecosystem.config.js --only cronops --update-env || pm2 start ecosystem.config.js --only cronops --env production || true
 APP_OK=no
 for i in $(seq 1 90); do
-  H=$(curl -s --max-time 10 http://localhost:8080/api/health || true)
+  H=$(curl -s --max-time 10 --resolve doctarx.com:443:127.0.0.1 https://doctarx.com/api/health || true)
   if echo "$H" | grep -q '"status":"healthy"' && echo "$H" | grep -q '"nextReady":true'; then APP_OK=yes; break; fi
   sleep 2
 done
 [ "$APP_OK" = "yes" ]
-NG_HEALTH=$(curl -s --max-time 10 http://localhost:8080/api/ng/health || true)
+NG_HEALTH=$(curl -s --max-time 10 --resolve doctarx.com:443:127.0.0.1 https://doctarx.com/api/ng/health || true)
 echo "[verify:ng-health] $NG_HEALTH"
 echo "$NG_HEALTH" | grep -q '"status":"ok"'
 echo "[deploy:check] build=success"
