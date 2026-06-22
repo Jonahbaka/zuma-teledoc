@@ -37,7 +37,11 @@ jobs:
           npx playwright install chromium
 
       - name: Capture microsite screenshots
-        run: NODE_PATH=/tmp/pw/node_modules node .screenshots/shoot-microsite.mjs
+        run: |
+          # Run the script FROM /tmp/pw so ESM resolves 'playwright' there,
+          # while keeping the repo as CWD so relative site/out paths work.
+          cp .screenshots/shoot-microsite.mjs /tmp/pw/shoot.mjs
+          node /tmp/pw/shoot.mjs
 
       - name: Upload screenshots artifact (backup retrieval)
         if: always()
