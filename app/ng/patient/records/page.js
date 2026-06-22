@@ -1,10 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ClipboardList, FileText, Loader2, Package, Pill } from 'lucide-react';
 import api, { appointmentsAPI, medicalRecordsAPI, visitsAPI } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/utils';
+import {
+  PRESENTATION_DEMO_LABEL,
+  buildPatientPortalDemoData,
+  shouldShowPresentationDemoData,
+} from '@/lib/ngPresentationDemoData';
 
 function EmptyState({ icon: Icon, title, description }) {
   return (
@@ -18,16 +23,19 @@ function EmptyState({ icon: Icon, title, description }) {
 
 export default function NigeriaPatientRecordsPage() {
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [visits, setVisits] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
   const [orders, setOrders] = useState([]);
+  const presentationDemoData = useMemo(() => buildPatientPortalDemoData(), []);
 
   useEffect(() => {
     const loadRecords = async () => {
       try {
         const meResponse = await api.get('/auth/me').catch(() => ({ data: { success: false } }));
         const currentUser = meResponse.data?.user;
+        setCurrentUser(currentUser || null);
 
         const [documentsResponse, visitsResponse, prescriptionsResponse, ordersResponse, appointmentsResponse] = await Promise.all([
           currentUser ? medicalRecordsAPI.getByPatient(currentUser.id).catch(() => ({ data: { success: false, records: [] } })) : Promise.resolve({ data: { success: false, records: [] } }),
@@ -55,6 +63,15 @@ export default function NigeriaPatientRecordsPage() {
     loadRecords();
   }, []);
 
+  const showDemoData = shouldShowPresentationDemoData(currentUser);
+  const visibleDocuments = showDemoData && documents.length === 0 ? presentationDemoData.documents : documents;
+  const visibleVisits = showDemoData && visits.length === 0 ? presentationDemoData.visits : visits;
+  const visiblePrescriptions = showDemoData && prescriptions.length === 0 ? presentationDemoData.prescriptions : prescriptions;
+  const visibleOrders = showDemoData && orders.length === 0 ? presentationDemoData.orders : orders;
+  const usingDemoData = showDemoData && (
+    documents.length === 0 || visits.length === 0 || prescriptions.length === 0 || orders.length === 0
+  );
+
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -71,6 +88,12 @@ export default function NigeriaPatientRecordsPage() {
         <p className="mt-2 text-sm text-muted-foreground">Review medical records, completed consultations, prescription activity, and pharmacy orders from one place.</p>
       </section>
 
+      {usingDemoData ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+          {PRESENTATION_DEMO_LABEL}: synthetic visit, record, prescription, and pharmacy data are shown for the Abuja pilot walkthrough.
+        </div>
+      ) : null}
+
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="border-border/70">
           <CardHeader>
@@ -80,10 +103,10 @@ export default function NigeriaPatientRecordsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {documents.length === 0 ? (
+            {visibleDocuments.length === 0 ? (
               <EmptyState icon={FileText} title="No stored medical documents yet." description="Documents uploaded by your care team will appear here when available." />
             ) : (
-              documents.slice(0, 6).map((record) => (
+              visibleDocuments.slice(0, 6).map((record) => (
                 <div key={record.id} className="rounded-2xl border border-border px-4 py-4">
                   <p className="font-semibold text-foreground">{record.title}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{record.recordType || 'Medical record'}</p>
@@ -102,10 +125,10 @@ export default function NigeriaPatientRecordsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {visits.length === 0 ? (
+            {visibleVisits.length === 0 ? (
               <EmptyState icon={ClipboardList} title="No completed consultations yet." description="Completed appointments and provider notes will be listed here once your visits are closed out." />
             ) : (
-              visits.slice(0, 6).map((visit) => (
+              visibleVisits.slice(0, 6).map((visit) => (
                 <div key={visit.id} className="rounded-2xl border border-border px-4 py-4">
                   <p className="font-semibold text-foreground">{visit.reasonForVisit || visit.noteType || visit.encounterType || 'Completed consultation'}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -128,10 +151,10 @@ export default function NigeriaPatientRecordsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {prescriptions.length === 0 ? (
+            {visiblePrescriptions.length === 0 ? (
               <EmptyState icon={Pill} title="No prescription history yet." description="Uploaded or provider-generated prescriptions will be visible here." />
             ) : (
-              prescriptions.slice(0, 6).map((prescription) => (
+              visiblePrescriptions.slice(0, 6).map((prescription) => (
                 <div key={prescription.id} className="rounded-2xl border border-border px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -156,10 +179,10 @@ export default function NigeriaPatientRecordsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {orders.length === 0 ? (
+            {visibleOrders.length === 0 ? (
               <EmptyState icon={Package} title="No routed pharmacy orders yet." description="Medication orders and delivery tracking appear here after a pharmacy order has been created." />
             ) : (
-              orders.slice(0, 6).map((order) => (
+              visibleOrders.slice(0, 6).map((order) => (
                 <div key={order.id} className="rounded-2xl border border-border px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>

@@ -17,7 +17,13 @@ import api, { appointmentsAPI, messagesAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import NigeriaDiscoverySpotlight from '@/components/ng/NigeriaDiscoverySpotlight';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { formatDateTime } from '@/lib/utils';
+import {
+  PRESENTATION_DEMO_LABEL,
+  buildPatientPortalDemoData,
+  shouldShowPresentationDemoData,
+} from '@/lib/ngPresentationDemoData';
 
 const QUICK_ACTIONS = [
   {
@@ -57,11 +63,13 @@ function formatNaira(amount) {
 }
 
 export default function NigeriaPatientPortalPage() {
+  const { user } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
   const [orders, setOrders] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const presentationDemoData = useMemo(() => buildPatientPortalDemoData(), []);
 
   useEffect(() => {
     const fetchPortalData = async () => {
@@ -85,26 +93,35 @@ export default function NigeriaPatientPortalPage() {
     fetchPortalData();
   }, []);
 
+  const showDemoData = shouldShowPresentationDemoData(user);
+  const visibleAppointments = showDemoData && appointments.length === 0 ? presentationDemoData.appointments : appointments;
+  const visiblePrescriptions = showDemoData && prescriptions.length === 0 ? presentationDemoData.prescriptions : prescriptions;
+  const visibleOrders = showDemoData && orders.length === 0 ? presentationDemoData.orders : orders;
+  const visibleConversations = showDemoData && conversations.length === 0 ? presentationDemoData.conversations : conversations;
+  const usingDemoData = showDemoData && (
+    appointments.length === 0 || prescriptions.length === 0 || orders.length === 0 || conversations.length === 0
+  );
+
   const activeOrders = useMemo(
-    () => orders.filter((order) => !['delivered', 'cancelled'].includes(String(order.status || '').toLowerCase())),
-    [orders]
+    () => visibleOrders.filter((order) => !['delivered', 'cancelled'].includes(String(order.status || '').toLowerCase())),
+    [visibleOrders]
   );
   const unreadMessages = useMemo(
-    () => conversations.reduce((count, conversation) => count + Number(conversation.unreadCount || 0), 0),
-    [conversations]
+    () => visibleConversations.reduce((count, conversation) => count + Number(conversation.unreadCount || 0), 0),
+    [visibleConversations]
   );
 
   const stats = [
     {
       label: 'Upcoming Consultations',
-      value: appointments.length,
-      detail: appointments[0]?.scheduledAt ? `Next: ${formatDateTime(appointments[0].scheduledAt)}` : 'No active booking yet',
+      value: visibleAppointments.length,
+      detail: visibleAppointments[0]?.scheduledAt ? `Next: ${formatDateTime(visibleAppointments[0].scheduledAt)}` : 'No active booking yet',
       icon: Calendar,
     },
     {
       label: 'Prescription Queue',
-      value: prescriptions.length,
-      detail: prescriptions[0]?.status ? `Latest: ${String(prescriptions[0].status).replace(/_/g, ' ')}` : 'Nothing uploaded yet',
+      value: visiblePrescriptions.length,
+      detail: visiblePrescriptions[0]?.status ? `Latest: ${String(visiblePrescriptions[0].status).replace(/_/g, ' ')}` : 'Nothing uploaded yet',
       icon: Pill,
     },
     {
@@ -154,6 +171,12 @@ export default function NigeriaPatientPortalPage() {
           </div>
         </div>
       </section>
+
+      {usingDemoData ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+          {PRESENTATION_DEMO_LABEL}: sample Abuja pilot consultations, prescriptions, orders, and messages are shown for this demo account.
+        </div>
+      ) : null}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
@@ -228,12 +251,12 @@ export default function NigeriaPatientPortalPage() {
             <CardTitle className="text-xl">Upcoming Consultations</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {appointments.length === 0 ? (
+            {visibleAppointments.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
                 No upcoming consultations are on file yet.
               </div>
             ) : (
-              appointments.map((appointment) => (
+              visibleAppointments.map((appointment) => (
                 <div key={appointment.id} className="rounded-2xl border border-border px-4 py-4">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -268,12 +291,12 @@ export default function NigeriaPatientPortalPage() {
             <CardTitle className="text-xl">Latest Order Status</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {orders.length === 0 ? (
+            {visibleOrders.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
                 No medication orders have been placed yet.
               </div>
             ) : (
-              orders.slice(0, 3).map((order) => (
+              visibleOrders.slice(0, 3).map((order) => (
                 <div key={order.id} className="rounded-2xl border border-border px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>

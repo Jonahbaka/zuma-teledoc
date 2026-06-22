@@ -7,8 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/use-toast';
+import { useAuth } from '@/components/providers/AuthProvider';
+import {
+  PRESENTATION_DEMO_LABEL,
+  buildProviderDemoData,
+  shouldShowPresentationDemoData,
+} from '@/lib/ngPresentationDemoData';
 
 export default function NigeriaProviderReferralsPage() {
+  const { user } = useAuth();
   const [patients, setPatients] = useState([]);
   const [referrals, setReferrals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,6 +29,7 @@ export default function NigeriaProviderReferralsPage() {
     reason: '',
     clinicalNotes: '',
   });
+  const presentationDemoData = useMemo(() => buildProviderDemoData(), []);
 
   const loadData = useCallback(async () => {
     try {
@@ -40,12 +48,25 @@ export default function NigeriaProviderReferralsPage() {
     loadData();
   }, [loadData]);
 
-  const filteredPatients = useMemo(() => patients.filter((patient) => {
+  const showDemoData = shouldShowPresentationDemoData(user);
+  const demoReferralPatients = presentationDemoData.patients.map((patient) => {
+    const [firstName, ...lastNameParts] = patient.name.split(' ');
+    return {
+      ...patient,
+      firstName,
+      lastName: lastNameParts.join(' '),
+    };
+  });
+  const visiblePatients = showDemoData && patients.length === 0 ? demoReferralPatients : patients;
+  const visibleReferrals = showDemoData && referrals.length === 0 ? presentationDemoData.referrals : referrals;
+  const usingDemoData = showDemoData && (patients.length === 0 || referrals.length === 0);
+
+  const filteredPatients = useMemo(() => visiblePatients.filter((patient) => {
     if (!searchTerm.trim()) return true;
     const query = searchTerm.toLowerCase();
     return `${patient.firstName || ''} ${patient.lastName || ''}`.toLowerCase().includes(query)
       || String(patient.email || '').toLowerCase().includes(query);
-  }), [patients, searchTerm]);
+  }), [visiblePatients, searchTerm]);
 
   const updateForm = (field, value) => setForm((current) => ({ ...current, [field]: value }));
 
@@ -58,6 +79,12 @@ export default function NigeriaProviderReferralsPage() {
 
     setSubmitting(true);
     try {
+      if (usingDemoData && String(form.patientUserId || '').startsWith('FCTA-DEMO')) {
+        toast({ title: 'Demo referral prepared', description: 'This presentation account uses synthetic referral data and does not create clinical records.' });
+        setForm({ patientUserId: '', targetName: '', referralType: 'specialist', priority: 'routine', reason: '', clinicalNotes: '' });
+        return;
+      }
+
       await api.post('/ng/clinical/referrals', {
         ...form,
         destinationType: 'internal',
@@ -109,6 +136,12 @@ export default function NigeriaProviderReferralsPage() {
           <p>Simple steps: choose patient, enter destination or specialty, add clinical reason, send. The system handles the FHIR and exchange records in the background.</p>
         </CardContent>
       </Card>
+
+      {usingDemoData ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+          {PRESENTATION_DEMO_LABEL}: sample patients and referral tracking are shown for the provider walkthrough.
+        </div>
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <Card className="border-border/70">
@@ -195,7 +228,7 @@ export default function NigeriaProviderReferralsPage() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          {referrals.length ? referrals.slice(0, 10).map((referral) => (
+          {visibleReferrals.length ? visibleReferrals.slice(0, 10).map((referral) => (
             <div key={referral.id} className="rounded-2xl border border-border px-4 py-3">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>

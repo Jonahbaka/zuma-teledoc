@@ -1,11 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, Pill, UploadCloud } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuth } from '@/components/providers/AuthProvider';
+import {
+  PRESENTATION_DEMO_LABEL,
+  buildPatientPortalDemoData,
+  shouldShowPresentationDemoData,
+} from '@/lib/ngPresentationDemoData';
 
 function formatDate(value) {
   try {
@@ -16,12 +22,14 @@ function formatDate(value) {
 }
 
 export default function NigeriaPatientPrescriptionsPage() {
+  const { user } = useAuth();
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadMode, setUploadMode] = useState('');
   const [prescriptionText, setPrescriptionText] = useState('');
   const [uploadResult, setUploadResult] = useState(null);
+  const presentationDemoData = useMemo(() => buildPatientPortalDemoData(), []);
 
   const loadPrescriptions = async () => {
     try {
@@ -35,6 +43,10 @@ export default function NigeriaPatientPrescriptionsPage() {
   useEffect(() => {
     loadPrescriptions();
   }, []);
+
+  const showDemoData = shouldShowPresentationDemoData(user);
+  const visiblePrescriptions = showDemoData && prescriptions.length === 0 ? presentationDemoData.prescriptions : prescriptions;
+  const usingDemoData = showDemoData && prescriptions.length === 0 && presentationDemoData.prescriptions.length > 0;
 
   const handleImageUpload = async (event) => {
     const file = event.target.files?.[0];
@@ -152,6 +164,12 @@ export default function NigeriaPatientPrescriptionsPage() {
         </CardContent>
       </Card>
 
+      {usingDemoData ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+          {PRESENTATION_DEMO_LABEL}: sample prescriptions are shown for the Abuja pilot demo account.
+        </div>
+      ) : null}
+
       <Card className="border-border/70">
         <CardHeader>
           <CardTitle>Prescription history</CardTitle>
@@ -161,16 +179,19 @@ export default function NigeriaPatientPrescriptionsPage() {
             <div className="py-8 text-center">
               <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
             </div>
-          ) : prescriptions.length === 0 ? (
+          ) : visiblePrescriptions.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
               No prescriptions uploaded yet.
             </div>
           ) : (
-            prescriptions.map((prescription) => (
+            visiblePrescriptions.map((prescription) => (
               <div key={prescription.id} className="rounded-2xl border border-border px-4 py-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold text-foreground">{prescription.prescriber_name || 'Prescription'}</p>
+                    {prescription.medication ? (
+                      <p className="mt-1 text-sm text-slate-600">{prescription.medication}</p>
+                    ) : null}
                     <p className="mt-1 text-sm text-muted-foreground">{formatDate(prescription.created_at)}</p>
                   </div>
                   <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">

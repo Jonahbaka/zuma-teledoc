@@ -1,11 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, Package, RefreshCw, Truck } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuth } from '@/components/providers/AuthProvider';
+import {
+  PRESENTATION_DEMO_LABEL,
+  buildPatientPortalDemoData,
+  shouldShowPresentationDemoData,
+} from '@/lib/ngPresentationDemoData';
 
 function formatNaira(amount) {
   return `NGN ${Number(amount || 0).toLocaleString()}`;
@@ -22,12 +28,14 @@ function getStatusTone(status) {
 }
 
 export default function NigeriaPatientOrdersPage() {
+  const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [notice, setNotice] = useState('');
+  const presentationDemoData = useMemo(() => buildPatientPortalDemoData(), []);
 
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     try {
       const params = filter === 'all' ? undefined : { status: filter };
       const response = await api.get('/ng/patient/orders', { params });
@@ -35,11 +43,18 @@ export default function NigeriaPatientOrdersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
 
   useEffect(() => {
     loadOrders();
-  }, [filter]);
+  }, [loadOrders]);
+
+  const showDemoData = shouldShowPresentationDemoData(user);
+  const filteredDemoOrders = filter === 'all'
+    ? presentationDemoData.orders
+    : presentationDemoData.orders.filter((order) => String(order.status || '').toLowerCase() === filter);
+  const visibleOrders = showDemoData && orders.length === 0 ? filteredDemoOrders : orders;
+  const usingDemoData = showDemoData && orders.length === 0 && filteredDemoOrders.length > 0;
 
   const payForOrder = async (orderId) => {
     setNotice('');
@@ -95,6 +110,12 @@ export default function NigeriaPatientOrdersPage() {
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div>
       ) : null}
 
+      {usingDemoData ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+          {PRESENTATION_DEMO_LABEL}: sample pharmacy orders and tracking records are shown for this demo account.
+        </div>
+      ) : null}
+
       <section className="flex flex-wrap gap-2">
         {['all', 'pending', 'confirmed', 'preparing', 'dispatched', 'delivered', 'cancelled'].map((value) => (
           <button
@@ -119,14 +140,14 @@ export default function NigeriaPatientOrdersPage() {
             <div className="py-8 text-center">
               <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
             </div>
-          ) : orders.length === 0 ? (
+          ) : visibleOrders.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center">
               <Package className="mx-auto h-10 w-10 text-emerald-500/60" />
               <p className="mt-4 font-semibold text-foreground">No orders found.</p>
               <p className="mt-2 text-sm text-muted-foreground">Once a pharmacy order has been created, it will appear here with payment and tracking status.</p>
             </div>
           ) : (
-            orders.map((order) => {
+            visibleOrders.map((order) => {
               const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
 
               return (

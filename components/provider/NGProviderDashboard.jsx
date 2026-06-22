@@ -1,8 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
+import {
+  PRESENTATION_DEMO_LABEL,
+  buildProviderDemoData,
+  shouldShowPresentationDemoData,
+} from '@/lib/ngPresentationDemoData';
 
 /* ---------- API helpers ---------- */
 async function fetchProviderWorkspace() {
@@ -267,7 +272,7 @@ function PatientDrawer({ patient, onClose, onStartCall, base = '/ng/provider' })
 }
 
 /* ---------- Command Center ---------- */
-function CommandCenter({ appointments = [], patients = [], totalPatients = 0, onStartAppointmentCall }) {
+function CommandCenter({ appointments = [], patients = [], totalPatients = 0, activePrescriptionCount = 0, onStartAppointmentCall }) {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -275,7 +280,7 @@ function CommandCenter({ appointments = [], patients = [], totalPatients = 0, on
           { title: 'Total Patients', value: String(totalPatients || patients.length), sub: 'Active patient base', trend: '', isPositive: true, icon: Users, color: 'blue' },
           { title: 'Upcoming Consults', value: String(appointments.filter(a => a.status !== 'completed' && a.status !== 'cancelled').length), sub: 'Scheduled appointments', trend: '', isPositive: true, icon: AlertTriangle, color: 'rose' },
           { title: 'Completed Today', value: String(appointments.filter(a => a.status === 'completed').length), sub: 'Consultations done', trend: '', isPositive: true, icon: Clock, color: 'emerald' },
-          { title: 'Active Prescriptions', value: '—', sub: 'Via DoctaRx Nigeria', trend: '', isPositive: true, icon: ArrowUpRight, color: 'indigo' },
+          { title: 'Active Prescriptions', value: String(activePrescriptionCount || 0), sub: 'Via DoctaRx Nigeria', trend: '', isPositive: true, icon: ArrowUpRight, color: 'indigo' },
         ].map((kpi, i) => (
           <div key={i} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden group hover:border-slate-300 transition-colors">
             <div className={`absolute top-0 right-0 w-24 h-24 bg-${kpi.color}-50 rounded-bl-full -mr-4 -mt-4 opacity-50`} />
@@ -518,6 +523,7 @@ export default function NGProviderDashboard({ market = 'ng' }) {
   const [appointments, setAppointments] = useState([]);
   const [patients, setPatients] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const presentationDemoData = useMemo(() => buildProviderDemoData(), []);
 
   useEffect(() => {
     const load = async () => {
@@ -547,6 +553,11 @@ export default function NGProviderDashboard({ market = 'ng' }) {
     ? `Dr. ${user.last_name || user.lastName || user.name || 'Provider'}`
     : 'Dr. Provider';
   const specialty = user?.specialty || user?.specialization || 'Provider';
+  const showDemoData = shouldShowPresentationDemoData(user);
+  const visibleAppointments = showDemoData && appointments.length === 0 ? presentationDemoData.appointments : appointments;
+  const visiblePatients = showDemoData && patients.length === 0 ? presentationDemoData.patients : patients;
+  const usingDemoData = showDemoData && (appointments.length === 0 || patients.length === 0);
+  const activePrescriptionCount = usingDemoData ? presentationDemoData.activePrescriptionCount : 0;
 
   const NavItem = ({ id, icon: Icon, label }) => {
     const active = activeTab === id;
@@ -671,8 +682,21 @@ export default function NGProviderDashboard({ market = 'ng' }) {
         </header>
 
         <div className="flex-1 overflow-auto p-8 relative">
-          {activeTab === 'command' && <CommandCenter appointments={appointments} patients={patients} totalPatients={patients.length} onStartAppointmentCall={(appt) => router.push(`${base}/call?appointmentId=${appt.id}`)} />}
-          {activeTab === 'population' && <PatientDirectory onSelectPatient={setSelectedPatient} patients={patients} loading={dataLoading} />}
+          {usingDemoData ? (
+            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+              {PRESENTATION_DEMO_LABEL}: sample Abuja pilot patients, appointments, prescriptions, and triage signals are shown for this provider account.
+            </div>
+          ) : null}
+          {activeTab === 'command' && (
+            <CommandCenter
+              appointments={visibleAppointments}
+              patients={visiblePatients}
+              totalPatients={visiblePatients.length}
+              activePrescriptionCount={activePrescriptionCount}
+              onStartAppointmentCall={(appt) => router.push(`${base}/call?appointmentId=${appt.id}`)}
+            />
+          )}
+          {activeTab === 'population' && <PatientDirectory onSelectPatient={setSelectedPatient} patients={visiblePatients} loading={dataLoading && !usingDemoData} />}
           {activeTab !== 'command' && activeTab !== 'population' && (
             <div className="flex flex-col items-center justify-center h-full text-slate-400">
               <Settings size={48} className="mb-4 opacity-20" />
