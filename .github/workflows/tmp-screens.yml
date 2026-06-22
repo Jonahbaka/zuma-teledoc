@@ -1,18 +1,21 @@
-# TEMPORARY: capture screenshots of the microsite + platform on a CI runner
-# (the dev sandbox cannot install a browser). Pushes PNGs back to this branch.
-# Feature-branch only — never main, cannot deploy. Removed after delivery.
+# TEMPORARY: fast microsite screenshots on a CI runner (dev sandbox has no browser).
+# Pushes PNGs back to this branch. Feature-branch only; never main; cannot deploy.
 name: tmp-screens
 
 on:
   push:
     branches: [claude/blissful-lamport-514ka6]
     paths:
-      - '.screenshots/**'
+      - '.screenshots/shoot-microsite.mjs'
       - '.github/workflows/tmp-screens.yml'
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: tmp-screens
+  cancel-in-progress: true
 
 jobs:
   shoot:
@@ -26,30 +29,19 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Playwright + Chromium
+      - name: Install Playwright Chromium (no system deps — runner already has them)
         run: |
           npm i -D playwright@1.49.1
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
 
-      - name: Build & start the platform (best effort)
-        run: |
-          npm ci
-          npm run build
-          (npx next start -p 3100 > /tmp/next.log 2>&1 &) || true
-          # wait for the server to answer (up to ~40s)
-          for i in $(seq 1 40); do
-            if curl -sf -o /dev/null http://127.0.0.1:3100/ng; then echo "next up"; break; fi
-            sleep 1
-          done
-        continue-on-error: true
-
-      - name: Capture screenshots
-        run: node .screenshots/shoot.mjs
+      - name: Capture microsite screenshots
+        run: node .screenshots/shoot-microsite.mjs
 
       - name: Commit screenshots back to the branch
         run: |
           git config user.name "Claude"
           git config user.email "noreply@anthropic.com"
+          git pull --rebase origin claude/blissful-lamport-514ka6 || true
           git add .screenshots/out
-          git commit -m "tmp: CI screenshots of microsite + platform [skip ci]" || echo "nothing to commit"
+          git commit -m "tmp: microsite screenshots [skip ci]" || echo "nothing to commit"
           git push origin HEAD:claude/blissful-lamport-514ka6
