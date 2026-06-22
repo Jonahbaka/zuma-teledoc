@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DoctaRx Abuja Pilot Presentation</title>
+  <meta name="description" content="DoctaRx Abuja Pilot — connecting patients, PHCs, doctors, pharmacies, referrals, video consultation, and public-health visibility for the Federal Ministry / Department of Hospital Services presentation." />
+  <meta name="robots" content="noindex" />
+  <link rel="icon" href="assets/img/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <!-- ============ NAV ============ -->
+  <header class="nav" id="top">
+    <a class="nav__brand" href="#top">
+      <img src="assets/img/icon.svg" alt="DoctaRx" width="34" height="34" />
+      <span>DoctaRx <em>Nigeria</em></span>
+    </a>
+    <nav class="nav__links">
+      <a href="#video">Video</a>
+      <a href="#pilot">Pilot Program</a>
+      <a href="#video-consult">Video Consult</a>
+      <a href="#forecasting">Forecasting</a>
+      <a href="#dhis2">DHIS2/NHMIS</a>
+      <a href="#timeline">Timeline</a>
+      <a href="#dashboard">Demo Dashboard</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a class="btn btn--sm btn--primary" href="#pilot">View Pilot</a>
+  </header>
+
+  <!-- ============ HERO ============ -->
+  <section class="hero">
+    <div class="hero__bg" aria-hidden="true"></div>
+    <div class="hero__inner">
+      <span class="pill">Prepared for Federal Ministry / Department of Hospital Services — 23rd June</span>
+      <h1>DoctaRx Abuja Pilot Presentation</h1>
+      <p class="hero__sub">
+        Connecting patients, PHCs, doctors, pharmacies, referrals, video consultation,
+        and public-health visibility — a small, measurable, low-risk pilot.
+      </p>
+      <div class="hero__cta">
+        <a class="btn btn--primary btn--lg" href="#video">▶ Play Intro Video</a>
+        <a class="btn btn--ghost btn--lg" href="#pilot">View Pilot Program</a>
+      </div>
+      <p class="hero__note">Start small. Measure results. Scale only after evidence.</p>
+    </div>
+  </section>
+
+  <!-- ============ PRE-PRESENTATION VIDEO ============ -->
+  <section class="section" id="video">
+    <div class="section__head">
+      <h2>Pre-Presentation Explainer</h2>
+      <p>A short film showing the care journey DoctaRx proposes to strengthen. It plays before Jonah Baka presents the pilot roadmap and partnership details.</p>
+    </div>
+
+    <div class="video-wrap">
+      <div class="video-frame">
+        <video id="introVideo" controls preload="metadata" playsinline poster="assets/img/doctor-video-call.jpg">
+          <!-- Rendered file is dropped here after JSON2Video render: assets/video/pre_presentation_video.mp4 -->
+          <source id="introVideoSource" src="assets/video/pre_presentation_video.mp4" type="video/mp4" />
+        </video>
+        <!-- Fallback shown when the rendered MP4 is not yet present -->
+        <div class="video-fallback" id="videoFallback">
+          <img src="assets/img/doctor-video-call.jpg" alt="Doctor video consultation" />
+          <div class="video-fallback__panel">
+            <h3>Pre-presentation video</h3>
+            <p>The rendered explainer will appear here. Until then, the storyboard and narration are shown below.</p>
+            <span class="tag">Calm female healthcare narration · ~75s</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- STABLE caption block: scene-based, no flicker. Updated by clean fade only. -->
+      <div class="caption" aria-live="polite">
+        <div class="caption__scene" id="captionScene">Scene 1 — The patient journey begins</div>
+        <p class="caption__text" id="captionText">
+          Across Abuja, patients begin their care journey at a Primary Healthcare Centre.
+          DoctaRx is designed to connect that journey — from first request to follow-up.
+        </p>
+      </div>
+
+      <div class="video-actions">
+        <button class="btn btn--ghost btn--sm" id="replayBtn">↻ Replay</button>
+        <a class="btn btn--ghost btn--sm" id="openVideoBtn" href="assets/video/pre_presentation_video.mp4" target="_blank" rel="noopener">⤓ Open / Download Video</a>
+        <span class="caption__hint">Narration ends with a handover to Jonah's live presentation.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FEATURE PILLARS ============ -->
+  <section class="section section--alt" id="features">
+    <div class="section__head">
+      <h2>What DoctaRx Adds</h2>
+      <p>DoctaRx does not replace hospitals, doctors, PHCs, pharmacies, or government systems. It adds a digital coordination, teleconsultation, reporting, and visibility layer around the patient journey.</p>
+    </div>
+    <div class="grid grid--3" id="pillarsGrid"></div>
+  </section>
+
+  <!-- ============ PILOT PROGRAM (central) ============ -->
+  <section class="section" id="pilot">
+    <div class="section__head">
+      <span class="kicker">The Centre of This Presentation</span>
+      <h2>DoctaRx Abuja Pilot Program</h2>
+      <p>A small, measurable, low-risk pilot to connect patient care, video consultation, referral follow-up, pharmacy visibility, forecasting insight, and public-health reporting.</p>
+    </div>
+
+    <div class="grid grid--2">
+      <div class="card">
+        <h3>Pilot Scope</h3>
+        <ul class="ticks">
+          <li>2–3 selected Primary Healthcare Centres</li>
+          <li>1 General Hospital</li>
+          <li>Participating doctors</li>
+          <li>Participating pharmacy partners</li>
+          <li>Video consultation support</li>
+          <li>Referral tracking workflow</li>
+          <li>Ministry / Department oversight dashboard</li>
+          <li>Aggregate reporting readiness + monthly reporting</li>
+          <li>3-month active launch window inside a broader 12-month plan</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Pilot Actors</h3>
+        <ul class="ticks">
+          <li>Patient</li>
+          <li>PHC nurse / officer</li>
+          <li>Remote doctor</li>
+          <li>Pharmacy partner</li>
+          <li>Referral hospital officer</li>
+          <li>Ministry dashboard user</li>
+          <li>Health information / reporting officer</li>
+          <li>DoctaRx technical support</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 class="subhead">Pilot Workflow — first request to follow-up</h3>
+    <ol class="flow" id="pilotFlow"></ol>
+
+    <div class="callout">
+      <strong>Why this is low-hanging fruit:</strong>
+      The pilot is small enough to approve, practical enough to implement, useful enough to measure,
+      clear enough for non-technical officials, and scalable after proof — because it adds a layer
+      rather than replacing anything that already works.
+    </div>
+  </section>
+
+  <!-- ============ VIDEO CONSULTATION ============ -->
+  <section class="section section--alt" id="video-consult">
+    <div class="section__head">
+      <h2>Video Consultation Support</h2>
+      <p>Remote doctor consultation support for selected PHCs and patients — extending access while keeping doctors and facilities central.</p>
+    </div>
+    <div class="split">
+      <div class="split__media">
+        <img src="assets/img/doctor-phone-notes.jpg" alt="Doctor documenting consultation notes" />
+        <span class="img-tag">Demo Facility View · Sample Pilot Data</span>
+      </div>
+      <div class="split__body">
+        <ul class="ticks">
+          <li>Selected PHCs and patients connect with doctors remotely.</li>
+          <li>PHC officers can assist patients where digital literacy is low.</li>
+          <li>Doctors review the patient summary during the consultation.</li>
+          <li>Doctors document notes, then issue a prescription or referral.</li>
+          <li>Video consultation extends clinical reach without replacing hospitals.</li>
+        </ul>
+        <p class="muted">No 24/7 national coverage is promised. This is not emergency-care replacement.</p>
+      </div>
+    </div>
+    <div class="chips" id="videoConsultChips"></div>
+  </section>
+
+  <!-- ============ DATA ANALYSIS & FORECASTING ============ -->
+  <section class="section" id="forecasting">
+    <div class="section__head">
+      <h2>Data Analysis &amp; Forecasting for Better Planning</h2>
+      <p>Trend visibility and forecasting support for planning — simple dashboards help decision-makers see trends early and plan better.</p>
+    </div>
+    <div class="split">
+      <div class="split__body">
+        <ul class="ticks">
+          <li>Aggregate, non-identifiable dashboard trends.</li>
+          <li>Common symptom categories &amp; facility activity.</li>
+          <li>Medicine demand patterns &amp; referral load.</li>
+          <li>Response time &amp; follow-up completion.</li>
+          <li>Seasonal trends where appropriate (e.g. rainy-season fever/malaria).</li>
+        </ul>
+        <p class="muted">Responsible language only: “forecasting support”, “trend visibility”, “planning insight”. No perfect-prediction or official-surveillance claims. No real patient data.</p>
+      </div>
+      <div class="split__media">
+        <div class="chart-card">
+          <div class="chart-card__head">
+            <span>Fever / malaria-like symptom trend</span>
+            <span class="tag">Sample Pilot Data</span>
+          </div>
+          <svg id="forecastChart" viewBox="0 0 320 160" role="img" aria-label="Forecast trend chart"></svg>
+          <p class="chart-note" id="forecastNote"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ NHMIS / DHIS2 READINESS ============ -->
+  <section class="section section--alt" id="dhis2">
+    <div class="section__head">
+      <h2>NHMIS / DHIS2-Ready Reporting Support</h2>
+      <p>Aggregate reporting views aligned with NHMIS/DHIS2-oriented requirements — reporting readiness, not a replacement for existing government systems.</p>
+    </div>
+    <div class="grid grid--2">
+      <div class="card">
+        <h3>What this means</h3>
+        <ul class="ticks">
+          <li>The platform can prepare aggregate reporting views.</li>
+          <li>Dashboard fields can be aligned to national reporting needs.</li>
+          <li>Facility-level activity can be summarized.</li>
+          <li>Reports can be exported / structured for health information teams.</li>
+        </ul>
+        <p class="muted">DoctaRx is <strong>DHIS2-ready</strong>. It does not claim full DHIS2 integration, automatic official submission, or Ministry certification.</p>
+      </div>
+      <div class="card card--table">
+        <div class="card__tablehead">
+          <h3>Reporting readiness preview</h3>
+          <span class="tag">Demo · Month 1</span>
+        </div>
+        <table class="dx-table" id="reportingTable"></table>
+        <button class="btn btn--ghost btn--sm" id="exportReportBtn">⤓ Prepare aggregate export (demo)</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TIMELINE ============ -->
+  <section class="section" id="timeline">
+    <div class="section__head">
+      <h2>Pilot Timeline</h2>
+      <p>A clean roadmap: a 3-month active launch window inside a broader 12-month implementation plan.</p>
+    </div>
+    <div class="roadmap" id="roadmap"></div>
+  </section>
+
+  <!-- ============ SUCCESS INDICATORS ============ -->
+  <section class="section section--alt" id="indicators">
+    <div class="section__head">
+      <h2>Pilot Success Indicators</h2>
+      <p>What the Ministry can measure — simple, aggregate, and decision-ready.</p>
+    </div>
+    <div class="grid grid--4" id="indicatorsGrid"></div>
+  </section>
+
+  <!-- ============ DEMO DASHBOARD ============ -->
+  <section class="section" id="dashboard">
+    <div class="section__head">
+      <span class="kicker">Demo Facility View</span>
+      <h2>Ministry / Department Oversight Dashboard</h2>
+      <p>The dashboard gives decision-makers simple visibility without exposing private patient details. <strong class="demo-flag">Sample Pilot Data — Fictional Data for Presentation.</strong></p>
+    </div>
+
+    <div class="grid grid--4" id="metricGrid"></div>
+
+    <div class="grid grid--2" style="margin-top:24px;">
+      <div class="card card--table">
+        <div class="card__tablehead"><h3>Top symptom categories</h3><span class="tag">Aggregate</span></div>
+        <div id="symptomBars"></div>
+      </div>
+      <div class="card card--table">
+        <div class="card__tablehead"><h3>Facility activity</h3><span class="tag">By PHC / Hospital</span></div>
+        <table class="dx-table" id="facilityTable"></table>
+      </div>
+    </div>
+
+    <div class="grid grid--2" style="margin-top:24px;">
+      <div class="card card--table">
+        <div class="card__tablehead"><h3>Referral tracking</h3><span class="tag">Pending → Completed</span></div>
+        <table class="dx-table" id="referralTable"></table>
+      </div>
+      <div class="card card--table">
+        <div class="card__tablehead"><h3>Prescription visibility</h3><span class="tag">Pharmacy workflow</span></div>
+        <table class="dx-table" id="prescriptionTable"></table>
+      </div>
+    </div>
+
+    <div class="card card--table" style="margin-top:24px;">
+      <div class="card__tablehead"><h3>Consultations feed (incl. video)</h3><span class="tag">Live demo</span></div>
+      <table class="dx-table" id="consultTable"></table>
+    </div>
+  </section>
+
+  <!-- ============ FAQ ============ -->
+  <section class="section section--alt" id="faq">
+    <div class="section__head">
+      <h2>Frequently Asked Questions</h2>
+      <p>Clear answers for non-technical decision-makers.</p>
+    </div>
+    <div class="faq" id="faqList"></div>
+  </section>
+
+  <!-- ============ SUPPORTING MATERIALS ============ -->
+  <section class="section" id="materials">
+    <div class="section__head">
+      <h2>Supporting Materials</h2>
+      <p>Documents and links to accompany the live presentation.</p>
+    </div>
+    <div class="grid grid--3" id="materialsGrid"></div>
+    <div class="callout callout--ask">
+      <strong>The decision being requested:</strong>
+      Approval to define pilot modalities, select facilities, align indicators, and proceed with technical onboarding.
+    </div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="footer__brand">
+      <img src="assets/img/icon.svg" alt="DoctaRx" width="40" height="40" />
+      <div>
+        <strong>Jonah Baka</strong>
+        <span>Founder / CEO, DoctaRx Nigeria</span>
+      </div>
+    </div>
+    <div class="footer__contact">
+      <a href="tel:+2349163395269">+234 916 339 5269</a>
+      <a href="mailto:jonah.baka@doctarx.com">jonah.baka@doctarx.com</a>
+      <a href="https://www.doctarx.com/ng" target="_blank" rel="noopener">www.doctarx.com/ng</a>
+    </div>
+    <p class="footer__legal">
+      All dashboard figures, names, and facilities on this microsite are
+      <strong>synthetic and fictional, for presentation purposes only</strong>. No real patient data is shown.
+    </p>
+  </footer>
+
+  <script src="assets/demo-data.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
