@@ -54,6 +54,11 @@ import {
   YAxis,
 } from 'recharts';
 import api from '@/lib/api';
+import {
+  PUBLIC_HEALTH_DEMO_LABEL,
+  buildPublicHealthDemoBundle,
+  publicHealthDemoEnabled,
+} from '@/lib/ngPublicHealthDemoData';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -1127,6 +1132,7 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const [demoActive, setDemoActive] = useState(false);
   const [settingsForm, setSettingsForm] = useState({
     environment: 'disabled', datasetId: '', orgUnitId: '', attributeOptionComboId: '',
     governmentApprovalStatus: 'pending', apiCredentialsStatus: 'pending',
@@ -1165,35 +1171,63 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
   async function loadAll() {
     setLoading(true);
     setError('');
-    try {
-      const query = buildQuery();
-      const [executiveRes, overviewRes, areasRes, analyticsRes, reportsRes, indicatorsRes, forecastRes, auditRes, settingsRes] = await Promise.all([
-        api.get('/ng/public-health/programme/executive-dashboard', { params: query }),
-        api.get('/ng/public-health/programme/overview', { params: query }),
-        api.get('/ng/public-health/programme/areas', { params: query }),
-        api.get('/ng/public-health/analytics', { params: query }),
-        api.get('/ng/public-health/reports', { params: { limit: 10 } }),
-        api.get('/ng/public-health/indicators'),
-        api.get('/ng/public-health/forecast', { params: buildQuery({ metric: 'consultations', range: 7 }) }),
-        api.get('/ng/public-health/audit-logs', { params: { limit: 20 } }),
-        api.get('/ng/integrations/dhis2/settings'),
-      ]);
-      setExecutive(executiveRes.data || {});
-      setOverview(overviewRes.data || {});
-      setAreas(areasRes.data?.areas || []);
-      setAnalytics(analyticsRes.data || {});
-      setReports(reportsRes.data?.reports || []);
-      setIndicators(indicatorsRes.data?.indicators || []);
-      setForecast(forecastRes.data || null);
-      setAuditLogs(auditRes.data?.logs || []);
-      const s = settingsRes.data?.settings || {};
-      setDhis2Settings(s);
-      setSettingsForm((cur) => ({ ...cur, ...s, enabled: s.enabled === true, dryRunOnly: s.dryRunOnly !== false }));
-    } catch (e) {
-      setError(e.response?.data?.error || e.message || 'Could not load public-health programme data.');
-    } finally {
-      setLoading(false);
+    setDemoActive(false);
+    const query = buildQuery();
+    // Settle independently so one unseeded endpoint can't blank the whole dashboard.
+    const results = await Promise.allSettled([
+      api.get('/ng/public-health/programme/executive-dashboard', { params: query }),
+      api.get('/ng/public-health/programme/overview', { params: query }),
+      api.get('/ng/public-health/programme/areas', { params: query }),
+      api.get('/ng/public-health/analytics', { params: query }),
+      api.get('/ng/public-health/reports', { params: { limit: 10 } }),
+      api.get('/ng/public-health/indicators'),
+      api.get('/ng/public-health/forecast', { params: buildQuery({ metric: 'consultations', range: 7 }) }),
+      api.get('/ng/public-health/audit-logs', { params: { limit: 20 } }),
+      api.get('/ng/integrations/dhis2/settings'),
+    ]);
+    const data = (i) => (results[i].status === 'fulfilled' ? results[i].value?.data : undefined);
+    const allFailed = results.slice(0, 8).every((r) => r.status === 'rejected');
+
+    // Clearly-labelled synthetic fallback so a pilot demo is never empty. Real data
+    // always wins; the demo only fills genuinely empty datasets, and only when the
+    // demo flag is set or every endpoint failed (i.e. an unseeded demo environment).
+    const useDemo = publicHealthDemoEnabled() || allFailed;
+    const demo = useDemo ? buildPublicHealthDemoBundle() : null;
+    const isEmpty = (v) => v == null || (Array.isArray(v) && v.length === 0) ||
+      (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0);
+    const pick = (real, demoVal) => (demo && isEmpty(real) ? demoVal : real);
+
+    const executiveData = pick(data(0), demo?.executive) || {};
+    const overviewData = pick(data(1), demo?.overview) || {};
+    const areasData = pick(data(2)?.areas, demo?.areas) || [];
+    const analyticsData = pick(data(3), demo?.analytics) || {};
+    const reportsData = pick(data(4)?.reports, demo?.reports) || [];
+    const indicatorsData = pick(data(5)?.indicators, demo?.indicators) || [];
+    const forecastData = pick(data(6), demo?.forecast) || null;
+    const auditData = pick(data(7)?.logs, demo?.auditLogs) || [];
+
+    setExecutive(executiveData);
+    setOverview(overviewData);
+    setAreas(areasData);
+    setAnalytics(analyticsData);
+    setReports(reportsData);
+    setIndicators(indicatorsData);
+    setForecast(forecastData);
+    setAuditLogs(auditData);
+    const s = data(8)?.settings || {};
+    setDhis2Settings(s);
+    setSettingsForm((cur) => ({ ...cur, ...s, enabled: s.enabled === true, dryRunOnly: s.dryRunOnly !== false }));
+
+    // Surface a demo banner if any dataset came from the synthetic bundle.
+    const demoUsed = !!demo && [data(0), data(1), data(2)?.areas, data(3), data(4)?.reports, data(5)?.indicators, data(6)]
+      .some((v) => isEmpty(v));
+    setDemoActive(demoUsed);
+
+    if (!demoUsed && allFailed) {
+      const firstErr = results.find((r) => r.status === 'rejected');
+      setError(firstErr?.reason?.response?.data?.error || firstErr?.reason?.message || 'Could not load public-health programme data.');
     }
+    setLoading(false);
   }
 
   useEffect(() => { loadAll(); }, [period]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1508,6 +1542,17 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
           )}
         </CardContent>
       </Card>
+
+      {demoActive && (
+        <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
+          <Sparkles className="h-5 w-5 flex-none text-amber-500" />
+          <p>
+            <span className="font-bold">{PUBLIC_HEALTH_DEMO_LABEL}.</span>{' '}
+            Showing synthetic Abuja-pilot sample data so the dashboard is never empty during a demonstration.
+            No real patient, facility, or government data is displayed. Live data replaces these figures automatically once available.
+          </p>
+        </div>
+      )}
 
       {/* ─── TABS ───────────────────────────────────────────────── */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
