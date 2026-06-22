@@ -9,7 +9,7 @@
  * Privacy: zero patient identifiers — aggregate only
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Activity, Building2, Users, Video, ArrowRightLeft,
   Pill, FlaskConical, TrendingUp, TrendingDown, Minus,
@@ -20,6 +20,11 @@ import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
+import {
+  PRESENTATION_DEMO_LABEL,
+  buildMinistryDemoData,
+  shouldShowPresentationDemoData,
+} from '@/lib/ngPresentationDemoData';
 
 // ─── Fetch helper ─────────────────────────────────────────────────────────────
 
@@ -136,10 +141,26 @@ export default function ExecutiveView() {
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
   const [activeTab, setActiveTab]   = useState('overview');
+  const [usingDemoData, setUsingDemoData] = useState(false);
+  const demoData = useMemo(() => buildMinistryDemoData(), []);
+
+  const applyDemoData = useCallback(() => {
+    setDashboard(demoData.dashboard);
+    setSignals(demoData.signals);
+    setForecasts(demoData.forecasts);
+    setGovStatus(demoData.govStatus);
+    setUsingDemoData(true);
+    setError('');
+  }, [demoData]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
+    if (shouldShowPresentationDemoData()) {
+      applyDemoData();
+      setLoading(false);
+      return;
+    }
     try {
       const q = period ? { period } : {};
       const [db, sig, fc, gov] = await Promise.all([
@@ -152,12 +173,18 @@ export default function ExecutiveView() {
       setSignals(sig);
       setForecasts(fc);
       setGovStatus(gov);
+      setUsingDemoData(false);
     } catch (err) {
-      setError(err.message);
+      if (/^(401|403)\b/.test(err.message || '')) {
+        applyDemoData();
+      } else {
+        setUsingDemoData(false);
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [period, applyDemoData]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -214,6 +241,14 @@ export default function ExecutiveView() {
           All data is aggregate. No patient identifiers are included in this view.
         </p>
       </div>
+
+      {usingDemoData && (
+        <div className="border-b border-amber-200 bg-amber-50 px-6 py-2">
+          <p className="mx-auto max-w-7xl text-center text-xs font-semibold text-amber-800">
+            {PRESENTATION_DEMO_LABEL} - Abuja pilot aggregate sample for presentation only; no real patient data.
+          </p>
+        </div>
+      )}
 
       <div className="mx-auto max-w-7xl px-6 py-8">
         {error && (

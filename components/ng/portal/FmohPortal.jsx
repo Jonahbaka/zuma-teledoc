@@ -7,8 +7,13 @@
  * Data source: /api/ng/executive-view/* (aggregate, no patient identifiers)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Shield, RefreshCw, Building2, Users, Activity, BarChart3 } from 'lucide-react';
+import {
+  PRESENTATION_DEMO_LABEL,
+  buildMinistryDemoData,
+  shouldShowPresentationDemoData,
+} from '@/lib/ngPresentationDemoData';
 
 async function fetchJson(path) {
   const res = await fetch(path, { credentials: 'include' });
@@ -34,24 +39,43 @@ export default function FmohPortal() {
   const [data, setData]     = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState('');
+  const [usingDemoData, setUsingDemoData] = useState(false);
+  const demoData = useMemo(() => buildMinistryDemoData(), []);
 
-  async function load() {
+  const applyDemoData = useCallback(() => {
+    setData({ dashboard: demoData.dashboard, gov: demoData.fmohGov });
+    setUsingDemoData(true);
+    setError('');
+  }, [demoData]);
+
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
+    if (shouldShowPresentationDemoData()) {
+      applyDemoData();
+      setLoading(false);
+      return;
+    }
     try {
       const [dashboard, gov] = await Promise.all([
         fetchJson('/api/ng/executive-view/dashboard'),
         fetchJson('/api/ng/governance/executive-summary'),
       ]);
       setData({ dashboard, gov });
+      setUsingDemoData(false);
     } catch (e) {
-      setError(e.message);
+      if (/^(401|403)\b/.test(e.message || '')) {
+        applyDemoData();
+      } else {
+        setUsingDemoData(false);
+        setError(e.message);
+      }
     } finally {
       setLoading(false);
     }
-  }
+  }, [applyDemoData]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const exec = data?.dashboard?.executive;
   const gov  = data?.gov;
@@ -77,6 +101,12 @@ export default function FmohPortal() {
       </div>
 
       <div className="mx-auto max-w-5xl px-6 py-8">
+        {usingDemoData && (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-center text-xs font-semibold text-amber-800">
+            {PRESENTATION_DEMO_LABEL} - Abuja pilot aggregate sample for presentation only; no real patient data.
+          </div>
+        )}
+
         {error && (
           <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
         )}
