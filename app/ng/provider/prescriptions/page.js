@@ -1,15 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Send } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuth } from '@/components/providers/AuthProvider';
+import {
+  PRESENTATION_DEMO_LABEL,
+  buildProviderDemoData,
+  shouldShowPresentationDemoData,
+} from '@/lib/ngPresentationDemoData';
 
 const emptyItem = { drug_name: '', dosage: '', quantity: '', instructions: '' };
 
 export default function NigeriaProviderPrescriptionsPage() {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [pharmacies, setPharmacies] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
@@ -22,6 +29,7 @@ export default function NigeriaProviderPrescriptionsPage() {
     fulfillmentPreference: 'pickup_or_delivery',
     items: [{ ...emptyItem }],
   });
+  const presentationDemoData = useMemo(() => buildProviderDemoData(), []);
 
   const loadData = async () => {
     const [pharmacyResponse, prescriptionResponse] = await Promise.all([
@@ -36,6 +44,11 @@ export default function NigeriaProviderPrescriptionsPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const showDemoData = shouldShowPresentationDemoData(user);
+  const visiblePharmacies = showDemoData && pharmacies.length === 0 ? presentationDemoData.pharmacies : pharmacies;
+  const visiblePrescriptions = showDemoData && prescriptions.length === 0 ? presentationDemoData.prescriptions : prescriptions;
+  const usingDemoData = showDemoData && (pharmacies.length === 0 || prescriptions.length === 0);
 
   const updateItem = (index, field, value) => {
     setForm((current) => ({
@@ -108,6 +121,12 @@ export default function NigeriaProviderPrescriptionsPage() {
 
         {notice ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div> : null}
 
+        {usingDemoData ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+            {PRESENTATION_DEMO_LABEL}: sample provider prescriptions and participating pharmacies are shown for this walkthrough.
+          </div>
+        ) : null}
+
         <section className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
           <Card>
             <CardHeader>
@@ -128,7 +147,7 @@ export default function NigeriaProviderPrescriptionsPage() {
                   className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm"
                 >
                   <option value="">No pharmacy selected yet</option>
-                  {pharmacies.map((pharmacy) => (
+                  {visiblePharmacies.map((pharmacy) => (
                     <option key={pharmacy.id} value={pharmacy.id}>
                       {pharmacy.name} - {[pharmacy.city, pharmacy.state].filter(Boolean).join(', ')}
                     </option>
@@ -190,9 +209,9 @@ export default function NigeriaProviderPrescriptionsPage() {
             <CardContent className="space-y-3">
               {loading ? (
                 <p className="text-sm text-slate-600">Loading prescriptions...</p>
-              ) : prescriptions.length === 0 ? (
+              ) : visiblePrescriptions.length === 0 ? (
                 <p className="text-sm text-slate-600">No Nigeria prescriptions created yet.</p>
-              ) : prescriptions.map((prescription) => (
+              ) : visiblePrescriptions.map((prescription) => (
                 <div key={prescription.id} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm">
                   <p className="font-semibold">{prescription.prescription_number || 'Prescription'}</p>
                   <p className="mt-1 text-slate-600">Patient: {[prescription.patient_first_name, prescription.patient_last_name].filter(Boolean).join(' ') || prescription.patient_email}</p>

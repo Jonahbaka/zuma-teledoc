@@ -1,8 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
+import {
+  PRESENTATION_DEMO_LABEL,
+  buildProviderDemoData,
+  shouldShowPresentationDemoData,
+} from '@/lib/ngPresentationDemoData';
 import {
   Video, Calendar, Clock, User, ChevronRight, RefreshCw,
   Search, AlertTriangle, CheckCircle2, Loader2, Activity,
@@ -50,6 +55,7 @@ export default function NGProviderAppointmentsPage() {
   const [error, setError] = useState(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
+  const presentationDemoData = useMemo(() => buildProviderDemoData(), []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,7 +81,14 @@ export default function NGProviderAppointmentsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = appointments.filter(a => {
+  const showDemoData = shouldShowPresentationDemoData(user);
+  const visibleAppointments = showDemoData && (appointments.length === 0 || error)
+    ? presentationDemoData.appointments
+    : appointments;
+  const visibleError = showDemoData ? null : error;
+  const visibleLoading = loading && !(showDemoData && visibleAppointments.length > 0);
+
+  const filtered = visibleAppointments.filter(a => {
     if (filter !== 'all' && a.status !== filter) return false;
     if (!query) return true;
     const q = query.toLowerCase();
@@ -87,15 +100,15 @@ export default function NGProviderAppointmentsPage() {
   });
 
   const stats = {
-    upcoming: appointments.filter(a => ['scheduled', 'confirmed'].includes(a.status)).length,
-    today: appointments.filter(a => {
+    upcoming: visibleAppointments.filter(a => ['scheduled', 'confirmed'].includes(a.status)).length,
+    today: visibleAppointments.filter(a => {
       if (!a.scheduled_at) return false;
       const d = new Date(a.scheduled_at);
       const now = new Date();
       return d.toDateString() === now.toDateString();
     }).length,
-    completed: appointments.filter(a => a.status === 'completed').length,
-    video: appointments.filter(a => ['video', 'telehealth'].includes(a.appointment_type)).length,
+    completed: visibleAppointments.filter(a => a.status === 'completed').length,
+    video: visibleAppointments.filter(a => ['video', 'telehealth'].includes(a.appointment_type)).length,
   };
 
   return (
@@ -148,6 +161,12 @@ export default function NGProviderAppointmentsPage() {
           <StatCard value={stats.video} label="Telehealth" color="amber" />
         </div>
 
+        {showDemoData && (appointments.length === 0 || error) ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+            {PRESENTATION_DEMO_LABEL}: sample scheduled, completed, and telehealth appointments are shown for this provider walkthrough.
+          </div>
+        ) : null}
+
         {/* Filters */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col sm:flex-row gap-3 items-center">
           <div className="relative flex-1 max-w-xs">
@@ -178,15 +197,15 @@ export default function NGProviderAppointmentsPage() {
 
         {/* Appointment list */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          {loading ? (
+          {visibleLoading ? (
             <div className="flex flex-col items-center justify-center py-20 text-slate-400">
               <Loader2 size={32} className="animate-spin mb-3 text-emerald-500" />
               <p className="text-sm">Loading appointments…</p>
             </div>
-          ) : error ? (
+          ) : visibleError ? (
             <div className="flex flex-col items-center justify-center py-20 text-rose-500">
               <AlertTriangle size={32} className="mb-3" />
-              <p className="text-sm font-semibold text-center max-w-sm">{error}</p>
+              <p className="text-sm font-semibold text-center max-w-sm">{visibleError}</p>
               <button onClick={load} className="mt-3 text-xs text-emerald-600 underline">Retry</button>
             </div>
           ) : filtered.length === 0 ? (
