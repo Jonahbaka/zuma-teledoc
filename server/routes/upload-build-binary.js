@@ -291,6 +291,11 @@ echo "[deploy:artifact] buildId=$(cat .next.artifact-staging/.next/BUILD_ID)"
 mkdir -p public
 [ -f .next.artifact-staging/public/robots.txt ] && cp .next.artifact-staging/public/robots.txt public/robots.txt || true
 [ -f .next.artifact-staging/public/sitemap.xml ] && cp .next.artifact-staging/public/sitemap.xml public/sitemap.xml || true
+if [ -d .next.artifact-staging/public/ng-presentation ]; then
+  rm -rf public/ng-presentation
+  mkdir -p public
+  cp -a .next.artifact-staging/public/ng-presentation public/ng-presentation
+fi
 bash scripts/doctarx-blue-green-switch.sh .next.artifact-staging/.next
 rm -rf .next.artifact-staging
 pm2 reload ecosystem.config.js --only cronops --update-env || pm2 start ecosystem.config.js --only cronops --env production || true
