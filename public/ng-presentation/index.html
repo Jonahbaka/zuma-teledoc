@@ -9,6 +9,50 @@
     />
     <link rel="icon" type="image/svg+xml" href="/ng-presentation/favicon.svg" />
     <title>DoctaRx Abuja Pilot Program</title>
+    <script>
+      (() => {
+        if (!location.pathname.startsWith('/ng-presentation')) return;
+
+        const reloadKey = 'doctarx-ng-presentation-service-worker-cleared';
+
+        const clearPresentationWorker = async () => {
+          try {
+            if ('caches' in window) {
+              const keys = await caches.keys();
+              await Promise.all(
+                keys
+                  .filter((key) => key.startsWith('doctarx-app-shell-') || key.startsWith('doctarx-shell-'))
+                  .map((key) => caches.delete(key))
+              );
+            }
+
+            if (!('serviceWorker' in navigator)) return;
+
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            const doctarxRegistrations = registrations.filter((registration) => {
+              try {
+                return new URL(registration.scope).origin === location.origin;
+              } catch {
+                return false;
+              }
+            });
+
+            if (doctarxRegistrations.length === 0) return;
+
+            await Promise.all(doctarxRegistrations.map((registration) => registration.unregister()));
+
+            if (navigator.serviceWorker.controller && !sessionStorage.getItem(reloadKey)) {
+              sessionStorage.setItem(reloadKey, '1');
+              location.reload();
+            }
+          } catch {
+            // The presentation remains usable even if browser cleanup is unavailable.
+          }
+        };
+
+        clearPresentationWorker();
+      })();
+    </script>
     <script type="module" crossorigin src="/ng-presentation/assets/index-Ch7_QpTA.js"></script>
     <link rel="stylesheet" crossorigin href="/ng-presentation/assets/index-B4btO6vp.css">
   </head>

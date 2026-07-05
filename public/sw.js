@@ -1,4 +1,4 @@
-const CACHE_VERSION = '2026-04-28-pwa-v7';
+const CACHE_VERSION = '2026-07-05-pwa-v10';
 const CACHE_NAME = `doctarx-app-shell-${CACHE_VERSION}`;
 const NAVIGATION_CACHE = `${CACHE_NAME}-pages`;
 const ASSET_CACHE = `${CACHE_NAME}-assets`;
@@ -105,6 +105,10 @@ function isNextDataRequest(request, url) {
 }
 
 function shouldBypassRequest(request, url) {
+  const isPresentationRequest =
+    url.pathname === '/ng-presentation' || url.pathname.startsWith('/ng-presentation/');
+  const isRangeRequest = request.headers.has('range');
+  const isMediaRequest = request.destination === 'audio' || request.destination === 'video';
   const sensitiveNonNavigation =
     !isNavigationRequest(request) &&
     SENSITIVE_PATH_PREFIXES.some((prefix) => url.pathname.startsWith(prefix));
@@ -112,6 +116,9 @@ function shouldBypassRequest(request, url) {
   return (
     request.method !== 'GET' ||
     url.origin !== self.location.origin ||
+    isPresentationRequest ||
+    isRangeRequest ||
+    isMediaRequest ||
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/socket.io') ||
     sensitiveNonNavigation ||
