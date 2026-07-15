@@ -66,26 +66,33 @@ wait_for_url() {
   local url="$2"
   local expected="$3"
   local body=""
+  local code=""
+  local response_file=""
+  response_file="$(mktemp)"
   for attempt in $(seq 1 40); do
-    body="$(curl -fsS --max-time 12 "$url" 2>/dev/null || true)"
-    if printf '%s' "$body" | grep -q "$expected"; then
+    code="$(curl -sS --max-time 12 -o "$response_file" -w '%{http_code}' "$url" 2>/dev/null || true)"
+    body="$(cat "$response_file")"
+    if [ "$code" = 200 ] && printf '%s' "$body" | grep -q "$expected"; then
+      rm -f "$response_file"
       log "$name health check passed"
       return 0
     fi
     sleep 3
   done
-  log "$name health check failed: $url"
+  rm -f "$response_file"
+  log "$name health check failed: $url (HTTP ${code:-unavailable}; response=${body:-empty})"
   return 1
 }
 
-start_or_reload_with_env() (
+start_with_env() (
   local env_file="$1"
   local app_name="$2"
 
   set -a
   source "$env_file"
   set +a
-  pm2 startOrReload "$ECOSYSTEM_FILE" --env production --only "$app_name" --update-env
+  pm2 delete "$app_name" >/dev/null 2>&1 || true
+  pm2 start "$ECOSYSTEM_FILE" --env production --only "$app_name" --update-env
 )
 
 prepare_release() {
@@ -306,15 +313,29 @@ if [ ! -f "$PILOT_SEEDED_FILE" ]; then
   chmod 600 "$PILOT_SEEDED_FILE"
 fi
 
+log "Verifying the Nestora runtime database connection"
+(
+  cd "$NESTORA_RELEASE"
+  set -a
+  source "$NESTORA_ENV"
+  set +a
+  node --input-type=module <<'NODE'
+import { getPool, query } from './lib/server/db.js';
+
+await query('SELECT 1');
+await getPool().end();
+NODE
+)
+
 cat > "$ECOSYSTEM_FILE" <<'EOF'
 module.exports = {
   apps: [
     {
       name: 'nestora',
       cwd: '/home/ec2-user/apps/nestora/current',
-      script: 'node_modules/next/dist/bin/next',
-      args: 'start -H 127.0.0.1 -p 3003',
-      interpreter: 'node',
+      script: '/bin/bash',
+      args: ['-lc', 'set -a; source /home/ec2-user/.config/doctarx-aux/nestora.env; set +a; exec node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3003'],
+      interpreter: 'none',
       max_memory_restart: '768M',
       time: true,
       env_production: { NODE_ENV: 'production' },
@@ -322,8 +343,9 @@ module.exports = {
     {
       name: 'doctarx-nursing-education',
       cwd: '/home/ec2-user/apps/doctarx-nursing-education/current',
-      script: 'server/index.js',
-      interpreter: 'node',
+      script: '/bin/bash',
+      args: ['-lc', 'set -a; source /home/ec2-user/.config/doctarx-aux/nursing.env; set +a; exec node server/index.js'],
+      interpreter: 'none',
       max_memory_restart: '1024M',
       time: true,
       env_production: { NODE_ENV: 'production', HOST: '127.0.0.1', PORT: '3004' },
@@ -335,30 +357,30 @@ EOF
 OLD_NESTORA="$(readlink -f "$NESTORA_ROOT/current" 2>/dev/null || true)"
 log "Activating Nestora $NESTORA_SHA"
 atomic_link "$NESTORA_RELEASE" "$NESTORA_ROOT/current"
-if ! start_or_reload_with_env "$NESTORA_ENV" nestora; then
+if ! start_with_env "$NESTORA_ENV" nestora; then
   restore_link "$OLD_NESTORA" "$NESTORA_ROOT/current"
-  [ -n "$OLD_NESTORA" ] && start_or_reload_with_env "$NESTORA_ENV" nestora || true
+  [ -n "$OLD_NESTORA" ] && start_with_env "$NESTORA_ENV" nestora || true
   exit 1
 fi
 if ! wait_for_url Nestora 'http://127.0.0.1:3003/api/health?deep=1' '"status":"ok"'; then
   pm2 logs nestora --lines 80 --nostream || true
   restore_link "$OLD_NESTORA" "$NESTORA_ROOT/current"
-  [ -n "$OLD_NESTORA" ] && start_or_reload_with_env "$NESTORA_ENV" nestora || true
+  [ -n "$OLD_NESTORA" ] && start_with_env "$NESTORA_ENV" nestora || true
   exit 1
 fi
 
 OLD_NURSING="$(readlink -f "$NURSING_ROOT/current" 2>/dev/null || true)"
 log "Activating Nursing Education $NURSING_SHA"
 atomic_link "$NURSING_RELEASE" "$NURSING_ROOT/current"
-if ! start_or_reload_with_env "$NURSING_ENV" doctarx-nursing-education; then
+if ! start_with_env "$NURSING_ENV" doctarx-nursing-education; then
   restore_link "$OLD_NURSING" "$NURSING_ROOT/current"
-  [ -n "$OLD_NURSING" ] && start_or_reload_with_env "$NURSING_ENV" doctarx-nursing-education || true
+  [ -n "$OLD_NURSING" ] && start_with_env "$NURSING_ENV" doctarx-nursing-education || true
   exit 1
 fi
 if ! wait_for_url 'Nursing Education' 'http://127.0.0.1:3004/ng/nursing' '<!DOCTYPE html'; then
   pm2 logs doctarx-nursing-education --lines 80 --nostream || true
   restore_link "$OLD_NURSING" "$NURSING_ROOT/current"
-  [ -n "$OLD_NURSING" ] && start_or_reload_with_env "$NURSING_ENV" doctarx-nursing-education || true
+  [ -n "$OLD_NURSING" ] && start_with_env "$NURSING_ENV" doctarx-nursing-education || true
   exit 1
 fi
 pm2 save

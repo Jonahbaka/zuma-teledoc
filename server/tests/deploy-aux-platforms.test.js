@@ -94,11 +94,24 @@ test('auxiliary PM2 processes inherit their isolated runtime environments', () =
     'utf8'
   );
 
-  assert.match(script, /start_or_reload_with_env\(\) \(/);
+  assert.match(script, /start_with_env\(\) \(/);
   assert.match(script, /source "\$env_file"/);
-  assert.match(script, /start_or_reload_with_env "\$NESTORA_ENV" nestora/);
+  assert.match(script, /source \/home\/ec2-user\/\.config\/doctarx-aux\/nestora\.env/);
+  assert.match(script, /source \/home\/ec2-user\/\.config\/doctarx-aux\/nursing\.env/);
+  assert.match(script, /start_with_env "\$NESTORA_ENV" nestora/);
   assert.match(
     script,
-    /start_or_reload_with_env "\$NURSING_ENV" doctarx-nursing-education/
+    /start_with_env "\$NURSING_ENV" doctarx-nursing-education/
   );
+});
+
+test('auxiliary deployment probes the Nestora database before activation', () => {
+  const script = fs.readFileSync(
+    path.join(__dirname, '../../.github/scripts/deploy_aux_platforms.sh'),
+    'utf8'
+  );
+
+  assert.match(script, /Verifying the Nestora runtime database connection/);
+  assert.match(script, /await query\('SELECT 1'\)/);
+  assert.match(script, /health check failed: \$url \(HTTP/);
 });
