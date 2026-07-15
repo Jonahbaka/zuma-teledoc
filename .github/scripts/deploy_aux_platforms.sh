@@ -287,6 +287,9 @@ if [ ! -f "$PILOT_SEEDED_FILE" ]; then
   log "Loading controlled Nursing pilot accounts and training records"
   (
     cd "$NURSING_RELEASE"
+    set -a
+    source "$NURSING_ENV"
+    set +a
     NURSING_TEST_ACCOUNT_PASSWORD="$(cat "$PILOT_PASSWORD_FILE")" npm run seed
   )
   touch "$PILOT_SEEDED_FILE"

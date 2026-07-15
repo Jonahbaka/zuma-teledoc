@@ -71,3 +71,17 @@ test('auxiliary workflow waits for the documented EC2 release and exact live com
   assert.match(workflow, /\[ "\$DEPLOY_CONCLUSION" = success \]/);
   assert.match(workflow, /\[ "\$LIVE_COMMIT" = "\$EXPECTED_COMMIT" \]/);
 });
+
+test('auxiliary seed overrides the parent DoctaRx database environment', () => {
+  const script = fs.readFileSync(
+    path.join(__dirname, '../../.github/scripts/deploy_aux_platforms.sh'),
+    'utf8'
+  );
+  const seedBlock = script.slice(
+    script.indexOf('Loading controlled Nursing pilot accounts'),
+    script.indexOf('cat > "$ECOSYSTEM_FILE"')
+  );
+
+  assert.match(seedBlock, /source "\$NURSING_ENV"/);
+  assert.match(seedBlock, /NURSING_TEST_ACCOUNT_PASSWORD=.*npm run seed/);
+});
