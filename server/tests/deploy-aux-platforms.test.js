@@ -17,12 +17,15 @@ test.after(() => {
   else process.env.DEPLOY_SECRET = originalSecret;
 });
 
-test('auxiliary deploy authentication fails closed and compares the full secret', () => {
+test('auxiliary deploy authentication fails closed and compares the full secret', async () => {
   assert.equal(safeSecretEqual('', ''), false);
   assert.equal(safeSecretEqual('wrong-secret'), false);
   assert.equal(safeSecretEqual('test-only-deploy-secret'), true);
-  assert.equal(authorizeRequest({ headers: {} }), false);
-  assert.equal(authorizeRequest({ headers: { 'x-deploy-token': 'test-only-deploy-secret' } }), true);
+  assert.equal(await authorizeRequest({ headers: {} }), null);
+  assert.deepEqual(
+    await authorizeRequest({ headers: { 'x-deploy-token': 'test-only-deploy-secret' } }),
+    { method: 'deploy_secret' }
+  );
 });
 
 test('auxiliary deploy accepts only full hexadecimal commit SHAs', () => {

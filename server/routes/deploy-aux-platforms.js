@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const express = require('express');
+const uploadBuildBinaryRoute = require('./upload-build-binary');
 
 const router = express.Router();
 
@@ -11,6 +12,7 @@ const DEPLOY_LOG = '/tmp/doctarx-aux-platform-deploy.log';
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET || '';
 const PUBLIC_IP = process.env.DOCTARX_PUBLIC_IP || '18.217.97.145';
 const MAX_LOG_LINES = 500;
+const authorizeDeployRequest = uploadBuildBinaryRoute._test.authorizeDeployRequest;
 
 function safeSecretEqual(received, expected = DEPLOY_SECRET) {
   if (!expected || !received) return false;
@@ -20,8 +22,9 @@ function safeSecretEqual(received, expected = DEPLOY_SECRET) {
     && crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
 }
 
-function authorizeRequest(req) {
-  return safeSecretEqual(req.headers['x-deploy-token']);
+async function authorizeRequest(req) {
+  if (safeSecretEqual(req.headers['x-deploy-token'])) return { method: 'deploy_secret' };
+  return authorizeDeployRequest(req);
 }
 
 function safeSha(value) {
@@ -69,14 +72,19 @@ function parseStatus(raw = '', pidAlive = isPidAlive) {
   };
 }
 
-function authenticated(req, res) {
-  if (authorizeRequest(req)) return true;
+async function authenticated(req, res) {
+  try {
+    const auth = await authorizeRequest(req);
+    if (auth) return auth;
+  } catch {
+    // Authentication details are intentionally not exposed to callers.
+  }
   res.status(401).json({ success: false, error: 'Unauthorized' });
-  return false;
+  return null;
 }
 
-router.post('/', (req, res) => {
-  if (!authenticated(req, res)) return;
+router.post('/', async (req, res) => {
+  if (!await authenticated(req, res)) return;
 
   const nestoraSha = safeSha(req.body?.nestoraSha);
   const nursingSha = safeSha(req.body?.nursingSha);
@@ -127,8 +135,8 @@ router.post('/', (req, res) => {
   return res.status(202).json({ success: true, status: 'running', pid: child.pid });
 });
 
-router.get('/status', (req, res) => {
-  if (!authenticated(req, res)) return;
+router.get('/status', async (req, res) => {
+  if (!await authenticated(req, res)) return;
   return res.json({ success: true, ...parseStatus(readLog()) });
 });
 
