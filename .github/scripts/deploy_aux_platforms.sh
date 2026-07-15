@@ -384,6 +384,10 @@ if ! wait_for_url 'Nursing Education' 'http://127.0.0.1:3004/ng/nursing' '<!DOCT
   [ -n "$OLD_NURSING" ] && start_with_env "$NURSING_ENV" doctarx-nursing-education || true
   exit 1
 fi
+if ! wait_for_url 'Nursing Education deployment route' 'http://127.0.0.1:3004/nursing-education' '<!DOCTYPE html'; then
+  pm2 logs doctarx-nursing-education --lines 80 --nostream || true
+  exit 1
+fi
 pm2 save
 
 log "Installing nginx routes with rollback protection"
@@ -423,11 +427,17 @@ if ! sudo nginx -t; then
 fi
 sudo systemctl reload nginx
 
-NURSING_CODE="$(curl -k -sS -o /tmp/nursing-public.html -w '%{http_code}' \
-  --resolve doctarx.com:443:127.0.0.1 \
-  https://doctarx.com/nursing-education || true)"
+NURSING_CODE=""
+for attempt in $(seq 1 15); do
+  NURSING_CODE="$(curl -k -sS -o /tmp/nursing-public.html -w '%{http_code}' \
+    --resolve doctarx.com:443:127.0.0.1 \
+    https://doctarx.com/nursing-education || true)"
+  [ "$NURSING_CODE" = 200 ] && break
+  sleep 2
+done
 if [ "$NURSING_CODE" != "200" ]; then
-  log "Nursing nginx route returned HTTP $NURSING_CODE; restoring nginx"
+  NURSING_RESPONSE="$(head -c 500 /tmp/nursing-public.html 2>/dev/null || true)"
+  log "Nursing nginx route returned HTTP $NURSING_CODE (response=${NURSING_RESPONSE:-empty}); restoring nginx"
   sudo rm -f /etc/nginx/conf.d/nestora.conf
   sudo tar -xzf "$NGINX_BACKUP" -C /
   sudo nginx -t

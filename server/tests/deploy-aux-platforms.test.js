@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
@@ -115,4 +117,50 @@ test('auxiliary deployment probes the Nestora database before activation', () =>
   assert.match(script, /await query\('SELECT 1'\)/);
   assert.match(script, /health check failed: \$url \(HTTP/);
   assert.match(script, /python3 "\$SCRIPT_DIR\/install_nursing_nginx\.py"/);
+  assert.match(script, /Nursing Education deployment route/);
+  assert.match(script, /for attempt in \$\(seq 1 15\)/);
+});
+
+test('nginx installer applies Nursing routes to every DoctaRx server block', () => {
+  const installer = fs.readFileSync(
+    path.join(__dirname, '../../.github/scripts/install_nursing_nginx.py'),
+    'utf8'
+  );
+
+  assert.match(installer, /targets\.setdefault\(path, \[\]\)\.append\(end\)/);
+  assert.match(installer, /for target, closing_braces in targets\.items\(\)/);
+  assert.match(installer, /sorted\(set\(closing_braces\), reverse=True\)/);
+});
+
+test('nginx installer updates both HTTP and TLS DoctaRx server blocks', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'doctarx-nginx-'));
+  const config = path.join(root, 'doctarx.conf');
+  const installer = path.join(__dirname, '../../.github/scripts/install_nursing_nginx.py');
+  fs.writeFileSync(config, `
+server {
+  listen 80;
+  server_name doctarx.com www.doctarx.com;
+  location / { proxy_pass http://127.0.0.1:3001; }
+}
+server {
+  listen 443 ssl;
+  server_name doctarx.com www.doctarx.com;
+  ssl_certificate /tmp/fullchain.pem;
+  location / { proxy_pass http://127.0.0.1:3001; }
+}
+`);
+
+  try {
+    const python = process.platform === 'win32' ? 'python' : 'python3';
+    const result = spawnSync(python, [installer], {
+      encoding: 'utf8',
+      env: { ...process.env, NGINX_ROOT: root },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const installed = fs.readFileSync(config, 'utf8');
+    assert.equal((installed.match(/# BEGIN DOCTARX NURSING EDUCATION/g) || []).length, 2);
+    assert.equal((installed.match(/location = \/nursing-education/g) || []).length, 4);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

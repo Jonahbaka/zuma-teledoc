@@ -123,7 +123,7 @@ def main() -> None:
         raise SystemExit("No nginx configuration files were found")
 
     cleaned: dict[Path, str] = {}
-    candidates: list[tuple[int, Path, int]] = []
+    targets: dict[Path, list[int]] = {}
     for path in files:
         original = path.read_text(encoding="utf-8")
         content = MARKED_BLOCK.sub("\n", original)
@@ -132,31 +132,27 @@ def main() -> None:
             block = content[start : end + 1]
             if not re.search(r"\bserver_name\b[^;]*\b(?:www\.)?doctarx\.com\b", block):
                 continue
-            score = 0
-            if re.search(r"\blisten\b[^;]*\b443\b", block):
-                score += 100
-            if "ssl_certificate" in block:
-                score += 50
-            if "doctarx" in path.name.lower():
-                score += 10
-            candidates.append((score, path, end))
+            targets.setdefault(path, []).append(end)
 
-    if not candidates:
+    if not targets:
         raise SystemExit("Could not locate an active nginx server block for doctarx.com")
 
-    _, target, closing_brace = max(candidates, key=lambda item: item[0])
-    cleaned[target] = (
-        cleaned[target][:closing_brace].rstrip()
-        + "\n\n"
-        + LOCATIONS
-        + cleaned[target][closing_brace:]
-    )
+    for target, closing_braces in targets.items():
+        content = cleaned[target]
+        for closing_brace in sorted(set(closing_braces), reverse=True):
+            content = (
+                content[:closing_brace].rstrip()
+                + "\n\n"
+                + LOCATIONS
+                + content[closing_brace:]
+            )
+        cleaned[target] = content
 
     for path, content in cleaned.items():
         if content != path.read_text(encoding="utf-8"):
             write_preserving_mode(path, content)
 
-    print(target)
+    print(", ".join(str(path) for path in sorted(targets)))
 
 
 if __name__ == "__main__":
