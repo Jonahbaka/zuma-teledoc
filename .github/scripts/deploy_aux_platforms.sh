@@ -445,10 +445,15 @@ if [ "$NURSING_CODE" != "200" ]; then
   exit 1
 fi
 
-NESTORA_LOCAL_CODE="$(curl -sS -o /tmp/nestora-public.json -w '%{http_code}' \
+NESTORA_LOCAL_CODE="$(curl -k -L -sS -o /tmp/nestora-public.json -w '%{http_code}' \
+  --resolve nestora.doctarx.com:443:127.0.0.1 \
   -H 'Host: nestora.doctarx.com' \
   'http://127.0.0.1/api/health?deep=1' || true)"
-test "$NESTORA_LOCAL_CODE" = "200"
+if [ "$NESTORA_LOCAL_CODE" != 200 ]; then
+  NESTORA_RESPONSE="$(head -c 500 /tmp/nestora-public.json 2>/dev/null || true)"
+  log "Nestora nginx route returned HTTP $NESTORA_LOCAL_CODE (response=${NESTORA_RESPONSE:-empty})"
+  exit 1
+fi
 
 DNS_READY=false
 for attempt in $(seq 1 20); do

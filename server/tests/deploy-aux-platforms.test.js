@@ -120,6 +120,7 @@ test('auxiliary deployment probes the Nestora database before activation', () =>
   assert.match(script, /PILOT_PUBLIC_KEY=.*nursing-pilot-recipient\.pub/);
   assert.match(script, /Nursing Education deployment route/);
   assert.match(script, /for attempt in \$\(seq 1 15\)/);
+  assert.match(script, /curl -k -L -sS -o \/tmp\/nestora-public\.json/);
 });
 
 test('nginx installer applies Nursing routes to every DoctaRx server block', () => {
