@@ -160,6 +160,7 @@ jobs:
           INSTANCE_ID: ${{ steps.host.outputs.instance_id }}
           PUBLIC_IP: ${{ steps.host.outputs.public_ip }}
           AVAILABILITY_ZONE: ${{ steps.host.outputs.availability_zone }}
+          EC2_SSH_KEY_RAW: ${{ secrets.EC2_SSH_KEY }}
         run: |
           set -Eeuo pipefail
 
@@ -243,14 +244,38 @@ jobs:
               --ssh-public-key file:///tmp/doctarx_aux_key.pub >/dev/null
           }
 
-          send_ephemeral_key
+          USE_INSTANCE_CONNECT=true
+          if send_ephemeral_key; then
+            echo 'Using EC2 Instance Connect with an ephemeral SSH key.'
+          else
+            USE_INSTANCE_CONNECT=false
+            rm -f /tmp/doctarx_aux_key /tmp/doctarx_aux_key.pub
+            if [ -z "${EC2_SSH_KEY_RAW:-}" ]; then
+              echo "::error::EC2 Instance Connect is not authorized and EC2_SSH_KEY is not configured."
+              exit 1
+            fi
+            if printf '%s' "$EC2_SSH_KEY_RAW" | grep -q -- '-----BEGIN .*PRIVATE KEY-----'; then
+              printf '%s\n' "$EC2_SSH_KEY_RAW" | sed 's/\r$//' > /tmp/doctarx_aux_key
+            elif printf '%s' "$EC2_SSH_KEY_RAW" | tr -d ' \t\n\r' | base64 -d > /tmp/doctarx_aux_key 2>/tmp/aux-key-decode.err; then
+              true
+            else
+              echo "::error::EC2_SSH_KEY is neither PEM nor base64-encoded PEM."
+              exit 1
+            fi
+            chmod 600 /tmp/doctarx_aux_key
+            unset EC2_SSH_KEY_RAW
+            echo 'Using the documented EC2 SSH recovery-key fallback.'
+          fi
+
           scp "${SSH_OPTIONS[@]}" \
             .github/scripts/deploy_aux_platforms.sh \
             .github/scripts/install_nursing_nginx.py \
             .github/deploy/nursing-pilot-recipient.pub \
             "$EC2_OS_USER@$PUBLIC_IP:/tmp/"
 
-          send_ephemeral_key
+          if [ "$USE_INSTANCE_CONNECT" = true ]; then
+            send_ephemeral_key
+          fi
           ssh "${SSH_OPTIONS[@]}" "$EC2_OS_USER@$PUBLIC_IP" \
             "NESTORA_SHA='$NESTORA_SHA' NURSING_SHA='$NURSING_SHA' PUBLIC_IP='$PUBLIC_IP' bash /tmp/deploy_aux_platforms.sh"
 
