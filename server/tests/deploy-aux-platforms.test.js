@@ -114,4 +114,5 @@ test('auxiliary deployment probes the Nestora database before activation', () =>
   assert.match(script, /Verifying the Nestora runtime database connection/);
   assert.match(script, /await query\('SELECT 1'\)/);
   assert.match(script, /health check failed: \$url \(HTTP/);
+  assert.match(script, /python3 "\$SCRIPT_DIR\/install_nursing_nginx\.py"/);
 });

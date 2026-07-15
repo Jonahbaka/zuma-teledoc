@@ -5,6 +5,7 @@ NESTORA_SHA="${NESTORA_SHA:?NESTORA_SHA is required}"
 NURSING_SHA="${NURSING_SHA:?NURSING_SHA is required}"
 PUBLIC_IP="${PUBLIC_IP:?PUBLIC_IP is required}"
 PILOT_PUBLIC_KEY="${PILOT_PUBLIC_KEY:-/tmp/nursing-pilot-recipient.pub}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 APPS_ROOT="/home/ec2-user/apps"
 CONFIG_ROOT="/home/ec2-user/.config/doctarx-aux"
@@ -412,7 +413,7 @@ NGINX
   sudo install -o root -g root -m 644 /tmp/nestora.conf /etc/nginx/conf.d/nestora.conf
 fi
 
-sudo python3 /tmp/install_nursing_nginx.py
+sudo python3 "$SCRIPT_DIR/install_nursing_nginx.py"
 if ! sudo nginx -t; then
   log "nginx validation failed; restoring the pre-deployment configuration"
   sudo rm -f /etc/nginx/conf.d/nestora.conf
