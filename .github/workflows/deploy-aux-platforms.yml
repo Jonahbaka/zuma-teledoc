@@ -211,7 +211,7 @@ jobs:
           fi
           curl -fsS --max-time 30 "https://doctarx.com$ASSET" -o /dev/null
 
-          curl -fsS --max-time 30 \
+          curl -fsSL --max-time 30 \
             --resolve "nestora.doctarx.com:80:$DOCTARX_PUBLIC_IP" \
             'http://nestora.doctarx.com/api/health?deep=1' \
             -o /tmp/nestora-origin-health.json

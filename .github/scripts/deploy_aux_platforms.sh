@@ -4,8 +4,8 @@ set -Eeuo pipefail
 NESTORA_SHA="${NESTORA_SHA:?NESTORA_SHA is required}"
 NURSING_SHA="${NURSING_SHA:?NURSING_SHA is required}"
 PUBLIC_IP="${PUBLIC_IP:?PUBLIC_IP is required}"
-PILOT_PUBLIC_KEY="${PILOT_PUBLIC_KEY:-/tmp/nursing-pilot-recipient.pub}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PILOT_PUBLIC_KEY="${PILOT_PUBLIC_KEY:-$SCRIPT_DIR/../deploy/nursing-pilot-recipient.pub}"
 
 APPS_ROOT="/home/ec2-user/apps"
 CONFIG_ROOT="/home/ec2-user/.config/doctarx-aux"
