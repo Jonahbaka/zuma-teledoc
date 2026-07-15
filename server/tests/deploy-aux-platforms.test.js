@@ -87,3 +87,18 @@ test('auxiliary seed overrides the parent DoctaRx database environment', () => {
   assert.match(seedBlock, /source "\$NURSING_ENV"/);
   assert.match(seedBlock, /NURSING_TEST_ACCOUNT_PASSWORD=.*npm run seed/);
 });
+
+test('auxiliary PM2 processes inherit their isolated runtime environments', () => {
+  const script = fs.readFileSync(
+    path.join(__dirname, '../../.github/scripts/deploy_aux_platforms.sh'),
+    'utf8'
+  );
+
+  assert.match(script, /start_or_reload_with_env\(\) \(/);
+  assert.match(script, /source "\$env_file"/);
+  assert.match(script, /start_or_reload_with_env "\$NESTORA_ENV" nestora/);
+  assert.match(
+    script,
+    /start_or_reload_with_env "\$NURSING_ENV" doctarx-nursing-education/
+  );
+});

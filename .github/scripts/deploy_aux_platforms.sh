@@ -78,6 +78,16 @@ wait_for_url() {
   return 1
 }
 
+start_or_reload_with_env() (
+  local env_file="$1"
+  local app_name="$2"
+
+  set -a
+  source "$env_file"
+  set +a
+  pm2 startOrReload "$ECOSYSTEM_FILE" --env production --only "$app_name" --update-env
+)
+
 prepare_release() {
   local name="$1"
   local repository="$2"
@@ -325,30 +335,30 @@ EOF
 OLD_NESTORA="$(readlink -f "$NESTORA_ROOT/current" 2>/dev/null || true)"
 log "Activating Nestora $NESTORA_SHA"
 atomic_link "$NESTORA_RELEASE" "$NESTORA_ROOT/current"
-if ! pm2 startOrReload "$ECOSYSTEM_FILE" --env production --only nestora --update-env; then
+if ! start_or_reload_with_env "$NESTORA_ENV" nestora; then
   restore_link "$OLD_NESTORA" "$NESTORA_ROOT/current"
-  [ -n "$OLD_NESTORA" ] && pm2 startOrReload "$ECOSYSTEM_FILE" --env production --only nestora --update-env || true
+  [ -n "$OLD_NESTORA" ] && start_or_reload_with_env "$NESTORA_ENV" nestora || true
   exit 1
 fi
 if ! wait_for_url Nestora 'http://127.0.0.1:3003/api/health?deep=1' '"status":"ok"'; then
   pm2 logs nestora --lines 80 --nostream || true
   restore_link "$OLD_NESTORA" "$NESTORA_ROOT/current"
-  [ -n "$OLD_NESTORA" ] && pm2 startOrReload "$ECOSYSTEM_FILE" --env production --only nestora --update-env || true
+  [ -n "$OLD_NESTORA" ] && start_or_reload_with_env "$NESTORA_ENV" nestora || true
   exit 1
 fi
 
 OLD_NURSING="$(readlink -f "$NURSING_ROOT/current" 2>/dev/null || true)"
 log "Activating Nursing Education $NURSING_SHA"
 atomic_link "$NURSING_RELEASE" "$NURSING_ROOT/current"
-if ! pm2 startOrReload "$ECOSYSTEM_FILE" --env production --only doctarx-nursing-education --update-env; then
+if ! start_or_reload_with_env "$NURSING_ENV" doctarx-nursing-education; then
   restore_link "$OLD_NURSING" "$NURSING_ROOT/current"
-  [ -n "$OLD_NURSING" ] && pm2 startOrReload "$ECOSYSTEM_FILE" --env production --only doctarx-nursing-education --update-env || true
+  [ -n "$OLD_NURSING" ] && start_or_reload_with_env "$NURSING_ENV" doctarx-nursing-education || true
   exit 1
 fi
 if ! wait_for_url 'Nursing Education' 'http://127.0.0.1:3004/ng/nursing' '<!DOCTYPE html'; then
   pm2 logs doctarx-nursing-education --lines 80 --nostream || true
   restore_link "$OLD_NURSING" "$NURSING_ROOT/current"
-  [ -n "$OLD_NURSING" ] && pm2 startOrReload "$ECOSYSTEM_FILE" --env production --only doctarx-nursing-education --update-env || true
+  [ -n "$OLD_NURSING" ] && start_or_reload_with_env "$NURSING_ENV" doctarx-nursing-education || true
   exit 1
 fi
 pm2 save
