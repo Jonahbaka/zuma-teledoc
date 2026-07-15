@@ -116,12 +116,18 @@ prepare_release() {
   if [ "$name" = "Nestora" ]; then
     (
       cd "$staging"
+      set -a
+      source "$env_file"
+      set +a
       nice -n 10 env NODE_OPTIONS=--max-old-space-size=2048 npm run build
       npm run migrate
     )
   else
     (
       cd "$staging"
+      set -a
+      source "$env_file"
+      set +a
       nice -n 10 env NODE_OPTIONS=--max-old-space-size=2048 npm run build
       npm run test:bundle
       npm run migrate

@@ -50,12 +50,31 @@ jobs:
         run: |
           set -euo pipefail
           EXPECTED_COMMIT="${GITHUB_SHA:0:12}"
-          for attempt in $(seq 1 60); do
-            HEALTH="$(curl -fsS --max-time 30 https://doctarx.com/api/health || true)"
-            LIVE_COMMIT="$(printf '%s' "$HEALTH" | jq -r '.gitCommit // empty')"
-            echo "Release-channel commit: ${LIVE_COMMIT:-pending}; expected: $EXPECTED_COMMIT"
-            if [ "$LIVE_COMMIT" = "$EXPECTED_COMMIT" ]; then
+          for attempt in $(seq 1 120); do
+            OIDC_RESPONSE="$(curl -fsS \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doctarx-deploy")"
+            OIDC_TOKEN="$(printf '%s' "$OIDC_RESPONSE" | jq -r '.value // empty')"
+            test -n "$OIDC_TOKEN"
+            CODE="$(curl -sS -o /tmp/doctarx-deploy-status.json -w '%{http_code}' \
+              -H "Authorization: Bearer $OIDC_TOKEN" \
+              'https://doctarx.com/api/deploy/log?lines=20' \
+              --max-time 30 || true)"
+            if [ "$CODE" = 200 ]; then
+              DEPLOY_STATUS="$(jq -r '.status // "unknown"' /tmp/doctarx-deploy-status.json)"
+              LIVE_COMMIT="$(jq -r '.commit // empty' /tmp/doctarx-deploy-status.json)"
+              echo "Production deploy: $DEPLOY_STATUS commit=${LIVE_COMMIT:-pending}; expected=$EXPECTED_COMMIT"
+            else
+              DEPLOY_STATUS=unavailable
+              LIVE_COMMIT=''
+              echo "Production deploy status endpoint returned HTTP $CODE; waiting"
+            fi
+            if [ "$DEPLOY_STATUS" = success ] && [[ "$LIVE_COMMIT" == "$EXPECTED_COMMIT"* ]]; then
               exit 0
+            fi
+            if [ "$DEPLOY_STATUS" = failed ] && [[ "$LIVE_COMMIT" == "$EXPECTED_COMMIT"* ]]; then
+              echo "::error::The prerequisite DoctaRx production deployment failed."
+              exit 1
             fi
             sleep 10
           done
