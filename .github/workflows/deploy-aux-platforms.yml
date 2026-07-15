@@ -14,6 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   id-token: write
 
@@ -47,38 +48,46 @@ jobs:
           PY
 
       - name: Wait for this release channel to be live
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           EXPECTED_COMMIT="${GITHUB_SHA:0:12}"
           for attempt in $(seq 1 120); do
-            OIDC_RESPONSE="$(curl -fsS \
-              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doctarx-deploy")"
-            OIDC_TOKEN="$(printf '%s' "$OIDC_RESPONSE" | jq -r '.value // empty')"
-            test -n "$OIDC_TOKEN"
-            CODE="$(curl -sS -o /tmp/doctarx-deploy-status.json -w '%{http_code}' \
-              -H "Authorization: Bearer $OIDC_TOKEN" \
-              'https://doctarx.com/api/deploy/log?lines=20' \
-              --max-time 30 || true)"
-            if [ "$CODE" = 200 ]; then
-              DEPLOY_STATUS="$(jq -r '.status // "unknown"' /tmp/doctarx-deploy-status.json)"
-              LIVE_COMMIT="$(jq -r '.commit // empty' /tmp/doctarx-deploy-status.json)"
-              echo "Production deploy: $DEPLOY_STATUS commit=${LIVE_COMMIT:-pending}; expected=$EXPECTED_COMMIT"
-            else
-              DEPLOY_STATUS=unavailable
-              LIVE_COMMIT=''
-              echo "Production deploy status endpoint returned HTTP $CODE; waiting"
+            curl -fsS --max-time 30 \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?event=push&branch=main&per_page=20" \
+              -o /tmp/doctarx-deploy-runs.json
+            DEPLOY_STATUS="$(jq -r --arg sha "$GITHUB_SHA" \
+              '[.workflow_runs[] | select(.head_sha == $sha)][0].status // "pending"' \
+              /tmp/doctarx-deploy-runs.json)"
+            DEPLOY_CONCLUSION="$(jq -r --arg sha "$GITHUB_SHA" \
+              '[.workflow_runs[] | select(.head_sha == $sha)][0].conclusion // "pending"' \
+              /tmp/doctarx-deploy-runs.json)"
+            echo "Deploy to EC2: $DEPLOY_STATUS/$DEPLOY_CONCLUSION; expected commit=$EXPECTED_COMMIT"
+
+            if [ "$DEPLOY_STATUS" = completed ] && [ "$DEPLOY_CONCLUSION" = success ]; then
+              curl -fsS --max-time 30 https://doctarx.com/api/health -o /tmp/doctarx-release-health.json
+              LIVE_STATUS="$(jq -r '.status // empty' /tmp/doctarx-release-health.json)"
+              LIVE_READY="$(jq -r '.nextReady // false' /tmp/doctarx-release-health.json)"
+              LIVE_COMMIT="$(jq -r '.gitCommit // empty' /tmp/doctarx-release-health.json)"
+              echo "Production health: status=$LIVE_STATUS ready=$LIVE_READY commit=${LIVE_COMMIT:-missing}"
+              if [ "$LIVE_STATUS" = healthy ] && [ "$LIVE_READY" = true ] && [ "$LIVE_COMMIT" = "$EXPECTED_COMMIT" ]; then
+                exit 0
+              fi
             fi
-            if [ -n "$LIVE_COMMIT" ] && [ "$DEPLOY_STATUS" = success ] && [[ "$EXPECTED_COMMIT" == "$LIVE_COMMIT"* ]]; then
-              exit 0
-            fi
-            if [ -n "$LIVE_COMMIT" ] && [ "$DEPLOY_STATUS" = failed ] && [[ "$EXPECTED_COMMIT" == "$LIVE_COMMIT"* ]]; then
-              echo "::error::The prerequisite DoctaRx production deployment failed."
-              exit 1
-            fi
+
+            case "$DEPLOY_CONCLUSION" in
+              failure|cancelled|timed_out|action_required)
+                echo "::error::The prerequisite Deploy to EC2 workflow ended with $DEPLOY_CONCLUSION."
+                exit 1
+                ;;
+            esac
             sleep 10
           done
-          echo "::error::The authenticated auxiliary release channel did not become live."
+          echo "::error::The Deploy to EC2 workflow did not become healthy on the expected commit."
           exit 1
 
       - name: Configure Nestora DNS when Cloudflare credentials are available

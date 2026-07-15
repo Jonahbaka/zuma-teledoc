@@ -60,15 +60,14 @@ test('auxiliary deploy status follows PID liveness and terminal markers', () => 
   assert.equal(failure.complete, true);
 });
 
-test('auxiliary workflow accepts the deploy log short SHA only as a prefix', () => {
+test('auxiliary workflow waits for the documented EC2 release and exact live commit', () => {
   const workflow = fs.readFileSync(
     path.join(__dirname, '../../.github/workflows/deploy-aux-platforms.yml'),
     'utf8'
   );
 
-  assert.match(
-    workflow,
-    /\[ -n "\$LIVE_COMMIT" \].*\[\[ "\$EXPECTED_COMMIT" == "\$LIVE_COMMIT"\* \]\]/
-  );
-  assert.doesNotMatch(workflow, /\[\[ "\$LIVE_COMMIT" == "\$EXPECTED_COMMIT"\* \]\]/);
+  assert.match(workflow, /actions\/workflows\/deploy\.yml\/runs/);
+  assert.match(workflow, /select\(\.head_sha == \$sha\)/);
+  assert.match(workflow, /\[ "\$DEPLOY_CONCLUSION" = success \]/);
+  assert.match(workflow, /\[ "\$LIVE_COMMIT" = "\$EXPECTED_COMMIT" \]/);
 });
