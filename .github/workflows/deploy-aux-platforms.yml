@@ -1,0 +1,182 @@
+name: Deploy Nestora and Nursing Education
+
+on:
+  push:
+    branches:
+      - codex/aux-platform-release-final
+    paths:
+      - .github/workflows/deploy-aux-platforms.yml
+      - .github/scripts/deploy_aux_platforms.sh
+      - .github/scripts/install_nursing_nginx.py
+      - .github/deploy/nursing-pilot-recipient.pub
+      - server/routes/deploy-aux-platforms.js
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: doctarx-auxiliary-platform-deploy
+  cancel-in-progress: false
+
+env:
+  NESTORA_SHA: c34867729d8a4594bd3d3de05060ea7fe8a9cf27
+  NURSING_SHA: 987bed49226e4c59c33f04cdd0986a730d931e1e
+  DOCTARX_PUBLIC_IP: 18.217.97.145
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout deployment tooling
+        uses: actions/checkout@v4
+
+      - name: Confirm the existing DoctaRx service is healthy
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 30 https://doctarx.com/api/health | tee /tmp/doctarx-health-before.json
+          python3 - <<'PY'
+          import json
+
+          data = json.load(open('/tmp/doctarx-health-before.json', encoding='utf-8'))
+          if data.get('status') not in {'healthy', 'ok'}:
+              raise SystemExit(f"Unexpected DoctaRx health response: {data}")
+          PY
+
+      - name: Configure Nestora DNS when Cloudflare credentials are available
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::notice::Cloudflare credentials are not configured; Nestora will be verified directly against the EC2 origin."
+            exit 0
+          fi
+
+          API=https://api.cloudflare.com/client/v4
+          HEADER="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          ZONE_ID="${CLOUDFLARE_ZONE_ID:-}"
+          if [ -z "$ZONE_ID" ]; then
+            ZONE_ID="$(curl -fsS -H "$HEADER" "$API/zones?name=doctarx.com&status=active" | jq -r '.result[0].id // empty')"
+          fi
+          if [ -z "$ZONE_ID" ]; then
+            echo "::warning::The Cloudflare zone for doctarx.com could not be resolved."
+            exit 0
+          fi
+
+          RECORD_ID="$(curl -fsS -H "$HEADER" \
+            "$API/zones/$ZONE_ID/dns_records?type=A&name=nestora.doctarx.com" | jq -r '.result[0].id // empty')"
+          PAYLOAD="$(jq -nc --arg ip "$DOCTARX_PUBLIC_IP" \
+            '{type:"A",name:"nestora",content:$ip,ttl:120,proxied:false}')"
+          if [ -n "$RECORD_ID" ]; then
+            RESPONSE="$(curl -fsS -X PUT -H "$HEADER" -H 'Content-Type: application/json' \
+              --data "$PAYLOAD" "$API/zones/$ZONE_ID/dns_records/$RECORD_ID")"
+          else
+            RESPONSE="$(curl -fsS -X POST -H "$HEADER" -H 'Content-Type: application/json' \
+              --data "$PAYLOAD" "$API/zones/$ZONE_ID/dns_records")"
+          fi
+          if [ "$(printf '%s' "$RESPONSE" | jq -r '.success')" != true ]; then
+            echo "::warning::Cloudflare did not accept the Nestora DNS update."
+            exit 0
+          fi
+          echo "Nestora DNS now points to $DOCTARX_PUBLIC_IP"
+
+      - name: Start the fixed auxiliary release
+        env:
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_SECRET:-}" ]; then
+            echo "::error::DEPLOY_SECRET is required for the fixed auxiliary deployment route."
+            exit 1
+          fi
+          PAYLOAD="$(jq -nc \
+            --arg nestoraSha "$NESTORA_SHA" \
+            --arg nursingSha "$NURSING_SHA" \
+            '{nestoraSha:$nestoraSha,nursingSha:$nursingSha}')"
+          CODE="$(curl -sS -o /tmp/aux-start.json -w '%{http_code}' \
+            -X POST https://doctarx.com/api/deploy-aux-platforms \
+            -H "x-deploy-token: $DEPLOY_SECRET" \
+            -H 'Content-Type: application/json' \
+            --data "$PAYLOAD" \
+            --max-time 30)"
+          cat /tmp/aux-start.json
+          if [ "$CODE" != 202 ] && [ "$CODE" != 409 ]; then
+            echo "::error::Auxiliary deployment endpoint returned HTTP $CODE."
+            exit 1
+          fi
+
+      - name: Wait for both versioned releases
+        env:
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+        run: |
+          set -euo pipefail
+          DEADLINE=$(( $(date +%s) + 3600 ))
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            curl -fsS --max-time 30 \
+              -H "x-deploy-token: $DEPLOY_SECRET" \
+              https://doctarx.com/api/deploy-aux-platforms/status \
+              -o /tmp/aux-status.json
+            STATUS="$(jq -r '.status // "unknown"' /tmp/aux-status.json)"
+            echo "Auxiliary deployment status: $STATUS"
+            if [ "$STATUS" = success ]; then
+              break
+            fi
+            if [ "$STATUS" = failed ]; then
+              jq -r '.lastLines[-120:][]?' /tmp/aux-status.json
+              echo "::error::Auxiliary deployment failed on the EC2 host."
+              exit 1
+            fi
+            sleep 15
+          done
+
+          if [ "$(jq -r '.status // "unknown"' /tmp/aux-status.json)" != success ]; then
+            jq -r '.lastLines[-120:][]?' /tmp/aux-status.json
+            echo "::error::Auxiliary deployment did not complete within one hour."
+            exit 1
+          fi
+          jq -r '.lastLines[-80:][]?' /tmp/aux-status.json
+          CIPHERTEXT="$(jq -r '.lastLines[]? | select(startswith("NURSING_PILOT_CREDENTIAL_CIPHERTEXT=")) | ltrimstr("NURSING_PILOT_CREDENTIAL_CIPHERTEXT=")' /tmp/aux-status.json | tail -n 1)"
+          if [ -n "$CIPHERTEXT" ]; then
+            echo "NURSING_PILOT_CREDENTIAL_CIPHERTEXT=$CIPHERTEXT"
+          fi
+
+      - name: Verify the public platforms and existing DoctaRx service
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 30 https://doctarx.com/api/health > /tmp/doctarx-health-after.json
+          grep -q '"status":"healthy"' /tmp/doctarx-health-after.json
+
+          NURSING_CODE="$(curl -L -sS -o /tmp/nursing-home.html -w '%{http_code}' \
+            --max-time 30 https://doctarx.com/nursing-education)"
+          test "$NURSING_CODE" = 200
+          ASSET="$(grep -oE '/nursing-education/_next/static/[^"[:space:]]+' /tmp/nursing-home.html | head -n 1 || true)"
+          if [ -z "$ASSET" ]; then
+            echo "::error::The Nursing page did not reference its isolated Next.js asset prefix."
+            exit 1
+          fi
+          curl -fsS --max-time 30 "https://doctarx.com$ASSET" -o /dev/null
+
+          curl -fsS --max-time 30 \
+            --resolve "nestora.doctarx.com:80:$DOCTARX_PUBLIC_IP" \
+            'http://nestora.doctarx.com/api/health?deep=1' \
+            -o /tmp/nestora-origin-health.json
+          grep -q '"status":"ok"' /tmp/nestora-origin-health.json
+
+          NESTORA_STATUS=pending-dns
+          if getent ahostsv4 nestora.doctarx.com >/dev/null 2>&1 \
+            && curl -fsS --max-time 30 'https://nestora.doctarx.com/api/health?deep=1' > /tmp/nestora-public-health.json; then
+            grep -q '"status":"ok"' /tmp/nestora-public-health.json
+            NESTORA_STATUS=healthy
+          fi
+
+          {
+            echo '## Auxiliary platform deployment'
+            echo
+            echo '- Existing DoctaRx service: healthy'
+            echo '- Nursing Education: https://doctarx.com/nursing-education'
+            echo "- Nestora EC2 origin: healthy"
+            echo "- Nestora public DNS/TLS: $NESTORA_STATUS at https://nestora.doctarx.com"
+          } >> "$GITHUB_STEP_SUMMARY"
