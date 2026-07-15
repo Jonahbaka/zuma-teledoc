@@ -1,4 +1,5 @@
 name: Deploy Nestora and Nursing Education
+run-name: Release Nestora and Nursing at ${{ github.sha }}
 
 on:
   push:
