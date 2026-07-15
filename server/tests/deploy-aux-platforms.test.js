@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 
 const originalSecret = process.env.DEPLOY_SECRET;
@@ -56,4 +58,17 @@ test('auxiliary deploy status follows PID liveness and terminal markers', () => 
   const failure = parseStatus('[aux-api:pid] 4321\n[aux-deploy:result] failure exit=1', () => false);
   assert.equal(failure.status, 'failed');
   assert.equal(failure.complete, true);
+});
+
+test('auxiliary workflow accepts the deploy log short SHA only as a prefix', () => {
+  const workflow = fs.readFileSync(
+    path.join(__dirname, '../../.github/workflows/deploy-aux-platforms.yml'),
+    'utf8'
+  );
+
+  assert.match(
+    workflow,
+    /\[ -n "\$LIVE_COMMIT" \].*\[\[ "\$EXPECTED_COMMIT" == "\$LIVE_COMMIT"\* \]\]/
+  );
+  assert.doesNotMatch(workflow, /\[\[ "\$LIVE_COMMIT" == "\$EXPECTED_COMMIT"\* \]\]/);
 });

@@ -69,10 +69,10 @@ jobs:
               LIVE_COMMIT=''
               echo "Production deploy status endpoint returned HTTP $CODE; waiting"
             fi
-            if [ "$DEPLOY_STATUS" = success ] && [[ "$LIVE_COMMIT" == "$EXPECTED_COMMIT"* ]]; then
+            if [ -n "$LIVE_COMMIT" ] && [ "$DEPLOY_STATUS" = success ] && [[ "$EXPECTED_COMMIT" == "$LIVE_COMMIT"* ]]; then
               exit 0
             fi
-            if [ "$DEPLOY_STATUS" = failed ] && [[ "$LIVE_COMMIT" == "$EXPECTED_COMMIT"* ]]; then
+            if [ -n "$LIVE_COMMIT" ] && [ "$DEPLOY_STATUS" = failed ] && [[ "$EXPECTED_COMMIT" == "$LIVE_COMMIT"* ]]; then
               echo "::error::The prerequisite DoctaRx production deployment failed."
               exit 1
             fi
