@@ -163,10 +163,14 @@ jobs:
               "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doctarx-deploy")"
             OIDC_TOKEN="$(printf '%s' "$OIDC_RESPONSE" | jq -r '.value // empty')"
             test -n "$OIDC_TOKEN"
-            curl -fsS --max-time 30 \
+            CODE="$(curl -sS -o /tmp/aux-status.json -w '%{http_code}' --max-time 30 \
               -H "Authorization: Bearer $OIDC_TOKEN" \
-              https://doctarx.com/api/deploy-aux-platforms/status \
-              -o /tmp/aux-status.json
+              https://doctarx.com/api/deploy-aux-platforms/status || true)"
+            if [ "$CODE" != 200 ]; then
+              echo "Auxiliary deployment status endpoint returned HTTP ${CODE:-unavailable}; retrying"
+              sleep 15
+              continue
+            fi
             STATUS="$(jq -r '.status // "unknown"' /tmp/aux-status.json)"
             echo "Auxiliary deployment status: $STATUS"
             if [ "$STATUS" = success ]; then

@@ -70,6 +70,8 @@ test('auxiliary workflow waits for the documented EC2 release and exact live com
   assert.match(workflow, /select\(\.head_sha == \$sha\)/);
   assert.match(workflow, /\[ "\$DEPLOY_CONCLUSION" = success \]/);
   assert.match(workflow, /\[ "\$LIVE_COMMIT" = "\$EXPECTED_COMMIT" \]/);
+  assert.match(workflow, /status endpoint returned HTTP \$\{CODE:-unavailable\}; retrying/);
+  assert.match(workflow, /if \[ "\$CODE" != 200 \]; then/);
 });
 
 test('auxiliary seed overrides the parent DoctaRx database environment', () => {
