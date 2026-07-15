@@ -1,0 +1,39 @@
+name: Temporary DoctaRx SSM Diagnostic
+
+on:
+  push:
+    branches:
+      - codex/deploy-nestora-nursing
+    paths:
+      - .github/workflows/temporary-ssm-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Configure documented AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-2
+
+      - name: Inspect SSM reachability
+        env:
+          INSTANCE_ID: i-08008f4dcf1c93ccf
+        run: |
+          set -euo pipefail
+          PROFILE="$(aws ec2 describe-instances \
+            --instance-ids "$INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].IamInstanceProfile.Arn' \
+            --output text)"
+          echo "Instance profile: ${PROFILE:-None}"
+          aws ssm describe-instance-information \
+            --filters "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --query 'InstanceInformationList[].{InstanceId:InstanceId,PingStatus:PingStatus,AgentVersion:AgentVersion,PlatformName:PlatformName}' \
+            --output table
