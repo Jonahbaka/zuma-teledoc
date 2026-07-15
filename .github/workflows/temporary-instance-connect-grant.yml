@@ -1,0 +1,63 @@
+name: Temporary EC2 Instance Connect Grant
+
+on:
+  push:
+    branches:
+      - codex/deploy-nestora-nursing
+    paths:
+      - .github/workflows/temporary-instance-connect-grant.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: doctarx-temporary-instance-connect-grant
+  cancel-in-progress: true
+
+jobs:
+  grant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Configure documented AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-2
+
+      - name: Grant instance-scoped access for ten minutes
+        env:
+          INSTANCE_ID: i-08008f4dcf1c93ccf
+          IAM_USER: DoctarxIam
+          POLICY_NAME: CodexTemporaryInstanceConnect
+        run: |
+          set -Eeuo pipefail
+
+          remove_grant() {
+            set +e
+            aws iam delete-user-policy \
+              --user-name "$IAM_USER" \
+              --policy-name "$POLICY_NAME" \
+              >/dev/null 2>&1 || true
+            echo 'Temporary EC2 Instance Connect policy was removed.'
+          }
+          trap remove_grant EXIT
+
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          CALLER_ARN="$(aws sts get-caller-identity --query Arn --output text)"
+          if [ "$CALLER_ARN" != "arn:aws:iam::$ACCOUNT_ID:user/$IAM_USER" ]; then
+            echo "::error::The AWS caller is not the documented DoctaRx IAM user."
+            exit 1
+          fi
+
+          POLICY_DOCUMENT="$(jq -nc \
+            --arg resource "arn:aws:ec2:us-east-2:$ACCOUNT_ID:instance/$INSTANCE_ID" \
+            '{Version:"2012-10-17",Statement:[{Effect:"Allow",Action:"ec2-instance-connect:SendSSHPublicKey",Resource:$resource,Condition:{StringEquals:{"ec2:osuser":"ec2-user"}}}]}')"
+          aws iam put-user-policy \
+            --user-name "$IAM_USER" \
+            --policy-name "$POLICY_NAME" \
+            --policy-document "$POLICY_DOCUMENT"
+          echo 'Temporary EC2 Instance Connect policy is active.'
+          sleep 600
