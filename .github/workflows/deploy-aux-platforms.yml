@@ -1,0 +1,302 @@
+name: Deploy Nestora and Nursing Education
+
+on:
+  push:
+    branches:
+      - codex/deploy-nestora-nursing
+    paths:
+      - .github/workflows/deploy-aux-platforms.yml
+      - .github/scripts/deploy_aux_platforms.sh
+      - .github/scripts/install_nursing_nginx.py
+      - .github/deploy/nursing-pilot-recipient.pub
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: doctarx-auxiliary-platform-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-2
+  EXPECTED_AWS_ACCOUNT: '307400306477'
+  EXPECTED_PUBLIC_IP: 18.217.97.145
+  EC2_OS_USER: ec2-user
+  NESTORA_SHA: c34867729d8a4594bd3d3de05060ea7fe8a9cf27
+  NURSING_SHA: 987bed49226e4c59c33f04cdd0986a730d931e1e
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout deployment tooling
+        uses: actions/checkout@v4
+
+      - name: Confirm the existing DoctaRx service is healthy
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 30 https://doctarx.com/api/health | tee /tmp/doctarx-health-before.json
+          python3 - <<'PY'
+          import json
+
+          data = json.load(open('/tmp/doctarx-health-before.json', encoding='utf-8'))
+          if data.get('status') not in {'healthy', 'ok'}:
+              raise SystemExit(f"Unexpected DoctaRx health response: {data}")
+          PY
+
+      - name: Configure AWS credentials with GitHub OIDC
+        id: aws_oidc
+        if: ${{ vars.AWS_ROLE_ARN != '' }}
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: auxiliary-platform-deploy-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure documented AWS credential fallback
+        if: ${{ steps.aws_oidc.outcome != 'success' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS identity and locate the DoctaRx host
+        id: host
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          if [ "$ACCOUNT_ID" != "$EXPECTED_AWS_ACCOUNT" ]; then
+            echo "::error::AWS account $ACCOUNT_ID does not match the DoctaRx production account."
+            exit 1
+          fi
+
+          INSTANCE_ID="$(aws ec2 describe-instances \
+            --filters \
+              "Name=ip-address,Values=$EXPECTED_PUBLIC_IP" \
+              'Name=instance-state-name,Values=running' \
+            --query 'Reservations[0].Instances[0].InstanceId' \
+            --output text)"
+
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
+            INSTANCE_ID="$(aws ec2 describe-instances \
+              --filters \
+                'Name=tag:App,Values=DoctaRx' \
+                'Name=instance-state-name,Values=running' \
+              --query 'sort_by(Reservations[].Instances[], &LaunchTime)[-1].InstanceId' \
+              --output text)"
+          fi
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
+            echo "::error::No running EC2 instance tagged App=DoctaRx was found."
+            exit 1
+          fi
+
+          DETAILS="$(aws ec2 describe-instances \
+            --instance-ids "$INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].{Ip:PublicIpAddress,Az:Placement.AvailabilityZone}' \
+            --output json)"
+          PUBLIC_IP="$(printf '%s' "$DETAILS" | jq -r '.Ip // empty')"
+          AVAILABILITY_ZONE="$(printf '%s' "$DETAILS" | jq -r '.Az // empty')"
+          if [ -z "$PUBLIC_IP" ] || [ -z "$AVAILABILITY_ZONE" ]; then
+            echo "::error::The DoctaRx instance is missing a public IP or availability zone."
+            exit 1
+          fi
+
+          echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "public_ip=$PUBLIC_IP" >> "$GITHUB_OUTPUT"
+          echo "availability_zone=$AVAILABILITY_ZONE" >> "$GITHUB_OUTPUT"
+          echo "Using DoctaRx instance $INSTANCE_ID at $PUBLIC_IP in $AVAILABILITY_ZONE"
+
+      - name: Configure Nestora DNS when Cloudflare credentials are available
+        id: dns
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          PUBLIC_IP: ${{ steps.host.outputs.public_ip }}
+        run: |
+          set -euo pipefail
+          echo 'managed=false' >> "$GITHUB_OUTPUT"
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::notice::Cloudflare credentials are not configured; preserving DNS and checking it during host deployment."
+            exit 0
+          fi
+
+          API=https://api.cloudflare.com/client/v4
+          HEADER="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          ZONE_ID="${CLOUDFLARE_ZONE_ID:-}"
+          if [ -z "$ZONE_ID" ]; then
+            ZONE_ID="$(curl -fsS -H "$HEADER" "$API/zones?name=doctarx.com&status=active" | jq -r '.result[0].id // empty')"
+          fi
+          if [ -z "$ZONE_ID" ]; then
+            echo "::warning::The Cloudflare zone for doctarx.com could not be resolved; Nestora DNS was not changed."
+            exit 0
+          fi
+
+          RECORD_ID="$(curl -fsS -H "$HEADER" \
+            "$API/zones/$ZONE_ID/dns_records?type=A&name=nestora.doctarx.com" | jq -r '.result[0].id // empty')"
+          PAYLOAD="$(jq -nc --arg ip "$PUBLIC_IP" \
+            '{type:"A",name:"nestora",content:$ip,ttl:120,proxied:false}')"
+          if [ -n "$RECORD_ID" ]; then
+            RESPONSE="$(curl -fsS -X PUT -H "$HEADER" -H 'Content-Type: application/json' \
+              --data "$PAYLOAD" "$API/zones/$ZONE_ID/dns_records/$RECORD_ID")"
+          else
+            RESPONSE="$(curl -fsS -X POST -H "$HEADER" -H 'Content-Type: application/json' \
+              --data "$PAYLOAD" "$API/zones/$ZONE_ID/dns_records")"
+          fi
+          if [ "$(printf '%s' "$RESPONSE" | jq -r '.success')" != true ]; then
+            echo "::warning::Cloudflare did not accept the Nestora DNS update."
+            exit 0
+          fi
+          echo 'managed=true' >> "$GITHUB_OUTPUT"
+          echo "Nestora DNS now points to $PUBLIC_IP"
+
+      - name: Deploy versioned releases through EC2 Instance Connect
+        env:
+          INSTANCE_ID: ${{ steps.host.outputs.instance_id }}
+          PUBLIC_IP: ${{ steps.host.outputs.public_ip }}
+          AVAILABILITY_ZONE: ${{ steps.host.outputs.availability_zone }}
+        run: |
+          set -Eeuo pipefail
+
+          RUNNER_IP="$(curl -fsS --max-time 20 https://checkip.amazonaws.com | tr -d '[:space:]')"
+          if ! [[ "$RUNNER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Unable to determine the GitHub runner IPv4 address."
+            exit 1
+          fi
+          RUNNER_CIDR="$RUNNER_IP/32"
+          AUTHORIZED_GROUPS=/tmp/aux-authorized-security-groups.txt
+          : > "$AUTHORIZED_GROUPS"
+
+          revoke_runner_access() {
+            set +e
+            while IFS= read -r group_id; do
+              [ -n "$group_id" ] || continue
+              aws ec2 revoke-security-group-ingress \
+                --group-id "$group_id" \
+                --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$RUNNER_CIDR}]" \
+                >/dev/null 2>&1 || true
+            done < "$AUTHORIZED_GROUPS"
+            rm -f /tmp/doctarx_aux_key /tmp/doctarx_aux_key.pub
+            echo "Temporary SSH ingress was revoked."
+          }
+          trap revoke_runner_access EXIT
+
+          mapfile -t SECURITY_GROUPS < <(aws ec2 describe-instances \
+            --instance-ids "$INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].SecurityGroups[].GroupId' \
+            --output text | tr '\t' '\n')
+          if [ "${#SECURITY_GROUPS[@]}" -eq 0 ]; then
+            echo "::error::The DoctaRx instance has no attached security groups."
+            exit 1
+          fi
+
+          SSH_ALLOWED=false
+          for group_id in "${SECURITY_GROUPS[@]}"; do
+            if aws ec2 authorize-security-group-ingress \
+              --group-id "$group_id" \
+              --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$RUNNER_CIDR,Description=GitHubActionsAuxDeploy${GITHUB_RUN_ID}}]" \
+              >/tmp/aux-authorize.json 2>/tmp/aux-authorize.err; then
+              printf '%s\n' "$group_id" >> "$AUTHORIZED_GROUPS"
+              SSH_ALLOWED=true
+              break
+            elif grep -q 'InvalidPermission.Duplicate' /tmp/aux-authorize.err; then
+              SSH_ALLOWED=true
+              break
+            fi
+          done
+          if [ "$SSH_ALLOWED" != true ]; then
+            cat /tmp/aux-authorize.err
+            echo "::error::Temporary SSH ingress could not be authorized."
+            exit 1
+          fi
+
+          ssh-keygen -t rsa -b 2048 -f /tmp/doctarx_aux_key -N '' -q
+          SSH_OPTIONS=(
+            -i /tmp/doctarx_aux_key
+            -o StrictHostKeyChecking=no
+            -o UserKnownHostsFile=/dev/null
+            -o LogLevel=ERROR
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=30
+            -o ServerAliveCountMax=8
+          )
+
+          for attempt in $(seq 1 24); do
+            nc -z -w 5 "$PUBLIC_IP" 22 && break
+            if [ "$attempt" = 24 ]; then
+              echo "::error::SSH did not become reachable on the DoctaRx instance."
+              exit 1
+            fi
+            sleep 5
+          done
+
+          send_ephemeral_key() {
+            aws ec2-instance-connect send-ssh-public-key \
+              --instance-id "$INSTANCE_ID" \
+              --instance-os-user "$EC2_OS_USER" \
+              --availability-zone "$AVAILABILITY_ZONE" \
+              --ssh-public-key file:///tmp/doctarx_aux_key.pub >/dev/null
+          }
+
+          send_ephemeral_key
+          scp "${SSH_OPTIONS[@]}" \
+            .github/scripts/deploy_aux_platforms.sh \
+            .github/scripts/install_nursing_nginx.py \
+            .github/deploy/nursing-pilot-recipient.pub \
+            "$EC2_OS_USER@$PUBLIC_IP:/tmp/"
+
+          send_ephemeral_key
+          ssh "${SSH_OPTIONS[@]}" "$EC2_OS_USER@$PUBLIC_IP" \
+            "NESTORA_SHA='$NESTORA_SHA' NURSING_SHA='$NURSING_SHA' PUBLIC_IP='$PUBLIC_IP' bash /tmp/deploy_aux_platforms.sh"
+
+      - name: Verify the public platforms and existing DoctaRx service
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 20); do
+            if curl -fsS --max-time 20 https://doctarx.com/api/health > /tmp/doctarx-health-after.json; then
+              break
+            fi
+            sleep 5
+          done
+          python3 - <<'PY'
+          import json
+
+          data = json.load(open('/tmp/doctarx-health-after.json', encoding='utf-8'))
+          if data.get('status') not in {'healthy', 'ok'}:
+              raise SystemExit(f"Unexpected DoctaRx health response after deployment: {data}")
+          PY
+
+          NURSING_CODE="$(curl -L -sS -o /tmp/nursing-home.html -w '%{http_code}' \
+            --max-time 30 https://doctarx.com/nursing-education)"
+          test "$NURSING_CODE" = 200
+          ASSET="$(grep -oE '/nursing-education/_next/static/[^"[:space:]]+' /tmp/nursing-home.html | head -n 1 || true)"
+          if [ -z "$ASSET" ]; then
+            echo "::error::The Nursing page did not reference its isolated Next.js asset prefix."
+            exit 1
+          fi
+          curl -fsS --max-time 30 "https://doctarx.com$ASSET" -o /dev/null
+
+          NESTORA_STATUS=pending-dns
+          if getent ahostsv4 nestora.doctarx.com >/dev/null 2>&1; then
+            if curl -fsS --max-time 30 'https://nestora.doctarx.com/api/health?deep=1' > /tmp/nestora-health.json; then
+              grep -q '"status":"ok"' /tmp/nestora-health.json
+              NESTORA_STATUS=healthy
+            fi
+          fi
+
+          {
+            echo '## Auxiliary platform deployment'
+            echo
+            echo '- Existing DoctaRx service: healthy'
+            echo '- Nursing Education: https://doctarx.com/nursing-education'
+            echo "- Nestora: $NESTORA_STATUS at https://nestora.doctarx.com"
+            if [ "$NESTORA_STATUS" != healthy ]; then
+              echo '- Nestora is installed and healthy on EC2; its public TLS check is waiting for the Cloudflare A record.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
