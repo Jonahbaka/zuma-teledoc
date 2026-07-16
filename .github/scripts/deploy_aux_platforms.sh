@@ -6,6 +6,7 @@ NURSING_SHA="${NURSING_SHA:?NURSING_SHA is required}"
 PUBLIC_IP="${PUBLIC_IP:?PUBLIC_IP is required}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PILOT_PUBLIC_KEY="${PILOT_PUBLIC_KEY:-$SCRIPT_DIR/../deploy/nursing-pilot-recipient.pub}"
+NESTORA_DEMO_PUBLIC_KEY="${NESTORA_DEMO_PUBLIC_KEY:-$SCRIPT_DIR/../deploy/nestora-demo-recipient.pub}"
 
 APPS_ROOT="/home/ec2-user/apps"
 CONFIG_ROOT="/home/ec2-user/.config/doctarx-aux"
@@ -15,6 +16,7 @@ NESTORA_ENV="$CONFIG_ROOT/nestora.env"
 NURSING_ENV="$CONFIG_ROOT/nursing.env"
 PILOT_PASSWORD_FILE="$CONFIG_ROOT/nursing-pilot-password"
 PILOT_SEEDED_FILE="$CONFIG_ROOT/nursing-pilot-seeded"
+NESTORA_DEMO_PASSWORD_FILE="$CONFIG_ROOT/nestora-demo-password"
 ECOSYSTEM_FILE="$APPS_ROOT/ecosystem.aux.config.cjs"
 NGINX_BACKUP="/tmp/doctarx-nginx-before-aux-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
 LOG_FILE="/tmp/doctarx-aux-deploy-$(date -u +%Y%m%dT%H%M%SZ).log"
@@ -224,6 +226,11 @@ if [ ! -s "$PILOT_PASSWORD_FILE" ]; then
   chmod 600 "$PILOT_PASSWORD_FILE"
 fi
 
+if [ ! -s "$NESTORA_DEMO_PASSWORD_FILE" ]; then
+  printf 'Nst!%s7Qa\n' "$(openssl rand -hex 12)" > "$NESTORA_DEMO_PASSWORD_FILE"
+  chmod 600 "$NESTORA_DEMO_PASSWORD_FILE"
+fi
+
 NESTORA_DB_PASSWORD="$(python3 - "$NESTORA_ENV" <<'PY'
 import sys
 from urllib.parse import urlparse
@@ -313,6 +320,19 @@ if [ ! -f "$PILOT_SEEDED_FILE" ]; then
   touch "$PILOT_SEEDED_FILE"
   chmod 600 "$PILOT_SEEDED_FILE"
 fi
+
+log "Loading controlled Nestora demonstration accounts and labelled fictional records"
+(
+  cd "$NESTORA_RELEASE"
+  set -a
+  source "$NESTORA_ENV"
+  set +a
+  NESTORA_DEMO_MODE=true \
+    NESTORA_ENVIRONMENT=demo \
+    NESTORA_ALLOW_PRODUCTION_DEMO_SEED=true \
+    NESTORA_DEMO_PASSWORD="$(cat "$NESTORA_DEMO_PASSWORD_FILE")" \
+    npm run demo:seed
+)
 
 log "Verifying the Nestora runtime database connection"
 (
@@ -481,6 +501,17 @@ if [ "$DNS_READY" = true ]; then
   log "Nestora TLS is active"
 else
   log "Nestora DNS does not yet resolve to $PUBLIC_IP; HTTP service is installed and TLS is pending DNS"
+fi
+
+if [ -s "$NESTORA_DEMO_PUBLIC_KEY" ]; then
+  NESTORA_DEMO_CIPHERTEXT="$(openssl pkeyutl \
+    -encrypt \
+    -pubin \
+    -inkey "$NESTORA_DEMO_PUBLIC_KEY" \
+    -pkeyopt rsa_padding_mode:oaep \
+    -pkeyopt rsa_oaep_md:sha256 \
+    -in "$NESTORA_DEMO_PASSWORD_FILE" | base64 -w0)"
+  printf 'NESTORA_DEMO_CREDENTIAL_CIPHERTEXT=%s\n' "$NESTORA_DEMO_CIPHERTEXT"
 fi
 
 if [ -s "$PILOT_PUBLIC_KEY" ]; then

@@ -10,6 +10,7 @@ on:
       - .github/scripts/deploy_aux_platforms.sh
       - .github/scripts/install_nursing_nginx.py
       - .github/deploy/nursing-pilot-recipient.pub
+      - .github/deploy/nestora-demo-recipient.pub
       - server/routes/deploy-aux-platforms.js
   workflow_dispatch:
 
@@ -23,7 +24,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NESTORA_SHA: eab1d56e45e4901e78345cdd21a4cdbbc610bc1a
+  NESTORA_SHA: 4896a7903d3ae13876275d85cb2202dda808450b
   NURSING_SHA: 16aa32eae894e3f11d7090385116b3005d4ed15b
   DOCTARX_PUBLIC_IP: 18.217.97.145
 
@@ -190,6 +191,10 @@ jobs:
             exit 1
           fi
           jq -r '.lastLines[-80:][]?' /tmp/aux-status.json
+          NESTORA_DEMO_CIPHERTEXT="$(jq -r '.lastLines[]? | select(startswith("NESTORA_DEMO_CREDENTIAL_CIPHERTEXT=")) | ltrimstr("NESTORA_DEMO_CREDENTIAL_CIPHERTEXT=")' /tmp/aux-status.json | tail -n 1)"
+          if [ -n "$NESTORA_DEMO_CIPHERTEXT" ]; then
+            echo "NESTORA_DEMO_CREDENTIAL_CIPHERTEXT=$NESTORA_DEMO_CIPHERTEXT"
+          fi
           CIPHERTEXT="$(jq -r '.lastLines[]? | select(startswith("NURSING_PILOT_CREDENTIAL_CIPHERTEXT=")) | ltrimstr("NURSING_PILOT_CREDENTIAL_CIPHERTEXT=")' /tmp/aux-status.json | tail -n 1)"
           if [ -n "$CIPHERTEXT" ]; then
             echo "NURSING_PILOT_CREDENTIAL_CIPHERTEXT=$CIPHERTEXT"
