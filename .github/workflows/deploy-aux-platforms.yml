@@ -24,9 +24,14 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NESTORA_SHA: d989650c83467328ff7c8af4aec940b3633ef753
+  NESTORA_SHA: b5fc6a13aa9ad456943f31230a159ade2826f226
   NURSING_SHA: 16aa32eae894e3f11d7090385116b3005d4ed15b
   DOCTARX_PUBLIC_IP: 18.217.97.145
+  NESTORA_PRODUCTION_ORIGIN: https://nestora.doctarx.com
+  NESTORA_STORAGE_BUCKET: nestora-media-prod
+  NESTORA_MALWARE_SCAN_URL: https://scanner.doctarx.com/scan
+  NESTORA_DELIVERY_WEBHOOK_URL: https://doctarx.com/api/internal/delivery
+  NESTORA_JOB_SECRET: ${{ secrets.NESTORA_JOB_SECRET }}
 
 jobs:
   deploy:
