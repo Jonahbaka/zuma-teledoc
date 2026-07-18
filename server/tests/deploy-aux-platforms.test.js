@@ -69,6 +69,7 @@ test('auxiliary workflow waits for the documented EC2 release and exact live com
   );
 
   assert.match(workflow, /actions\/workflows\/deploy\.yml\/runs/);
+  assert.match(workflow, /scripts\/doctarx-blue-green-switch\.sh/);
   assert.match(workflow, /select\(\.head_sha == \$sha\)/);
   assert.match(workflow, /\[ "\$DEPLOY_CONCLUSION" = success \]/);
   assert.match(workflow, /\[ "\$LIVE_COMMIT" = "\$EXPECTED_COMMIT" \]/);
