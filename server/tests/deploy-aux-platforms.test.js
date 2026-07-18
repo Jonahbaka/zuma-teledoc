@@ -83,7 +83,10 @@ test('auxiliary deployment installs and verifies the Linux sharp runtime', () =>
     'utf8'
   );
 
-  assert.match(script, /npm install --include=optional --no-save --no-package-lock/);
+  assert.match(
+    script,
+    /npm install --include=dev --include=optional --no-save --no-package-lock/
+  );
   assert.match(script, /--os=linux --cpu=x64 --libc=glibc sharp/);
   assert.match(script, /require\('sharp'\)/);
 });

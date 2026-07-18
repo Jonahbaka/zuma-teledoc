@@ -169,7 +169,7 @@ prepare_release() {
     cd "$staging"
     npm ci --include=dev --no-audit --no-fund
     if [ "$name" = "Nestora" ]; then
-      npm install --include=optional --no-save --no-package-lock --no-audit --no-fund \
+      npm install --include=dev --include=optional --no-save --no-package-lock --no-audit --no-fund \
         --os=linux --cpu=x64 --libc=glibc sharp
       node -e "require('sharp'); console.log('Nestora sharp runtime loaded')"
     fi
