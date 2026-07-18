@@ -47,6 +47,44 @@ require_command() {
   }
 }
 
+read_env_value() {
+  local env_file="$1"
+  local key="$2"
+  sed -n "s/^${key}=//p" "$env_file" | tail -n 1
+}
+
+write_env_value() {
+  local env_file="$1"
+  local key="$2"
+  local value="$3"
+  local replacement
+  replacement="$(mktemp "${env_file}.XXXXXX")"
+  grep -v "^${key}=" "$env_file" > "$replacement" || true
+  printf '%s=%s\n' "$key" "$value" >> "$replacement"
+  chmod 600 "$replacement"
+  mv -f "$replacement" "$env_file"
+}
+
+ensure_env_value() {
+  local env_file="$1"
+  local key="$2"
+  local fallback="$3"
+  local current
+  current="$(read_env_value "$env_file" "$key")"
+  if [ -z "$current" ] && [ -n "$fallback" ]; then
+    write_env_value "$env_file" "$key" "$fallback"
+  fi
+}
+
+ensure_env_secret() {
+  local env_file="$1"
+  local key="$2"
+  local bytes="$3"
+  if [ -z "$(read_env_value "$env_file" "$key")" ]; then
+    write_env_value "$env_file" "$key" "$(openssl rand -hex "$bytes")"
+  fi
+}
+
 atomic_link() {
   local target="$1"
   local link="$2"
@@ -130,6 +168,11 @@ prepare_release() {
   (
     cd "$staging"
     npm ci --include=dev --no-audit --no-fund
+    if [ "$name" = "Nestora" ]; then
+      npm install --include=optional --no-save --no-package-lock --no-audit --no-fund \
+        --os=linux --cpu=x64 --libc=glibc sharp
+      node -e "require('sharp'); console.log('Nestora sharp runtime loaded')"
+    fi
   )
 
   log "Building $name"
@@ -211,6 +254,28 @@ EOF
   chmod 600 "$NESTORA_ENV"
   unset NESTORA_SESSION_SECRET NESTORA_MALWARE_SCAN_TOKEN NESTORA_DELIVERY_WEBHOOK_TOKEN NESTORA_JOB_SECRET_VALUE
 fi
+
+# Existing installations predate the production media and delivery settings. Preserve
+# any configured values, fill only missing entries, and fail before activation when the
+# host does not expose its existing AWS application identity.
+ensure_env_value "$NESTORA_ENV" NEXT_PUBLIC_APP_ORIGIN "https://nestora.doctarx.com"
+ensure_env_value "$NESTORA_ENV" NESTORA_STORAGE_BUCKET "${NESTORA_STORAGE_BUCKET:-nestora-media-prod}"
+ensure_env_value "$NESTORA_ENV" AWS_REGION "${AWS_REGION:-us-east-2}"
+ensure_env_value "$NESTORA_ENV" AWS_ACCESS_KEY_ID "${AWS_ACCESS_KEY_ID:-}"
+ensure_env_value "$NESTORA_ENV" AWS_SECRET_ACCESS_KEY "${AWS_SECRET_ACCESS_KEY:-}"
+ensure_env_value "$NESTORA_ENV" AWS_SESSION_TOKEN "${AWS_SESSION_TOKEN:-}"
+ensure_env_value "$NESTORA_ENV" NESTORA_MALWARE_SCAN_URL "${NESTORA_MALWARE_SCAN_URL:-https://scanner.doctarx.com/scan}"
+ensure_env_value "$NESTORA_ENV" NESTORA_DELIVERY_WEBHOOK_URL "${NESTORA_DELIVERY_WEBHOOK_URL:-https://doctarx.com/api/internal/delivery}"
+ensure_env_secret "$NESTORA_ENV" NESTORA_MALWARE_SCAN_TOKEN 32
+ensure_env_secret "$NESTORA_ENV" NESTORA_DELIVERY_WEBHOOK_TOKEN 32
+ensure_env_secret "$NESTORA_ENV" NESTORA_JOB_SECRET 48
+
+for required_key in NESTORA_STORAGE_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY NESTORA_MALWARE_SCAN_URL NESTORA_MALWARE_SCAN_TOKEN NESTORA_DELIVERY_WEBHOOK_URL NESTORA_DELIVERY_WEBHOOK_TOKEN NESTORA_JOB_SECRET; do
+  if [ -z "$(read_env_value "$NESTORA_ENV" "$required_key")" ]; then
+    log "Nestora runtime configuration is missing: $required_key"
+    exit 1
+  fi
+done
 
 if [ ! -s "$NURSING_ENV" ]; then
   NURSING_DB_PASSWORD="$(openssl rand -hex 24)"

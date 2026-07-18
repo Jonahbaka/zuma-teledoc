@@ -74,6 +74,29 @@ test('auxiliary workflow waits for the documented EC2 release and exact live com
   assert.match(workflow, /\[ "\$LIVE_COMMIT" = "\$EXPECTED_COMMIT" \]/);
   assert.match(workflow, /status endpoint returned HTTP \$\{CODE:-unavailable\}; retrying/);
   assert.match(workflow, /if \[ "\$CODE" != 200 \]; then/);
+  assert.match(workflow, /NESTORA_SHA: a69e0405f38c3c5cda465dfa2ae5fddb18b493a1/);
+});
+
+test('auxiliary deployment installs and verifies the Linux sharp runtime', () => {
+  const script = fs.readFileSync(
+    path.join(__dirname, '../../.github/scripts/deploy_aux_platforms.sh'),
+    'utf8'
+  );
+
+  assert.match(script, /npm install --include=optional --no-save --no-package-lock/);
+  assert.match(script, /--os=linux --cpu=x64 --libc=glibc sharp/);
+  assert.match(script, /require\('sharp'\)/);
+});
+
+test('auxiliary deployment reconciles protected Nestora runtime configuration', () => {
+  const script = fs.readFileSync(
+    path.join(__dirname, '../../.github/scripts/deploy_aux_platforms.sh'),
+    'utf8'
+  );
+
+  assert.match(script, /ensure_env_value "\$NESTORA_ENV" AWS_ACCESS_KEY_ID/);
+  assert.match(script, /ensure_env_secret "\$NESTORA_ENV" NESTORA_JOB_SECRET 48/);
+  assert.match(script, /Nestora runtime configuration is missing: \$required_key/);
 });
 
 test('auxiliary seed overrides the parent DoctaRx database environment', () => {
