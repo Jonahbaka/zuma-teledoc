@@ -85,7 +85,7 @@ verify_switched_nginx() {
 
   for _ in $(seq 1 30); do
     body="$(curl -s --max-time 10 --resolve doctarx.com:443:127.0.0.1 https://doctarx.com/api/health 2>/dev/null || true)"
-    if json_ok "$body" api && printf '%s' "$body" | grep -q "$expected_build_id"; then
+    if json_ok "$body" api && printf '%s' "$body" | grep -Fq -- "$expected_build_id"; then
       log "nginx route verified with build ${expected_build_id}"
       return 0
     fi

@@ -144,6 +144,15 @@ test('production deploy workflow keeps artifact flow and queues deployments', ()
   assert.doesNotMatch(deployYaml, /\/api\/deploy(?:\s|["'])/);
 });
 
+test('blue-green verification accepts build IDs that begin with a dash', () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, 'scripts/doctarx-blue-green-switch.sh'),
+    'utf8'
+  );
+
+  assert.match(source, /grep -Fq -- "\$expected_build_id"/);
+});
+
 test('deploy source does not contain the burned public deploy secret', () => {
   const files = [
     '.github/workflows/deploy.yml',
