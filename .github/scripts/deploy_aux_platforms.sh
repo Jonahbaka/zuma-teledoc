@@ -256,8 +256,8 @@ EOF
 fi
 
 # Existing installations predate the production media and delivery settings. Preserve
-# any configured values, fill only missing entries, and fail before activation when the
-# host does not expose its existing AWS application identity.
+# optional explicit AWS credentials while allowing the SDK to use the EC2 instance role.
+# Fill only missing settings and fail before activation when required services are absent.
 ensure_env_value "$NESTORA_ENV" NEXT_PUBLIC_APP_ORIGIN "https://nestora.doctarx.com"
 ensure_env_value "$NESTORA_ENV" NESTORA_STORAGE_BUCKET "${NESTORA_STORAGE_BUCKET:-nestora-media-prod}"
 ensure_env_value "$NESTORA_ENV" AWS_REGION "${AWS_REGION:-us-east-2}"
@@ -270,7 +270,7 @@ ensure_env_secret "$NESTORA_ENV" NESTORA_MALWARE_SCAN_TOKEN 32
 ensure_env_secret "$NESTORA_ENV" NESTORA_DELIVERY_WEBHOOK_TOKEN 32
 ensure_env_secret "$NESTORA_ENV" NESTORA_JOB_SECRET 48
 
-for required_key in NESTORA_STORAGE_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY NESTORA_MALWARE_SCAN_URL NESTORA_MALWARE_SCAN_TOKEN NESTORA_DELIVERY_WEBHOOK_URL NESTORA_DELIVERY_WEBHOOK_TOKEN NESTORA_JOB_SECRET; do
+for required_key in NESTORA_STORAGE_BUCKET AWS_REGION NESTORA_MALWARE_SCAN_URL NESTORA_MALWARE_SCAN_TOKEN NESTORA_DELIVERY_WEBHOOK_URL NESTORA_DELIVERY_WEBHOOK_TOKEN NESTORA_JOB_SECRET; do
   if [ -z "$(read_env_value "$NESTORA_ENV" "$required_key")" ]; then
     log "Nestora runtime configuration is missing: $required_key"
     exit 1

@@ -94,7 +94,8 @@ test('auxiliary deployment reconciles protected Nestora runtime configuration', 
     'utf8'
   );
 
-  assert.match(script, /ensure_env_value "\$NESTORA_ENV" AWS_ACCESS_KEY_ID/);
+  assert.match(script, /ensure_env_value "\$NESTORA_ENV" AWS_REGION/);
+  assert.doesNotMatch(script, /for required_key in [^\n]*AWS_ACCESS_KEY_ID/);
   assert.match(script, /ensure_env_secret "\$NESTORA_ENV" NESTORA_JOB_SECRET 48/);
   assert.match(script, /Nestora runtime configuration is missing: \$required_key/);
 });
