@@ -25,7 +25,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NESTORA_SHA: d1b162daabb610a5c908b75be64471c8bb9a7062
+  NESTORA_SHA: cd7783702e9965c1a8d6c4d0089ee71d94a25fb5
   NURSING_SHA: 16aa32eae894e3f11d7090385116b3005d4ed15b
   DOCTARX_PUBLIC_IP: 18.217.97.145
   NESTORA_PRODUCTION_ORIGIN: https://nestora.doctarx.com
