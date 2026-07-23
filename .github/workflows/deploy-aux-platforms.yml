@@ -12,6 +12,7 @@ on:
       - .github/deploy/nursing-pilot-recipient.pub
       - .github/deploy/nestora-demo-recipient.pub
       - server/routes/deploy-aux-platforms.js
+      - server/tests/deploy-aux-platforms.test.js
       - scripts/doctarx-blue-green-switch.sh
   workflow_dispatch:
 
