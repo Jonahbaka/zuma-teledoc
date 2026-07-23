@@ -75,7 +75,7 @@ test('auxiliary workflow waits for the documented EC2 release and exact live com
   assert.match(workflow, /\[ "\$LIVE_COMMIT" = "\$EXPECTED_COMMIT" \]/);
   assert.match(workflow, /status endpoint returned HTTP \$\{CODE:-unavailable\}; retrying/);
   assert.match(workflow, /if \[ "\$CODE" != 200 \]; then/);
-  assert.match(workflow, /NESTORA_SHA: a45fdc38c2cd4dedc34b46078ae5b83814a8d537/);
+  assert.match(workflow, /NESTORA_SHA: 433bdede11053ef80130d42614daa8b73bf234a9/);
 });
 
 test('auxiliary deployment installs and verifies the Linux sharp runtime', () => {
