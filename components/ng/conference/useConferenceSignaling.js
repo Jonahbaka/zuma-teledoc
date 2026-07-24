@@ -222,7 +222,23 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
 
         sock.on('conference:participant-joined', ({ participant }) => {
           if (cancelled) return;
-          setSigState((s) => ({ ...s, peers: [...s.peers, participant] }));
+          setSigState((s) => ({
+            ...s,
+            peers: s.peers.some((peer) => peer.socketId === participant.socketId)
+              ? s.peers
+              : [...s.peers, participant],
+          }));
+        });
+
+        sock.on('conference:replaced', () => {
+          if (!cancelled) {
+            setSigState((state) => ({
+              ...state,
+              phase: 'error',
+              error: 'This conference was reopened in another tab or device.',
+            }));
+          }
+          cleanupAll(false);
         });
 
         sock.on('conference:participant-left', ({ participant }) => {

@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const db = require('../db');
 const logger = require('../middleware/logger');
 const { logAuditEvent } = require('../middleware/audit');
+const { assertMessagingRelationship } = require('./messageAuthorization');
 const {
   buildParticipantPayload,
   ensureAppointmentRoomId,
@@ -75,6 +76,29 @@ const emitSocketAck = (ack, payload) => {
   if (typeof ack === 'function') {
     ack(payload);
   }
+};
+
+const authorizeRealtimeConversation = async (socket, payload = {}, database = db) => {
+  const authorized = await assertMessagingRelationship(database, socket.userId, payload.recipientId);
+  if (payload.conversationId && payload.conversationId !== authorized.conversationId) {
+    const error = new Error('Conversation identifier does not match the authorized relationship');
+    error.status = 403;
+    throw error;
+  }
+  return authorized;
+};
+
+const emitMessagingError = (socket, ack, error) => {
+  logger.warn('Rejected realtime messaging event', {
+    userId: socket.userId,
+    code: error.code || 'MESSAGING_EVENT_REJECTED'
+  });
+  const payload = {
+    ok: false,
+    error: error.status === 403 ? error.message : 'Unable to authorize messaging event'
+  };
+  socket.emit('conversation:error', payload);
+  emitSocketAck(ack, payload);
 };
 
 const auditTelehealthSocketEvent = async ({
@@ -159,6 +183,23 @@ const removeConferenceMembership = (socket, { emitLeft = true } = {}) => {
       roomId: session.roomId,
       participant: session.participant,
     });
+  }
+};
+
+const disconnectDuplicateConferenceParticipant = (roomId, currentSocketId, userId) => {
+  const roomParticipants = conferenceRooms.get(roomId);
+  if (!roomParticipants) return;
+
+  for (const [socketId, participant] of roomParticipants.entries()) {
+    if (socketId === currentSocketId || participant?.userId !== userId) continue;
+    const existingSocket = io?.sockets?.sockets?.get(socketId);
+    if (existingSocket) {
+      existingSocket.emit('conference:replaced', { roomId });
+      removeConferenceMembership(existingSocket, { emitLeft: true });
+    } else {
+      roomParticipants.delete(socketId);
+      conferenceSocketMeta.delete(socketId);
+    }
   }
 };
 
@@ -249,6 +290,7 @@ const initializeSocket = (httpServer) => {
     const userId = socket.userId;
     const userRole = socket.userRole;
     const userName = socket.userName;
+    const telehealthMessageTimes = [];
 
     console.log(`🔌 Socket connected: ${userName} (${userRole}) - ${socket.id}`);
 
@@ -261,19 +303,8 @@ const initializeSocket = (httpServer) => {
     });
     userSockets.set(socket.id, userId);
 
-    // Notify others that user is online
-    socket.broadcast.emit('user:online', {
-      userId,
-      role: userRole,
-      name: userName
-    });
-
-    // Send current online users to the connected user
-    const onlineList = Array.from(onlineUsers.entries()).map(([id, data]) => ({
-      userId: id,
-      ...data
-    }));
-    socket.emit('users:online', onlineList);
+    // Presence is disclosed only through relationship-scoped APIs and rooms.
+    socket.emit('users:online', []);
 
     // Join personal room for direct messages
     socket.join(`user:${userId}`);
@@ -286,9 +317,14 @@ const initializeSocket = (httpServer) => {
     /**
      * Handle joining a conversation room
      */
-    socket.on('conversation:join', (conversationId) => {
-      socket.join(`conversation:${conversationId}`);
-      console.log(`👥 ${userName} joined conversation: ${conversationId}`);
+    socket.on('conversation:join', async (payload = {}, ack) => {
+      try {
+        const { conversationId } = await authorizeRealtimeConversation(socket, payload);
+        socket.join(`conversation:${conversationId}`);
+        emitSocketAck(ack, { ok: true, conversationId });
+      } catch (error) {
+        emitMessagingError(socket, ack, error);
+      }
     });
 
     /**
@@ -296,77 +332,77 @@ const initializeSocket = (httpServer) => {
      */
     socket.on('conversation:leave', (conversationId) => {
       socket.leave(`conversation:${conversationId}`);
-      console.log(`👋 ${userName} left conversation: ${conversationId}`);
     });
 
     /**
      * Handle typing indicator
      */
-    socket.on('typing:start', ({ conversationId, recipientId }) => {
-      // Emit to the conversation room
-      socket.to(`conversation:${conversationId}`).emit('typing:update', {
-        conversationId,
-        userId,
-        userName,
-        isTyping: true
-      });
-      
-      // Also emit directly to the recipient
-      socket.to(`user:${recipientId}`).emit('typing:update', {
-        conversationId,
-        userId,
-        userName,
-        isTyping: true
-      });
+    socket.on('typing:start', async (payload = {}, ack) => {
+      try {
+        const { conversationId, recipient } = await authorizeRealtimeConversation(socket, payload);
+        socket.to(`user:${recipient.id}`).emit('typing:update', {
+          conversationId,
+          userId,
+          userName,
+          isTyping: true
+        });
+        emitSocketAck(ack, { ok: true });
+      } catch (error) {
+        emitMessagingError(socket, ack, error);
+      }
     });
 
-    socket.on('typing:stop', ({ conversationId, recipientId }) => {
-      socket.to(`conversation:${conversationId}`).emit('typing:update', {
-        conversationId,
-        userId,
-        userName,
-        isTyping: false
-      });
-      
-      socket.to(`user:${recipientId}`).emit('typing:update', {
-        conversationId,
-        userId,
-        userName,
-        isTyping: false
-      });
+    socket.on('typing:stop', async (payload = {}, ack) => {
+      try {
+        const { conversationId, recipient } = await authorizeRealtimeConversation(socket, payload);
+        socket.to(`user:${recipient.id}`).emit('typing:update', {
+          conversationId,
+          userId,
+          userName,
+          isTyping: false
+        });
+        emitSocketAck(ack, { ok: true });
+      } catch (error) {
+        emitMessagingError(socket, ack, error);
+      }
     });
 
     /**
      * Handle message read receipts
      */
-    socket.on('message:read', ({ messageId, conversationId, senderId }) => {
-      // Notify the sender that their message was read
-      socket.to(`user:${senderId}`).emit('message:read', {
-        messageId,
-        conversationId,
-        readBy: userId,
-        readAt: new Date()
-      });
+    socket.on('message:read', async ({ messageId } = {}, ack) => {
+      try {
+        const { rows } = await db.query(
+          `SELECT id, conversation_id, sender_id
+             FROM messages
+            WHERE id = $1 AND recipient_id = $2 AND status = 'read'
+            LIMIT 1`,
+          [messageId, userId]
+        );
+        if (!rows[0]) {
+          const error = new Error('Read receipt is not authorized');
+          error.status = 403;
+          throw error;
+        }
+        socket.to(`user:${rows[0].sender_id}`).emit('message:read', {
+          messageId: rows[0].id,
+          conversationId: rows[0].conversation_id,
+          readBy: userId,
+          readAt: new Date()
+        });
+        emitSocketAck(ack, { ok: true });
+      } catch (error) {
+        emitMessagingError(socket, ack, error);
+      }
     });
 
     /**
      * Handle new message (for real-time delivery)
      */
-    socket.on('message:send', (messageData) => {
-      const { conversationId, recipientId, message } = messageData;
-      
-      // Emit to conversation room
-      socket.to(`conversation:${conversationId}`).emit('message:new', {
-        ...message,
-        senderName: userName,
-        senderId: userId
-      });
-      
-      // Also emit directly to recipient's personal room
-      socket.to(`user:${recipientId}`).emit('message:new', {
-        ...message,
-        senderName: userName,
-        senderId: userId
+    socket.on('message:send', (_, ack) => {
+      emitSocketAck(ack, {
+        ok: false,
+        error: 'Messages must be persisted through the authenticated messaging API'
       });
     });
 
@@ -511,11 +547,26 @@ const initializeSocket = (httpServer) => {
         return;
       }
 
-      const body = String(payload.body || '').trim().slice(0, 1000);
+      const now = Date.now();
+      while (telehealthMessageTimes.length && now - telehealthMessageTimes[0] > 60_000) {
+        telehealthMessageTimes.shift();
+      }
+      if (telehealthMessageTimes.length >= 20) {
+        emitSocketAck(ack, { ok: false, error: 'In-call chat rate limit exceeded' });
+        return;
+      }
+
+      const body = String(payload.body || '')
+        .normalize('NFKC')
+        .replace(/\0/g, '')
+        .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+        .trim()
+        .slice(0, 1000);
       if (!body) {
         emitSocketAck(ack, { ok: false, error: 'Message text is required' });
         return;
       }
+      telehealthMessageTimes.push(now);
 
       const message = {
         id: crypto.randomUUID(),
@@ -607,6 +658,7 @@ const initializeSocket = (httpServer) => {
         const roomKey = getConferenceRoomKey(roomId);
 
         removeConferenceMembership(socket, { emitLeft: true });
+        disconnectDuplicateConferenceParticipant(roomId, socket.id, socket.userId);
 
         const roomParticipants = conferenceRooms.get(roomId) || new Map();
         const participants = Array.from(roomParticipants.values());
@@ -704,11 +756,6 @@ const initializeSocket = (httpServer) => {
         if (currentSocket && currentSocket.socketId === socket.id) {
           onlineUsers.delete(userId);
 
-          // Notify others that user went offline
-          socket.broadcast.emit('user:offline', {
-            userId,
-            lastSeen: new Date()
-          });
         }
       }, 5000); // 5 second grace period for reconnection
     });
@@ -906,5 +953,6 @@ module.exports = {
   emitAgentOpsEvent,
   isUserOnline,
   getOnlineUsers,
-  getUserLastSeen
+  getUserLastSeen,
+  authorizeRealtimeConversation
 };

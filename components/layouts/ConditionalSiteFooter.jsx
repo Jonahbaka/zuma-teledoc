@@ -10,6 +10,7 @@ const HIDE_PREFIXES = [
   '/pharmacy',
   '/secure',
   '/ng/patient',
+  '/ng/provider',
   '/ng/pharmacy',
   '/ng/admin',
   '/ng/auth',

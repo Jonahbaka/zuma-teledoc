@@ -236,6 +236,7 @@ export default function DashboardLayout({
             : 'text-muted-foreground hover:bg-accent hover:text-foreground'
         )}
         onClick={() => setSidebarOpen(false)}
+        aria-current={isActive ? 'page' : undefined}
       >
         <item.icon className="w-5 h-5 flex-shrink-0" />
         <span className="truncate">{item.name}</span>
@@ -625,6 +626,7 @@ export default function DashboardLayout({
                   href={normalizeHref(item.href)}
                   className="app-mobile-dock__link"
                   data-active={isActivePath(pathname, item.href)}
+                  aria-current={isActivePath(pathname, item.href) ? 'page' : undefined}
                 >
                   <span className="app-mobile-dock__icon">
                     <item.icon className="h-5 w-5" />

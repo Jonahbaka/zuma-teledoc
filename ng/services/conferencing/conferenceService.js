@@ -151,14 +151,34 @@ async function createRoom(input, actor, pool = getPool()) {
   );
   const room = r.rows[0];
 
-  // Host self-enrolled as 'host' with status 'admitted'
+  // Self-enrol the clinical host with moderator overrides while preserving
+  // the provider's clinical conference role (for example, doctor).
   if (actor?.user_id) {
+    const hostRole = ['admin', 'super_admin', 'hospital_admin'].includes(String(actor.role || '').toLowerCase())
+      ? 'host'
+      : coerceConfRole(actor.role, 'host');
+    const hostPermissions = hostRole === 'host'
+      ? {}
+      : {
+          admit_others: true,
+          kick_others: true,
+          mute_others: true,
+          end_room: true,
+          start_recording: true,
+          manage_breakouts: true,
+        };
     await pool.query(
       `INSERT INTO ng_conf_participants
-         (room_id, user_id, display_name, role, status, joined_at)
-       VALUES ($1,$2,$3,'host','admitted',NOW())
+         (room_id, user_id, display_name, role, status, joined_at, permissions_json)
+       VALUES ($1,$2,$3,$4,'admitted',NOW(),$5::jsonb)
        ON CONFLICT (room_id, user_id) DO NOTHING`,
-      [room.id, actor.user_id, input.host_display_name || 'Host']
+      [
+        room.id,
+        actor.user_id,
+        input.host_display_name || actor.display_name || 'Host',
+        hostRole,
+        JSON.stringify(hostPermissions),
+      ]
     );
   }
 
@@ -176,9 +196,66 @@ async function getRoomByCode(code, pool = getPool()) {
   return r.rows[0] || null;
 }
 
-async function listRooms({ host_user_id, status, kind, since, limit = 50 } = {}, pool = getPool()) {
+async function assertRoomAccess(roomId, actor, options = {}, pool = getPool()) {
+  const { admittedOnly = false, moderatorOnly = false, allowAdmin = true } = options;
+  if (!actor?.user_id) {
+    const error = new Error('Authenticated room membership is required');
+    error.code = 'FORBIDDEN';
+    throw error;
+  }
+  const result = await pool.query(
+    `SELECT r.*, p.id AS actor_participant_id, p.role AS actor_participant_role,
+            p.status AS actor_participant_status, p.permissions_json AS actor_permissions
+       FROM ng_conf_rooms r
+       LEFT JOIN ng_conf_participants p
+         ON p.room_id = r.id AND p.user_id = $2
+      WHERE r.id = $1
+      LIMIT 1`,
+    [roomId, actor.user_id]
+  );
+  const room = result.rows[0];
+  if (!room) throwNotFound();
+
+  const isAdmin = allowAdmin && ['admin', 'super_admin'].includes(String(actor.role || '').toLowerCase());
+  const isHost = String(room.host_user_id) === String(actor.user_id);
+  const isAdmitted = room.actor_participant_status === 'admitted';
+  const isKnownParticipant = ['invited', 'waiting', 'admitted', 'left'].includes(room.actor_participant_status);
+  const canModerate =
+    isHost ||
+    isAdmin ||
+    (isAdmitted && (
+      room.actor_participant_role === 'host' ||
+      can(room.actor_participant_role, room.actor_permissions, 'admit_others') ||
+      can(room.actor_participant_role, room.actor_permissions, 'end_room')
+    ));
+  const allowed = moderatorOnly
+    ? canModerate
+    : admittedOnly
+      ? isAdmitted
+      : isHost || isAdmin || isKnownParticipant;
+  if (!allowed) {
+    const error = new Error('You are not authorized to access this conference room');
+    error.code = 'FORBIDDEN';
+    throw error;
+  }
+  return room;
+}
+
+async function listRooms({ host_user_id, status, kind, since, limit = 50, actor_user_id, actor_role } = {}, pool = getPool()) {
   const where = [];
   const params = [];
+  const isAdmin = ['admin', 'super_admin'].includes(String(actor_role || '').toLowerCase());
+  if (actor_user_id && !isAdmin) {
+    params.push(actor_user_id);
+    where.push(`(
+      host_user_id = $${params.length}
+      OR EXISTS (
+        SELECT 1 FROM ng_conf_participants access_participant
+         WHERE access_participant.room_id = ng_conf_rooms.id
+           AND access_participant.user_id = $${params.length}
+      )
+    )`);
+  }
   if (host_user_id) { params.push(host_user_id); where.push(`host_user_id = $${params.length}`); }
   if (status)       { params.push(status);       where.push(`status = $${params.length}`); }
   if (kind)         { params.push(kind);         where.push(`kind = $${params.length}`); }
@@ -195,6 +272,7 @@ async function listRooms({ host_user_id, status, kind, since, limit = 50 } = {},
 }
 
 async function startRoom(id, actor, pool = getPool()) {
+  await assertRoomAccess(id, actor, { moderatorOnly: true }, pool);
   const room = await getRoom(id, pool);
   if (!room) throwNotFound();
   if (!isValidRoomTransition(room.status, 'live')) throwInvalid(`Cannot start from ${room.status}`);
@@ -208,6 +286,7 @@ async function startRoom(id, actor, pool = getPool()) {
 }
 
 async function endRoom(id, actor, pool = getPool()) {
+  await assertRoomAccess(id, actor, { moderatorOnly: true }, pool);
   const room = await getRoom(id, pool);
   if (!room) throwNotFound();
   if (!isValidRoomTransition(room.status, 'ended')) throwInvalid(`Cannot end from ${room.status}`);
@@ -228,6 +307,7 @@ async function endRoom(id, actor, pool = getPool()) {
 }
 
 async function cancelRoom(id, actor, { reason } = {}, pool = getPool()) {
+  await assertRoomAccess(id, actor, { moderatorOnly: true }, pool);
   const room = await getRoom(id, pool);
   if (!room) throwNotFound();
   if (!isValidRoomTransition(room.status, 'cancelled')) throwInvalid(`Cannot cancel from ${room.status}`);
@@ -250,7 +330,25 @@ async function joinRoom(roomId, actor, { display_name, role = 'observer', user_a
   // Map platform/synonym roles → valid ng_conf_role; never let an invalid enum
   // value reach the DB. Prefer the actor's platform role when no explicit role
   // is supplied so a logged-in provider joins as a clinician, not an observer.
-  role = coerceConfRole(role || actor?.role, 'observer');
+  if (!actor?.user_id) {
+    const error = new Error('Sign in before joining this conference');
+    error.code = 'FORBIDDEN';
+    throw error;
+  }
+  const existing = await getActorParticipant(roomId, actor.user_id, pool);
+  if (String(room.host_user_id) === String(actor.user_id)) {
+    role = coerceConfRole(actor.role, 'host');
+  } else if (
+    String(room.patient_user_id) === String(actor.user_id) ||
+    String(actor.role || '').toLowerCase() === 'patient'
+  ) {
+    role = 'patient';
+  } else if (existing?.role) {
+    role = existing.role;
+  } else {
+    // New accounts wait as observers. Client input can never self-promote.
+    role = 'observer';
+  }
 
   // Count current admitted
   const c = await pool.query(
@@ -326,6 +424,18 @@ async function denyParticipant(roomId, participantId, actor, pool = getPool()) {
 }
 
 async function leaveRoom(roomId, participantId, actor, pool = getPool()) {
+  const actorPart = await getActorParticipant(roomId, actor?.user_id, pool);
+  const target = (await pool.query(
+    `SELECT role FROM ng_conf_participants WHERE id=$1 AND room_id=$2`,
+    [participantId, roomId]
+  )).rows[0];
+  if (!actorPart || !target) throwNotFound();
+  const isSelf = actorPart.id === participantId;
+  if (!isSelf && !can(actorPart.role, actorPart.permissions_json, 'kick_others')) {
+    const error = new Error('Cannot end another participant session');
+    error.code = 'FORBIDDEN';
+    throw error;
+  }
   const r = await pool.query(
     `UPDATE ng_conf_participants
         SET status='left', left_at=NOW(),
@@ -399,6 +509,17 @@ async function getActorParticipant(roomId, userId, pool = getPool()) {
 // ─── In-call controls ────────────────────────────────────────────────────────
 
 async function raiseHand(roomId, participantId, raised, actor, pool = getPool()) {
+  const actorPart = await getActorParticipant(roomId, actor?.user_id, pool);
+  if (!actorPart) {
+    const error = new Error('Conference membership required');
+    error.code = 'FORBIDDEN';
+    throw error;
+  }
+  if (actorPart.id !== participantId && !can(actorPart.role, actorPart.permissions_json, 'mute_others')) {
+    const error = new Error('Cannot change another participant hand state');
+    error.code = 'FORBIDDEN';
+    throw error;
+  }
   const r = await pool.query(
     `UPDATE ng_conf_participants
         SET hand_raised_at = ${raised ? 'NOW()' : 'NULL'}
@@ -437,12 +558,35 @@ async function setMute(roomId, participantId, { audio, video }, actor, pool = ge
 
 // ─── Chat ────────────────────────────────────────────────────────────────────
 
-async function sendChat(roomId, actor, { message, private_to_user_id, sender_display } = {}, pool = getPool()) {
-  if (!message || !String(message).trim()) {
+async function sendChat(roomId, actor, { message, private_to_user_id } = {}, pool = getPool()) {
+  const sanitizedMessage = String(message || '')
+    .normalize('NFKC')
+    .replace(/\0/g, '')
+    .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .trim()
+    .slice(0, 2000);
+  if (!sanitizedMessage) {
     const e = new Error('Empty message'); e.code = 'BAD_INPUT'; throw e;
   }
-  const room = await getRoom(roomId, pool);
-  if (!room) throwNotFound();
+  const room = await assertRoomAccess(
+    roomId,
+    actor,
+    { admittedOnly: true, allowAdmin: false },
+    pool
+  );
+  if (!can(room.actor_participant_role, room.actor_permissions, 'send_chat')) {
+    const error = new Error('Chat permission is not enabled for this participant');
+    error.code = 'FORBIDDEN';
+    throw error;
+  }
+  if (
+    private_to_user_id &&
+    !can(room.actor_participant_role, room.actor_permissions, 'send_private_dm')
+  ) {
+    const error = new Error('Private messaging permission is not enabled for this participant');
+    error.code = 'FORBIDDEN';
+    throw error;
+  }
   if (private_to_user_id && !room.allow_private_dm) {
     const e = new Error('Private DMs disabled in this room'); e.code = 'FORBIDDEN'; throw e;
   }
@@ -452,7 +596,7 @@ async function sendChat(roomId, actor, { message, private_to_user_id, sender_dis
   const r = await pool.query(
     `INSERT INTO ng_conf_chat (room_id, sender_user_id, sender_display, message, private_to_user_id)
      VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-    [roomId, actor?.user_id || null, sender_display || actor?.display_name || 'Anon', String(message).slice(0, 2000), private_to_user_id || null]
+    [roomId, actor.user_id, actor.display_name || 'Participant', sanitizedMessage, private_to_user_id || null]
   );
   if (private_to_user_id) {
     await logEvent(roomId, null, actor, 'dm_sent', { to: private_to_user_id }, pool);
@@ -461,6 +605,12 @@ async function sendChat(roomId, actor, { message, private_to_user_id, sender_dis
 }
 
 async function listChat(roomId, { user_id, since, limit = 200 } = {}, pool = getPool()) {
+  await assertRoomAccess(
+    roomId,
+    { user_id, role: null },
+    { admittedOnly: true, allowAdmin: false },
+    pool
+  );
   const where = [`room_id = $1`];
   const params = [roomId];
   if (since) { params.push(since); where.push(`created_at >= $${params.length}`); }
@@ -486,6 +636,7 @@ async function listChat(roomId, { user_id, since, limit = 200 } = {}, pool = get
 // ─── Invites (hashed token, parallels portal_access_tokens) ──────────────────
 
 async function createInvite(roomId, actor, { role = 'observer', email, phone, display_name, ttlHours = 24 } = {}, pool = getPool()) {
+  await assertRoomAccess(roomId, actor, { moderatorOnly: true }, pool);
   role = coerceConfRole(role, 'observer');
   const raw = mintToken();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
@@ -548,6 +699,7 @@ module.exports = {
   createRoom,
   getRoom,
   getRoomByCode,
+  assertRoomAccess,
   listRooms,
   startRoom,
   endRoom,

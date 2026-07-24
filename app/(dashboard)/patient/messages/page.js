@@ -81,8 +81,6 @@ export default function PatientMessagesPage() {
   // Handle real-time incoming messages
   useEffect(() => {
     const cleanup = onNewMessage((message) => {
-      console.log('📨 New message received:', message);
-      
       // Add message to current conversation if it matches
       if (selectedConversation?.conversationId === message.conversationId ||
           selectedConversation?.recipientId === message.senderId) {
@@ -121,13 +119,13 @@ export default function PatientMessagesPage() {
   // Join/leave conversation room when selected conversation changes
   useEffect(() => {
     if (selectedConversation?.conversationId && isConnected) {
-      joinConversation(selectedConversation.conversationId);
+      joinConversation(selectedConversation.conversationId, selectedConversation.recipientId);
       
       return () => {
         leaveConversation(selectedConversation.conversationId);
       };
     }
-  }, [selectedConversation?.conversationId, isConnected, joinConversation, leaveConversation]);
+  }, [selectedConversation?.conversationId, selectedConversation?.recipientId, isConnected, joinConversation, leaveConversation]);
 
   // Update typing indicator
   useEffect(() => {

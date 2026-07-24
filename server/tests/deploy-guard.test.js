@@ -174,6 +174,16 @@ test('deploy source does not contain the burned public deploy secret', () => {
   }
 });
 
+test('Cloud Run deployment sources the OpenClaw gateway token from Secret Manager', () => {
+  const cloudBuild = fs.readFileSync(path.join(repoRoot, 'cloudbuild.yaml'), 'utf8');
+  assert.doesNotMatch(cloudBuild, /OPENCLAW_GATEWAY_TOKEN=[^,\s]+-token-/);
+  assert.match(
+    cloudBuild,
+    /OPENCLAW_GATEWAY_TOKEN=OPENCLAW_GATEWAY_TOKEN:latest/,
+    'OPENCLAW_GATEWAY_TOKEN must be injected through Cloud Run Secret Manager'
+  );
+});
+
 test('artifact deploy runs migrations before agent table backfill', () => {
   const source = fs.readFileSync(uploadRoutePath, 'utf8');
   const migrateIndex = source.indexOf('npm run migrate');

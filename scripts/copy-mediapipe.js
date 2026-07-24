@@ -19,6 +19,11 @@ const WASM_DEST = path.join(__dirname, '..', 'public', 'mediapipe-wasm');
 const MODEL_DIR = path.join(__dirname, '..', 'public', 'mediapipe-models');
 const MODEL_FILE = path.join(MODEL_DIR, 'selfie_segmenter.tflite');
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
+const MODEL_DOWNLOAD_TIMEOUT_MS = Number.parseInt(
+  process.env.MEDIAPIPE_MODEL_DOWNLOAD_TIMEOUT_MS || '10000',
+  10
+);
+const MAX_MODEL_REDIRECTS = 5;
 
 // ── Copy WASM files ──
 function copyWasm() {
@@ -50,36 +55,64 @@ function downloadModel() {
     }
     if (!fs.existsSync(MODEL_DIR)) fs.mkdirSync(MODEL_DIR, { recursive: true });
 
+    if (process.env.MEDIAPIPE_SKIP_MODEL_DOWNLOAD === '1') {
+      console.log('  MODEL download skipped by MEDIAPIPE_SKIP_MODEL_DOWNLOAD');
+      resolve(false);
+      return;
+    }
+
     console.log('  MODEL downloading selfie_segmenter.tflite ...');
-    const file = fs.createWriteStream(MODEL_FILE);
-    
-    const request = (url) => {
-      https.get(url, (response) => {
+    let settled = false;
+    let file = null;
+
+    const finish = (success, warning) => {
+      if (settled) return;
+      settled = true;
+      if (warning) console.warn(`  MODEL ${warning} — virtual backgrounds will use fallback`);
+      if (file) file.close();
+      if (!success) {
+        try { fs.unlinkSync(MODEL_FILE); } catch {}
+      }
+      resolve(success);
+    };
+
+    const request = (url, redirectCount = 0) => {
+      file = fs.createWriteStream(MODEL_FILE);
+      const modelRequest = https.get(url, (response) => {
         // Follow redirects
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          request(response.headers.location);
+          response.resume();
+          file.close();
+          try { fs.unlinkSync(MODEL_FILE); } catch {}
+          if (redirectCount >= MAX_MODEL_REDIRECTS) {
+            finish(false, `download failed after ${MAX_MODEL_REDIRECTS} redirects`);
+            return;
+          }
+          request(response.headers.location, redirectCount + 1);
           return;
         }
         if (response.statusCode !== 200) {
-          console.warn(`  MODEL download failed (HTTP ${response.statusCode}) — virtual backgrounds will use fallback`);
-          file.close();
-          try { fs.unlinkSync(MODEL_FILE); } catch {}
-          resolve(false);
+          response.resume();
+          finish(false, `download failed (HTTP ${response.statusCode})`);
           return;
         }
         response.pipe(file);
         file.on('finish', () => {
-          file.close();
+          if (settled) return;
+          if (!fs.existsSync(MODEL_FILE)) {
+            finish(false, 'download ended without a complete model file');
+            return;
+          }
           const kb = (fs.statSync(MODEL_FILE).size / 1024).toFixed(0);
           console.log(`  MODEL selfie_segmenter.tflite downloaded (${kb} KB)`);
-          resolve(true);
+          finish(true);
         });
-      }).on('error', (err) => {
-        console.warn(`  MODEL download error: ${err.message} — virtual backgrounds will use fallback`);
-        file.close();
-        try { fs.unlinkSync(MODEL_FILE); } catch {}
-        resolve(false);
       });
+
+      modelRequest.setTimeout(MODEL_DOWNLOAD_TIMEOUT_MS, () => {
+        modelRequest.destroy(new Error(`timed out after ${MODEL_DOWNLOAD_TIMEOUT_MS}ms`));
+      });
+      modelRequest.on('error', (err) => finish(false, `download error: ${err.message}`));
     };
     
     request(MODEL_URL);
