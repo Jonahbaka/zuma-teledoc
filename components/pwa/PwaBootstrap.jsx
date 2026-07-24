@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
-const PWA_ASSET_VERSION = '2026-04-28-pwa-v9';
+const PWA_ASSET_VERSION = '2026-07-24-pwa-v11';
 const DISMISS_KEY = 'doctarx-install-dismissed-v2';
 const DISMISS_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const SW_RUNTIME_KEY = '__doctarxPwaRuntime';

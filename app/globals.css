@@ -323,6 +323,36 @@
   overflow-x: clip;
 }
 
+.app-shell-root:focus {
+  outline: none;
+}
+
+.app-skip-link {
+  position: fixed;
+  left: max(1rem, calc(1rem + var(--safe-left)));
+  top: max(1rem, calc(1rem + var(--safe-top)));
+  z-index: 100;
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid hsl(var(--ring));
+  border-radius: 999px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  padding: 0.65rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.2);
+  transform: translateY(calc(-100% - 2rem));
+  transition: transform 160ms ease;
+}
+
+.app-skip-link:focus-visible {
+  outline: none;
+  transform: translateY(0);
+}
+
 .app-install-banner {
   position: fixed;
   left: max(1rem, calc(1rem + var(--safe-left)));
@@ -526,6 +556,15 @@
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 
   .app-mobile-dock__link,

@@ -108,9 +108,9 @@ export default function ConsultationChatPanel({ appointment }) {
 
   useEffect(() => {
     if (!conversationId || !isConnected) return undefined;
-    joinConversation(conversationId);
+    joinConversation(conversationId, recipient.id);
     return () => leaveConversation(conversationId);
-  }, [conversationId, isConnected, joinConversation, leaveConversation]);
+  }, [conversationId, isConnected, joinConversation, leaveConversation, recipient?.id]);
 
   useEffect(() => {
     if (!conversationId || !user?.id || !isConnected) return undefined;

@@ -5,8 +5,16 @@
  */
 
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const svc = require('../services/conferencing/conferenceService');
+const conferenceChatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: 'Conference chat rate limit exceeded' },
+});
 
 function actor(req) {
   return {
@@ -44,18 +52,27 @@ router.use('/public', publicRouter);
 router.get('/rooms', async (req, res) => {
   try {
     const rows = await svc.listRooms({
-      host_user_id: req.query.host_user_id,
+      host_user_id: ['admin', 'super_admin'].includes(req.user?.role)
+        ? req.query.host_user_id
+        : undefined,
       status: req.query.status,
       kind: req.query.kind,
       since: req.query.since,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
+      actor_user_id: req.user?.id,
+      actor_role: req.user?.role,
     });
     res.json({ ok: true, rooms: rows });
   } catch (e) { handleError(res, e); }
 });
 
 router.post('/rooms', express.json(), async (req, res) => {
-  try { res.status(201).json({ ok: true, room: await svc.createRoom(req.body || {}, actor(req)) }); }
+  try {
+    if (!['provider', 'admin', 'super_admin', 'hospital_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ ok: false, error: 'Only authorized clinical hosts can create conference rooms' });
+    }
+    res.status(201).json({ ok: true, room: await svc.createRoom(req.body || {}, actor(req)) });
+  }
   catch (e) { handleError(res, e); }
 });
 
@@ -63,12 +80,14 @@ router.get('/rooms/code/:code', async (req, res) => {
   try {
     const r = await svc.getRoomByCode(req.params.code);
     if (!r) return res.status(404).json({ ok: false, error: 'Not found' });
+    await svc.assertRoomAccess(r.id, actor(req));
     res.json({ ok: true, room: r });
   } catch (e) { handleError(res, e); }
 });
 
 router.get('/rooms/:id', async (req, res) => {
   try {
+    await svc.assertRoomAccess(req.params.id, actor(req));
     const r = await svc.getRoom(req.params.id);
     if (!r) return res.status(404).json({ ok: false, error: 'Not found' });
     res.json({ ok: true, room: r });
@@ -91,7 +110,10 @@ router.post('/rooms/:id/cancel', express.json(), async (req, res) => {
 // ─── Participants ────────────────────────────────────────────────────────────
 
 router.get('/rooms/:id/participants', async (req, res) => {
-  try { res.json({ ok: true, participants: await svc.listParticipants(req.params.id) }); }
+  try {
+    await svc.assertRoomAccess(req.params.id, actor(req));
+    res.json({ ok: true, participants: await svc.listParticipants(req.params.id) });
+  }
   catch (e) { handleError(res, e); }
 });
 
@@ -155,7 +177,7 @@ router.get('/rooms/:id/chat', async (req, res) => {
   } catch (e) { handleError(res, e); }
 });
 
-router.post('/rooms/:id/chat', express.json(), async (req, res) => {
+router.post('/rooms/:id/chat', conferenceChatLimiter, express.json(), async (req, res) => {
   try { res.status(201).json({ ok: true, message: await svc.sendChat(req.params.id, actor(req), req.body || {}) }); }
   catch (e) { handleError(res, e); }
 });
@@ -163,7 +185,10 @@ router.post('/rooms/:id/chat', express.json(), async (req, res) => {
 // ─── Events ──────────────────────────────────────────────────────────────────
 
 router.get('/rooms/:id/events', async (req, res) => {
-  try { res.json({ ok: true, events: await svc.listEvents(req.params.id) }); }
+  try {
+    await svc.assertRoomAccess(req.params.id, actor(req));
+    res.json({ ok: true, events: await svc.listEvents(req.params.id) });
+  }
   catch (e) { handleError(res, e); }
 });
 
@@ -192,8 +217,11 @@ router.get('/media-readiness', (req, res) => {
 // Returns 409 with code SFU_NOT_CONFIGURED when LiveKit env vars are absent.
 router.post('/rooms/:id/token', express.json(), async (req, res) => {
   try {
-    const room = await svc.getRoom(req.params.id);
-    if (!room) return res.status(404).json({ ok: false, error: 'Room not found' });
+    const room = await svc.assertRoomAccess(
+      req.params.id,
+      actor(req),
+      { admittedOnly: true, allowAdmin: false }
+    );
 
     const lk = require('../services/conferencing/livekitService');
     if (!lk.isLiveKitConfigured()) {
@@ -204,7 +232,7 @@ router.post('/rooms/:id/token', express.json(), async (req, res) => {
       });
     }
 
-    const userId      = req.user?.id || `guest-${Date.now()}`;
+    const userId      = req.user.id;
     const displayName = (req.body?.display_name || req.user?.name || req.user?.display_name || 'Participant').slice(0, 80);
 
     const token      = lk.generateRoomToken(room.id, userId, displayName, { canPublish: true, canSubscribe: true });
@@ -218,6 +246,7 @@ router.post('/rooms/:id/token', express.json(), async (req, res) => {
 // Returns TURN + SFU readiness for a specific room's configuration.
 router.get('/rooms/:id/media-status', async (req, res) => {
   try {
+    await svc.assertRoomAccess(req.params.id, actor(req));
     const room = await svc.getRoom(req.params.id);
     if (!room) return res.status(404).json({ ok: false, error: 'Room not found' });
 

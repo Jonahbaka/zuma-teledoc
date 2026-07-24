@@ -4,8 +4,7 @@
  */
 
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
-const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const logger = require('../middleware/logger');
 const { authenticate } = require('../middleware/auth');
@@ -14,6 +13,10 @@ const { encrypt, decrypt } = require('../../lib/encryption');
 const { validate, createMessageSchema, paginationSchema } = require('../../lib/validation');
 const { keysToCamel, parseQueryParams, getPaginationMeta } = require('../../lib/utils');
 const notificationService = require('../services/notifications');
+const {
+  assertMessagingRelationship,
+  sanitizeMessageContent
+} = require('../services/messageAuthorization');
 
 // Socket.io service for real-time messaging
 let socketService = null;
@@ -24,31 +27,13 @@ try {
 }
 
 const router = express.Router();
-
-/**
- * Generate or get conversation ID between two users
- * Creates a deterministic UUID from two user IDs
- */
-const getConversationId = (userId1, userId2) => {
-  // Create deterministic conversation ID by sorting user IDs
-  const sortedIds = [userId1, userId2].sort();
-  const combined = `${sortedIds[0]}_${sortedIds[1]}`;
-  
-  // Generate a UUID v5-like hash from the combined string
-  // Using SHA-1 hash and UUID v5 namespace format
-  const hash = crypto.createHash('sha1').update(combined).digest();
-  
-  // Convert to UUID format (version 5 style)
-  const uuid = [
-    hash.slice(0, 4).toString('hex'),
-    hash.slice(4, 6).toString('hex'),
-    ((hash[6] & 0x0f) | 0x50).toString(16) + hash.slice(7, 8).toString('hex'), // Version 5
-    ((hash[8] & 0x3f) | 0x80).toString(16) + hash.slice(9, 10).toString('hex'), // Variant
-    hash.slice(10, 16).toString('hex')
-  ].join('-');
-  
-  return uuid;
-};
+const messageSendLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many messages sent. Please wait a moment.' }
+});
 
 /**
  * POST /api/messages
@@ -56,76 +41,34 @@ const getConversationId = (userId1, userId2) => {
  */
 router.post('/',
   authenticate,
+  messageSendLimiter,
   auditMiddleware('create', 'message'),
   async (req, res) => {
-    console.log('=== MESSAGE SEND REQUEST ===');
-    console.log('Request body:', req.body);
-    console.log('User:', { id: req.user?.id, role: req.user?.role });
-    
     try {
       const data = validate(createMessageSchema, req.body);
-      console.log('Validated data:', data);
-      
-      // Verify recipient exists
-      const { rows: recipients } = await db.query(
-        'SELECT id, role, first_name, last_name FROM users WHERE id = $1 AND is_active = true',
-        [data.recipientId]
+      const content = sanitizeMessageContent(data.content);
+      if (!content) {
+        return res.status(400).json({ success: false, error: 'Message content is required' });
+      }
+      const { conversationId, recipient } = await assertMessagingRelationship(
+        db,
+        req.user.id,
+        data.recipientId
       );
       
-      if (recipients.length === 0) {
-        return res.status(404).json({
-          success: false,
-          error: 'Recipient not found'
-        });
-      }
-      
-      // For patients, verify they have an appointment with the provider
-      if (req.user.role === 'patient' && recipients[0].role === 'provider') {
-        const { rows: appointments } = await db.query(
-          `SELECT 1 FROM appointments 
-           WHERE patient_id = $1 AND provider_id = $2 LIMIT 1`,
-          [req.user.id, data.recipientId]
-        );
-        
-        if (appointments.length === 0) {
-          return res.status(403).json({
-            success: false,
-            error: 'You can only message providers you have appointments with'
-          });
-        }
-      }
-      
-      // Get or create conversation ID
-      const conversationId = getConversationId(req.user.id, data.recipientId);
-      console.log('Conversation ID:', conversationId);
-      
       // Encrypt message content
-      console.log('Encrypting message content...');
       let encrypted, iv, tag;
       try {
-        const encryptionResult = encrypt(data.content);
+        const encryptionResult = encrypt(content);
         encrypted = encryptionResult.encrypted;
         iv = encryptionResult.iv;
         tag = encryptionResult.tag;
-        console.log('Encryption successful');
       } catch (encryptError) {
-        console.error('Encryption error:', encryptError.message);
-        throw new Error(`Encryption failed: ${encryptError.message}`);
+        logger.error('Message encryption failed', { userId: req.user.id });
+        throw new Error('Message encryption failed');
       }
       
       // Create message
-      console.log('Creating message in database...');
-      console.log('Insert values:', {
-        conversationId,
-        senderId: req.user.id,
-        recipientId: data.recipientId,
-        hasEncrypted: !!encrypted,
-        hasIv: !!iv,
-        hasTag: !!tag,
-        isUrgent: data.isUrgent,
-        hasAttachment: !!data.attachmentName
-      });
-      
       let rows;
       try {
         const result = await db.query(
@@ -150,15 +93,11 @@ router.post('/',
           ]
         );
         rows = result.rows;
-        console.log('Message created successfully:', rows[0]?.id);
       } catch (dbError) {
-        console.error('=== DATABASE INSERT ERROR ===');
-        console.error('Error name:', dbError.name);
-        console.error('Error message:', dbError.message);
-        console.error('Error code:', dbError.code);
-        console.error('Error detail:', dbError.detail);
-        console.error('Error hint:', dbError.hint);
-        console.error('Error position:', dbError.position);
+        logger.error('Message persistence failed', {
+          userId: req.user.id,
+          errorCode: dbError.code
+        });
         throw dbError;
       }
       
@@ -176,7 +115,6 @@ router.post('/',
       if (data.isUrgent) {
         try {
           const emailService = require('../services/email');
-          const recipient = recipients[0];
           await emailService.sendNewMessageEmail(
             {
               id: recipient.id,
@@ -188,7 +126,9 @@ router.post('/',
             true
           );
         } catch (emailError) {
-          logger.warn('Failed to send urgent message email notification', { error: emailError.message });
+          logger.warn('Failed to send urgent message email notification', {
+            recipientId: data.recipientId
+          });
         }
       }
       
@@ -206,7 +146,7 @@ router.post('/',
             conversationId,
             senderId: req.user.id,
             senderName,
-            content: data.content,
+            content,
             isUrgent: data.isUrgent || false,
             hasAttachment: !!data.attachmentName,
             attachmentName: data.attachmentName,
@@ -225,14 +165,6 @@ router.post('/',
         data: keysToCamel(rows[0])
       });
     } catch (error) {
-      console.error('=== MESSAGE SEND ERROR ===');
-      console.error('Error name:', error?.name);
-      console.error('Error message:', error?.message);
-      console.error('Error stack:', error?.stack);
-      console.error('Error code:', error?.code);
-      console.error('Error detail:', error?.detail);
-      console.error('Error hint:', error?.hint);
-      
       if (error.status === 400) {
         return res.status(400).json({
           success: false,
@@ -240,25 +172,21 @@ router.post('/',
           errors: error.errors
         });
       }
+      if (error.status === 403) {
+        return res.status(403).json({
+          success: false,
+          error: error.message
+        });
+      }
       
       logger.error('Send message error', { 
         error: error.message,
-        stack: error.stack,
         code: error.code,
-        detail: error.detail,
-        hint: error.hint,
-        name: error.name,
-        userId: req.user?.id,
-        body: req.body
+        userId: req.user?.id
       });
-      
-      const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
-      
       res.status(500).json({
         success: false,
-        error: 'Failed to send message',
-        details: isDevelopment ? error.message : undefined,
-        code: isDevelopment ? error.code : undefined
+        error: 'Failed to send message'
       });
     }
   }
@@ -376,8 +304,7 @@ router.get('/conversation/:recipientId', authenticate, async (req, res) => {
     const filters = validate(paginationSchema, req.query);
     const { page, limit } = parseQueryParams(filters);
     const offset = (page - 1) * limit;
-    
-    const conversationId = getConversationId(req.user.id, recipientId);
+    const { conversationId } = await assertMessagingRelationship(db, req.user.id, recipientId);
     
     // Get total count
     const { rows: countResult } = await db.query(
@@ -450,6 +377,9 @@ router.get('/conversation/:recipientId', authenticate, async (req, res) => {
       pagination: getPaginationMeta(total, page, limit)
     });
   } catch (error) {
+    if (error.status === 403) {
+      return res.status(403).json({ success: false, error: error.message });
+    }
     logger.error('Get conversation messages error', { error: error.message });
     res.status(500).json({
       success: false,
@@ -579,6 +509,7 @@ router.delete('/:id', authenticate, async (req, res) => {
 router.get('/online-status/:userId', authenticate, async (req, res) => {
   try {
     const { userId } = req.params;
+    await assertMessagingRelationship(db, req.user.id, userId);
     
     const isOnline = socketService ? socketService.isUserOnline(userId) : false;
     const lastSeen = socketService ? socketService.getUserLastSeen(userId) : null;
@@ -590,6 +521,9 @@ router.get('/online-status/:userId', authenticate, async (req, res) => {
       lastSeen
     });
   } catch (error) {
+    if (error.status === 403) {
+      return res.status(403).json({ success: false, error: error.message });
+    }
     logger.error('Get online status error', { error: error.message });
     res.status(500).json({
       success: false,
@@ -604,7 +538,17 @@ router.get('/online-status/:userId', authenticate, async (req, res) => {
  */
 router.get('/online-users', authenticate, async (req, res) => {
   try {
-    const onlineUsers = socketService ? socketService.getOnlineUsers() : [];
+    const { rows: contacts } = await db.query(
+      `SELECT DISTINCT
+          CASE WHEN sender_id = $1 THEN recipient_id ELSE sender_id END AS user_id
+         FROM messages
+        WHERE sender_id = $1 OR recipient_id = $1`,
+      [req.user.id]
+    );
+    const contactIds = new Set(contacts.map((row) => String(row.user_id)));
+    const onlineUsers = socketService
+      ? socketService.getOnlineUsers().filter((user) => contactIds.has(String(user.userId)))
+      : [];
     
     res.json({
       success: true,

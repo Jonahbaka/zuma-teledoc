@@ -1,4 +1,4 @@
-const CACHE_VERSION = '2026-07-05-pwa-v10';
+const CACHE_VERSION = '2026-07-24-pwa-v11';
 const CACHE_NAME = `doctarx-app-shell-${CACHE_VERSION}`;
 const NAVIGATION_CACHE = `${CACHE_NAME}-pages`;
 const ASSET_CACHE = `${CACHE_NAME}-assets`;

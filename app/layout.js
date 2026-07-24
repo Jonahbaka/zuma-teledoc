@@ -182,10 +182,13 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body className="min-h-[100dvh] overflow-x-clip bg-background font-sans antialiased" suppressHydrationWarning>
+        <a className="app-skip-link" href="#main-content">
+          Skip to main content
+        </a>
         <ClientRuntime />
         <I18nProvider>
           <AuthProvider>
-            <div className="app-shell-root">
+            <div id="main-content" className="app-shell-root" tabIndex={-1}>
               {children}
               <ConditionalSiteFooter />
               <Toaster />

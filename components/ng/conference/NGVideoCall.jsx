@@ -43,7 +43,7 @@ const api = {
   }).then(r => r.json()),
   endRoom: (id) => fetch(`/api/ng/conference/rooms/${id}/end`, { method: 'POST' }).then(r => r.json()),
   sendChat: (id, text) => fetch(`/api/ng/conference/rooms/${id}/chat`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: text }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text }),
   }).then(r => r.json()),
   getChat: (id) => fetch(`/api/ng/conference/rooms/${id}/chat`).then(r => r.json()),
 };
@@ -70,8 +70,9 @@ function RemoteVideoTile({ participant, track, hr }) {
 
   useEffect(() => {
     if (track && videoRef.current) {
-      track.attach(videoRef.current);
-      return () => { track.detach(videoRef.current); };
+      const videoElement = videoRef.current;
+      track.attach(videoElement);
+      return () => { track.detach(videoElement); };
     }
   }, [track]);
 
@@ -137,8 +138,9 @@ function LocalVideoTile({ isVideoOff, isMuted, displayName, initials, livekitRoo
     const lp = livekitRoom.localParticipant;
     const pub = Array.from(lp.videoTrackPublications.values())[0];
     if (pub?.track) {
-      pub.track.attach(videoRef.current);
-      return () => pub.track?.detach(videoRef.current);
+      const videoElement = videoRef.current;
+      pub.track.attach(videoElement);
+      return () => pub.track?.detach(videoElement);
     }
   }, [livekitRoom]);
 
@@ -282,14 +284,24 @@ const NotesPanel = ({ messages, hr, appointmentId, patientId, onOpenSoap, onCrea
 };
 
 /* ---------- Chat sidebar ---------- */
-const ChatPanel = ({ messages, onSend, roomId }) => {
+const ChatPanel = ({ messages, onSend }) => {
   const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
   const submit = async (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    onSend(input);
-    if (roomId) { api.sendChat(roomId, input).catch(() => {}); }
-    setInput('');
+    const text = input.trim();
+    if (!text || sending) return;
+    setSending(true);
+    setError('');
+    try {
+      await onSend(text);
+      setInput('');
+    } catch (sendError) {
+      setError(sendError.message || 'Message not sent. Try again.');
+    } finally {
+      setSending(false);
+    }
   };
   return (
     <div className="flex flex-col h-full bg-white">
@@ -311,9 +323,11 @@ const ChatPanel = ({ messages, onSend, roomId }) => {
       <div className="p-5 border-t border-gray-200 bg-slate-50">
         <form onSubmit={submit} className="relative">
           <input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder="Send a message..."
+            maxLength={2000}
             className="w-full bg-white border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-full py-3 pl-5 pr-14 text-sm outline-none" />
-          <button type="submit" className="absolute right-1.5 top-1.5 p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700"><Send size={16} /></button>
+          <button type="submit" disabled={sending || !input.trim()} aria-label="Send conference message" className="absolute right-1.5 top-1.5 p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><Send size={16} /></button>
         </form>
+        {error ? <p className="mt-2 text-xs text-red-600" role="alert">{error}</p> : null}
       </div>
     </div>
   );
@@ -562,21 +576,29 @@ export default function NGVideoCall() {
     return () => clearInterval(t);
   }, [callStartedAt]);
 
-  // Poll chat messages once in a room
+  // Conference messages are persisted server-side; polling provides a
+  // reconnect-safe view without leaking events across socket rooms.
   useEffect(() => {
     if (!roomId) return;
-    const poll = setInterval(() => {
+    let cancelled = false;
+    const load = () => {
       api.getChat(roomId).then(d => {
-        if (d.messages?.length) {
+        if (!cancelled && d.messages) {
           setMessages(d.messages.map(m => ({
-            sender: m.participant_display_name || m.user_id || 'Participant',
-            text: m.body,
+            id: m.id,
+            sender: m.sender_display || m.sender_user_id || 'Participant',
+            text: m.message,
             time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           })));
         }
       }).catch(() => {});
-    }, 5000);
-    return () => clearInterval(poll);
+    };
+    load();
+    const poll = setInterval(load, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
   }, [roomId]);
 
   const handleJoin = useCallback(async (conferenceRoom) => {
@@ -721,12 +743,19 @@ export default function NGVideoCall() {
     setPhase('ended');
   };
 
-  const sendMessage = (text) => {
+  const sendMessage = async (text) => {
+    const optimisticId = `pending-${Date.now()}`;
     setMessages(prev => [...prev, {
+      id: optimisticId,
       sender: 'You',
       text,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }]);
+    const response = await api.sendChat(roomId, text);
+    if (!response?.ok) {
+      setMessages((current) => current.filter((message) => message.id !== optimisticId));
+      throw new Error(response?.error || 'Message not sent');
+    }
   };
 
   const togglePanel = (panel) => setActivePanel(p => p === panel ? null : panel);
@@ -936,7 +965,7 @@ export default function NGVideoCall() {
             {activePanel === 'participants' && <ParticipantsPanel localName={displayName} remoteParticipants={remoteParticipants} sfuAvailable={sfuAvailable} />}
             {activePanel === 'vitals' && <VitalsPanel hr={hr} remoteParticipants={remoteParticipants} />}
             {activePanel === 'notes' && <NotesPanel messages={messages} hr={hr} appointmentId={appointmentId} patientId={patientId} onOpenSoap={openClinicalRecord} onCreateRx={createPrescription} />}
-            {activePanel === 'chat' && <ChatPanel messages={messages} onSend={sendMessage} roomId={roomId} />}
+            {activePanel === 'chat' && <ChatPanel messages={messages} onSend={sendMessage} />}
           </div>
         </div>
       )}
