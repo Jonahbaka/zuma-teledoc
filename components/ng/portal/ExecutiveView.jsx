@@ -363,8 +363,8 @@ function OverviewTab({ exec, gov }) {
             <GovernanceStatusRow label="Provider workload score" value={exec.provider?.providerWorkloadScore ?? '—'} />
             <GovernanceStatusRow
               label="Capacity warnings"
-              value={exec.provider?.providerCapacityWarnings ?? 0}
-              highlight={(exec.provider?.providerCapacityWarnings ?? 0) > 0}
+              value={exec.provider?.providerCapacityWarnings ?? 'Data unavailable'}
+              highlight={Number(exec.provider?.providerCapacityWarnings) > 0}
             />
           </div>
           <h4 className="mb-2 mt-5 text-sm font-bold text-slate-700">Top Providers</h4>
@@ -383,10 +383,10 @@ function OverviewTab({ exec, gov }) {
           <h3 className="mb-4 text-base font-black text-slate-900">Governance Snapshot</h3>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { label: 'Total submissions',  value: gov.governance?.totalSubmissions || 0 },
-              { label: 'Pending review',     value: gov.governance?.pendingReview || 0,    hl: true },
-              { label: 'Pending approval',   value: gov.governance?.pendingApproval || 0,  hl: true },
-              { label: 'Approved / ready',   value: gov.governance?.approved || 0 },
+              { label: 'Total submissions',  value: gov.governance?.totalSubmissions ?? 'Data unavailable' },
+              { label: 'Pending review',     value: gov.governance?.pendingReview ?? 'Data unavailable',    hl: true },
+              { label: 'Pending approval',   value: gov.governance?.pendingApproval ?? 'Data unavailable',  hl: true },
+              { label: 'Approved / ready',   value: gov.governance?.approved ?? 'Data unavailable' },
             ].map((item) => (
               <div key={item.label} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
                 <p className="text-xs text-slate-500">{item.label}</p>
@@ -567,10 +567,10 @@ function GovernanceTab({ gov }) {
     <div className="space-y-8">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Total submissions',  value: g.totalSubmissions || 0 },
-          { label: 'Pending review',     value: g.pendingReview    || 0, hl: (g.pendingReview || 0) > 0 },
-          { label: 'Pending approval',   value: g.pendingApproval  || 0, hl: (g.pendingApproval || 0) > 0 },
-          { label: 'Approved / DHIS2 ready', value: g.approved     || 0 },
+          { label: 'Total submissions',  value: g.totalSubmissions ?? 'Data unavailable' },
+          { label: 'Pending review',     value: g.pendingReview ?? 'Data unavailable', hl: Number(g.pendingReview) > 0 },
+          { label: 'Pending approval',   value: g.pendingApproval ?? 'Data unavailable', hl: Number(g.pendingApproval) > 0 },
+          { label: 'Approved / DHIS2 ready', value: g.approved ?? 'Data unavailable' },
         ].map((item) => (
           <div key={item.label} className={`rounded-2xl border p-5 ${item.hl ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
             <p className="text-xs text-slate-500">{item.label}</p>

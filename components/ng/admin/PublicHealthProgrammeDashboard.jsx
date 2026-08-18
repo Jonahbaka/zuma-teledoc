@@ -230,7 +230,9 @@ function currentPeriod() {
 }
 
 function number(value) {
-  return Number(value || 0).toLocaleString();
+  if (value === null || value === undefined || value === '') return 'Data unavailable';
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric.toLocaleString() : 'Data unavailable';
 }
 
 function formatExecutiveValue(item) {
@@ -300,7 +302,7 @@ function MetricCard({ label, value, icon: Icon = Activity, accentIndex = 0, hint
       </div>
       <div className="relative mt-4 flex items-center gap-1 text-xs font-semibold text-white/65">
         <ArrowUpRight className="h-3 w-3" />
-        <span>Live aggregate signal</span>
+        <span>{value === null || value === undefined ? 'Source data unavailable' : 'Live aggregate signal'}</span>
       </div>
     </div>
   );
@@ -574,7 +576,9 @@ function ProgrammeAreaCard({ area, idx = 0 }) {
 }
 
 function compactNumber(value) {
-  const numeric = Number(value || 0);
+  if (value === null || value === undefined || value === '') return 'Data unavailable';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 'Data unavailable';
   if (Math.abs(numeric) >= 1000000) return `${(numeric / 1000000).toFixed(1)}M`;
   if (Math.abs(numeric) >= 1000) return `${(numeric / 1000).toFixed(1)}K`;
   return number(numeric);

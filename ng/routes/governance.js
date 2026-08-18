@@ -55,6 +55,32 @@ async function runGate(middleware, req, res) {
   return allowed;
 }
 
+async function ensureResourceScope(req, res, resource) {
+  const allowed = await rbac.userCanAccessResource(req.user, {
+    jurisdictionId: resource?.jurisdiction_id || resource?.jurisdictionId || null,
+    facilityId: resource?.facility_id || resource?.facilityId || null,
+    programmeArea: resource?.programme_area || resource?.programmeArea || null,
+  });
+  if (allowed === null) {
+    res.status(503).json({ error: 'Government authorization scopes are unavailable.' });
+    return false;
+  }
+  if (!allowed) {
+    res.status(403).json({ error: 'Access outside your assigned government scope is denied.' });
+    return false;
+  }
+  return true;
+}
+
+async function accessibleJurisdictions(req, res) {
+  const ids = await rbac.getAccessibleJurisdictionIds(req.user);
+  if (ids === undefined) {
+    res.status(503).json({ error: 'Government authorization scopes are unavailable.' });
+    return undefined;
+  }
+  return ids;
+}
+
 // ─── Jurisdiction hierarchy ──────────────────────────────────────────────────
 
 router.get(
@@ -72,6 +98,7 @@ router.get(
   wrap(async (req, res) => {
     const jur = await svc.getJurisdictionById(req.params.id);
     if (!jur) return res.status(404).json({ error: 'Jurisdiction not found.' });
+    if (!(await ensureResourceScope(req, res, { jurisdictionId: jur.id }))) return;
     res.json({ jurisdiction: jur });
   })
 );
@@ -83,7 +110,9 @@ router.get(
   rbac.requireExecutiveView,
   rbac.auditRequest('view', 'executive_summary'),
   wrap(async (req, res) => {
-    res.json(await svc.getExecutiveSummary({ period: req.query.period }));
+    const jurisdictionIds = await accessibleJurisdictions(req, res);
+    if (jurisdictionIds === undefined) return;
+    res.json(await svc.getExecutiveSummary({ period: req.query.period, jurisdictionIds }));
   })
 );
 
@@ -115,12 +144,15 @@ router.get(
   rbac.requireReviewer,
   rbac.auditRequest('view', 'governance_submissions'),
   wrap(async (req, res) => {
+    const allowedJurisdictionIds = await accessibleJurisdictions(req, res);
+    if (allowedJurisdictionIds === undefined) return;
     res.json(await svc.listSubmissions({
       status:         req.query.status,
       jurisdictionId: req.query.jurisdiction_id,
       period:         req.query.period,
       limit:          Number(req.query.limit) || 50,
       page:           Number(req.query.page)  || 1,
+      allowedJurisdictionIds,
     }));
   })
 );
@@ -133,6 +165,10 @@ router.post(
     if (!reportId || !period) {
       return res.status(422).json({ error: 'reportId and period are required.' });
     }
+    if (!jurisdictionId) {
+      return res.status(422).json({ error: 'jurisdictionId is required for an auditable government submission.' });
+    }
+    if (!(await ensureResourceScope(req, res, { jurisdictionId, facilityId }))) return;
     const submission = await svc.submitReport({
       reportId,
       facilityId:      facilityId      || null,
@@ -152,6 +188,7 @@ router.get(
   wrap(async (req, res) => {
     const sub = await svc.getSubmission(req.params.id);
     if (!sub) return res.status(404).json({ error: 'Submission not found.' });
+    if (!(await ensureResourceScope(req, res, sub))) return;
     res.json({ submission: sub });
   })
 );
@@ -176,23 +213,28 @@ router.post(
     const { targetStatus, notes } = req.body || {};
     if (!targetStatus) return res.status(422).json({ error: 'targetStatus is required.' });
 
-    // Enforce per-target role gates
+    // Enforce per-target role gates using active jurisdiction assignments.
     const approverTargets = new Set(['approved', 'dhis2_ready']);
     const exporterTargets = new Set(['exported']);
     const reviewerTargets = new Set(['area_council_review', 'fcta_review', 'rejected', 'submitted']);
 
     const userId = actor(req);
-    if (approverTargets.has(targetStatus) && !rbac.isSuperAdmin(req.user)) {
-      const baseRole = rbac.canonicalRole(req.user.role || '');
-      const APPROVER_ROLES = new Set(['super_admin', 'platform_admin', 'approver']);
-      if (!APPROVER_ROLES.has(baseRole)) {
-        return res.status(403).json({ error: 'Approval authority required for this transition.' });
-      }
+    if (approverTargets.has(targetStatus)) {
+      const allowed = await runGate(rbac.requireApprovalAuthority(), req, res);
+      if (!allowed) return;
     }
     if (exporterTargets.has(targetStatus)) {
       const allowed = await runGate(rbac.requireExportAuthority(), req, res);
       if (!allowed) return;
     }
+    if (reviewerTargets.has(targetStatus)) {
+      const allowed = await runGate(rbac.requireReviewer, req, res);
+      if (!allowed) return;
+    }
+
+    const existing = await svc.getSubmission(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Submission not found.' });
+    if (!(await ensureResourceScope(req, res, existing))) return;
 
     const submission = await svc.advanceWorkflow({
       submissionId: req.params.id,
@@ -211,6 +253,9 @@ router.get(
   '/submissions/:id/logs',
   rbac.requireReviewer,
   wrap(async (req, res) => {
+    const submission = await svc.getSubmission(req.params.id);
+    if (!submission) return res.status(404).json({ error: 'Submission not found.' });
+    if (!(await ensureResourceScope(req, res, submission))) return;
     const logs = await svc.getWorkflowLogs(req.params.id);
     res.json({ logs });
   })
@@ -271,6 +316,7 @@ router.post(
       grantedBy:         actor(req),
       expiresAt:         expiresAt         || null,
     });
+    rbac.invalidateScopeCache(req.params.userId);
 
     // Write audit lineage
     await svc.writeAuditLineage({
@@ -294,6 +340,7 @@ router.delete(
       return res.status(422).json({ error: 'jurisdictionId and role are required.' });
     }
     await svc.revokeJurisdictionRole(req.params.userId, jurisdictionId, role);
+    rbac.invalidateScopeCache(req.params.userId);
 
     await svc.writeAuditLineage({
       actorUserId: actor(req),

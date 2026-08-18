@@ -61,6 +61,10 @@ function isSuperAdmin(user) {
   return canonicalRole(user?.role || '') === 'super_admin';
 }
 
+function isPlatformAdministrator(user) {
+  return ['super_admin', 'platform_admin'].includes(canonicalRole(user?.role || user?.ng_role || ''));
+}
+
 // ─── Jurisdiction scope cache (TTL 60s) ──────────────────────────────────────
 
 const _scopeCache = new Map();
@@ -86,14 +90,88 @@ async function getUserJurisdictionScopes(userId) {
     const scopes = result.rows;
     _scopeCache.set(userId, { ts: Date.now(), scopes });
     return scopes;
-  } catch {
-    // If governance tables not yet migrated, fail open to base role check
-    return [];
+  } catch (error) {
+    console.error('[Government RBAC] Jurisdiction scope lookup failed:', error.message);
+    return null;
   }
 }
 
 function invalidateScopeCache(userId) {
   _scopeCache.delete(userId);
+}
+
+function scopeMatchesResource(scope, ancestorJurisdictionIds, { facilityId, programmeArea } = {}) {
+  const jurisdictionMatches = ancestorJurisdictionIds.size
+    ? ancestorJurisdictionIds.has(String(scope.jurisdiction_id))
+    : Boolean(facilityId && scope.facility_id && String(scope.facility_id) === String(facilityId));
+  if (!jurisdictionMatches) return false;
+  if (scope.facility_id && (!facilityId || String(scope.facility_id) !== String(facilityId))) return false;
+  if (scope.programme_area && (!programmeArea || scope.programme_area !== programmeArea)) return false;
+  return true;
+}
+
+async function userCanAccessResource(user, { jurisdictionId, facilityId, programmeArea } = {}) {
+  if (!user) return false;
+  if (isPlatformAdministrator(user)) return true;
+
+  const userId = user.id || user.userId;
+  if (!userId) return false;
+  const scopes = await getUserJurisdictionScopes(userId);
+  if (scopes === null) return null;
+
+  const ancestorJurisdictionIds = new Set();
+  if (jurisdictionId) {
+    try {
+      const result = await getPool().query(
+        `WITH RECURSIVE ancestors AS (
+           SELECT id, parent_id FROM ng_jurisdictions WHERE id = $1
+           UNION ALL
+           SELECT parent.id, parent.parent_id
+             FROM ng_jurisdictions parent
+             JOIN ancestors child ON child.parent_id = parent.id
+         )
+         SELECT id FROM ancestors`,
+        [jurisdictionId]
+      );
+      result.rows.forEach((row) => ancestorJurisdictionIds.add(String(row.id)));
+    } catch (error) {
+      console.error('[Government RBAC] Jurisdiction hierarchy lookup failed:', error.message);
+      return null;
+    }
+  }
+
+  return scopes.some((scope) => scopeMatchesResource(
+    scope,
+    ancestorJurisdictionIds,
+    { facilityId, programmeArea }
+  ));
+}
+
+async function getAccessibleJurisdictionIds(user) {
+  if (!user) return [];
+  if (isPlatformAdministrator(user)) return null;
+  const userId = user.id || user.userId;
+  if (!userId) return [];
+  const scopes = await getUserJurisdictionScopes(userId);
+  if (scopes === null) return undefined;
+  if (!scopes.length) return [];
+  try {
+    const result = await getPool().query(
+      `WITH RECURSIVE descendants AS (
+         SELECT id FROM ng_jurisdictions WHERE id = ANY($1::uuid[])
+         UNION
+         SELECT child.id
+           FROM ng_jurisdictions child
+           JOIN descendants parent ON child.parent_id = parent.id
+       )
+       SELECT DISTINCT id FROM descendants`,
+      [scopes.map((scope) => scope.jurisdiction_id)]
+    );
+    return result.rows.map((row) => row.id);
+  } catch (error) {
+    console.error('[Government RBAC] Accessible jurisdiction lookup failed:', error.message);
+    return undefined;
+  }
 }
 
 // ─── Audit lineage helper ─────────────────────────────────────────────────────
@@ -122,8 +200,10 @@ async function recordAuditLineage(req, action, resourceType, resourceId, extra =
         JSON.stringify(extra.metadata || {}),
       ]
     );
-  } catch {
-    // Non-blocking — audit failure must never break the request
+    return true;
+  } catch (error) {
+    console.error('[Government audit] Lineage write failed:', error.message);
+    return false;
   }
 }
 
@@ -145,13 +225,15 @@ function requireNgRole(...requiredRoles) {
 
     const baseRole = canonicalRole(req.user.role || req.user.ng_role || '');
 
-    // Check base role first
-    if (allowed.has(baseRole)) return next();
+    // Only platform-wide administrators may rely on a global role. Operational
+    // government roles require an active jurisdiction assignment below.
+    if (allowed.has(baseRole) && ['super_admin', 'platform_admin'].includes(baseRole)) return next();
 
     // Check jurisdiction-scoped roles
     const userId = req.user.id || req.user.userId;
     if (userId) {
       const scopes = await getUserJurisdictionScopes(userId);
+      if (scopes === null) return res.status(503).json({ error: 'Government authorization scopes are unavailable.' });
       const hasScope = scopes.some((s) => allowed.has(canonicalRole(s.role)));
       if (hasScope) return next();
     }
@@ -174,12 +256,13 @@ function requireMinRole(minRole) {
     if (isSuperAdmin(req.user)) return next();
 
     const baseRole = canonicalRole(req.user.role || req.user.ng_role || '');
-    if (roleLevel(baseRole) >= roleLevel(minRole)) return next();
+    if (['super_admin', 'platform_admin'].includes(baseRole) && roleLevel(baseRole) >= roleLevel(minRole)) return next();
 
     // Check jurisdiction-scoped roles
     const userId = req.user.id || req.user.userId;
     if (userId) {
       const scopes = await getUserJurisdictionScopes(userId);
+      if (scopes === null) return res.status(503).json({ error: 'Government authorization scopes are unavailable.' });
       const hasScope = scopes.some((s) => roleLevel(canonicalRole(s.role)) >= roleLevel(minRole));
       if (hasScope) return next();
     }
@@ -190,8 +273,8 @@ function requireMinRole(minRole) {
 
 /**
  * requireExportAuthority()
- * Validates the user has export permission — either via base role or
- * jurisdiction-scoped can_export flag.
+ * Validates a platform-wide administrator or a jurisdiction-scoped
+ * can_export assignment.
  */
 function requireExportAuthority() {
   return async (req, res, next) => {
@@ -199,11 +282,12 @@ function requireExportAuthority() {
     if (isSuperAdmin(req.user)) return next();
 
     const baseRole = canonicalRole(req.user.role || '');
-    if (EXPORT_ROLES.has(baseRole)) return next();
+    if (['super_admin', 'platform_admin'].includes(baseRole) && EXPORT_ROLES.has(baseRole)) return next();
 
     const userId = req.user.id || req.user.userId;
     if (userId) {
       const scopes = await getUserJurisdictionScopes(userId);
+      if (scopes === null) return res.status(503).json({ error: 'Government authorization scopes are unavailable.' });
       const hasExport = scopes.some((s) => s.can_export === true || EXPORT_ROLES.has(canonicalRole(s.role)));
       if (hasExport) return next();
     }
@@ -222,11 +306,12 @@ function requireApprovalAuthority() {
     if (isSuperAdmin(req.user)) return next();
 
     const baseRole = canonicalRole(req.user.role || '');
-    if (APPROVER_ROLES.has(baseRole)) return next();
+    if (['super_admin', 'platform_admin'].includes(baseRole) && APPROVER_ROLES.has(baseRole)) return next();
 
     const userId = req.user.id || req.user.userId;
     if (userId) {
       const scopes = await getUserJurisdictionScopes(userId);
+      if (scopes === null) return res.status(503).json({ error: 'Government authorization scopes are unavailable.' });
       const hasApproval = scopes.some((s) => s.can_approve === true || APPROVER_ROLES.has(canonicalRole(s.role)));
       if (hasApproval) return next();
     }
@@ -253,13 +338,14 @@ function requireJurisdictionAccess(tier) {
     const userId = req.user.id || req.user.userId;
     if (userId) {
       const scopes = await getUserJurisdictionScopes(userId);
+      if (scopes === null) return res.status(503).json({ error: 'Government authorization scopes are unavailable.' });
       const hasAccess = scopes.some((s) => (TIER_LEVEL[s.jurisdiction_tier] ?? 0) >= minTierLevel);
       if (hasAccess) return next();
     }
 
-    // Fall back: platform_admin and executive_read_only can access state+ portals
+    // Only platform-wide administrators may bypass a jurisdiction assignment.
     const baseRole = canonicalRole(req.user.role || '');
-    if (['platform_admin', 'executive_read_only', 'super_admin'].includes(baseRole)) return next();
+    if (['platform_admin', 'super_admin'].includes(baseRole)) return next();
 
     return res.status(403).json({ error: `Access to ${tier}-tier portal denied.` });
   };
@@ -278,6 +364,7 @@ function requireProgrammeAccess(programmeKey) {
     const userId = req.user.id || req.user.userId;
     if (userId) {
       const scopes = await getUserJurisdictionScopes(userId);
+      if (scopes === null) return res.status(503).json({ error: 'Government authorization scopes are unavailable.' });
       // Pass if user has NO programme restriction (null = all) or matches this programme
       const hasAccess = scopes.some(
         (s) => s.programme_area == null || s.programme_area === programmeKey
@@ -291,18 +378,37 @@ function requireProgrammeAccess(programmeKey) {
 
 /**
  * auditRequest(action, resourceType)
- * Non-blocking middleware that records every request to ng_audit_lineage.
+ * Fail-closed middleware that records every request to ng_audit_lineage.
  * Attach after auth middleware, before route handlers.
  */
 function auditRequest(action, resourceType) {
   return async (req, res, next) => {
-    // Fire-and-forget — don't await
-    recordAuditLineage(req, action, resourceType, req.params?.id || null, {
+    const recorded = await recordAuditLineage(req, action, resourceType, req.params?.id || null, {
       jurisdictionScope: req.headers['x-jurisdiction-scope'] || null,
       dataClass: 'aggregate',
-    }).catch(() => {});
+    });
+    if (!recorded) {
+      return res.status(503).json({ error: 'Government audit logging is unavailable.' });
+    }
     next();
   };
+}
+
+function requireGovernmentMfa(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'Authentication required.' });
+  if (req.user.mfaEnabled !== true) {
+    return res.status(403).json({
+      error: 'MFA enrollment is required for government access.',
+      code: 'GOVERNMENT_MFA_ENROLLMENT_REQUIRED',
+    });
+  }
+  if (req.cookies?.mfaVerified !== 'true') {
+    return res.status(403).json({
+      error: 'MFA verification is required for government access.',
+      code: 'MFA_REQUIRED',
+    });
+  }
+  next();
 }
 
 // ─── Convenience role groups ──────────────────────────────────────────────────
@@ -321,9 +427,12 @@ module.exports = {
   requireJurisdictionAccess,
   requireProgrammeAccess,
   auditRequest,
+  requireGovernmentMfa,
   recordAuditLineage,
   invalidateScopeCache,
   getUserJurisdictionScopes,
+  getAccessibleJurisdictionIds,
+  userCanAccessResource,
   // Convenience groups
   requireAdmin,
   requirePlatformAdmin,
@@ -335,4 +444,6 @@ module.exports = {
   roleLevel,
   hasMinRole,
   isSuperAdmin,
+  isPlatformAdministrator,
+  scopeMatchesResource,
 };

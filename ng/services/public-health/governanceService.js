@@ -32,7 +32,11 @@ async function safeQuery(pool, sql, params = []) {
     const r = await pool.query(sql, params);
     return r.rows;
   } catch (err) {
-    if (isMissingDbObject(err)) return [];
+    if (isMissingDbObject(err)) {
+      const unavailable = new Error('Required government data schema is unavailable.');
+      unavailable.status = 503;
+      throw unavailable;
+    }
     throw err;
   }
 }
@@ -42,7 +46,11 @@ async function safeScalar(pool, sql, params = [], field = 'count') {
     const r = await pool.query(sql, params);
     return toNumber(r.rows[0]?.[field]);
   } catch (err) {
-    if (isMissingDbObject(err)) return 0;
+    if (isMissingDbObject(err)) {
+      const unavailable = new Error('Required government data schema is unavailable.');
+      unavailable.status = 503;
+      throw unavailable;
+    }
     throw err;
   }
 }
@@ -171,105 +179,132 @@ async function listUserJurisdictionRoles(userId) {
 
 async function submitReport({ reportId, facilityId, submitterUserId, jurisdictionId, period, metadata }) {
   const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const reportResult = await client.query(
+      `SELECT id, status, facility_id, report_period
+         FROM public_health_reports
+        WHERE id = $1
+        FOR UPDATE`,
+      [reportId]
+    );
+    const report = reportResult.rows[0];
+    if (!report) {
+      const err = new Error('Report not found.'); err.status = 404; throw err;
+    }
+    if (String(report.report_period) !== String(period)) {
+      const err = new Error('Submission period must match the report period.'); err.status = 409; throw err;
+    }
+    if (report.facility_id && (!facilityId || String(report.facility_id) !== String(facilityId))) {
+      const err = new Error('Submission facility must match the report facility.'); err.status = 409; throw err;
+    }
 
-  // Verify report exists
-  const reportRows = await safeQuery(pool, `SELECT id, status FROM public_health_reports WHERE id = $1`, [reportId]);
-  if (!reportRows.length) {
-    const err = new Error('Report not found.'); err.status = 404; throw err;
+    const result = await client.query(
+      `INSERT INTO ng_governance_submissions
+         (report_id, facility_id, submitter_user_id, jurisdiction_id, submission_period, metadata_json)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb)
+       RETURNING *`,
+      [reportId, facilityId || report.facility_id || null, submitterUserId || null, jurisdictionId, period, JSON.stringify(metadata || {})]
+    );
+    const submission = result.rows[0];
+
+    await _logWorkflowTransition(client, {
+      submissionId: submission.id,
+      actorUserId: submitterUserId,
+      fromStatus: null,
+      toStatus: 'submitted',
+      action: 'submit',
+      notes: `Report ${reportId} submitted for period ${period}.`,
+    });
+    await client.query('COMMIT');
+    return submission;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-
-  const result = await pool.query(
-    `INSERT INTO ng_governance_submissions
-       (report_id, facility_id, submitter_user_id, jurisdiction_id, submission_period, metadata_json)
-     VALUES ($1,$2,$3,$4,$5,$6::jsonb)
-     RETURNING *`,
-    [reportId, facilityId || null, submitterUserId || null, jurisdictionId || null, period, JSON.stringify(metadata || {})]
-  );
-  const submission = result.rows[0];
-
-  // Log the initial transition
-  await _logWorkflowTransition(pool, {
-    submissionId: submission.id,
-    actorUserId: submitterUserId,
-    fromStatus: null,
-    toStatus: 'submitted',
-    action: 'submit',
-    notes: `Report ${reportId} submitted for period ${period}.`,
-  });
-
-  return submission;
 }
 
 async function advanceWorkflow({ submissionId, actorUserId, targetStatus, notes, ip, userAgent }) {
   const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      `SELECT * FROM ng_governance_submissions WHERE id = $1 FOR UPDATE`,
+      [submissionId]
+    );
+    const sub = result.rows[0];
+    if (!sub) {
+      const err = new Error('Submission not found.'); err.status = 404; throw err;
+    }
+    if (!isValidTransition(sub.status, targetStatus)) {
+      const err = new Error(`Cannot transition from '${sub.status}' to '${targetStatus}'.`);
+      err.status = 409; throw err;
+    }
 
-  const rows = await safeQuery(pool, `SELECT * FROM ng_governance_submissions WHERE id = $1 FOR UPDATE`, [submissionId]);
-  if (!rows.length) {
-    const err = new Error('Submission not found.'); err.status = 404; throw err;
-  }
-  const sub = rows[0];
+    const updates = {};
+    const now = new Date();
+    if (targetStatus === 'area_council_review' || targetStatus === 'fcta_review') {
+      updates.reviewer_user_id = actorUserId;
+      updates.reviewed_at = now;
+      updates.reviewer_notes = notes || null;
+    }
+    if (targetStatus === 'approved') {
+      updates.approver_user_id = actorUserId;
+      updates.approved_at = now;
+      updates.approver_notes = notes || null;
+    }
+    if (targetStatus === 'exported') {
+      updates.exported_by = actorUserId;
+      updates.exported_at = now;
+    }
 
-  if (!isValidTransition(sub.status, targetStatus)) {
-    const err = new Error(`Cannot transition from '${sub.status}' to '${targetStatus}'.`);
-    err.status = 409; throw err;
-  }
-
-  const updates = { status: targetStatus, updated_at: new Date() };
-  const now = new Date();
-
-  if (targetStatus === 'area_council_review' || targetStatus === 'fcta_review') {
-    updates.reviewer_user_id = actorUserId;
-    updates.reviewed_at      = now;
-    updates.reviewer_notes   = notes || null;
-  }
-  if (targetStatus === 'approved') {
-    updates.approver_user_id = actorUserId;
-    updates.approved_at      = now;
-    updates.approver_notes   = notes || null;
-  }
-  if (targetStatus === 'exported') {
-    updates.exported_by  = actorUserId;
-    updates.exported_at  = now;
-  }
-
-  await pool.query(
-    `UPDATE ng_governance_submissions SET
-       status            = $1,
-       reviewer_user_id  = COALESCE($2, reviewer_user_id),
-       reviewed_at       = COALESCE($3, reviewed_at),
-       reviewer_notes    = COALESCE($4, reviewer_notes),
-       approver_user_id  = COALESCE($5, approver_user_id),
-       approved_at       = COALESCE($6, approved_at),
-       approver_notes    = COALESCE($7, approver_notes),
-       exported_by       = COALESCE($8, exported_by),
-       exported_at       = COALESCE($9, exported_at),
-       updated_at        = NOW()
-     WHERE id = $10`,
-    [
-      targetStatus,
-      updates.reviewer_user_id || null,
-      updates.reviewed_at      || null,
-      updates.reviewer_notes   || null,
-      updates.approver_user_id || null,
-      updates.approved_at      || null,
-      updates.approver_notes   || null,
-      updates.exported_by      || null,
-      updates.exported_at      || null,
+    await client.query(
+      `UPDATE ng_governance_submissions SET
+         status            = $1,
+         reviewer_user_id  = COALESCE($2, reviewer_user_id),
+         reviewed_at       = COALESCE($3, reviewed_at),
+         reviewer_notes    = COALESCE($4, reviewer_notes),
+         approver_user_id  = COALESCE($5, approver_user_id),
+         approved_at       = COALESCE($6, approved_at),
+         approver_notes    = COALESCE($7, approver_notes),
+         exported_by       = COALESCE($8, exported_by),
+         exported_at       = COALESCE($9, exported_at),
+         updated_at        = NOW()
+       WHERE id = $10`,
+      [
+        targetStatus,
+        updates.reviewer_user_id || null,
+        updates.reviewed_at || null,
+        updates.reviewer_notes || null,
+        updates.approver_user_id || null,
+        updates.approved_at || null,
+        updates.approver_notes || null,
+        updates.exported_by || null,
+        updates.exported_at || null,
+        submissionId,
+      ]
+    );
+    await _logWorkflowTransition(client, {
       submissionId,
-    ]
-  );
-
-  await _logWorkflowTransition(pool, {
-    submissionId,
-    actorUserId,
-    fromStatus: sub.status,
-    toStatus: targetStatus,
-    action: _actionForTransition(sub.status, targetStatus),
-    notes,
-    ip,
-    userAgent,
-  });
-
+      actorUserId,
+      fromStatus: sub.status,
+      toStatus: targetStatus,
+      action: _actionForTransition(sub.status, targetStatus),
+      notes,
+      ip,
+      userAgent,
+    });
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
   return getSubmission(submissionId);
 }
 
@@ -285,16 +320,12 @@ function _actionForTransition(from, to) {
 }
 
 async function _logWorkflowTransition(pool, { submissionId, actorUserId, fromStatus, toStatus, action, notes, ip, userAgent }) {
-  try {
-    await pool.query(
-      `INSERT INTO ng_governance_workflow_logs
-         (submission_id, actor_user_id, from_status, to_status, action, notes, ip_address, user_agent)
-       VALUES ($1,$2,$3,$4,$5,$6,$7::inet,$8)`,
-      [submissionId, actorUserId || null, fromStatus || null, toStatus, action, notes || null, ip || null, userAgent || null]
-    );
-  } catch {
-    // Non-blocking
-  }
+  await pool.query(
+    `INSERT INTO ng_governance_workflow_logs
+       (submission_id, actor_user_id, from_status, to_status, action, notes, ip_address, user_agent)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::inet,$8)`,
+    [submissionId, actorUserId || null, fromStatus || null, toStatus, action, notes || null, ip || null, userAgent || null]
+  );
 }
 
 async function getSubmission(submissionId) {
@@ -319,7 +350,7 @@ async function getSubmission(submissionId) {
   return rows[0] || null;
 }
 
-async function listSubmissions({ status, jurisdictionId, period, limit = 50, page = 1 } = {}) {
+async function listSubmissions({ status, jurisdictionId, period, allowedJurisdictionIds = null, limit = 50, page = 1 } = {}) {
   const pool = getPool();
   const conditions = [];
   const params = [];
@@ -328,6 +359,14 @@ async function listSubmissions({ status, jurisdictionId, period, limit = 50, pag
   if (status) { conditions.push(`s.status = $${idx++}`); params.push(status); }
   if (jurisdictionId) { conditions.push(`s.jurisdiction_id = $${idx++}`); params.push(jurisdictionId); }
   if (period) { conditions.push(`s.submission_period = $${idx++}`); params.push(period); }
+  if (Array.isArray(allowedJurisdictionIds)) {
+    if (!allowedJurisdictionIds.length) {
+      conditions.push('FALSE');
+    } else {
+      conditions.push(`s.jurisdiction_id = ANY($${idx++}::uuid[])`);
+      params.push(allowedJurisdictionIds);
+    }
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const safeLimit = Math.min(Math.max(toNumber(limit), 1), 100);
@@ -497,8 +536,15 @@ async function getProgrammeSpace(programmeKey) {
 
 // ─── Executive summary (cross-jurisdiction aggregate) ────────────────────────
 
-async function getExecutiveSummary({ period } = {}) {
+async function getExecutiveSummary({ period, jurisdictionIds = null } = {}) {
   const pool = getPool();
+  const scoped = Array.isArray(jurisdictionIds);
+  const scopeSql = scoped
+    ? jurisdictionIds.length
+      ? ' = ANY($1::uuid[])'
+      : ' IN (SELECT NULL::uuid WHERE FALSE)'
+    : null;
+  const scopeParams = scoped && jurisdictionIds.length ? [jurisdictionIds] : [];
 
   const [
     jurisdictions,
@@ -506,8 +552,20 @@ async function getExecutiveSummary({ period } = {}) {
     programmeSpaces,
     recentAudit,
   ] = await Promise.all([
-    safeQuery(pool, `SELECT tier, COUNT(*) AS count FROM ng_jurisdictions WHERE active = TRUE GROUP BY tier`),
-    safeQuery(pool, `SELECT status, COUNT(*)::int AS count FROM ng_governance_submissions GROUP BY status ORDER BY count DESC`),
+    safeQuery(
+      pool,
+      `SELECT tier, COUNT(*) AS count FROM ng_jurisdictions
+        WHERE active = TRUE${scopeSql ? ` AND id${scopeSql}` : ''}
+        GROUP BY tier`,
+      scopeParams
+    ),
+    safeQuery(
+      pool,
+      `SELECT status, COUNT(*)::int AS count FROM ng_governance_submissions
+        ${scopeSql ? `WHERE jurisdiction_id${scopeSql}` : ''}
+        GROUP BY status ORDER BY count DESC`,
+      scopeParams
+    ),
     listProgrammeSpaces(),
     safeQuery(
       pool,
@@ -515,7 +573,10 @@ async function getExecutiveSummary({ period } = {}) {
               u.first_name || ' ' || u.last_name AS actor_name
          FROM ng_audit_lineage al
          LEFT JOIN users u ON u.id = al.actor_user_id
+        ${scopeSql ? `WHERE al.jurisdiction_id${scopeSql}` : ''}
         ORDER BY al.created_at DESC LIMIT 20`
+      ,
+      scopeParams
     ),
   ]);
 
