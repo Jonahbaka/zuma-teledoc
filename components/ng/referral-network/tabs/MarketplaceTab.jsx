@@ -7,7 +7,10 @@ import { drn, fmtNaira } from '../drnApi';
 const COMMON_SPECIALTIES = [
   'general_practice', 'obstetrics', 'pediatrics', 'cardiology',
   'internal_medicine', 'orthopedics', 'mental_health', 'oncology',
-  'imaging_mri', 'imaging_ct', 'lab_general', 'pharmacy_fulfilment',
+  'lab_general', 'pharmacy_fulfilment',
+  ...(process.env.NEXT_PUBLIC_NG_MEDICAL_IMAGING_AUTHORIZED === 'true'
+    ? ['imaging_mri', 'imaging_ct']
+    : []),
 ];
 
 export default function MarketplaceTab() {
@@ -26,7 +29,10 @@ export default function MarketplaceTab() {
         state: stateCode,
         accepts_emergency: emergency || undefined,
       });
-      setRows(r.listings || []);
+      setRows((r.listings || []).filter((listing) => (
+        process.env.NEXT_PUBLIC_NG_MEDICAL_IMAGING_AUTHORIZED === 'true' ||
+        (listing.service_kind !== 'imaging' && !String(listing.specialty || '').startsWith('imaging_'))
+      )));
     } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   }
