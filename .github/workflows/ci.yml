@@ -57,3 +57,166 @@ jobs:
           path: artifacts/
           if-no-files-found: ignore
           retention-days: 14
+
+  government-postgres-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: doctarx
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d doctarx"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/doctarx
+      JWT_ACCESS_SECRET: fictional-ci-access-secret-at-least-32-characters
+      JWT_REFRESH_SECRET: fictional-ci-refresh-secret-at-least-32-characters
+      SESSION_SECRET: fictional-ci-session-secret-at-least-32-characters
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      NODE_ENV: test
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Capture pre-migration backup
+        run: |
+          mkdir -p artifacts/database
+          pg_dump --format=custom --file=artifacts/database/00-pre-migration.dump "$DATABASE_URL"
+          pg_restore --list artifacts/database/00-pre-migration.dump > artifacts/database/00-pre-migration-contents.txt
+
+      - name: Run core and Nigeria migrations twice
+        run: |
+          npm run migrate
+          npm run ng:migrate
+          npm run migrate
+          npm run ng:migrate
+
+      - name: Run government PostgreSQL workflow tests
+        run: npm run test:ng:government-data:db
+
+      - name: Back up populated database
+        run: |
+          pg_dump --format=custom --no-owner --no-acl --file=artifacts/database/10-post-tests.dump "$DATABASE_URL"
+          pg_restore --list artifacts/database/10-post-tests.dump > artifacts/database/10-post-tests-contents.txt
+
+      - name: Restore to a separate database
+        run: |
+          createdb --host=localhost --username=postgres doctarx_restore
+          pg_restore --host=localhost --username=postgres --dbname=doctarx_restore --no-owner --no-acl artifacts/database/10-post-tests.dump
+
+      - name: Reconcile source and restored database
+        run: |
+          SOURCE_COUNTS=$(psql "$DATABASE_URL" -Atc "SELECT json_build_object('batches',(SELECT count(*) FROM ng_government_import_batches),'records',(SELECT count(*) FROM ng_government_records),'lineage',(SELECT count(*) FROM ng_government_import_lineage),'audit',(SELECT count(*) FROM ng_audit_lineage));")
+          RESTORE_URL=postgresql://postgres:postgres@localhost:5432/doctarx_restore
+          RESTORE_COUNTS=$(psql "$RESTORE_URL" -Atc "SELECT json_build_object('batches',(SELECT count(*) FROM ng_government_import_batches),'records',(SELECT count(*) FROM ng_government_records),'lineage',(SELECT count(*) FROM ng_government_import_lineage),'audit',(SELECT count(*) FROM ng_audit_lineage));")
+          printf 'source=%s\nrestored=%s\n' "$SOURCE_COUNTS" "$RESTORE_COUNTS" | tee artifacts/database/20-reconciliation.txt
+          test "$SOURCE_COUNTS" = "$RESTORE_COUNTS"
+
+      - name: Rerun migrations and workflow tests on restored database
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/doctarx_restore
+        run: |
+          npm run migrate
+          npm run ng:migrate
+          npm run test:ng:government-data:db
+
+      - name: Write database evidence summary
+        if: always()
+        run: |
+          {
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "source_database=doctarx"
+            echo "restore_database=doctarx_restore"
+            echo "pre_migration_backup=00-pre-migration.dump"
+            echo "post_test_backup=10-post-tests.dump"
+            echo "result=${{ job.status }}"
+          } > artifacts/database/result.txt
+
+      - name: Upload database backup and restore evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zuma-government-database-evidence-${{ github.run_id }}
+          path: artifacts/database/
+          if-no-files-found: error
+          retention-days: 14
+
+  government-role-browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: doctarx_browser
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d doctarx_browser"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/doctarx_browser
+      JWT_ACCESS_SECRET: fictional-ci-access-secret-at-least-32-characters
+      JWT_REFRESH_SECRET: fictional-ci-refresh-secret-at-least-32-characters
+      SESSION_SECRET: fictional-ci-session-secret-at-least-32-characters
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      E2E_ROLE_PASSWORD: Fictional-Role-Browser-2099!
+      E2E_MFA_SECRET: JBSWY3DPEHPK3PXP
+      NG_AUTO_SEED_DISCOVERY: 'false'
+      DISABLE_SCHEDULERS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Migrate and seed fictional role accounts
+        run: |
+          npm run migrate
+          npm run ng:migrate
+          npm run seed:e2e:government
+
+      - name: Build production application
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npm run build
+
+      - name: Run desktop and mobile authenticated role matrix
+        run: npm run e2e:government:roles
+
+      - name: Upload browser screenshots, traces, logs, and accessibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zuma-government-role-browser-evidence-${{ github.run_id }}
+          path: artifacts/government-browser/
+          if-no-files-found: error
+          retention-days: 14

@@ -1055,9 +1055,90 @@ async function getFinancialIntelligence({ period } = {}) {
   };
 }
 
+const GOVERNMENT_DASHBOARD_INDICATORS = [
+  'pnc_within_24h_percentage',
+  'anc_eight_component_completeness_percentage',
+  'referral_completion_percentage',
+  'referral_response_time_hours',
+  'unresolved_cases',
+  'service_utilization',
+  'continuity_of_care_percentage',
+  'reporting_completeness_percentage',
+  'reporting_timeliness_percentage',
+  'data_quality_pass_percentage',
+  'dhis2_readiness_percentage',
+];
+
+async function getApprovedGovernmentDashboard({ period, facilityId, jurisdictionIds } = {}) {
+  const pool = getPool();
+  const params = [GOVERNMENT_DASHBOARD_INDICATORS, period || null, facilityId || null,
+    Array.isArray(jurisdictionIds) ? jurisdictionIds : null];
+  const summary = await pool.query(
+    `SELECT i.internal_key,i.display_name,i.description,i.aggregation_type,i.target_value,
+            CASE WHEN COUNT(r.id)=0 THEN NULL
+                 WHEN i.aggregation_type IN ('average','rate','percentage') THEN AVG(o.observed_value) FILTER (WHERE r.id IS NOT NULL)
+                 ELSE SUM(o.observed_value) FILTER (WHERE r.id IS NOT NULL) END AS value,
+            COUNT(r.id)::int AS observation_count,
+            MAX(r.created_at) AS freshness,
+            STRING_AGG(DISTINCT s.name, ', ' ORDER BY s.name) AS source,
+            CASE WHEN COUNT(r.id)=0 THEN 'no_approved_observations'
+                 WHEN BOOL_OR(r.data_quality_status='warning') THEN 'approved_with_warning'
+                 ELSE 'approved_and_validated' END AS validation_status
+       FROM public_health_indicators i
+       LEFT JOIN ng_indicator_observations o
+         ON o.indicator_id=i.id AND o.rolled_back_at IS NULL
+        AND ($2::text IS NULL OR o.reporting_period=$2)
+        AND ($3::uuid IS NULL OR o.facility_id=$3)
+        AND ($4::uuid[] IS NULL OR o.jurisdiction_id=ANY($4))
+       LEFT JOIN ng_government_records r ON r.id=o.government_record_id AND r.rolled_back_at IS NULL AND r.approval_status='approved'
+       LEFT JOIN ng_government_data_sources s ON s.id=r.source_id
+      WHERE i.internal_key=ANY($1::text[])
+      GROUP BY i.id,i.internal_key,i.display_name,i.description,i.aggregation_type,i.target_value
+      ORDER BY ARRAY_POSITION($1::text[],i.internal_key)`, params
+  );
+  const trends = await pool.query(
+    `SELECT i.internal_key,o.reporting_period,
+            CASE WHEN i.aggregation_type IN ('average','rate','percentage') THEN AVG(o.observed_value)
+                 ELSE SUM(o.observed_value) END AS value
+       FROM ng_indicator_observations o
+       JOIN public_health_indicators i ON i.id=o.indicator_id
+       JOIN ng_government_records r ON r.id=o.government_record_id
+      WHERE i.internal_key=ANY($1::text[]) AND o.rolled_back_at IS NULL AND r.rolled_back_at IS NULL
+        AND r.approval_status='approved' AND ($3::uuid IS NULL OR o.facility_id=$3)
+        AND ($4::uuid[] IS NULL OR o.jurisdiction_id=ANY($4))
+      GROUP BY i.internal_key,o.reporting_period,i.aggregation_type
+      ORDER BY o.reporting_period DESC LIMIT 132`, params
+  );
+  const trendMap = new Map();
+  for (const row of trends.rows.reverse()) {
+    if (!trendMap.has(row.internal_key)) trendMap.set(row.internal_key, []);
+    trendMap.get(row.internal_key).push({ period: row.reporting_period, value: row.value === null ? null : Number(row.value) });
+  }
+  return {
+    period: period || null,
+    sourcePolicy: 'Persisted, independently approved government imports only',
+    aggregateOnly: true,
+    generatedAt: new Date().toISOString(),
+    metrics: summary.rows.map((row) => ({
+      key: row.internal_key,
+      label: row.display_name,
+      value: row.value === null ? null : Number(row.value),
+      target: row.target_value === null ? null : Number(row.target_value),
+      unit: row.internal_key.endsWith('_percentage') ? '%' : row.internal_key.endsWith('_hours') ? 'hours' : null,
+      period: period || 'all approved periods',
+      source: row.source || 'No approved source observation',
+      definition: row.description,
+      freshness: row.freshness,
+      validationStatus: row.validation_status,
+      observationCount: row.observation_count,
+      trend: trendMap.get(row.internal_key) || [],
+    })),
+  };
+}
+
 async function getExecutiveDashboard(params = {}) {
   const period = parsePeriod(params.period).period;
-  const [metrics, appointments, facility, referrals, pharmacyLab, complaint, financial, charts] = await Promise.all([
+  const [metrics, appointments, facility, referrals, pharmacyLab, complaint, financial, charts, governmentDashboard] = await Promise.all([
     getMetrics({ period, facilityId: params.facilityId, lga: params.lga }),
     getAppointmentExtraMetrics({ period }),
     getFacilityIntelligence({ period }),
@@ -1074,6 +1155,7 @@ async function getExecutiveDashboard(params = {}) {
       getChartData({ metric: 'pharmacy_referrals', days: 90 }),
       getChartData({ metric: 'registrations', days: 90 }),
     ]),
+    getApprovedGovernmentDashboard({ period, facilityId: params.facilityId, jurisdictionIds: params.jurisdictionIds }),
   ]);
   const provider = await getProviderIntelligence({ period, metrics });
   const [consultationForecast7, consultationForecast14, consultationForecast30, referralForecast, prescriptionForecast, labForecast, followupForecast] = await Promise.all([
@@ -1201,6 +1283,7 @@ async function getExecutiveDashboard(params = {}) {
       notOutbreakPrediction: true,
       dhis2LiveIntegrationClaimed: false,
     },
+    governmentDashboard,
   };
 }
 

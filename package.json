@@ -42,6 +42,9 @@
     "test:conference-sfu-contract": "node --test ng/tests/livekit-provider-conference-contract.test.js",
     "test:ng:lifecycle:hermetic": "node --test ng/tests/telehealth-lifecycle-integration.test.js",
     "test:ng:lifecycle:db": "node --test ng/tests/telehealth-lifecycle-db.test.js",
+    "test:ng:government-data:db": "node --test ng/tests/government-data-db.test.js",
+    "seed:e2e:government": "node scripts/seed-government-browser-e2e.cjs",
+    "e2e:government:roles": "playwright test --config=playwright.government.config.cjs",
     "test:ng:lifecycle:browser": "node scripts/e2e-ng-lifecycle-browser.cjs",
     "lint": "eslint .",
     "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\"",
@@ -87,6 +90,7 @@
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
     "express": "^4.21.1",
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.0.0",
@@ -120,6 +124,8 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@playwright/test": "^1.55.1",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.0",
     "eslint": "^8.57.1",
@@ -134,6 +140,7 @@
     "node": ">=20.19.0"
   },
   "overrides": {
+    "uuid": "$uuid",
     "postcss": "8.5.26",
     "body-parser": "1.20.6",
     "dompurify": "3.4.13",

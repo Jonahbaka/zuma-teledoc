@@ -22,6 +22,7 @@ const publicHealthRoutes  = require('./publicHealth');
 const dhis2Routes         = require('./dhis2');
 const governanceRoutes    = require('./governance');
 const executiveViewRoutes = require('./executiveView');
+const governmentDataRoutes = require('./governmentData');
 const referralNetworkRoutes = require('./referralNetwork');
 const medicationsRoutes     = require('./medications');
 const soapRoutes            = require('./soap');
@@ -79,6 +80,17 @@ router.get('/health', async (_req, res) => {
     governmentImportBatches: 'ng_government_import_batches',
     governmentImportRows: 'ng_government_import_rows',
     dataQualityFindings: 'ng_data_quality_findings',
+    governmentSourceFiles: 'ng_government_source_files',
+    governmentDataMappings: 'ng_government_data_mappings',
+    governmentQuarantine: 'ng_government_quarantined_records',
+    governmentImportDecisions: 'ng_government_import_decisions',
+    governmentReconciliations: 'ng_government_import_reconciliations',
+    governmentLineage: 'ng_government_import_lineage',
+    governmentRecords: 'ng_government_records',
+    indicatorObservations: 'ng_indicator_observations',
+    governmentSavedViews: 'ng_government_saved_views',
+    governmentRecentSearches: 'ng_government_recent_searches',
+    governmentAccountInvitations: 'ng_government_account_invitations',
     dhis2Settings: 'dhis2_integration_settings',
   };
   const schema = Object.fromEntries(Object.keys(tables).map((key) => [key, false]));
@@ -121,7 +133,10 @@ router.get('/health', async (_req, res) => {
   const governmentDataPlatform = schema.publicHealthIndicators && schema.publicHealthReports &&
     schema.jurisdictions && schema.jurisdictionRoles && schema.governanceSubmissions && schema.auditLineage &&
     schema.governmentDataSources && schema.governmentImportBatches && schema.governmentImportRows &&
-    schema.dataQualityFindings;
+    schema.dataQualityFindings && schema.governmentSourceFiles && schema.governmentDataMappings &&
+    schema.governmentQuarantine && schema.governmentImportDecisions && schema.governmentReconciliations &&
+    schema.governmentLineage && schema.governmentRecords && schema.indicatorObservations &&
+    schema.governmentSavedViews && schema.governmentRecentSearches && schema.governmentAccountInvitations;
   const ready = database.healthy && clinicalEmr && governmentDataPlatform;
   const liveKitConfigured = Boolean(
     process.env.NG_LIVEKIT_URL && process.env.NG_LIVEKIT_API_KEY && process.env.NG_LIVEKIT_API_SECRET
@@ -220,6 +235,11 @@ router.use('/prescriptions', authenticate, prescriptionsRoutes);
 router.use('/public-health', authenticate, rbac.requireGovernmentMfa, publicHealthRoutes);
 router.use('/integrations/dhis2', authenticate, rbac.requireGovernmentMfa, dhis2Routes);
 router.use('/governance', authenticate, rbac.requireGovernmentMfa, governanceRoutes);
+const governmentDataAuth = (req, res, next) => {
+  if (req.path === '/public/accept-invitation') return next();
+  return authenticate(req, res, () => rbac.requireGovernmentMfa(req, res, next));
+};
+router.use('/government-data', governmentDataAuth, governmentDataRoutes);
 router.use('/executive-view', authenticate, rbac.requireGovernmentMfa, executiveViewRoutes);
 router.use('/patient', authenticate, patientRoutes);
 router.use('/admin/testing-links', authenticate, requireAdmin, testingLinksRoutes);

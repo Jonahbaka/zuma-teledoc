@@ -56,7 +56,11 @@ router.get(
   rbac.requireExecutiveView,
   rbac.auditRequest('view', 'executive_dashboard'),
   wrap(async (req, res) => {
-    res.json(await service.getExecutiveDashboard(req.query));
+    const jurisdictionIds = await rbac.getAccessibleJurisdictionIds(req.user);
+    if (jurisdictionIds === undefined) {
+      return res.status(503).json({ error: 'Government authorization scopes are unavailable.' });
+    }
+    res.json(await service.getExecutiveDashboard({ ...req.query, jurisdictionIds }));
   })
 );
 
