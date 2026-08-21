@@ -27,7 +27,7 @@ concurrency:
 
 env:
   NESTORA_SHA: 433bdede11053ef80130d42614daa8b73bf234a9
-  NURSING_SHA: 16aa32eae894e3f11d7090385116b3005d4ed15b
+  NURSING_SHA: cec63aef8609dea240cc383be09e8351afedef8c
   DOCTARX_PUBLIC_IP: 18.217.97.145
   NESTORA_PRODUCTION_ORIGIN: https://nestora.doctarx.com
   NESTORA_STORAGE_BUCKET: nestora-media-prod
