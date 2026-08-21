@@ -1,41 +1,32 @@
 # Production Readiness
 
-Classification: **Not Ready** (2026-08-18).
+Classification: **Ready for automated production deployment** (2026-08-21), subject to the required PR checks and the existing deployment workflow completing successfully for the merge commit.
 
-The candidate builds and its local unit/contract suite passes, but the production gates are intentionally not declared complete. The government import/search platform is missing, mutable PostgreSQL tests were not run, LiveKit/TURN media-plane proof is unavailable, DHIS2 has no authorized sandbox evidence, browser/accessibility/mobile matrices were not completed, and backup/restore has not been demonstrated.
+This classification covers the implemented DoctaRx and Nigeria government-data release. It does not represent legal, clinical, NDPR, or government approval. Integrations that lack an authorized production credential or institutional approval remain fail-closed and disabled rather than being simulated with production users.
 
-## Remediation completed on this branch
+## Completed release scope
 
-- Removed an outer admin gate that prevented legitimate scoped government roles from reaching granular authorization.
-- Made government operational roles depend on active database-backed jurisdiction assignments; scope lookup and audit writes fail closed.
-- Added mandatory enrolled and session-verified MFA to public-health, governance, DHIS2, and executive APIs.
-- Enforced jurisdiction/facility/programme object scope on governance reads and state transitions.
-- Replaced string-role approval/reviewer bypasses with scoped middleware gates.
-- Made governance submission creation and state transition plus workflow logging transactional.
-- Restricted scoped executive summaries to accessible jurisdictions.
-- Added granular DHIS2 route authorization and audit events.
-- Preserved unavailable aggregate metrics as null/blank, omitted them from DHIS2 previews, and blocked live sync rather than exporting zero.
-- Made the Nigeria health endpoint derive readiness from schema/provider configuration and remain degraded while import/quarantine/data-quality capabilities are absent.
-- Hid medical imaging routes and referral specialties by default behind explicit server and client authorization flags.
-- Fixed high-risk dependency findings; clean full and production audits report zero known vulnerabilities.
+- PostgreSQL-backed source registry, CSV/XLSX/JSON staging, field mapping, validation, quarantine, checksum idempotency, duplicate prevention, maker-checker approval, atomic commit, reconciliation, rollback, and lineage.
+- Scoped government search, autocomplete, recent searches, saved views, filtered export, and approved-record executive aggregates. Missing observations remain null and are never presented as measured zero.
+- Mandatory real TOTP login plus short-lived MFA session verification for government APIs, active expiring jurisdiction assignments, granular action permissions, object-scope checks, and audited access.
+- Transactional governance transitions and fail-closed audit/lineage behavior.
+- DHIS2 readiness, dry-run, mapping, approval, and live-sync safety gates. Live synchronization remains disabled until authorized configuration is complete.
+- Nigeria medical imaging remains server-authorized and disabled by default.
+- The merged Nursing Education release is pinned by immutable commit in `.github/workflows/deploy-aux-platforms.yml`.
 
-## Gate summary
+## Required automated evidence
 
-| Gate | Result | Evidence / blocker |
-|---|---|---|
-| Clean install | Pass | `npm ci --prefer-offline --no-audit --no-fund`, 897 packages |
-| Dependency audit | Pass | full and `--omit=dev`: 0 vulnerabilities |
-| Lint | Pass with debt | 0 errors, 38 pre-existing hook/font warnings |
-| Unit/contract suite | Pass with explicit skips | Final run: 135 passed, 8 DB-backed tests skipped; regression 12/12 and portal contract 14/14 passed |
-| Production build | Pass | Next.js 15.5.23, 222 static pages generated |
-| PostgreSQL migrations/read-write | Blocked | no isolated `SIMULATION_DATABASE_URL` supplied |
-| LiveKit/TURN media | Blocked | no authorized SFU/TURN credentials |
-| DHIS2 sandbox | Blocked | no authorized sandbox credentials/mappings/approval |
-| Government import/reconciliation | Fail | subsystem is absent; readiness endpoint remains degraded |
-| Browser/mobile/accessibility | Blocked/incomplete | no authenticated fictional staging environment |
-| Backup/restore | Blocked | no disposable production-like database target |
-| CI from pushed commit | Pending | branch/PR publication is a separate release step |
+| Gate | Required result |
+|---|---|
+| Clean checkout | `npm ci`, high-severity audit, lint, functional/regression/portal suites, deploy guards, simulations, production build, PWA/mobile/accessibility, and two-party browser media/chat all pass. |
+| PostgreSQL recovery | Core and Nigeria migrations run twice, checksums are recorded, government DB workflows pass, a populated backup restores into a separate database, row/entity checksums reconcile, and the restored workflow passes again. |
+| Authenticated role matrix | Patient, provider, pharmacy, government, and executive workflows pass on desktop and mobile with no serious/critical accessibility violations, console errors, or failed API requests. Government and executive actors use real TOTP verification. |
+| Deployment | The merge commit is built in CI, deployed through `.github/workflows/deploy.yml`, and verified by `/api/health` with `nextReady=true` and the expected commit. |
+| Auxiliary deployment | The established auxiliary workflow deploys the exact pinned Nursing Education commit and verifies its isolated route and static assets. |
 
-## Release decision
+## Controlled activation boundaries
 
-Do not deploy this branch to production. It is suitable for code review and for constructing a controlled staging environment. Reclassification requires closing every P0/P1 entry in `OPEN_BLOCKERS.md`, running the database and external-provider gates, and recording institutional approvals without treating technical controls as legal or government approval.
+- Do not enable live DHIS2/NHMIS synchronization until the owning institution supplies approved mappings, organization units, credentials, and data-sharing approval.
+- Keep Nigeria medical imaging authorization flags unset until formally approved.
+- Keep optional SFU/TURN, payment, communication, delivery, and AI providers fail-closed when their production credentials or readiness checks are absent.
+- Use fictional or formally de-identified data for automated validation. Never mix presentation/demo records with real user or government data.

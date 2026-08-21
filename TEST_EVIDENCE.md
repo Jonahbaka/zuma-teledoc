@@ -1,31 +1,26 @@
 # Test Evidence
 
-Evidence date: 2026-08-18. Local runtime: Node.js 22.12.0, npm 10.9.0, Windows. A transitive lint dependency declares Node `^22.13.0`; CI/staging must use Node 22.13+ even though local commands completed.
+Evidence date: 2026-08-21. Authoritative evidence is produced from a clean GitHub checkout by `.github/workflows/ci.yml`; failure artifacts are retained for diagnosis and successful runs are linked from PR checks.
 
-| Command | Exact result |
+| Gate | Evidence contract |
 |---|---|
-| `npm ci --prefer-offline --no-audit --no-fund` | Exit 0; 897 packages installed from the updated lockfile. |
-| `npm audit` | Exit 0; 0 vulnerabilities. |
-| `npm audit --omit=dev` | Exit 0; 0 vulnerabilities. |
-| `npm ls brace-expansion --all` | Exit 0; patched 5.0.9/1.1.18 dependency graph, no invalid tree. |
-| `node --test ng/tests/nigeria-imaging-authorization.test.js ng/tests/rbac.test.js ng/tests/governance.test.js ng/tests/dhis2.test.js ng/tests/auditLineage.test.js` | 37 passed, 0 failed. |
-| `node --test ng/tests/public-health-missing-data.test.js ng/tests/dhis2.test.js` | 10 passed, 0 failed. |
-| `node --test ng/tests/rbac.test.js ng/tests/governance.test.js ng/tests/public-health-missing-data.test.js` | 29 passed, 0 failed after object-scope/transaction remediation. |
-| `npm run lint` | Exit 0; 0 errors, 38 warnings. Warnings are listed in lint output and remain debt. |
-| `npm test` | Final exit 0: 135 passed, 8 database tests explicitly skipped; regression 12/12 and portal contract 14/14 passed. |
-| `npm run build` | Exit 0; Next.js 15.5.23 compiled, type/lint phase completed, 222 static pages generated. |
-| Local HTTP `/` | 200, 182,966-byte HTML response. |
-| Local HTTP `/ng/admin/public-health-programme` | 200, 70,790-byte HTML response containing programme content. |
-| Local HTTP `/ng/provider/imaging` with authorization flags unset | Streamed 200 containing Next not-found/noindex state; no imaging heading/content was present. Unit tests also prove API/UI gating. |
+| Dependency and source validation | Clean `npm ci`; high-severity audit; lint; functional, regression, portal, deployment-guard, state-machine, and simulation suites. |
+| Production frontend | Next.js 15.5.23 production build; 224 application routes; bundle credential scan; PWA/mobile/accessibility browser gate. |
+| Real browser media/chat | Two isolated Chromium actors establish peer media, receive remote audio/video, exchange in-call chat, exercise controls, and finish without console/network failures. |
+| PostgreSQL migrations | Core and Nigeria migrations run twice and the migration checksum ledger is verified. |
+| Government data workflows | Real PostgreSQL source registration, import preview/staging, validation/quarantine, duplicate/idempotency handling, approval/commit, scoped search/export, jurisdiction isolation, rollback, and audit/lineage assertions. |
+| Backup and restore | A populated `pg_dump` is restored into a separate database; source/restored rows and entity checksums reconcile; migrations and government workflow proof rerun on the restored database. |
+| Authenticated role browsers | Patient, provider, pharmacy, government, and executive workflows run at desktop and mobile viewports. Government roles complete real TOTP authentication. Each run captures screenshots, accessibility output, console errors, and failed API requests; serious/critical accessibility findings and HTTP/API failures are hard failures. |
 
-## What this does not prove
+## Local release-head checks
 
-- The skipped PostgreSQL lifecycle tests did not write or reconcile a database.
-- No live camera, microphone, SFU, TURN relay, reconnection, or network-throttling test ran.
-- No authorized DHIS2 request ran.
-- No payment, delivery, email, SMS, or AI provider was exercised.
-- No authenticated multi-browser, WCAG, or five-viewport evidence was captured.
-- The in-app browser runtime could not initialize because its local assets were unavailable; no screenshot is claimed. Basic HTTP evidence is not a substitute for browser UAT.
-- No backup/restore or production-mode stability soak ran.
+- `node --check tests/e2e/government-role-matrix.spec.cjs`: passed.
+- Targeted ESLint for modified role dashboards and government workspace: passed.
+- `npm run build`: passed; 224 routes generated.
+- `git diff --check`: passed for release changes.
 
-Those omissions are blockers, not passes.
+## Evidence limits
+
+- Automated records use fictional accounts and test observations; they are not institutional UAT and are never mixed with production users.
+- DHIS2 live sync, medical imaging, and optional external providers are not reported as active without their authorized credentials and approvals.
+- Production deployment evidence is the merge-commit deployment run plus live health/static-asset verification, not a local HTTP probe.
