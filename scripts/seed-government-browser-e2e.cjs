@@ -69,7 +69,9 @@ async function main() {
     ['dhis2_readiness_percentage', 75, '%'],
   ];
   const rows = values.map(([indicatorKey, value, unit], index) => ({
-    recordKey: `E2E-${index + 1}`, title: indicatorKey.replaceAll('_', ' '), indicatorKey, value, unit,
+    recordKey: `E2E-${index + 1}`,
+    title: indicatorKey === 'pnc_within_24h_percentage' ? 'PNC within 24 hours' : indicatorKey.replaceAll('_', ' '),
+    indicatorKey, value, unit,
   }));
   const imported = await service.createImport({
     sourceId: source.id, mappingId: mapping.id, jurisdictionId: amac.id, facilityId: facility.id,

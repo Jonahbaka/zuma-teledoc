@@ -566,6 +566,8 @@ async function initializeApp() {
           'https://www.googletagmanager.com',
           'https://www.google-analytics.com',
           'https://analytics.google.com',
+          'https://fonts.googleapis.com',
+          'https://fonts.gstatic.com',
           'https://images.unsplash.com'
         ],
         // Allow Google Fonts

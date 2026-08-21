@@ -25,17 +25,13 @@ import {
   buildMinistryDemoData,
   shouldShowPresentationDemoData,
 } from '@/lib/ngPresentationDemoData';
+import api from '@/lib/api';
 
 // ─── Fetch helper ─────────────────────────────────────────────────────────────
 
 async function apiFetch(path, query = {}) {
-  const params = new URLSearchParams(
-    Object.fromEntries(Object.entries(query).filter(([, v]) => v != null && v !== ''))
-  );
-  const url = `/api/ng/executive-view${path}${params.size ? '?' + params : ''}`;
-  const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
+  const response = await api.get(`/ng/executive-view${path}`, { params: query });
+  return response.data;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -175,12 +171,10 @@ export default function ExecutiveView() {
       setGovStatus(gov);
       setUsingDemoData(false);
     } catch (err) {
-      if (/^(401|403)\b/.test(err.message || '')) {
-        applyDemoData();
-      } else {
-        setUsingDemoData(false);
-        setError(err.message);
-      }
+      setUsingDemoData(false);
+      setError([401, 403].includes(err.response?.status)
+        ? 'Your account is not authorized to load executive aggregate data.'
+        : err.message);
     } finally {
       setLoading(false);
     }
@@ -215,6 +209,7 @@ export default function ExecutiveView() {
           </div>
           <div className="flex items-center gap-3">
             <select
+              aria-label="Reporting period"
               value={period}
               onChange={(e) => setPeriod(e.target.value)}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm"

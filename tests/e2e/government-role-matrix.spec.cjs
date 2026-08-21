@@ -44,7 +44,7 @@ for (const actor of ACTORS) {
       await expect(page.getByText(/PNC within 24 hours/i).first()).toBeVisible();
     }
     if (actor.name === 'executive') {
-      await expect(page.locator('body')).not.toContainText(/presentation demo/i);
+      await expect(page.locator('body')).not.toContainText(/fictional data for presentation|presentation demo/i);
     }
 
     const screenshot = testInfo.outputPath(`${actor.name}-${testInfo.project.name}.png`);
@@ -56,6 +56,6 @@ for (const actor of ACTORS) {
     await testInfo.attach('browser-diagnostics.json', { body: Buffer.from(JSON.stringify({ consoleErrors, failedRequests }, null, 2)), contentType: 'application/json' });
     expect(severe, `${actor.name} serious/critical accessibility violations`).toEqual([]);
     expect(consoleErrors, `${actor.name} console errors`).toEqual([]);
-    expect(failedRequests.filter((item) => item.status >= 500 || item.error), `${actor.name} failed requests`).toEqual([]);
+    expect(failedRequests.filter((item) => item.status >= 400 || item.error), `${actor.name} failed requests`).toEqual([]);
   });
 }
