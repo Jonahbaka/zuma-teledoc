@@ -46,8 +46,10 @@ test('CSV, XLSX, and JSON intake parsers preserve missing observations', async (
 test('government imports enforce scope, maker-checker, quarantine, duplicate detection, commit, export, and rollback', async () => {
   const pool = getPool();
   const users = await pool.query(
-    `INSERT INTO users (email,password_hash,role,is_active)
-     VALUES ($1,'not-a-login-secret','patient',TRUE),($2,'not-a-login-secret','patient',TRUE),($3,'not-a-login-secret','patient',TRUE)
+    `INSERT INTO users (email,password_hash,role,first_name,last_name,is_active)
+     VALUES ($1,'not-a-login-secret','patient','Fictional','Maker',TRUE),
+            ($2,'not-a-login-secret','patient','Fictional','Checker',TRUE),
+            ($3,'not-a-login-secret','patient','Fictional','Outsider',TRUE)
      RETURNING id,email`,
     [`maker-${suffix}@example.test`, `checker-${suffix}@example.test`, `outsider-${suffix}@example.test`]
   );

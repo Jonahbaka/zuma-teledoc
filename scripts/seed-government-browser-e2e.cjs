@@ -25,7 +25,7 @@ async function main() {
       `INSERT INTO users
          (email,password_hash,role,first_name,last_name,is_active,is_verified,provider_status,mfa_enabled,mfa_secret)
        VALUES ($1,$2,$3,'Fictional','Browser',TRUE,TRUE,$4,$5,$6)
-       ON CONFLICT (email) DO UPDATE SET password_hash=EXCLUDED.password_hash,role=EXCLUDED.role,
+       ON CONFLICT (email,role) DO UPDATE SET password_hash=EXCLUDED.password_hash,
          first_name=EXCLUDED.first_name,last_name=EXCLUDED.last_name,is_active=TRUE,is_verified=TRUE,
          provider_status=EXCLUDED.provider_status,mfa_enabled=EXCLUDED.mfa_enabled,mfa_secret=EXCLUDED.mfa_secret
        RETURNING id,email,role`,
