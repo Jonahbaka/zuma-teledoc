@@ -10,25 +10,28 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-// Mirror pure utilities inline — avoids importing rbac.js which requires server/db
-const ROLE_HIERARCHY = {
-  super_admin: 100, platform_admin: 90, executive_read_only: 80,
-  programme_admin: 70, approver: 60, reviewer: 50,
-  analyst: 40, facility_admin: 30, provider: 20,
-};
+const {
+  canonicalRole,
+  hasMinRole,
+  isSuperAdmin,
+  requireAnalystPlus,
+  requireApprovalAuthority,
+  requireExportAuthority,
+  requireGovernmentMfa,
+  roleLevel,
+  scopeMatchesResource,
+} = require('../middleware/rbac');
 
-function canonicalRole(raw) {
-  return String(raw || '').toLowerCase().trim().replace(/\s+/g, '_');
-}
-function roleLevel(role) {
-  return ROLE_HIERARCHY[canonicalRole(role)] ?? 0;
-}
-function hasMinRole(user, minRole) {
-  const r = canonicalRole(user?.role || user?.ng_role || '');
-  return roleLevel(r) >= roleLevel(minRole);
-}
-function isSuperAdmin(user) {
-  return canonicalRole(user?.role || '') === 'super_admin';
+async function runMiddleware(middleware, user, cookies = {}) {
+  let nextCalled = false;
+  const response = {
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  };
+  await middleware({ user, cookies }, response, () => { nextCalled = true; });
+  return { nextCalled, response };
 }
 
 describe('canonicalRole', () => {
@@ -99,5 +102,87 @@ describe('isSuperAdmin', () => {
     assert.ok(!isSuperAdmin({ role: 'platform_admin' }));
     assert.ok(!isSuperAdmin({ role: 'approver' }));
     assert.ok(!isSuperAdmin({}));
+  });
+});
+
+describe('government middleware scope requirements', () => {
+  it('does not treat an unscoped analyst base role as global access', async () => {
+    const result = await runMiddleware(requireAnalystPlus, { role: 'analyst' });
+    assert.equal(result.nextCalled, false);
+    assert.equal(result.response.statusCode, 403);
+  });
+
+  it('does not grant export or approval authority from unscoped operational roles', async () => {
+    const exportResult = await runMiddleware(requireExportAuthority(), { role: 'analyst' });
+    const approvalResult = await runMiddleware(requireApprovalAuthority(), { role: 'approver' });
+    assert.equal(exportResult.nextCalled, false);
+    assert.equal(exportResult.response.statusCode, 403);
+    assert.equal(approvalResult.nextCalled, false);
+    assert.equal(approvalResult.response.statusCode, 403);
+  });
+
+  it('allows platform-wide administrators through the global role gate', async () => {
+    const result = await runMiddleware(requireAnalystPlus, { role: 'platform_admin' });
+    assert.equal(result.nextCalled, true);
+  });
+});
+
+describe('government object scope matching', () => {
+  const areaScope = {
+    jurisdiction_id: 'area-1',
+    facility_id: null,
+    programme_area: null,
+  };
+  const facilityScope = {
+    jurisdiction_id: 'facility-jurisdiction-1',
+    facility_id: 'facility-1',
+    programme_area: 'maternal_health',
+  };
+
+  it('allows a parent jurisdiction assignment to access a descendant resource', () => {
+    assert.equal(scopeMatchesResource(areaScope, new Set(['facility-jurisdiction-1', 'area-1'])), true);
+  });
+
+  it('denies a resource outside the assigned jurisdiction ancestry', () => {
+    assert.equal(scopeMatchesResource(areaScope, new Set(['facility-jurisdiction-2', 'area-2'])), false);
+  });
+
+  it('enforces facility and programme restrictions together', () => {
+    const ancestors = new Set(['facility-jurisdiction-1']);
+    assert.equal(scopeMatchesResource(facilityScope, ancestors, {
+      facilityId: 'facility-1',
+      programmeArea: 'maternal_health',
+    }), true);
+    assert.equal(scopeMatchesResource(facilityScope, ancestors, {
+      facilityId: 'facility-2',
+      programmeArea: 'maternal_health',
+    }), false);
+    assert.equal(scopeMatchesResource(facilityScope, ancestors, {
+      facilityId: 'facility-1',
+      programmeArea: 'teleconsultation_access',
+    }), false);
+  });
+});
+
+describe('government MFA enforcement', () => {
+  it('denies government access until MFA is enrolled', async () => {
+    const result = await runMiddleware(requireGovernmentMfa, { role: 'platform_admin', mfaEnabled: false });
+    assert.equal(result.nextCalled, false);
+    assert.equal(result.response.body.code, 'GOVERNMENT_MFA_ENROLLMENT_REQUIRED');
+  });
+
+  it('denies an enrolled account without an MFA-verified session', async () => {
+    const result = await runMiddleware(requireGovernmentMfa, { role: 'platform_admin', mfaEnabled: true });
+    assert.equal(result.nextCalled, false);
+    assert.equal(result.response.body.code, 'MFA_REQUIRED');
+  });
+
+  it('allows an enrolled account with an MFA-verified session', async () => {
+    const result = await runMiddleware(
+      requireGovernmentMfa,
+      { role: 'platform_admin', mfaEnabled: true },
+      { mfaVerified: 'true' }
+    );
+    assert.equal(result.nextCalled, true);
   });
 });

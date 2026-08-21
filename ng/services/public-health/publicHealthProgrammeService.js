@@ -151,7 +151,9 @@ async function safeScalar(pool, sql, params = [], field = 'count') {
     const result = await pool.query(sql, params);
     return toNumber(result.rows[0]?.[field]);
   } catch (error) {
-    if (isMissingDbObject(error)) return 0;
+    // A missing source table/column means the metric is unavailable, not zero.
+    // Preserve that distinction through reporting and DHIS2 export validation.
+    if (isMissingDbObject(error)) return null;
     throw error;
   }
 }
@@ -264,7 +266,10 @@ async function getMetrics({ period, facilityId, lga } = {}) {
     pharmacy_referrals: pharmacyReferrals,
     lab_referrals: labReferrals,
     active_providers: activeProviders,
-    active_facilities: activeFacilitiesConfigured + activeHospitals,
+    active_facilities:
+      activeFacilitiesConfigured === null || activeHospitals === null
+        ? null
+        : activeFacilitiesConfigured + activeHospitals,
     notifications_sent: notificationsSent,
     reports_generated: reportsGenerated,
     cancer_related_referrals: cancerRelatedReferrals,
@@ -1050,9 +1055,91 @@ async function getFinancialIntelligence({ period } = {}) {
   };
 }
 
+const GOVERNMENT_DASHBOARD_INDICATORS = [
+  'pnc_within_24h_percentage',
+  'anc_eight_component_completeness_percentage',
+  'referral_completion_percentage',
+  'referral_response_time_hours',
+  'unresolved_cases',
+  'service_utilization',
+  'continuity_of_care_percentage',
+  'reporting_completeness_percentage',
+  'reporting_timeliness_percentage',
+  'data_quality_pass_percentage',
+  'dhis2_readiness_percentage',
+];
+
+async function getApprovedGovernmentDashboard({ period, facilityId, jurisdictionIds } = {}) {
+  const pool = getPool();
+  const params = [GOVERNMENT_DASHBOARD_INDICATORS, period || null, facilityId || null,
+    Array.isArray(jurisdictionIds) ? jurisdictionIds : null];
+  const summary = await pool.query(
+    `SELECT i.internal_key,i.display_name,i.description,i.aggregation_type,i.target_value,
+            CASE WHEN COUNT(r.id)=0 THEN NULL
+                 WHEN i.aggregation_type IN ('average','rate','percentage') THEN AVG(o.observed_value) FILTER (WHERE r.id IS NOT NULL)
+                 ELSE SUM(o.observed_value) FILTER (WHERE r.id IS NOT NULL) END AS value,
+            COUNT(r.id)::int AS observation_count,
+            MAX(r.created_at) AS freshness,
+            STRING_AGG(DISTINCT s.name, ', ' ORDER BY s.name) AS source,
+            CASE WHEN COUNT(r.id)=0 THEN 'no_approved_observations'
+                 WHEN BOOL_OR(r.data_quality_status='warning') THEN 'approved_with_warning'
+                 ELSE 'approved_and_validated' END AS validation_status
+       FROM public_health_indicators i
+       LEFT JOIN ng_indicator_observations o
+         ON o.indicator_id=i.id AND o.rolled_back_at IS NULL
+        AND ($2::text IS NULL OR o.reporting_period=$2)
+        AND ($3::uuid IS NULL OR o.facility_id=$3)
+        AND ($4::uuid[] IS NULL OR o.jurisdiction_id=ANY($4))
+       LEFT JOIN ng_government_records r ON r.id=o.government_record_id AND r.rolled_back_at IS NULL AND r.approval_status='approved'
+       LEFT JOIN ng_government_data_sources s ON s.id=r.source_id
+      WHERE i.internal_key=ANY($1::text[])
+      GROUP BY i.id,i.internal_key,i.display_name,i.description,i.aggregation_type,i.target_value
+      ORDER BY ARRAY_POSITION($1::text[],i.internal_key)`, params
+  );
+  const trends = await pool.query(
+    `SELECT i.internal_key,o.reporting_period,
+            CASE WHEN i.aggregation_type IN ('average','rate','percentage') THEN AVG(o.observed_value)
+                 ELSE SUM(o.observed_value) END AS value
+       FROM ng_indicator_observations o
+       JOIN public_health_indicators i ON i.id=o.indicator_id
+       JOIN ng_government_records r ON r.id=o.government_record_id
+      WHERE i.internal_key=ANY($1::text[]) AND o.rolled_back_at IS NULL AND r.rolled_back_at IS NULL
+        AND r.approval_status='approved' AND ($2::text IS NULL OR o.reporting_period=$2)
+        AND ($3::uuid IS NULL OR o.facility_id=$3)
+        AND ($4::uuid[] IS NULL OR o.jurisdiction_id=ANY($4))
+      GROUP BY i.internal_key,o.reporting_period,i.aggregation_type
+      ORDER BY o.reporting_period DESC LIMIT 132`, params
+  );
+  const trendMap = new Map();
+  for (const row of trends.rows.reverse()) {
+    if (!trendMap.has(row.internal_key)) trendMap.set(row.internal_key, []);
+    trendMap.get(row.internal_key).push({ period: row.reporting_period, value: row.value === null ? null : Number(row.value) });
+  }
+  return {
+    period: period || null,
+    sourcePolicy: 'Persisted, independently approved government imports only',
+    aggregateOnly: true,
+    generatedAt: new Date().toISOString(),
+    metrics: summary.rows.map((row) => ({
+      key: row.internal_key,
+      label: row.display_name,
+      value: row.value === null ? null : Number(row.value),
+      target: row.target_value === null ? null : Number(row.target_value),
+      unit: row.internal_key.endsWith('_percentage') ? '%' : row.internal_key.endsWith('_hours') ? 'hours' : null,
+      period: period || 'all approved periods',
+      source: row.source || 'No approved source observation',
+      definition: row.description,
+      freshness: row.freshness,
+      validationStatus: row.validation_status,
+      observationCount: row.observation_count,
+      trend: trendMap.get(row.internal_key) || [],
+    })),
+  };
+}
+
 async function getExecutiveDashboard(params = {}) {
   const period = parsePeriod(params.period).period;
-  const [metrics, appointments, facility, referrals, pharmacyLab, complaint, financial, charts] = await Promise.all([
+  const [metrics, appointments, facility, referrals, pharmacyLab, complaint, financial, charts, governmentDashboard] = await Promise.all([
     getMetrics({ period, facilityId: params.facilityId, lga: params.lga }),
     getAppointmentExtraMetrics({ period }),
     getFacilityIntelligence({ period }),
@@ -1069,6 +1156,7 @@ async function getExecutiveDashboard(params = {}) {
       getChartData({ metric: 'pharmacy_referrals', days: 90 }),
       getChartData({ metric: 'registrations', days: 90 }),
     ]),
+    getApprovedGovernmentDashboard({ period, facilityId: params.facilityId, jurisdictionIds: params.jurisdictionIds }),
   ]);
   const provider = await getProviderIntelligence({ period, metrics });
   const [consultationForecast7, consultationForecast14, consultationForecast30, referralForecast, prescriptionForecast, labForecast, followupForecast] = await Promise.all([
@@ -1196,6 +1284,7 @@ async function getExecutiveDashboard(params = {}) {
       notOutbreakPrediction: true,
       dhis2LiveIntegrationClaimed: false,
     },
+    governmentDashboard,
   };
 }
 
@@ -1304,7 +1393,9 @@ async function generateReport({ period, reportType = 'monthly_aggregate', facili
     );
     const report = reportResult.rows[0];
     for (const indicator of indicators) {
-      const value = metrics[indicator.internal_key] || 0;
+      const metricValue = Object.prototype.hasOwnProperty.call(metrics, indicator.internal_key)
+        ? metrics[indicator.internal_key]
+        : null;
       await client.query(
         `INSERT INTO public_health_report_values (report_id, indicator_id, value, metadata_json)
          VALUES ($1, $2, $3, $4::jsonb)
@@ -1312,11 +1403,12 @@ async function generateReport({ period, reportType = 'monthly_aggregate', facili
         [
           report.id,
           indicator.id,
-          value,
+          metricValue,
           JSON.stringify({
             source: 'DoctaRx aggregate operational data',
             noPatientIdentifiers: true,
             aggregationType: indicator.aggregation_type,
+            dataStatus: metricValue === null ? 'unavailable' : 'observed',
           }),
         ]
       );
@@ -1426,18 +1518,34 @@ async function approveReport(id, actorUserId, notes) {
 
 function reportToJson(reportBundle) {
   const { report, values } = reportBundle;
-  const byKey = Object.fromEntries(values.map((row) => [row.internal_key, toNumber(row.value)]));
-  const value = (key) => byKey[key] || 0;
+  const normalizeReportedValue = (rawValue) => {
+    if (rawValue === null || rawValue === undefined || rawValue === '') return null;
+    const numericValue = Number(rawValue);
+    return Number.isFinite(numericValue) ? numericValue : null;
+  };
+  const byKey = Object.fromEntries(values.map((row) => [row.internal_key, normalizeReportedValue(row.value)]));
+  const value = (key) => (Object.prototype.hasOwnProperty.call(byKey, key) ? byKey[key] : null);
+  const positiveMessage = (key, presentMessage, zeroMessage) => {
+    const metricValue = value(key);
+    if (metricValue === null) return `Data unavailable for ${key.replaceAll('_', ' ')}.`;
+    return metricValue > 0 ? presentMessage(metricValue) : zeroMessage;
+  };
+  const sumWhenComplete = (...keys) => {
+    const metricValues = keys.map(value);
+    return metricValues.some((metricValue) => metricValue === null)
+      ? null
+      : metricValues.reduce((sum, metricValue) => sum + metricValue, 0);
+  };
   const sections = {
     executiveSummary: {
       keyWins: [
-        value('completed_consultations') > 0 ? `${value('completed_consultations')} completed consultation(s) recorded.` : 'No completed consultations found for this period.',
-        value('teleconsultations') > 0 ? `${value('teleconsultations')} teleconsultation(s) recorded.` : 'No teleconsultation activity found for this period.',
-        value('referrals_completed') > 0 ? `${value('referrals_completed')} referral(s) completed.` : 'No completed referrals found for this period.',
+        positiveMessage('completed_consultations', (count) => `${count} completed consultation(s) recorded.`, 'No completed consultations found for this period.'),
+        positiveMessage('teleconsultations', (count) => `${count} teleconsultation(s) recorded.`, 'No teleconsultation activity found for this period.'),
+        positiveMessage('referrals_completed', (count) => `${count} referral(s) completed.`, 'No completed referrals found for this period.'),
       ],
       keyRisks: [
-        value('pending_referrals') > 0 ? `${value('pending_referrals')} referral(s) remain pending and may need coordination review.` : 'No pending referral pressure detected from available data.',
-        value('failed_video_sessions') > 0 ? `${value('failed_video_sessions')} failed video session(s) may affect digital access.` : 'No failed video sessions recorded from available data.',
+        positiveMessage('pending_referrals', (count) => `${count} referral(s) remain pending and may need coordination review.`, 'No pending referral pressure detected from available data.'),
+        positiveMessage('failed_video_sessions', (count) => `${count} failed video session(s) may affect digital access.`, 'No failed video sessions recorded from available data.'),
       ],
       recommendedNextActions: [
         'Review staffing and teleconsultation coverage where demand is rising.',
@@ -1460,21 +1568,33 @@ function reportToJson(reportBundle) {
       pendingReferrals: value('pending_referrals'),
       labReferrals: value('lab_referrals'),
       pharmacyReferrals: value('pharmacy_referrals'),
-      bottleneckSignal: value('pending_referrals') > 0 ? 'pending_referrals_need_review' : 'no_pending_referral_signal',
+      bottleneckSignal: value('pending_referrals') === null
+        ? 'data_unavailable'
+        : value('pending_referrals') > 0
+          ? 'pending_referrals_need_review'
+          : 'no_pending_referral_signal',
     },
     facilityProviderSummary: {
       activeFacilities: value('active_facilities'),
       activeProviders: value('active_providers'),
-      workloadSignal: value('total_consultations') + value('referrals_created') + value('followup_appointments'),
+      workloadSignal: sumWhenComplete('total_consultations', 'referrals_created', 'followup_appointments'),
     },
     pharmacyPrescriptionSummary: {
       prescriptionsCreated: value('prescriptions_created'),
       pharmacyReferrals: value('pharmacy_referrals'),
-      medicineDemandSignal: value('prescriptions_created') > 0 ? 'medicine_demand_visible' : 'no_prescription_demand_data',
+      medicineDemandSignal: value('prescriptions_created') === null
+        ? 'data_unavailable'
+        : value('prescriptions_created') > 0
+          ? 'medicine_demand_visible'
+          : 'no_prescription_demand_data',
     },
     labDiagnosticSummary: {
       labReferrals: value('lab_referrals'),
-      diagnosticDemandSignal: value('lab_referrals') > 0 ? 'lab_referral_demand_visible' : 'no_lab_referral_data',
+      diagnosticDemandSignal: value('lab_referrals') === null
+        ? 'data_unavailable'
+        : value('lab_referrals') > 0
+          ? 'lab_referral_demand_visible'
+          : 'no_lab_referral_data',
     },
     diseaseComplaintPatternSummary: {
       cancerCareCoordinationReferrals: value('cancer_related_referrals'),
@@ -1490,10 +1610,11 @@ function reportToJson(reportBundle) {
       note: 'Forecast values are generated through the forecasting endpoint from aggregate operational history; no clinical diagnosis or outbreak prediction is claimed.',
     },
     planningIntelligence: {
-      staffingSignal: value('total_consultations') > 0 ? 'review_provider_capacity_against_consultation_demand' : 'insufficient_service_data',
-      medicinePlanningSignal: value('prescriptions_created') > 0 ? 'review_medicine_category_demand' : 'insufficient_prescription_data',
-      referralPressureSignal: value('pending_referrals') > 0 ? 'review_pending_referral_queue' : 'no_pending_referral_pressure',
+      staffingSignal: value('total_consultations') === null ? 'data_unavailable' : value('total_consultations') > 0 ? 'review_provider_capacity_against_consultation_demand' : 'insufficient_service_data',
+      medicinePlanningSignal: value('prescriptions_created') === null ? 'data_unavailable' : value('prescriptions_created') > 0 ? 'review_medicine_category_demand' : 'insufficient_prescription_data',
+      referralPressureSignal: value('pending_referrals') === null ? 'data_unavailable' : value('pending_referrals') > 0 ? 'review_pending_referral_queue' : 'no_pending_referral_pressure',
       dataQualityIssues: values.filter((row) => !row.dhis2_data_element_id).map((row) => `Missing DHIS2 mapping: ${row.internal_key}`),
+      unavailableIndicators: values.filter((row) => normalizeReportedValue(row.value) === null).map((row) => row.internal_key),
     },
     dhis2ReadinessSummary: {
       configuredIndicators: values.filter((row) => row.dhis2_data_element_id).length,
@@ -1532,7 +1653,8 @@ function reportToJson(reportBundle) {
       internalKey: row.internal_key,
       displayName: row.display_name,
       programmeArea: row.programme_area,
-      value: toNumber(row.value),
+      value: normalizeReportedValue(row.value),
+      dataStatus: normalizeReportedValue(row.value) === null ? 'unavailable' : 'observed',
       aggregationType: row.aggregation_type,
       dhis2Mapped: Boolean(row.dhis2_data_element_id),
     })),
@@ -1551,7 +1673,7 @@ function reportToCsv(reportBundle) {
       row.programme_area,
       row.internal_key,
       `"${String(row.display_name || '').replace(/"/g, '""')}"`,
-      toNumber(row.value),
+      row.value === null || row.value === undefined ? '' : toNumber(row.value),
       row.aggregation_type,
       row.dhis2_data_element_id || '',
     ].join(','));
@@ -1565,6 +1687,46 @@ function assertNoPatientIdentifiers(payload) {
   return !blockedKeys.some((key) => serialized.includes(key));
 }
 
+function prepareDhis2DataValues(values = []) {
+  const dataValues = [];
+  const missingMappings = [];
+  const missingValues = [];
+
+  for (const row of values) {
+    if (!row.dhis2_data_element_id) {
+      missingMappings.push({
+        internalKey: row.internal_key,
+        displayName: row.display_name,
+      });
+      continue;
+    }
+    if (row.value === null || row.value === undefined || row.value === '') {
+      missingValues.push({
+        internalKey: row.internal_key,
+        displayName: row.display_name,
+        dataElement: row.dhis2_data_element_id,
+      });
+      continue;
+    }
+    const numericValue = Number(row.value);
+    if (!Number.isFinite(numericValue)) {
+      missingValues.push({
+        internalKey: row.internal_key,
+        displayName: row.display_name,
+        dataElement: row.dhis2_data_element_id,
+      });
+      continue;
+    }
+    dataValues.push({
+      dataElement: row.dhis2_data_element_id,
+      categoryOptionCombo: row.dhis2_category_option_combo_id || undefined,
+      value: numericValue,
+    });
+  }
+
+  return { dataValues, missingMappings, missingValues };
+}
+
 async function buildDhis2Preview(reportId) {
   const [reportBundle, settingsRow] = await Promise.all([getReport(reportId), getSettingsRaw()]);
   const settings = publicSettings(settingsRow);
@@ -1576,25 +1738,13 @@ async function buildDhis2Preview(reportId) {
   if (settings.apiCredentialsStatus !== 'configured') warnings.push('DHIS2 API credentials are pending.');
   if (settings.dataSharingAgreementStatus !== 'approved') warnings.push('Data-sharing agreement is pending.');
 
-  const dataValues = [];
-  const missingMappings = [];
-  for (const row of reportBundle.values) {
-    if (!row.dhis2_data_element_id) {
-      missingMappings.push({
-        internalKey: row.internal_key,
-        displayName: row.display_name,
-      });
-      continue;
-    }
-    dataValues.push({
-      dataElement: row.dhis2_data_element_id,
-      categoryOptionCombo: row.dhis2_category_option_combo_id || undefined,
-      value: toNumber(row.value),
-    });
-  }
+  const { dataValues, missingMappings, missingValues } = prepareDhis2DataValues(reportBundle.values);
 
   if (missingMappings.length) {
     warnings.push(`${missingMappings.length} indicator(s) are missing official DHIS2 data-element mappings.`);
+  }
+  if (missingValues.length) {
+    warnings.push(`${missingValues.length} mapped indicator(s) have unavailable source data and were omitted.`);
   }
 
   const payload = {
@@ -1619,6 +1769,7 @@ async function buildDhis2Preview(reportId) {
     payload,
     warnings,
     missingMappings,
+    missingValues,
     payloadHash: crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex'),
   };
 }
@@ -1632,6 +1783,7 @@ function validateDhis2Sync(reportBundle, settings, preview) {
   if (!settings.datasetId) blockers.push('Dataset ID is missing.');
   if (!settings.orgUnitId) blockers.push('Organisation-unit ID is missing.');
   if (preview.missingMappings.length) blockers.push('One or more report indicators are missing DHIS2 data-element mappings.');
+  if (preview.missingValues.length) blockers.push('One or more mapped report indicators have unavailable source data.');
   if (settings.governmentApprovalStatus !== 'approved') blockers.push('Government reporting approval is pending.');
   if (settings.dataSharingAgreementStatus !== 'approved') blockers.push('Data-sharing agreement is pending.');
   if (settings.apiCredentialsStatus !== 'configured') blockers.push('API credentials are pending.');
@@ -1977,6 +2129,7 @@ module.exports = {
   weightedMovingAverage,
   linearTrendProjection,
   assertNoPatientIdentifiers,
+  prepareDhis2DataValues,
   reportToJson,
   reportToCsv,
   buildReadiness,

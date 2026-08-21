@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS public_health_report_values (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   report_id UUID NOT NULL REFERENCES public_health_reports(id) ON DELETE CASCADE,
   indicator_id UUID NOT NULL REFERENCES public_health_indicators(id) ON DELETE CASCADE,
-  value NUMERIC NOT NULL DEFAULT 0,
+  value NUMERIC,
   metadata_json JSONB DEFAULT '{}'::JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (report_id, indicator_id)

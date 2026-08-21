@@ -455,8 +455,12 @@
   justify-content: center;
   gap: 0.24rem;
   border-radius: 1.1rem;
-  color: hsl(var(--muted-foreground));
+  color: rgb(51 65 85);
   transition: transform 180ms ease, background 180ms ease, color 180ms ease;
+}
+
+.dark .app-mobile-dock__link {
+  color: rgb(203 213 225);
 }
 
 .app-mobile-dock__link[data-active='true'] {

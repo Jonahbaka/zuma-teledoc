@@ -230,7 +230,9 @@ function currentPeriod() {
 }
 
 function number(value) {
-  return Number(value || 0).toLocaleString();
+  if (value === null || value === undefined || value === '') return 'Data unavailable';
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric.toLocaleString() : 'Data unavailable';
 }
 
 function formatExecutiveValue(item) {
@@ -300,7 +302,7 @@ function MetricCard({ label, value, icon: Icon = Activity, accentIndex = 0, hint
       </div>
       <div className="relative mt-4 flex items-center gap-1 text-xs font-semibold text-white/65">
         <ArrowUpRight className="h-3 w-3" />
-        <span>Live aggregate signal</span>
+        <span>{value === null || value === undefined ? 'Source data unavailable' : 'Live aggregate signal'}</span>
       </div>
     </div>
   );
@@ -574,7 +576,9 @@ function ProgrammeAreaCard({ area, idx = 0 }) {
 }
 
 function compactNumber(value) {
-  const numeric = Number(value || 0);
+  if (value === null || value === undefined || value === '') return 'Data unavailable';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 'Data unavailable';
   if (Math.abs(numeric) >= 1000000) return `${(numeric / 1000000).toFixed(1)}M`;
   if (Math.abs(numeric) >= 1000) return `${(numeric / 1000).toFixed(1)}K`;
   return number(numeric);
@@ -1005,6 +1009,7 @@ function Dhis2ConsolePanel({ readiness, settings, indicators, preview, onValidat
 
 function ExecutiveCommandCenter({
   metrics,
+  governmentDashboard,
   executiveCharts,
   executiveTables,
   executiveMaps,
@@ -1038,6 +1043,44 @@ function ExecutiveCommandCenter({
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
         {commandStats.map((stat) => <CommandStatCard key={stat.label} {...stat} />)}
       </div>
+
+      <Card className="overflow-hidden border-emerald-100 bg-white shadow-lg shadow-emerald-100/60">
+        <CardHeader className="border-b border-slate-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50">
+          <CardTitle className="text-lg font-black text-slate-950">Approved government programme indicators</CardTitle>
+          <CardDescription>
+            Persisted, independently approved imports only. Each value shows its period, source, definition, freshness, validation state, and target.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {(governmentDashboard?.metrics || []).map((metric) => (
+            <div key={metric.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-black text-slate-900">{metric.label}</p>
+                <StatusPill status={metric.validationStatus} />
+              </div>
+              <p className="mt-3 text-3xl font-black text-slate-950">
+                {metric.value == null ? 'Missing' : number(metric.value)}
+                {metric.value != null && metric.unit ? <span className="ml-1 text-sm text-slate-500">{metric.unit}</span> : null}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-600">
+                Target: {metric.target == null ? 'Not configured' : `${number(metric.target)}${metric.unit === '%' ? '%' : metric.unit ? ` ${metric.unit}` : ''}`}
+              </p>
+              <dl className="mt-3 grid gap-1 text-xs leading-5 text-slate-600">
+                <div><dt className="inline font-bold">Period:</dt> <dd className="inline">{metric.period}</dd></div>
+                <div><dt className="inline font-bold">Source:</dt> <dd className="inline">{metric.source}</dd></div>
+                <div><dt className="inline font-bold">Freshness:</dt> <dd className="inline">{metric.freshness ? new Date(metric.freshness).toLocaleString() : 'No approved observation'}</dd></div>
+                <div><dt className="inline font-bold">Definition:</dt> <dd className="inline">{metric.definition}</dd></div>
+              </dl>
+              <div className="mt-3 flex items-end gap-1" aria-label={`${metric.label} trend against target`}>
+                {(metric.trend || []).slice(-12).map((point) => {
+                  const max = Math.max(metric.target || 0, ...(metric.trend || []).map((item) => Number(item.value || 0)), 1);
+                  return <span key={point.period} title={`${point.period}: ${point.value ?? 'missing'}`} className={`w-2 rounded-t ${metric.target != null && point.value >= metric.target ? 'bg-emerald-500' : 'bg-amber-400'}`} style={{ height: `${Math.max(3, (Number(point.value || 0) / max) * 28)}px` }} />;
+                })}
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 xl:grid-cols-[1.45fr_1fr_1.05fr]">
         <CommandTrendPanel consultations={executiveCharts.consultations || []} teleconsultations={executiveCharts.teleconsultations || []} />
@@ -1556,6 +1599,7 @@ export default function PublicHealthProgrammeDashboard({ initialTab = 'overview'
 
               <ExecutiveCommandCenter
                 metrics={metrics}
+                governmentDashboard={executive?.governmentDashboard}
                 executiveCharts={executiveCharts}
                 executiveTables={executiveTables}
                 executiveMaps={executiveMaps}

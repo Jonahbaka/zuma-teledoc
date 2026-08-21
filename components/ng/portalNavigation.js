@@ -54,6 +54,7 @@ export const nigeriaAdminNavigation = [
   { name: 'Subscriptions', href: '/ng/admin/subscriptions', icon: CreditCard },
   { name: 'Revenue', href: '/ng/admin/revenue', icon: Wallet },
   { name: 'Public Health Programme', href: '/ng/admin/public-health-programme', icon: HeartPulse },
+  { name: 'Government Data', href: '/ng/government-data', icon: Search },
   { name: 'Analytics', href: '/ng/admin/analytics', icon: BarChart3 },
   { name: 'Compliance', href: '/ng/admin/compliance', icon: ShieldCheck },
   { name: 'Feature Flags', href: '/ng/admin/features', icon: Flag },

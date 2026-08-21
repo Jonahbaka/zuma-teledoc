@@ -344,6 +344,8 @@ export default function DashboardLayout({
             </div>
           </Link>
           <button 
+            type="button"
+            aria-label={`Close ${portalName.toLowerCase()} navigation`}
             className="lg:hidden text-muted-foreground hover:text-foreground"
             onClick={() => setSidebarOpen(false)}
           >
@@ -459,7 +461,7 @@ export default function DashboardLayout({
                     size="sm" 
                     variant="outline"
                     onClick={handleCopyInviteLink}
-                    className="border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
+                    className="border-amber-600 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950"
                   >
                     {copied ? (
                       <>
@@ -480,6 +482,7 @@ export default function DashboardLayout({
                   <Button 
                     variant="outline" 
                     size="icon"
+                    aria-label="Open provider quick actions"
                     onClick={() => setQuickActionsOpen(!quickActionsOpen)}
                     className="border-purple-500 text-purple-600"
                   >
@@ -530,8 +533,8 @@ export default function DashboardLayout({
             <ThemeToggle className="hidden sm:inline-flex" />
             
             {/* Notifications */}
-            <Link href={getPortalHref('/notifications')}>
-              <Button variant="ghost" size="icon" className="relative">
+            <Link href={getPortalHref('/notifications')} aria-label="Notifications">
+              <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
@@ -542,8 +545,8 @@ export default function DashboardLayout({
             </Link>
 
             {/* Settings */}
-            <Link href={getPortalHref('/settings')} className="hidden sm:block">
-              <Button variant="ghost" size="icon">
+            <Link href={getPortalHref('/settings')} className="hidden sm:block" aria-label="Settings">
+              <Button variant="ghost" size="icon" aria-label="Settings">
                 <Settings className="w-5 h-5" />
               </Button>
             </Link>

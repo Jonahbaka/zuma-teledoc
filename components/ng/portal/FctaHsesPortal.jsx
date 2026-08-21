@@ -114,10 +114,10 @@ export default function FctaHsesPortal() {
         {gov && (
           <div className="mb-8 grid gap-4 sm:grid-cols-4">
             {[
-              { label: 'Pending review', value: gov.governance?.pendingReview || 0,    icon: Clock,          hl: true  },
-              { label: 'Pending approval', value: gov.governance?.pendingApproval || 0, icon: AlertTriangle, hl: true  },
-              { label: 'Approved',       value: gov.governance?.approved || 0,          icon: CheckCircle2,  hl: false },
-              { label: 'Total',          value: gov.governance?.totalSubmissions || 0,  icon: Shield,        hl: false },
+              { label: 'Pending review', value: gov.governance?.pendingReview ?? 'Data unavailable',    icon: Clock,          hl: true  },
+              { label: 'Pending approval', value: gov.governance?.pendingApproval ?? 'Data unavailable', icon: AlertTriangle, hl: true  },
+              { label: 'Approved',       value: gov.governance?.approved ?? 'Data unavailable',          icon: CheckCircle2,  hl: false },
+              { label: 'Total',          value: gov.governance?.totalSubmissions ?? 'Data unavailable',  icon: Shield,        hl: false },
             ].map((item) => (
               <div key={item.label} className={`rounded-2xl border p-4 ${item.hl && item.value > 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
                 <div className="flex items-center justify-between">

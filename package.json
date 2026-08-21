@@ -19,7 +19,7 @@
     "seed:links": "node server/scripts/seed-testing-links.js",
     "verify:admin-test-access": "node scripts/verify-admin-test-access-flow.cjs",
     "verify:testing-link-lifecycle": "node scripts/verify-testing-link-lifecycle.cjs",
-    "test": "node --test server/tests/message-authorization.test.js ng/tests/conference-authorization.test.js ng/tests/conferencing.test.js ng/tests/livekit-provider-conference-contract.test.js ng/tests/provider-workflow-discovery.test.js ng/tests/telehealth-lifecycle-integration.test.js ng/tests/telehealth-lifecycle-db.test.js && node ng/tests/regression.test.js && node ng/tests/portal-contract.test.js",
+    "test": "node --test server/tests/message-authorization.test.js ng/tests/auditLineage.test.js ng/tests/conference-authorization.test.js ng/tests/conferencing.test.js ng/tests/dhis2.test.js ng/tests/governance.test.js ng/tests/livekit-provider-conference-contract.test.js ng/tests/nigeria-imaging-authorization.test.js ng/tests/provider-workflow-discovery.test.js ng/tests/public-health-missing-data.test.js ng/tests/rbac.test.js ng/tests/telehealth-lifecycle-integration.test.js ng/tests/telehealth-lifecycle-db.test.js && node ng/tests/regression.test.js && node ng/tests/portal-contract.test.js",
     "test:regression": "node ng/tests/regression.test.js",
     "test:portal": "node ng/tests/portal-contract.test.js",
     "test:sim": "node ng/scripts/simulate.js",
@@ -42,6 +42,9 @@
     "test:conference-sfu-contract": "node --test ng/tests/livekit-provider-conference-contract.test.js",
     "test:ng:lifecycle:hermetic": "node --test ng/tests/telehealth-lifecycle-integration.test.js",
     "test:ng:lifecycle:db": "node --test ng/tests/telehealth-lifecycle-db.test.js",
+    "test:ng:government-data:db": "node --test ng/tests/government-data-db.test.js",
+    "seed:e2e:government": "node scripts/seed-government-browser-e2e.cjs",
+    "e2e:government:roles": "playwright test --config=playwright.government.config.cjs",
     "test:ng:lifecycle:browser": "node scripts/e2e-ng-lifecycle-browser.cjs",
     "lint": "eslint .",
     "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\"",
@@ -72,10 +75,11 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toast": "^1.2.2",
     "@radix-ui/react-tooltip": "^1.1.3",
-    "@sentry/nextjs": "^10.32.1",
+    "@sentry/nextjs": "^10.70.0",
     "@sentry/node": "^10.32.1",
     "axios": "^1.18.1",
     "bcryptjs": "^3.0.3",
+    "brace-expansion": "5.0.9",
     "bullmq": "^5.30.0",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.0",
@@ -86,6 +90,7 @@
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
     "express": "^4.21.1",
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.0.0",
@@ -93,11 +98,11 @@
     "i18n-iso-countries": "^7.14.0",
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",
-    "jspdf": "^4.2.0",
+    "jspdf": "^4.2.1",
     "livekit-client": "^2.19.1",
     "lucide-react": "^0.562.0",
     "multer": "^2.0.2",
-    "next": "^15.5.21",
+    "next": "^15.5.23",
     "nodemailer": "^9.0.3",
     "pdf-parse": "^2.4.5",
     "pg": "^8.13.1",
@@ -119,12 +124,14 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@playwright/test": "^1.55.1",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.0",
     "eslint": "^8.57.1",
-    "eslint-config-next": "15.5.21",
+    "eslint-config-next": "15.5.23",
     "nodemon": "^3.1.7",
-    "postcss": "8.5.16",
+    "postcss": "8.5.26",
     "tailwindcss": "^3.4.14",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^6.0.3"
@@ -133,13 +140,23 @@
     "node": ">=20.19.0"
   },
   "overrides": {
-    "postcss": "8.5.16",
+    "uuid": "$uuid",
+    "postcss": "8.5.26",
     "body-parser": "1.20.6",
-    "dompurify": "3.4.12",
+    "dompurify": "3.4.13",
     "sharp": "0.35.3",
-    "minimatch@10.2.5": {
-      "brace-expansion": "5.0.8"
-    }
+    "ip-address": "10.5.0",
+    "nanoid": "3.3.18",
+    "socket.io-parser": "4.2.7",
+    "undici": "7.29.0",
+    "minimatch@10.2.6": {
+      "brace-expansion": "5.0.9"
+    },
+    "minimatch@3.1.5": {
+      "brace-expansion": "1.1.18"
+    },
+    "js-yaml": "5.3.0",
+    "shell-quote": "1.10.0"
   },
   "main": "next.config.js",
   "directories": {

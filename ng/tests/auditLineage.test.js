@@ -12,6 +12,7 @@ const assert = require('node:assert/strict');
 
 const VALID_ACTIONS = new Set([
   'view', 'export', 'approve', 'reject', 'modify',
+  'search', 'import', 'validate', 'rollback',
   'sync', 'dry_run', 'submit', 'review', 'generate',
   'login', 'logout', 'permission_grant', 'permission_revoke',
 ]);

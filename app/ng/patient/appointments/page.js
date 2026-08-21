@@ -66,7 +66,7 @@ export default function NigeriaPatientAppointmentsPage() {
 
           <div className="flex flex-wrap gap-3">
             <Link href="/ng/patient/appointments/book">
-              <Button className="bg-emerald-600 text-white hover:bg-emerald-500">
+              <Button className="bg-emerald-700 text-white hover:bg-emerald-800">
                 <Plus className="mr-2 h-4 w-4" />
                 Book Consultation
               </Button>
@@ -108,7 +108,7 @@ export default function NigeriaPatientAppointmentsPage() {
             type="button"
             onClick={() => setFilter(item.value)}
             className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-              filter === item.value ? 'bg-emerald-600 text-white' : 'border border-border bg-card text-muted-foreground hover:text-foreground'
+              filter === item.value ? 'bg-emerald-700 text-white' : 'border border-border bg-card text-muted-foreground hover:text-foreground'
             }`}
           >
             {item.label}
@@ -128,7 +128,7 @@ export default function NigeriaPatientAppointmentsPage() {
               <p className="mt-4 font-semibold text-foreground">No consultations matched this view.</p>
               <p className="mt-2 text-sm text-muted-foreground">Book a Nigeria consultation to choose a type, provider, time, and care context.</p>
               <Link href="/ng/patient/appointments/book" className="mt-5 inline-flex">
-                <Button className="bg-emerald-600 text-white hover:bg-emerald-500">
+                <Button className="bg-emerald-700 text-white hover:bg-emerald-800">
                   <Plus className="mr-2 h-4 w-4" />
                   Book Consultation
                 </Button>
@@ -171,7 +171,7 @@ export default function NigeriaPatientAppointmentsPage() {
                     </Link>
                     {appointment.type === 'video' && ['scheduled', 'confirmed'].includes(String(appointment.status || '').toLowerCase()) ? (
                       <Link href={`/ng/patient/appointments/${appointment.id}/call`}>
-                        <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Join Call</Button>
+                        <Button className="bg-emerald-700 text-white hover:bg-emerald-800">Join Call</Button>
                       </Link>
                     ) : null}
                     <Link href="/ng/patient/messages">

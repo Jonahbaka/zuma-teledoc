@@ -25,17 +25,13 @@ import {
   buildMinistryDemoData,
   shouldShowPresentationDemoData,
 } from '@/lib/ngPresentationDemoData';
+import api from '@/lib/api';
 
 // ─── Fetch helper ─────────────────────────────────────────────────────────────
 
 async function apiFetch(path, query = {}) {
-  const params = new URLSearchParams(
-    Object.fromEntries(Object.entries(query).filter(([, v]) => v != null && v !== ''))
-  );
-  const url = `/api/ng/executive-view${path}${params.size ? '?' + params : ''}`;
-  const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
+  const response = await api.get(`/ng/executive-view${path}`, { params: query });
+  return response.data;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -52,7 +48,7 @@ function KpiCard({ icon: Icon, label, value, unit, trend, trendLabel, color = 'b
   const cls = colorMap[color] || colorMap.blue;
 
   const TrendIcon = trend > 0 ? TrendingUp : trend < 0 ? TrendingDown : Minus;
-  const trendCls  = trend > 0 ? 'text-emerald-600' : trend < 0 ? 'text-rose-500' : 'text-slate-400';
+  const trendCls  = trend > 0 ? 'text-emerald-600' : trend < 0 ? 'text-rose-500' : 'text-slate-600';
 
   return (
     <div className={`rounded-2xl border bg-gradient-to-br p-5 shadow-sm ${cls}`}>
@@ -175,12 +171,10 @@ export default function ExecutiveView() {
       setGovStatus(gov);
       setUsingDemoData(false);
     } catch (err) {
-      if (/^(401|403)\b/.test(err.message || '')) {
-        applyDemoData();
-      } else {
-        setUsingDemoData(false);
-        setError(err.message);
-      }
+      setUsingDemoData(false);
+      setError([401, 403].includes(err.response?.status)
+        ? 'Your account is not authorized to load executive aggregate data.'
+        : err.message);
     } finally {
       setLoading(false);
     }
@@ -215,6 +209,7 @@ export default function ExecutiveView() {
           </div>
           <div className="flex items-center gap-3">
             <select
+              aria-label="Reporting period"
               value={period}
               onChange={(e) => setPeriod(e.target.value)}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm"
@@ -275,7 +270,7 @@ export default function ExecutiveView() {
         </div>
 
         {loading && (
-          <div className="py-24 text-center text-sm text-slate-400">
+          <div className="py-24 text-center text-sm text-slate-600">
             <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin text-blue-400" />
             Loading intelligence data…
           </div>
@@ -302,7 +297,7 @@ export default function ExecutiveView() {
         )}
 
         {!loading && !exec && !error && (
-          <div className="py-24 text-center text-sm text-slate-400">
+          <div className="py-24 text-center text-sm text-slate-600">
             No data available for this period.
           </div>
         )}
@@ -339,7 +334,7 @@ function OverviewTab({ exec, gov }) {
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-base font-black text-slate-900">Top Complaint Categories</h3>
           {(exec.complaint?.complaintCategories || []).length === 0 ? (
-            <p className="text-sm text-slate-400">No complaint data for this period.</p>
+            <p className="text-sm text-slate-600">No complaint data for this period.</p>
           ) : (
             <div className="space-y-2">
               {(exec.complaint?.complaintCategories || []).slice(0, 8).map((row) => (
@@ -363,8 +358,8 @@ function OverviewTab({ exec, gov }) {
             <GovernanceStatusRow label="Provider workload score" value={exec.provider?.providerWorkloadScore ?? '—'} />
             <GovernanceStatusRow
               label="Capacity warnings"
-              value={exec.provider?.providerCapacityWarnings ?? 0}
-              highlight={(exec.provider?.providerCapacityWarnings ?? 0) > 0}
+              value={exec.provider?.providerCapacityWarnings ?? 'Data unavailable'}
+              highlight={Number(exec.provider?.providerCapacityWarnings) > 0}
             />
           </div>
           <h4 className="mb-2 mt-5 text-sm font-bold text-slate-700">Top Providers</h4>
@@ -383,10 +378,10 @@ function OverviewTab({ exec, gov }) {
           <h3 className="mb-4 text-base font-black text-slate-900">Governance Snapshot</h3>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { label: 'Total submissions',  value: gov.governance?.totalSubmissions || 0 },
-              { label: 'Pending review',     value: gov.governance?.pendingReview || 0,    hl: true },
-              { label: 'Pending approval',   value: gov.governance?.pendingApproval || 0,  hl: true },
-              { label: 'Approved / ready',   value: gov.governance?.approved || 0 },
+              { label: 'Total submissions',  value: gov.governance?.totalSubmissions ?? 'Data unavailable' },
+              { label: 'Pending review',     value: gov.governance?.pendingReview ?? 'Data unavailable',    hl: true },
+              { label: 'Pending approval',   value: gov.governance?.pendingApproval ?? 'Data unavailable',  hl: true },
+              { label: 'Approved / ready',   value: gov.governance?.approved ?? 'Data unavailable' },
             ].map((item) => (
               <div key={item.label} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
                 <p className="text-xs text-slate-500">{item.label}</p>
@@ -417,9 +412,9 @@ function TrendsTab({ exec }) {
     <div className="space-y-8">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="mb-1 text-base font-black text-slate-900">Consultation Trend (90-day)</h3>
-        <p className="mb-5 text-xs text-slate-400">Aggregate operational activity — no patient identifiers.</p>
+        <p className="mb-5 text-xs text-slate-600">Aggregate operational activity — no patient identifiers.</p>
         {!consultationData.length ? (
-          <p className="py-12 text-center text-sm text-slate-400">Consultation trend data will populate as records are captured.</p>
+          <p className="py-12 text-center text-sm text-slate-600">Consultation trend data will populate as records are captured.</p>
         ) : (
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -444,7 +439,7 @@ function TrendsTab({ exec }) {
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="mb-5 text-base font-black text-slate-900">Referral Trend (90-day)</h3>
         {!referralData.length ? (
-          <p className="py-12 text-center text-sm text-slate-400">Referral trend data will populate as records are captured.</p>
+          <p className="py-12 text-center text-sm text-slate-600">Referral trend data will populate as records are captured.</p>
         ) : (
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -472,11 +467,11 @@ function SignalsTab({ signals }) {
     <div className="space-y-8">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="mb-1 text-base font-black text-slate-900">Early Operational Signals</h3>
-        <p className="mb-4 text-xs text-slate-400">
+        <p className="mb-4 text-xs text-slate-600">
           Complaint pattern changes vs. prior period. These are planning signals — not outbreak predictions.
         </p>
         {!early.length ? (
-          <p className="py-8 text-center text-sm text-slate-400">Signals will populate as historical data accumulates.</p>
+          <p className="py-8 text-center text-sm text-slate-600">Signals will populate as historical data accumulates.</p>
         ) : (
           <div className="space-y-3">
             {early.map((s, i) => (
@@ -524,7 +519,7 @@ function ForecastsTab({ forecasts }) {
       </div>
 
       {!metrics.length ? (
-        <p className="py-12 text-center text-sm text-slate-400">Forecasts will populate as operational data accumulates (minimum 7 data points).</p>
+        <p className="py-12 text-center text-sm text-slate-600">Forecasts will populate as operational data accumulates (minimum 7 data points).</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {metrics.map((metric) => (
@@ -567,10 +562,10 @@ function GovernanceTab({ gov }) {
     <div className="space-y-8">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Total submissions',  value: g.totalSubmissions || 0 },
-          { label: 'Pending review',     value: g.pendingReview    || 0, hl: (g.pendingReview || 0) > 0 },
-          { label: 'Pending approval',   value: g.pendingApproval  || 0, hl: (g.pendingApproval || 0) > 0 },
-          { label: 'Approved / DHIS2 ready', value: g.approved     || 0 },
+          { label: 'Total submissions',  value: g.totalSubmissions ?? 'Data unavailable' },
+          { label: 'Pending review',     value: g.pendingReview ?? 'Data unavailable', hl: Number(g.pendingReview) > 0 },
+          { label: 'Pending approval',   value: g.pendingApproval ?? 'Data unavailable', hl: Number(g.pendingApproval) > 0 },
+          { label: 'Approved / DHIS2 ready', value: g.approved ?? 'Data unavailable' },
         ].map((item) => (
           <div key={item.label} className={`rounded-2xl border p-5 ${item.hl ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
             <p className="text-xs text-slate-500">{item.label}</p>
@@ -596,7 +591,7 @@ function GovernanceTab({ gov }) {
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="mb-4 text-base font-black text-slate-900">Recent Audit Activity</h3>
         {!recent.length ? (
-          <p className="text-sm text-slate-400">No recent activity.</p>
+          <p className="text-sm text-slate-600">No recent activity.</p>
         ) : (
           <div className="space-y-2">
             {recent.slice(0, 10).map((log, i) => (
@@ -604,13 +599,13 @@ function GovernanceTab({ gov }) {
                 <div>
                   <span className="text-xs font-semibold text-slate-700">{log.action}</span>
                   {log.resource_type && (
-                    <span className="ml-1 text-xs text-slate-400">on {log.resource_type}</span>
+                    <span className="ml-1 text-xs text-slate-600">on {log.resource_type}</span>
                   )}
                   {log.actor_name && (
-                    <span className="ml-1 text-xs text-slate-400">by {log.actor_name}</span>
+                    <span className="ml-1 text-xs text-slate-600">by {log.actor_name}</span>
                   )}
                 </div>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-slate-600">
                   {new Date(log.created_at).toLocaleDateString('en-NG', { day: '2-digit', month: 'short' })}
                 </span>
               </div>
