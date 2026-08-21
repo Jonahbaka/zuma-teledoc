@@ -199,9 +199,13 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Migrate and seed fictional role accounts
+        env:
+          ALLOW_DEFAULT_DEMO_PASSWORD: 'true'
+          ALLOW_DATABASE_URL_SIMULATION: 'true'
         run: |
           npm run migrate
           npm run ng:migrate
+          npm run ng:seed-demo
           npm run seed:e2e:government
 
       - name: Build production application
