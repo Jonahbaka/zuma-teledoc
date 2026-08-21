@@ -1104,7 +1104,8 @@ async function getApprovedGovernmentDashboard({ period, facilityId, jurisdiction
        JOIN public_health_indicators i ON i.id=o.indicator_id
        JOIN ng_government_records r ON r.id=o.government_record_id
       WHERE i.internal_key=ANY($1::text[]) AND o.rolled_back_at IS NULL AND r.rolled_back_at IS NULL
-        AND r.approval_status='approved' AND ($3::uuid IS NULL OR o.facility_id=$3)
+        AND r.approval_status='approved' AND ($2::text IS NULL OR o.reporting_period=$2)
+        AND ($3::uuid IS NULL OR o.facility_id=$3)
         AND ($4::uuid[] IS NULL OR o.jurisdiction_id=ANY($4))
       GROUP BY i.internal_key,o.reporting_period,i.aggregation_type
       ORDER BY o.reporting_period DESC LIMIT 132`, params
