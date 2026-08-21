@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const { createSimulationPool } = require('./simulationSafety');
 const { DEMO_ACCOUNTS } = require('./seed-demo-accounts');
 
-const DEFAULT_DEMO_PASSWORD = 'DoctaRxDemo!2026';
+const DEFAULT_DEMO_PASSWORD = 'Demo12345678!';
 
 const REQUIRED_TABLES = [
   'users',
@@ -228,7 +228,7 @@ async function ensureDemoPharmacy(client, ownerUserId, runId) {
       ownerUserId,
       `PCN-SIM-${runId.slice(0, 8).toUpperCase()}`,
       `PCN-PHARM-${runId.slice(0, 8).toUpperCase()}`,
-      'ng.pharmacist.demo@doctarx.test',
+      'pharmacy@demo.doctarx.com',
     ],
     { name: 'DoctaRx Demo Pharmacy' }
   );

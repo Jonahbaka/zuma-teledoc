@@ -298,10 +298,8 @@ EOF
   unset NURSING_SESSION_SECRET
 fi
 
-if [ ! -s "$PILOT_PASSWORD_FILE" ]; then
-  printf 'NrX!%s9a\n' "$(openssl rand -hex 12)" > "$PILOT_PASSWORD_FILE"
-  chmod 600 "$PILOT_PASSWORD_FILE"
-fi
+printf '%s\n' 'Demo12345678!' > "$PILOT_PASSWORD_FILE"
+chmod 600 "$PILOT_PASSWORD_FILE"
 
 if [ ! -s "$NESTORA_DEMO_PASSWORD_FILE" ]; then
   printf 'Nst!%s7Qa\n' "$(openssl rand -hex 12)" > "$NESTORA_DEMO_PASSWORD_FILE"
@@ -385,18 +383,16 @@ prepare_release \
   "$NURSING_ENV"
 NURSING_RELEASE="$PREPARED_RELEASE"
 
-if [ ! -f "$PILOT_SEEDED_FILE" ]; then
-  log "Loading controlled Nursing pilot accounts and training records"
-  (
-    cd "$NURSING_RELEASE"
-    set -a
-    source "$NURSING_ENV"
-    set +a
-    NURSING_TEST_ACCOUNT_PASSWORD="$(cat "$PILOT_PASSWORD_FILE")" npm run seed
-  )
-  touch "$PILOT_SEEDED_FILE"
-  chmod 600 "$PILOT_SEEDED_FILE"
-fi
+log "Refreshing controlled Nursing developer-demo accounts and fictional training records"
+(
+  cd "$NURSING_RELEASE"
+  set -a
+  source "$NURSING_ENV"
+  set +a
+  NURSING_TEST_ACCOUNT_PASSWORD="$(cat "$PILOT_PASSWORD_FILE")" npm run seed
+)
+touch "$PILOT_SEEDED_FILE"
+chmod 600 "$PILOT_SEEDED_FILE"
 
 log "Loading controlled Nestora demonstration accounts and labelled fictional records"
 (
