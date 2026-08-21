@@ -110,12 +110,14 @@ test('auxiliary seed overrides the parent DoctaRx database environment', () => {
     'utf8'
   );
   const seedBlock = script.slice(
-    script.indexOf('Loading controlled Nursing pilot accounts'),
+    script.indexOf('Refreshing controlled Nursing developer-demo accounts'),
     script.indexOf('cat > "$ECOSYSTEM_FILE"')
   );
 
   assert.match(seedBlock, /source "\$NURSING_ENV"/);
   assert.match(seedBlock, /NURSING_TEST_ACCOUNT_PASSWORD=.*npm run seed/);
+  assert.match(script, /printf '%s\\n' 'Demo12345678!' > "\$PILOT_PASSWORD_FILE"/);
+  assert.doesNotMatch(seedBlock, /if \[ ! -f "\$PILOT_SEEDED_FILE" \]/);
 });
 
 test('auxiliary PM2 processes inherit their isolated runtime environments', () => {

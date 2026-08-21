@@ -11,7 +11,7 @@ app.use(express.json());
 
 const provider = {
   id: 'ng-provider-dashboard-agent',
-  email: 'ng.doctor.demo@doctarx.test',
+  email: 'doctor@demo.doctarx.com',
   role: 'provider',
   firstName: 'Amina',
   lastName: 'Okafor',

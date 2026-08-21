@@ -60,7 +60,7 @@ test('simulation safety allows explicit non-production simulation URL', () => {
 test('live database simulation requires explicit demo password source', () => {
   assert.equal(
     resolveSimulationDemoPassword({ dryRun: true, env: {} }),
-    'DoctaRxDemo!2026'
+    'Demo12345678!'
   );
   assert.throws(
     () => resolveSimulationDemoPassword({ dryRun: false, env: {} }),
@@ -71,7 +71,7 @@ test('live database simulation requires explicit demo password source', () => {
       dryRun: false,
       env: { ALLOW_DEFAULT_DEMO_PASSWORD: 'true' },
     }),
-    'DoctaRxDemo!2026'
+    'Demo12345678!'
   );
   assert.equal(
     resolveSimulationDemoPassword({

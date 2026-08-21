@@ -196,3 +196,13 @@ test('artifact deploy runs migrations before agent table backfill', () => {
   assert.match(source, /\.next\.artifact-prev/);
   assert.match(source, /verifyGithubOidcToken/);
 });
+
+test('artifact deploy refreshes explicitly marked fictional developer demo accounts', () => {
+  const source = fs.readFileSync(uploadRoutePath, 'utf8');
+
+  assert.match(source, /refreshing developer-only fictional demo accounts/);
+  assert.match(source, /ALLOW_DEFAULT_DEMO_PASSWORD=true/);
+  assert.match(source, /ALLOW_DATABASE_URL_SIMULATION=true/);
+  assert.match(source, /ALLOW_PRODUCTION_SIMULATION=true/);
+  assert.match(source, /npm run ng:seed-demo/);
+});

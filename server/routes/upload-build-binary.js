@@ -282,6 +282,11 @@ npm run migrate
 node -e "const ensure=require('./server/db/ensureAgentTables'); const db=require('./server/db'); ensure().then(async ok=>{ await db.close(); process.exit(ok?0:1); }).catch(async err=>{ console.error(err); try{ await db.close(); }catch{} process.exit(1); })"
 node ng/migrations/migrate.js
 node ng/scripts/ingest-doctarx-nigeria-pack.js
+echo "[deploy] refreshing developer-only fictional demo accounts"
+ALLOW_DEFAULT_DEMO_PASSWORD=true \
+ALLOW_DATABASE_URL_SIMULATION=true \
+ALLOW_PRODUCTION_SIMULATION=true \
+npm run ng:seed-demo
 rm -rf .next.artifact-staging ${quotedPrevious}
 mkdir -p .next.artifact-staging
 tar -xzf ${quotedTmp} -C .next.artifact-staging
