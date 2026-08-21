@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
+import api from '@/lib/api';
 import {
   PRESENTATION_DEMO_LABEL,
   buildProviderDemoData,
@@ -11,24 +12,30 @@ import {
 
 /* ---------- API helpers ---------- */
 async function fetchProviderWorkspace() {
-  const res = await fetch('/api/ng/providers/me/access');
-  if (!res.ok) return null;
-  const d = await res.json();
-  return d.providerAccess || null;
+  try {
+    const response = await api.get('/ng/providers/me/access');
+    return response.data.providerAccess || null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchProviderAppointments(providerId) {
-  const res = await fetch(`/api/ng/providers/${providerId}/appointments?limit=50`);
-  if (!res.ok) return [];
-  const d = await res.json();
-  return d.appointments || [];
+  try {
+    const response = await api.get(`/ng/providers/${providerId}/appointments`, { params: { limit: 50 } });
+    return response.data.appointments || [];
+  } catch {
+    return [];
+  }
 }
 
 async function fetchProviderPatients(providerId) {
-  const res = await fetch(`/api/ng/providers/${providerId}/patients`);
-  if (!res.ok) return [];
-  const d = await res.json();
-  return d.patients || [];
+  try {
+    const response = await api.get(`/ng/providers/${providerId}/patients`);
+    return response.data.patients || [];
+  } catch {
+    return [];
+  }
 }
 import {
   LayoutDashboard, Users, Activity, Settings, Bell, Search,
@@ -299,7 +306,7 @@ function CommandCenter({ appointments = [], patients = [], totalPatients = 0, ac
                 {kpi.trend}
               </span>
             </div>
-            <p className="text-xs font-medium text-slate-400 mt-1">{kpi.sub}</p>
+            <p className="text-xs font-medium text-slate-600 mt-1">{kpi.sub}</p>
           </div>
         ))}
       </div>
@@ -313,7 +320,7 @@ function CommandCenter({ appointments = [], patients = [], totalPatients = 0, ac
             </div>
             <div className="flex bg-slate-100 p-1 rounded-lg">
               <button className="px-3 py-1 text-xs font-bold bg-white shadow-sm rounded-md text-slate-800">Today</button>
-              <button className="px-3 py-1 text-xs font-bold text-slate-500 hover:text-slate-800">Week</button>
+              <button className="px-3 py-1 text-xs font-bold text-slate-700 hover:text-slate-900">Week</button>
             </div>
           </div>
           <div className="p-6 flex-1 min-h-[350px]">
@@ -347,16 +354,16 @@ function CommandCenter({ appointments = [], patients = [], totalPatients = 0, ac
             </div>
             <div className="space-y-3">
               {[
-                { room: 'ER-A', issue: 'Chest Pain / STEMI Protocol', time: '2m ago', color: 'rose' },
-                { room: 'ICU-4', issue: 'Desaturation Alarm', time: '5m ago', color: 'rose' },
-                { room: 'Wrd-2', issue: 'Fall Risk Alert', time: '12m ago', color: 'amber' },
+                { room: 'ER-A', issue: 'Chest Pain / STEMI Protocol', time: '2m ago', color: 'rose', timeClass: 'text-rose-700' },
+                { room: 'ICU-4', issue: 'Desaturation Alarm', time: '5m ago', color: 'rose', timeClass: 'text-rose-700' },
+                { room: 'Wrd-2', issue: 'Fall Risk Alert', time: '12m ago', color: 'amber', timeClass: 'text-amber-700' },
               ].map((alert, i) => (
                 <div key={i} className={`p-3 rounded-xl border border-${alert.color}-100 bg-${alert.color}-50/50 flex items-start space-x-3`}>
                   <div className={`mt-0.5 w-2 h-2 rounded-full bg-${alert.color}-500 animate-pulse`} />
                   <div className="flex-1">
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-extrabold text-slate-800">{alert.room}</span>
-                      <span className={`text-[10px] font-bold text-${alert.color}-600`}>{alert.time}</span>
+                      <span className={`text-[10px] font-bold ${alert.timeClass}`}>{alert.time}</span>
                     </div>
                     <p className="text-xs font-medium text-slate-600 mt-0.5">{alert.issue}</p>
                   </div>
@@ -371,7 +378,7 @@ function CommandCenter({ appointments = [], patients = [], totalPatients = 0, ac
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h3 className="text-base font-bold text-slate-900 mb-4">Upcoming Consults</h3>
             {appointments.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-4">No scheduled appointments.</p>
+              <p className="text-sm text-slate-600 text-center py-4">No scheduled appointments.</p>
             ) : (
               <div className="relative pl-4 border-l-2 border-slate-100 space-y-6">
                 {appointments.filter(a => a.status !== 'cancelled').slice(0, 5).map((appt, i) => {
@@ -579,7 +586,7 @@ export default function NGProviderDashboard({ market = 'ng' }) {
       onClick={onClick}
       className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
         highlight
-          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200 hover:bg-emerald-700'
+          ? 'bg-emerald-700 text-white shadow-md shadow-emerald-200 hover:bg-emerald-800'
           : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
       }`}
     >
@@ -611,23 +618,23 @@ export default function NGProviderDashboard({ market = 'ng' }) {
         </div>
 
         <div className="p-4 space-y-1 flex-1 mt-1 overflow-y-auto">
-          <div className="px-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5">Dashboards</div>
+          <div className="px-3 text-[10px] font-extrabold text-slate-600 uppercase tracking-widest mb-1.5">Dashboards</div>
           <NavItem id="command" icon={LayoutDashboard} label="Command Center" />
           <NavItem id="population" icon={Users} label="Patient Queue" />
 
-          <div className="px-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 mt-5">Telehealth</div>
+          <div className="px-3 text-[10px] font-extrabold text-slate-600 uppercase tracking-widest mb-1.5 mt-5">Telehealth</div>
           <LinkItem icon={Video} label="Telehealth Center" onClick={() => router.push(`${base}/call`)} highlight />
           <LinkItem icon={CalendarDays} label="Appointments" onClick={() => router.push(`${base}/appointments`)} />
           <LinkItem icon={CalendarIcon} label="Schedule" onClick={() => router.push(`${base}/schedule`)} />
 
-          <div className="px-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 mt-5">Clinical</div>
+          <div className="px-3 text-[10px] font-extrabold text-slate-600 uppercase tracking-widest mb-1.5 mt-5">Clinical</div>
           <LinkItem icon={Stethoscope} label="Visits / Encounters" onClick={() => router.push(`${base}/visits`)} />
           <LinkItem icon={FileText} label="EMR / SOAP Notes" onClick={() => router.push(market === 'us' ? `${base}/visits` : '/ng/soap')} />
           <LinkItem icon={Pill} label="Prescriptions" onClick={() => router.push(`${base}/prescriptions`)} />
           <LinkItem icon={Share2} label="Referrals" onClick={() => router.push(`${base}/referrals`)} />
           <LinkItem icon={ClipboardList} label="Pharmacy Status" onClick={() => router.push(market === 'us' ? `${base}/prescriptions` : '/ng/pharmacy/dashboard')} />
 
-          <div className="px-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 mt-5">Practice</div>
+          <div className="px-3 text-[10px] font-extrabold text-slate-600 uppercase tracking-widest mb-1.5 mt-5">Practice</div>
           <LinkItem icon={BarChart3} label="Analytics" onClick={() => router.push(`${base}/analytics`)} />
           <LinkItem icon={Wallet} label="Earnings" onClick={() => router.push(`${base}/earnings`)} />
           <LinkItem icon={Building2} label="Care Teams" onClick={() => router.push(`${base}/hospital-network`)} />
@@ -657,7 +664,7 @@ export default function NGProviderDashboard({ market = 'ng' }) {
               {activeTab === 'population' && 'Population Directory'}
             </h1>
             {activeTab === 'command' && (
-              <span className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100">
+              <span className="flex items-center text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100">
                 <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-2 animate-pulse" /> Live Updates
               </span>
             )}
@@ -671,7 +678,7 @@ export default function NGProviderDashboard({ market = 'ng' }) {
                 className="w-64 bg-slate-100 border border-transparent focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 rounded-full py-2 pl-10 pr-4 text-sm font-medium outline-none"
               />
             </div>
-            <button className="relative p-2 text-slate-400 hover:bg-slate-100 rounded-full">
+            <button type="button" aria-label="Provider notifications" className="relative p-2 text-slate-600 hover:bg-slate-100 rounded-full">
               <Bell size={20} />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 border-2 border-white rounded-full" />
             </button>

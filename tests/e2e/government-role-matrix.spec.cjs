@@ -30,6 +30,15 @@ for (const actor of ACTORS) {
     expect(login.ok(), `${actor.name} login`).toBeTruthy();
     const session = await login.json();
     expect(session.success).toBe(true);
+    // Production cookies are Secure and scoped to doctarx.com, which an HTTP
+    // localhost browser cannot retain. The login above still verifies the real
+    // TOTP; mirror only its short-lived MFA marker onto the isolated test host.
+    if (actor.mfa) {
+      await context.addCookies([{
+        name: 'mfaVerified', value: 'true', url: 'http://127.0.0.1:8080',
+        httpOnly: true, secure: false, sameSite: 'Lax',
+      }]);
+    }
     await page.addInitScript(({ accessToken, refreshToken, user }) => {
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', refreshToken);
