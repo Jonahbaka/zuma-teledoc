@@ -263,7 +263,7 @@ class ClinicalEncounterService {
       
       // Verify encounter exists and belongs to provider
       const { rows: encounters } = await client.query(
-        `SELECT id, patient_id, status FROM clinical_encounters WHERE id = $1`,
+        `SELECT id, patient_id, provider_id, status FROM clinical_encounters WHERE id = $1`,
         [encounterId]
       );
       
@@ -272,6 +272,9 @@ class ClinicalEncounterService {
       }
       
       const encounter = encounters[0];
+      if (encounter.provider_id !== providerId) {
+        throw new Error('Encounter not found or access denied');
+      }
       
       // Encrypt SOAP fields
       const subjective = noteData.subjective ? encrypt(noteData.subjective) : { encrypted: null, iv: null, tag: null };
@@ -536,6 +539,9 @@ class ClinicalEncounterService {
       }
       
       const original = originals[0];
+      if (original.provider_id !== providerId) {
+        throw new Error('Only the authoring provider can amend this note');
+      }
       
       if (!original.is_signed) {
         throw new Error('Can only amend signed notes');
@@ -650,7 +656,12 @@ class ClinicalEncounterService {
   /**
    * Get note version history
    */
-  async getNoteVersionHistory(noteId) {
+  async getNoteVersionHistory(noteId, userId, userRole) {
+    const accessibleNote = await this.getNoteById(noteId, userId, userRole);
+    if (!accessibleNote) {
+      throw new Error('Note not found');
+    }
+
     // Get the root note
     const { rows: rootResult } = await db.query(
       `SELECT COALESCE(parent_note_id, id) as root_id FROM clinical_notes WHERE id = $1`,

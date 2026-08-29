@@ -29,6 +29,7 @@ const soapRoutes            = require('./soap');
 const prescriptionsRoutes   = require('./prescriptions');
 const conferenceRoutes      = require('./conference');
 const clinicalRoutes        = require('./clinical');
+const phcRoutes             = require('./phc');
 const { getPool }           = require('../../server/db');
 const rbac                  = require('../middleware/rbac');
 
@@ -226,6 +227,7 @@ const requireAdmin = (req, res, next) => {
 // Mount routes
 router.use('/discovery', discoveryRoutes);
 router.use('/clinical', authenticate, clinicalRoutes);
+router.use('/phc', authenticate, phcRoutes);
 router.use('/pharmacy', authenticate, pharmacyRoutes);
 router.use('/prescriptions', authenticate, prescriptionsRoutes);
 // These routers enforce their own government RBAC/ABAC policies per route.

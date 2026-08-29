@@ -52,6 +52,7 @@ if (!dbAvailable) {
 
 // Unique suffix so repeated runs do not collide and cleanup is targeted.
 const RUN = `lcdbtest_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+const ROOM_CODE = `LC${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
 const ids = {};
 
 before(async () => {
@@ -69,6 +70,7 @@ after(async () => {
     ['ng_clinical_encounters', 'id', ids.encounterId],
     ['ng_conf_rooms', 'id', ids.roomId],
     ['ng_appointments', 'id', ids.appointmentId],
+    ['ng_providers', 'id', ids.providerProfileId],
     ['users', 'id', ids.patientId],
     ['users', 'id', ids.providerId],
   ];
@@ -113,8 +115,18 @@ test('seed patient + provider users', { skip: suite.skip }, async () => {
     [`provider.${RUN}@doctarx.test`, RUN]);
   ids.providerId = provider.rows[0].id;
 
+  const providerProfile = await pool.query(
+    `INSERT INTO ng_providers
+       (user_id, full_name, email, phone, status, is_available)
+     VALUES ($1, 'Lifecycle Doctor', $2, '+2340000000000', 'verified', TRUE)
+     RETURNING id`,
+    [ids.providerId, `provider.${RUN}@doctarx.test`]
+  );
+  ids.providerProfileId = providerProfile.rows[0].id;
+
   assert.ok(ids.patientId, 'patient id created');
   assert.ok(ids.providerId, 'provider id created');
+  assert.ok(ids.providerProfileId, 'provider profile created');
 });
 
 test('create appointment/consultation linked to patient + provider', { skip: suite.skip }, async () => {
@@ -122,10 +134,13 @@ test('create appointment/consultation linked to patient + provider', { skip: sui
   // Build an insert from only the columns that exist, to be schema-tolerant.
   const candidate = {
     patient_user_id: ids.patientId,
-    provider_user_id: ids.providerId,
-    status: 'scheduled',
-    appointment_type: 'video',
+    provider_id: ids.providerProfileId,
+    status: 'confirmed',
+    appointment_type: 'general',
+    mode: 'video',
     scheduled_at: new Date().toISOString(),
+    consult_fee: 0,
+    total_amount: 0,
   };
   const usable = Object.entries(candidate).filter(([k]) => cols.has(k));
   const fields = usable.map(([k]) => k);
@@ -141,12 +156,13 @@ test('create appointment/consultation linked to patient + provider', { skip: sui
 test('create conference room linked to the appointment', { skip: suite.skip }, async () => {
   const cols = await colsExist('ng_conf_rooms');
   const candidate = {
+    room_code: ROOM_CODE,
     appointment_id: ids.appointmentId,
     patient_user_id: ids.patientId,
     status: 'live',
     kind: 'consultation',
     title: `Lifecycle room ${RUN}`,
-    created_by: ids.providerId,
+    host_user_id: ids.providerId,
   };
   const usable = Object.entries(candidate).filter(([k]) => cols.has(k));
   const fields = usable.map(([k]) => k);
@@ -229,12 +245,13 @@ test('admin lifecycle JOIN returns the full linked chain', { skip: suite.skip },
     SELECT
       a.id            AS appointment_id,
       a.patient_user_id,
-      a.provider_user_id,
+      np.user_id      AS provider_user_id,
       cr.id           AS room_id,
       ce.id           AS encounter_id,
       dp.id           AS prescription_id,
       dp.status       AS rx_status
     FROM ng_appointments a
+    LEFT JOIN ng_providers np ON np.id = a.provider_id
     LEFT JOIN ng_conf_rooms cr ON cr.appointment_id = a.id
     LEFT JOIN ng_clinical_encounters ce ON ce.appointment_id = a.id
     LEFT JOIN ng_digital_prescriptions dp ON dp.patient_user_id = a.patient_user_id
