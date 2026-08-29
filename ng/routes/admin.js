@@ -868,8 +868,9 @@ router.get('/consultations/lifecycle', async (req, res) => {
         a.status                    AS appointment_status,
         COALESCE(pu.first_name || ' ' || pu.last_name, a.patient_user_id::text) AS patient_name,
         a.patient_user_id           AS patient_id,
-        COALESCE(prov.first_name || ' ' || prov.last_name, a.provider_user_id::text) AS provider_name,
-        a.provider_user_id          AS provider_id,
+        COALESCE(prov.first_name || ' ' || prov.last_name, np.full_name, a.provider_id::text) AS provider_name,
+        np.user_id                  AS provider_id,
+        a.provider_id              AS provider_profile_id,
         cr.id                       AS room_id,
         cr.status                   AS room_status,
         cr.started_at               AS call_started_at,
@@ -882,7 +883,8 @@ router.get('/consultations/lifecycle', async (req, res) => {
         pu.account_status           AS patient_status
       FROM ng_appointments a
       LEFT JOIN users pu   ON pu.id = a.patient_user_id
-      LEFT JOIN users prov ON prov.id = a.provider_user_id
+      LEFT JOIN ng_providers np ON np.id = a.provider_id
+      LEFT JOIN users prov ON prov.id = np.user_id
       LEFT JOIN ng_conf_rooms     cr ON cr.appointment_id = a.id
       LEFT JOIN ng_clinical_encounters ce ON ce.appointment_id = a.id
       LEFT JOIN ng_digital_prescriptions dp ON dp.patient_user_id = a.patient_user_id

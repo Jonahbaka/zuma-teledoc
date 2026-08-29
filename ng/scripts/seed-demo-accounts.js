@@ -168,6 +168,254 @@ async function ensureGovernmentScopes(client, accounts) {
   }
 }
 
+const DEMO_PROGRAMME_ROLES = {
+  'Super Admin': 'platform_admin',
+  'Hospital Admin': 'facility_admin',
+  Doctor: 'remote_clinician',
+  Consultant: 'remote_clinician',
+  Nurse: 'phc_nurse',
+  Pharmacist: 'pharmacist',
+  'Lab Technician': 'lab_technician',
+  'Referral Coordinator': 'referral_coordinator',
+  'Government Analyst': 'government_analyst',
+  'Government Checker': 'government_approver',
+  Executive: 'executive_read_only',
+};
+
+function demoProviderSpecialty(account) {
+  if (account.demoRole === 'Consultant') return 'internal_medicine';
+  return account.demoRole === 'Doctor' ? 'general_practice' : 'other';
+}
+
+async function ensureDemoProgrammeScope(client, accounts) {
+  const programme = await client.query(
+    `SELECT id FROM public_health_programmes
+      WHERE programme_key = 'developer_demo' AND demo_only = TRUE
+      LIMIT 1`
+  );
+  if (!programme.rows.length) {
+    throw new Error('Developer demo programme is unavailable. Run Nigeria migrations first.');
+  }
+  const programmeId = programme.rows[0].id;
+
+  const facilityResult = await client.query(
+    `INSERT INTO ng_hospitals
+       (name, slug, facility_type, status,
+        contact_name, contact_email, contact_phone,
+        address_line1, city, state, lga,
+        ownership_type, facility_code, description)
+     VALUES
+       ('DoctaRx Synthetic PHC', 'developer-demo-phc', 'primary_health_centre', 'active',
+        'Developer Demo Operator', 'demo-facility@demo.doctarx.com', '+2340000000000',
+        'Synthetic Data Only', 'Abuja', 'FCT', 'AMAC',
+        'demo', 'DEMO-PHC-001',
+        'Developer-only synthetic facility. Real patient data is prohibited.')
+     ON CONFLICT (slug) DO UPDATE SET
+       status = 'active',
+       ownership_type = 'demo',
+       facility_code = 'DEMO-PHC-001',
+       description = EXCLUDED.description,
+       updated_at = NOW()
+     RETURNING id`,
+  );
+  const facilityId = facilityResult.rows[0].id;
+
+  await client.query(
+    `INSERT INTO ng_clinical_devices
+       (programme_id, facility_id, device_type, manufacturer, model,
+        status, calibration_status, adapter_key, metadata_json)
+     SELECT $1,$2,'synthetic_vital_sign_monitor','DoctaRx Test Fixture','Gateway Mock v1',
+            'active','not_required','mock_device_v1',
+            '{"synthetic":true,"clinicalUse":false,"developerOnly":true}'::JSONB
+      WHERE NOT EXISTS (
+        SELECT 1 FROM ng_clinical_devices
+         WHERE programme_id=$1 AND facility_id=$2 AND adapter_key='mock_device_v1'
+           AND status <> 'retired'
+      )`,
+    [programmeId, facilityId]
+  );
+
+  const reportingFacility = await client.query(
+    `INSERT INTO public_health_facilities
+       (name, facility_type, ownership_type, lga, city, state, address, active, hospital_id)
+     SELECT 'DoctaRx Synthetic PHC', 'phc', 'demo', 'AMAC', 'Abuja', 'FCT',
+            'Synthetic Data Only', TRUE, $1
+      WHERE NOT EXISTS (
+        SELECT 1 FROM public_health_facilities WHERE hospital_id = $1
+      )
+     RETURNING id`,
+    [facilityId]
+  );
+  let reportingFacilityId = reportingFacility.rows[0]?.id;
+  if (!reportingFacilityId) {
+    const existing = await client.query(
+      'SELECT id FROM public_health_facilities WHERE hospital_id = $1 LIMIT 1',
+      [facilityId]
+    );
+    reportingFacilityId = existing.rows[0].id;
+  }
+
+  const programmeFacility = await client.query(
+    `INSERT INTO ng_programme_facilities
+       (programme_id, facility_id, public_health_facility_id, status, is_primary,
+        configuration_json, effective_at)
+     VALUES ($1, $2, $3, 'active', TRUE, '{"syntheticDataOnly":true}'::JSONB, NOW())
+     ON CONFLICT (programme_id, facility_id) DO UPDATE SET
+       public_health_facility_id = EXCLUDED.public_health_facility_id,
+       status = 'active',
+       is_primary = TRUE,
+       configuration_json = EXCLUDED.configuration_json,
+       ended_at = NULL,
+       updated_at = NOW()
+     RETURNING id`,
+    [programmeId, facilityId, reportingFacilityId]
+  );
+
+  const providerIds = new Map();
+  for (const account of DEMO_ACCOUNTS.filter((item) => item.authRole === 'provider')) {
+    const user = accounts.find((item) => item.email === account.email);
+    const provider = await client.query(
+      `INSERT INTO ng_providers
+         (user_id, full_name, email, phone, mdcn_number, specialty,
+          status, verified_at, is_available, primary_hospital_id,
+          practice_name, practice_city, practice_state)
+       VALUES ($1, $2, $3, '+2340000000000', $4, $5, 'verified', NOW(), TRUE, $6,
+               'DoctaRx Synthetic PHC', 'Abuja', 'FCT')
+       ON CONFLICT (user_id) DO UPDATE SET
+         full_name = EXCLUDED.full_name,
+         email = EXCLUDED.email,
+         mdcn_number = EXCLUDED.mdcn_number,
+         specialty = EXCLUDED.specialty,
+         status = 'verified',
+         verified_at = COALESCE(ng_providers.verified_at, NOW()),
+         is_available = TRUE,
+         primary_hospital_id = EXCLUDED.primary_hospital_id,
+         updated_at = NOW()
+       RETURNING id`,
+      [
+        user.id,
+        `${account.firstName} ${account.lastName}`,
+        account.email,
+        `MDCN-DEMO-${account.demoRole.replace(/\W+/g, '').toUpperCase()}`,
+        demoProviderSpecialty(account),
+        facilityId,
+      ]
+    );
+    providerIds.set(account.email, provider.rows[0].id);
+  }
+
+  for (const account of DEMO_ACCOUNTS) {
+    const user = accounts.find((item) => item.email === account.email);
+    const programmeRole = DEMO_PROGRAMME_ROLES[account.demoRole];
+    if (programmeRole) {
+      await client.query(
+        `INSERT INTO ng_programme_memberships
+           (programme_id, user_id, facility_id, role, status, permissions_json,
+            can_export, can_approve, effective_at)
+         SELECT $1, $2, $3, $4, 'active', '{"syntheticDataOnly":true}'::JSONB,
+                $5, $6, NOW()
+          WHERE NOT EXISTS (
+            SELECT 1 FROM ng_programme_memberships
+             WHERE programme_id = $1 AND user_id = $2 AND facility_id = $3
+               AND role = $4 AND status IN ('invited','active','suspended')
+          )`,
+        [
+          programmeId,
+          user.id,
+          facilityId,
+          programmeRole,
+          ['government_analyst', 'government_approver'].includes(programmeRole),
+          programmeRole === 'government_approver',
+        ]
+      );
+      await client.query(
+        `UPDATE ng_programme_memberships
+            SET status = 'active', expires_at = NULL, revoked_at = NULL,
+                permissions_json = '{"syntheticDataOnly":true}'::JSONB,
+                updated_at = NOW()
+          WHERE programme_id = $1 AND user_id = $2 AND facility_id = $3 AND role = $4`,
+        [programmeId, user.id, facilityId, programmeRole]
+      );
+    }
+
+    const staffRole = {
+      Doctor: 'doctor', Consultant: 'doctor', Nurse: 'nurse',
+      Pharmacist: 'pharmacist', 'Lab Technician': 'lab_technician',
+      'Hospital Admin': 'admin', 'Referral Coordinator': 'admin',
+    }[account.demoRole];
+    if (staffRole) {
+      await client.query(
+        `INSERT INTO ng_hospital_staff
+           (hospital_id, user_id, provider_id, full_name, email, phone, role,
+            designation, mdcn_or_license, status)
+         SELECT $1, $2, $3, $4, $5, '+2340000000000', $6, $7, $8, 'active'
+          WHERE NOT EXISTS (
+            SELECT 1 FROM ng_hospital_staff WHERE hospital_id = $1 AND user_id = $2
+          )`,
+        [
+          facilityId,
+          user.id,
+          providerIds.get(account.email) || null,
+          `${account.firstName} ${account.lastName}`,
+          account.email,
+          staffRole,
+          account.demoRole,
+          account.authRole === 'provider' ? `DEMO-${account.demoRole.replace(/\W+/g, '').toUpperCase()}` : null,
+        ]
+      );
+    }
+
+    if (['Doctor', 'Consultant'].includes(account.demoRole)) {
+      await client.query(
+        `INSERT INTO ng_clinician_programme_assignments
+           (provider_user_id, provider_id, programme_id, facility_id, role,
+            specialty, capacity, status, effective_at)
+         SELECT $1, $2, $3, $4, 'remote_clinician', $5, 3, 'active', NOW()
+          WHERE NOT EXISTS (
+            SELECT 1 FROM ng_clinician_programme_assignments
+             WHERE provider_user_id = $1 AND programme_id = $3 AND facility_id = $4
+               AND role = 'remote_clinician' AND status IN ('active','paused')
+          )`,
+        [user.id, providerIds.get(account.email), programmeId, facilityId, account.specialty]
+      );
+      await client.query(
+        `INSERT INTO ng_provider_credentials
+           (provider_user_id, provider_id, credential_type, issuing_authority,
+            credential_number_hash, country_code, jurisdiction_code, specialty,
+            status, valid_from, expires_on, verified_by, verified_at, verification_notes)
+         SELECT $1, $2, 'medical_practice_license', 'MDCN-DEMO',
+                ENCODE(DIGEST($3, 'sha256'), 'hex'), 'NG', 'FCT', $4,
+                'verified', CURRENT_DATE, CURRENT_DATE + INTERVAL '10 years', $1, NOW(),
+                'Synthetic developer credential; never valid for real clinical work.'
+          WHERE NOT EXISTS (
+            SELECT 1 FROM ng_provider_credentials
+             WHERE provider_user_id = $1 AND issuing_authority = 'MDCN-DEMO'
+               AND credential_type = 'medical_practice_license' AND status <> 'revoked'
+          )`,
+        [user.id, providerIds.get(account.email), `DEMO-${account.demoRole}`, account.specialty]
+      );
+    }
+  }
+
+  const patient = accounts.find((item) => item.email === 'patient@demo.doctarx.com');
+  await client.query(
+    `INSERT INTO ng_programme_patient_enrollments
+       (programme_id, patient_user_id, facility_id, local_patient_number,
+        status, consent_status, consent_version, consented_at, consented_by,
+        enrolled_by, metadata_json)
+     SELECT $1, $2, $3, 'DEMO-PATIENT-001', 'active', 'granted',
+            'developer-demo-v1', NOW(), $2, $2, '{"syntheticDataOnly":true}'::JSONB
+      WHERE NOT EXISTS (
+        SELECT 1 FROM ng_programme_patient_enrollments
+         WHERE programme_id = $1 AND patient_user_id = $2
+           AND status IN ('pending','active','paused','transferred')
+      )`,
+    [programmeId, patient.id, facilityId]
+  );
+
+  return { programmeId, facilityId, programmeFacilityId: programmeFacility.rows[0].id };
+}
+
 async function seedDemoAccounts({ pool, password, mfaSecret = DEFAULT_DEMO_MFA_SECRET, dryRun = false } = {}) {
   if (dryRun) {
     return {
@@ -193,8 +441,9 @@ async function seedDemoAccounts({ pool, password, mfaSecret = DEFAULT_DEMO_MFA_S
       accounts.push({ ...row, demoRole: account.demoRole });
     }
     await ensureGovernmentScopes(client, accounts);
+    const demoProgramme = await ensureDemoProgrammeScope(client, accounts);
     await client.query('COMMIT');
-    return { dryRun: false, accounts };
+    return { dryRun: false, accounts, demoProgramme };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -243,4 +492,5 @@ module.exports = {
   getDemoPassword,
   getDemoMfaSecret,
   seedDemoAccounts,
+  ensureDemoProgrammeScope,
 };

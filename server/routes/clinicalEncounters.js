@@ -463,7 +463,11 @@ router.get('/notes/:noteId/history',
   auditPhiAccess('clinical_note'),
   async (req, res) => {
     try {
-      const history = await clinicalEncounterService.getNoteVersionHistory(req.params.noteId);
+      const history = await clinicalEncounterService.getNoteVersionHistory(
+        req.params.noteId,
+        req.user.id,
+        req.user.role
+      );
       
       res.json({
         success: true,

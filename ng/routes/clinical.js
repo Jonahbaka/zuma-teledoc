@@ -16,22 +16,18 @@
 const express = require('express');
 const router = express.Router();
 const { getPool } = require('../../server/db');
-
-const CLINICAL_WRITE_ROLES = new Set(['provider', 'doctor', 'consultant', 'physician', 'specialist']);
-const CLINICAL_ADMIN_ROLES = new Set(['admin', 'super_admin', 'administrator', 'platform_admin']);
+const {
+  assertClinicalAccess,
+  canonicalRole,
+  userIdOf,
+} = require('../services/clinical/clinicalAccessService');
 
 function requestUserId(req) {
-  return req.user?.id || req.user?.userId || req.user?.sub;
+  return userIdOf(req.user);
 }
 
 function requestRole(req) {
-  return String(req.user?.role || '').trim().toLowerCase().replace(/\s+/g, '_');
-}
-
-function httpError(statusCode, message) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
+  return canonicalRole(req.user?.role || req.user?.ng_role);
 }
 
 function buildPrescriptionNumber() {
@@ -42,75 +38,13 @@ function buildPrescriptionNumber() {
 
 async function assertClinicalWriteAccess(req, patientUserId) {
   const pool = getPool();
-  const userId = requestUserId(req);
-  const role = requestRole(req);
-
-  if (!patientUserId) {
-    throw httpError(400, 'patientUserId is required for clinical writes');
-  }
-
-  if (CLINICAL_ADMIN_ROLES.has(role)) {
-    req.clinicalWriteAccess = {
-      providerId: req.body?.providerId || req.body?.provider_id || null,
-      providerUserId: userId,
-      adminOverride: true,
-    };
-    return req.clinicalWriteAccess;
-  }
-
-  if (!CLINICAL_WRITE_ROLES.has(role)) {
-    throw httpError(403, 'Clinical write access requires a provider role');
-  }
-
-  const provider = await pool.query('SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1', [userId]);
-  const providerId = provider.rows[0]?.id;
-  if (!providerId) {
-    throw httpError(403, 'Nigeria provider profile is required for clinical writes');
-  }
-
-  const appointmentId = req.body?.appointmentId || req.body?.appointment_id || null;
-  const encounterId = req.body?.encounterId || req.body?.encounter_id || null;
-
-  if (appointmentId) {
-    const appointment = await pool.query(
-      `SELECT id FROM ng_appointments
-       WHERE id = $1 AND patient_user_id = $2 AND provider_id = $3
-       LIMIT 1`,
-      [appointmentId, patientUserId, providerId]
-    );
-    if (!appointment.rows.length) {
-      throw httpError(403, 'Provider does not have access to this patient appointment');
-    }
-  }
-
-  if (encounterId) {
-    const encounter = await pool.query(
-      `SELECT id FROM ng_clinical_encounters
-       WHERE id = $1 AND patient_user_id = $2 AND provider_user_id = $3
-       LIMIT 1`,
-      [encounterId, patientUserId, userId]
-    );
-    if (!encounter.rows.length) {
-      throw httpError(403, 'Provider does not have access to this clinical encounter');
-    }
-  }
-
-  if (!appointmentId && !encounterId) {
-    const relationship = await pool.query(
-      `SELECT id FROM ng_appointments
-        WHERE patient_user_id = $1 AND provider_id = $2
-       UNION
-       SELECT id FROM ng_clinical_encounters
-        WHERE patient_user_id = $1 AND provider_user_id = $3
-       LIMIT 1`,
-      [patientUserId, providerId, userId]
-    );
-    if (!relationship.rows.length) {
-      throw httpError(403, 'Provider does not have an active clinical relationship with this patient');
-    }
-  }
-
-  req.clinicalWriteAccess = { providerId, providerUserId: userId, adminOverride: false };
+  req.clinicalWriteAccess = await assertClinicalAccess(req, {
+    pool,
+    patientUserId,
+    encounterId: req.body?.encounterId || req.body?.encounter_id || null,
+    appointmentId: req.body?.appointmentId || req.body?.appointment_id || null,
+    mode: 'write',
+  });
   return req.clinicalWriteAccess;
 }
 
@@ -282,6 +216,9 @@ router.post('/encounters', asyncHandler(async (req, res) => {
   const providerId = req.user.id || req.user.userId || req.user.sub;
 
   if (!patient_user_id) return res.status(400).json({ error: 'patient_user_id required' });
+  req.body.patientUserId = patient_user_id;
+  req.body.appointmentId = appointment_id || null;
+  await assertClinicalWriteAccess(req, patient_user_id);
 
   const { rows } = await pool.query(
     `INSERT INTO ng_clinical_encounters
@@ -298,12 +235,18 @@ router.post('/encounters', asyncHandler(async (req, res) => {
 // GET /clinical/encounters/:id
 router.get('/encounters/:id', asyncHandler(async (req, res) => {
   const pool = getPool();
-  const [enc, soap, dx] = await Promise.all([
-    pool.query('SELECT * FROM ng_clinical_encounters WHERE id = $1', [req.params.id]),
+  const enc = await pool.query('SELECT * FROM ng_clinical_encounters WHERE id = $1', [req.params.id]);
+  if (!enc.rows.length) return res.status(404).json({ error: 'Encounter not found' });
+  await assertClinicalAccess(req, {
+    pool,
+    patientUserId: enc.rows[0].patient_user_id,
+    encounterId: req.params.id,
+    mode: 'read',
+  });
+  const [soap, dx] = await Promise.all([
     pool.query('SELECT * FROM ng_soap_notes WHERE encounter_id = $1 ORDER BY created_at DESC', [req.params.id]),
     pool.query('SELECT * FROM ng_diagnoses WHERE encounter_id = $1 ORDER BY created_at DESC', [req.params.id]),
   ]);
-  if (!enc.rows.length) return res.status(404).json({ error: 'Encounter not found' });
   res.json({ ok: true, encounter: enc.rows[0], soap_notes: soap.rows, diagnoses: dx.rows });
 }));
 
@@ -317,6 +260,9 @@ router.post('/encounters/:id/soap', asyncHandler(async (req, res) => {
     'SELECT patient_user_id FROM ng_clinical_encounters WHERE id = $1', [req.params.id]
   );
   if (!enc.rows.length) return res.status(404).json({ error: 'Encounter not found' });
+  req.body.patientUserId = enc.rows[0].patient_user_id;
+  req.body.encounterId = req.params.id;
+  await assertClinicalWriteAccess(req, req.body.patientUserId);
 
   const { rows } = await pool.query(
     `INSERT INTO ng_soap_notes
@@ -336,7 +282,37 @@ router.get('/diagnoses', asyncHandler(async (req, res) => {
   const conditions = [];
   const params = [];
 
-  if (patient_user_id) { params.push(patient_user_id); conditions.push(`patient_user_id = $${params.length}`); }
+  let targetPatientId = patient_user_id || null;
+  if (!targetPatientId && encounter_id) {
+    const encounter = await pool.query(
+      'SELECT patient_user_id FROM ng_clinical_encounters WHERE id = $1',
+      [encounter_id]
+    );
+    if (!encounter.rows.length) return res.status(404).json({ error: 'Encounter not found' });
+    targetPatientId = encounter.rows[0].patient_user_id;
+  }
+
+  if (targetPatientId) {
+    await assertClinicalAccess(req, {
+      pool,
+      patientUserId: targetPatientId,
+      encounterId: encounter_id || null,
+      mode: 'read',
+    });
+  } else {
+    const role = requestRole(req);
+    const userId = requestUserId(req);
+    if (role === 'patient') {
+      targetPatientId = userId;
+    } else if (['provider', 'doctor', 'consultant', 'physician', 'specialist'].includes(role)) {
+      params.push(userId);
+      conditions.push(`provider_user_id = $${params.length}`);
+    } else {
+      return res.status(400).json({ error: 'patient_user_id or encounter_id required' });
+    }
+  }
+
+  if (targetPatientId) { params.push(targetPatientId); conditions.push(`patient_user_id = $${params.length}`); }
   if (encounter_id) { params.push(encounter_id); conditions.push(`encounter_id = $${params.length}`); }
   if (clinical_status) { params.push(clinical_status); conditions.push(`clinical_status = $${params.length}`); }
 
@@ -355,6 +331,7 @@ router.get('/medication-history', asyncHandler(async (req, res) => {
   const { patient_user_id, status } = req.query;
   const target = patient_user_id || (req.user.role === 'patient' ? userId : null);
   if (!target) return res.status(400).json({ error: 'patient_user_id required' });
+  await assertClinicalAccess(req, { pool, patientUserId: target, mode: 'read' });
 
   const params = [target];
   let where = 'WHERE patient_user_id = $1';
@@ -374,7 +351,22 @@ router.get('/referrals', asyncHandler(async (req, res) => {
   const conditions = [];
   const params = [];
 
-  if (patient_user_id) { params.push(patient_user_id); conditions.push(`patient_user_id = $${params.length}`); }
+  const role = requestRole(req);
+  const userId = requestUserId(req);
+  if (patient_user_id) {
+    await assertClinicalAccess(req, { pool, patientUserId: patient_user_id, mode: 'read' });
+    params.push(patient_user_id);
+    conditions.push(`patient_user_id = $${params.length}`);
+  } else if (role === 'patient') {
+    params.push(userId);
+    conditions.push(`patient_user_id = $${params.length}`);
+  } else if (['provider', 'doctor', 'consultant', 'physician', 'specialist'].includes(role)) {
+    params.push(userId);
+    conditions.push(`provider_user_id = $${params.length}`);
+  } else {
+    return res.status(400).json({ error: 'patient_user_id required' });
+  }
+
   if (status) { params.push(status); conditions.push(`status = $${params.length}`); }
   if (priority) { params.push(priority); conditions.push(`priority = $${params.length}`); }
 
@@ -444,6 +436,9 @@ router.post('/referrals', asyncHandler(async (req, res) => {
   if (!patient_user_id || !reason) {
     return res.status(400).json({ error: 'patient_user_id and reason required' });
   }
+  req.body.patientUserId = patient_user_id;
+  req.body.encounterId = encounter_id || null;
+  await assertClinicalWriteAccess(req, patient_user_id);
 
   const { rows } = await pool.query(
     `INSERT INTO ng_referrals
@@ -464,3 +459,4 @@ router.post('/referrals', asyncHandler(async (req, res) => {
 }));
 
 module.exports = router;
+module.exports._test = { assertClinicalWriteAccess };

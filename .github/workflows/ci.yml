@@ -110,6 +110,9 @@ jobs:
       - name: Run government PostgreSQL workflow tests
         run: npm run test:ng:government-data:db
 
+      - name: Run PHC PostgreSQL workflow tests
+        run: npm run test:ng:phc:db
+
       - name: Back up populated database
         run: |
           pg_dump --format=custom --no-owner --no-acl --file=artifacts/database/10-post-tests.dump "$DATABASE_URL"
@@ -135,6 +138,7 @@ jobs:
           npm run migrate
           npm run ng:migrate
           npm run test:ng:government-data:db
+          npm run test:ng:phc:db
 
       - name: Write database evidence summary
         if: always()
