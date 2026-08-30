@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
   Activity,
   ArrowRight,
+  BookOpenCheck,
   Building2,
   CheckCircle2,
   ClipboardList,
@@ -32,6 +33,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { phcAPI } from '@/lib/api';
+import PhcTrainingManual from '@/components/ng/phc/PhcTrainingManual';
 import {
   applyOfflineSyncResults,
   clearOfflineClinicalData,
@@ -209,6 +211,7 @@ export default function PhcWorkspace() {
   const canReport = REPORTING_ROLES.has(programmeRole);
   const canViewReferrals = ['remote_clinician', 'referral_coordinator'].includes(programmeRole);
   const canGenerateReport = ['facility_admin', 'programme_admin', 'government_analyst'].includes(programmeRole);
+  const canUseTraining = canIntake || canClaim || ['clinical_supervisor', 'facility_admin', 'programme_admin'].includes(programmeRole);
   const ownerUserId = user?.id || user?.userId;
   const pendingOfflineCount = offlineCounts.pending + offlineCounts.failed;
 
@@ -741,6 +744,7 @@ export default function PhcWorkspace() {
                 {canFollowUp && <TabsTrigger value="follow-ups" className="gap-2"><ClipboardList className="h-4 w-4" /> Follow-ups <Badge variant="secondary">{followUps.length}</Badge></TabsTrigger>}
                 {canReport && <TabsTrigger value="reporting" className="gap-2"><ClipboardList className="h-4 w-4" /> Aggregate reporting</TabsTrigger>}
                 {canViewReferrals && <TabsTrigger value="referrals" className="gap-2"><ArrowRight className="h-4 w-4" /> Referrals <Badge variant="secondary">{referrals.length}</Badge></TabsTrigger>}
+                {canUseTraining && <TabsTrigger value="training" className="gap-2"><BookOpenCheck className="h-4 w-4" /> Training & assessment</TabsTrigger>}
               </TabsList>
 
               {canIntake && (
@@ -1226,6 +1230,12 @@ export default function PhcWorkspace() {
                       </div>
                     </CardContent>
                   </Card>
+                </TabsContent>
+              )}
+
+              {canUseTraining && (
+                <TabsContent value="training">
+                  <PhcTrainingManual programmeRole={programmeRole} />
                 </TabsContent>
               )}
             </Tabs>
