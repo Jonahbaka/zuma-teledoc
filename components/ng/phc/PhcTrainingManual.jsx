@@ -126,18 +126,38 @@ export default function PhcTrainingManual({ programmeRole, standalone = false })
           </div>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-3" aria-label="Workflow demonstrations">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Workflow demonstrations">
+          <Card className="overflow-hidden">
+            <Image src="/images/training/phc-scope-consent.png" alt="Nurse confirming programme scope, patient identity, and consent before opening a record" width={1536} height={1024} className="h-48 w-full object-cover" />
+            <CardHeader className="pb-3"><CardTitle className="text-base">Start with scope and consent</CardTitle><CardDescription>Confirm the programme, facility, identity, and consent before opening a record.</CardDescription></CardHeader>
+          </Card>
           <Card className="overflow-hidden">
             <Image src="/images/training/phc-nurse-intake.png" alt="Nurse recording a patient's intake and blood pressure in a primary care clinic" width={1536} height={1024} className="h-48 w-full object-cover" priority />
             <CardHeader className="pb-3"><CardTitle className="text-base">1. Intake with dignity</CardTitle><CardDescription>Confirm identity, consent, complaint, and observations before handoff.</CardDescription></CardHeader>
+          </Card>
+          <Card className="overflow-hidden">
+            <Image src="/images/training/phc-nurse-handoff.png" alt="Nurse completing a structured intake and handing a case to a clinician queue" width={1536} height={1024} className="h-48 w-full object-cover" />
+            <CardHeader className="pb-3"><CardTitle className="text-base">Handoff with context</CardTitle><CardDescription>Use the structured queue so the next clinician knows what needs attention.</CardDescription></CardHeader>
           </Card>
           <Card className="overflow-hidden">
             <Image src="/images/training/phc-remote-consult.png" alt="Doctor conducting a remote consultation with a nurse and patient" width={1536} height={1024} className="h-48 w-full object-cover" />
             <CardHeader className="pb-3"><CardTitle className="text-base">2. Consult with context</CardTitle><CardDescription>Assigned clinicians review the queue, consult, document, and sign.</CardDescription></CardHeader>
           </Card>
           <Card className="overflow-hidden">
+            <Image src="/images/training/phc-followup-referral.png" alt="Care team arranging a follow-up and referral and receiving an outcome" width={1536} height={1024} className="h-48 w-full object-cover" />
+            <CardHeader className="pb-3"><CardTitle className="text-base">Close the loop</CardTitle><CardDescription>Make the next owner visible through a follow-up or referral outcome.</CardDescription></CardHeader>
+          </Card>
+          <Card className="overflow-hidden">
             <Image src="/images/training/phc-offline-sync.png" alt="Secure tablet records synchronising to a locked clinical server" width={1536} height={1024} className="h-48 w-full object-cover" />
             <CardHeader className="pb-3"><CardTitle className="text-base">3. Sync safely</CardTitle><CardDescription>Offline records stay encrypted and are synced only to the correct scope.</CardDescription></CardHeader>
+          </Card>
+          <Card className="overflow-hidden">
+            <Image src="/images/training/phc-escalation.png" alt="Clinicians recognising a danger sign and escalating through a facility pathway" width={1536} height={1024} className="h-48 w-full object-cover" />
+            <CardHeader className="pb-3"><CardTitle className="text-base">Escalate early</CardTitle><CardDescription>Use local emergency and safeguarding pathways when danger signs appear.</CardDescription></CardHeader>
+          </Card>
+          <Card className="overflow-hidden">
+            <Image src="/images/training/phc-assessment.png" alt="Clinical supervisor guiding a nurse and doctor through a privacy-safe teach-back assessment" width={1536} height={1024} className="h-48 w-full object-cover" />
+            <CardHeader className="pb-3"><CardTitle className="text-base">Assess with teach-back</CardTitle><CardDescription>Supervisors observe, ask the learner to explain, and record the official result locally.</CardDescription></CardHeader>
           </Card>
         </section>
 
