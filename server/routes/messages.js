@@ -55,6 +55,27 @@ router.post('/',
         req.user.id,
         data.recipientId
       );
+
+      // Idempotent send: a retry over a flaky connection must not create a second
+      // copy of the same clinical message. Return the original instead.
+      const clientMessageId = data.clientMessageId || null;
+      if (clientMessageId) {
+        const existing = await db.query(
+          `SELECT id, conversation_id, sender_id, recipient_id,
+                  is_urgent, has_attachment, status, created_at
+             FROM messages
+            WHERE sender_id = $1 AND client_message_id = $2
+            LIMIT 1`,
+          [req.user.id, clientMessageId]
+        );
+        if (existing.rows.length) {
+          return res.status(200).json({
+            success: true,
+            deduplicated: true,
+            message: { ...existing.rows[0] },
+          });
+        }
+      }
       
       // Encrypt message content
       let encrypted, iv, tag;
@@ -75,8 +96,9 @@ router.post('/',
           `INSERT INTO messages (
             conversation_id, sender_id, recipient_id,
             content_encrypted, content_iv, content_tag,
-            is_urgent, has_attachment, attachment_name, attachment_type
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            is_urgent, has_attachment, attachment_name, attachment_type,
+            client_message_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
           RETURNING id, conversation_id, sender_id, recipient_id,
                     is_urgent, has_attachment, status, created_at`,
           [
@@ -89,11 +111,31 @@ router.post('/',
             data.isUrgent || false,
             !!data.attachmentName,
             data.attachmentName || null,
-            data.attachmentType || null
+            data.attachmentType || null,
+            clientMessageId
           ]
         );
         rows = result.rows;
       } catch (dbError) {
+        // A concurrent retry with the same client key won the race: return the
+        // stored message rather than failing the send or duplicating it.
+        if (dbError.code === '23505' && clientMessageId) {
+          const existing = await db.query(
+            `SELECT id, conversation_id, sender_id, recipient_id,
+                    is_urgent, has_attachment, status, created_at
+               FROM messages
+              WHERE sender_id = $1 AND client_message_id = $2
+              LIMIT 1`,
+            [req.user.id, clientMessageId]
+          );
+          if (existing.rows.length) {
+            return res.status(200).json({
+              success: true,
+              deduplicated: true,
+              message: { ...existing.rows[0] },
+            });
+          }
+        }
         logger.error('Message persistence failed', {
           userId: req.user.id,
           errorCode: dbError.code
@@ -215,7 +257,7 @@ router.get('/conversations', authenticate, async (req, res) => {
         WHERE (sender_id = $1 OR recipient_id = $1)
           AND NOT (sender_id = $1 AND is_deleted_sender)
           AND NOT (recipient_id = $1 AND is_deleted_recipient)
-        ORDER BY conversation_id, created_at DESC
+        ORDER BY conversation_id, created_at DESC, id DESC
       )
       SELECT 
         lm.*,
@@ -326,7 +368,7 @@ router.get('/conversation/:recipientId', authenticate, async (req, res) => {
        WHERE m.conversation_id = $1
        AND NOT (m.sender_id = $2 AND m.is_deleted_sender)
        AND NOT (m.recipient_id = $2 AND m.is_deleted_recipient)
-       ORDER BY m.created_at DESC
+       ORDER BY m.created_at DESC, m.id DESC
        LIMIT $3 OFFSET $4`,
       [conversationId, req.user.id, limit, offset]
     );
