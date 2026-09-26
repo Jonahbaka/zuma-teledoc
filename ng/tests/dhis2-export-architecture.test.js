@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  apiPeriod,
   applyFailure,
   assertNoPatientIdentifiers,
   buildDataValueSet,
@@ -81,11 +82,22 @@ test('a data value set is built with mapped elements, counts, and the DHIS2 peri
   });
 
   assert.equal(payload.orgUnit, 'ORG-GWAGWA');
-  assert.equal(payload.period, 'September 2026');
+  assert.equal(payload.period, '202609', 'the wire format is the DHIS2 period identifier');
+  assert.equal(payload.periodLabel, 'September 2026', 'the human label is kept for reports');
   assert.equal(payload.dataValues.length, 2);
   assert.equal(payload.dataValues[0].dataElement, 'DE_CONS_01');
   assert.equal(payload.dataValues[0].value, '41');
+  assert.equal(payload.dataValues[0].period, '202609');
   assert.equal(payload.dataValues[1].value, '0', 'a genuine zero is exported as zero, not omitted');
+});
+
+test('the API period identifier is derived from the same validation as the label', () => {
+  assert.equal(apiPeriod('2026-09'), '202609');
+  assert.equal(apiPeriod('2026-01'), '202601');
+  assert.equal(apiPeriod('2026-12'), '202612');
+  assert.throws(() => apiPeriod('2026-13'), (e) => e.code === 'PERIOD_INVALID');
+  assert.throws(() => apiPeriod('September 2026'), (e) => e.code === 'PERIOD_INVALID');
+  assert.throws(() => apiPeriod(''), (e) => e.code === 'PERIOD_INVALID');
 });
 
 test('missing, negative, and fractional counts are refused rather than guessed', () => {

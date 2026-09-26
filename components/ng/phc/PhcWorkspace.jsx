@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -31,6 +31,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ConnectivityBanner, EmptyState, ErrorState, Skeleton, StatusPill } from '@/components/ui/clinic-states';
 import { Textarea } from '@/components/ui/textarea';
 import { phcAPI } from '@/lib/api';
 import PhcTrainingManual from '@/components/ng/phc/PhcTrainingManual';
@@ -81,7 +82,7 @@ const VITAL_OPTIONS = {
     label: 'Temperature',
     code: '8310-5',
     valueType: 'numeric',
-    unit: '°C',
+    unit: 'Â°C',
     primaryLabel: 'Value',
   },
   oxygen_saturation: {
@@ -639,7 +640,7 @@ export default function PhcWorkspace() {
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
           <Loader2 className="mx-auto h-9 w-9 animate-spin text-emerald-700" />
-          <p className="mt-3 text-sm text-slate-600">Loading your programme workspace…</p>
+          <p className="mt-3 text-sm text-slate-600">Loading your programme workspaceâ€¦</p>
         </div>
       </div>
     );
@@ -669,6 +670,12 @@ export default function PhcWorkspace() {
       onLogout={handleLogout}
     >
       <main className="mx-auto max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8">
+
+        <ConnectivityBanner
+          className="mb-4"
+          state={online ? 'online' : 'offline'}
+          pendingChanges={pendingOfflineCount}
+        />
         {contexts.length === 0 ? (
           <Card className="mx-auto max-w-2xl border-amber-200">
             <CardHeader>
@@ -714,7 +721,7 @@ export default function PhcWorkspace() {
                   >
                     {contexts.map((item) => (
                       <option key={`${item.programme_id}:${item.facility_id}`} value={`${item.programme_id}:${item.facility_id}`}>
-                        {item.programme_name} — {item.facility_name}
+                        {item.programme_name} â€” {item.facility_name}
                       </option>
                     ))}
                   </select>
@@ -774,14 +781,18 @@ export default function PhcWorkspace() {
                               <div className="flex items-start justify-between gap-2">
                                 <div>
                                   <p className="font-semibold">{patient.first_name} {patient.last_name}</p>
-                                  <p className="mt-1 text-xs text-slate-600">{patient.local_patient_number || 'No local number'} · Phone ending {patient.phone_suffix || '—'}</p>
+                                  <p className="mt-1 text-xs text-slate-600">{patient.local_patient_number || 'No local number'} Â· Phone ending {patient.phone_suffix || 'â€”'}</p>
                                 </div>
                                 <Badge variant={patient.consent_status === 'granted' ? 'success' : 'warning'}>{titleCase(patient.consent_status)}</Badge>
                               </div>
                             </button>
                           ))}
                           {query && patients.length === 0 && busy !== 'search' && (
-                            <p className="py-6 text-center text-sm text-slate-500">No enrolled patients in this context.</p>
+                            <EmptyState
+                icon={UsersRound}
+                title="No patients enrolled yet"
+                description="Enrol a patient to start recording intake, observations, and referrals for this programme."
+              />
                           )}
                         </div>
                       </CardContent>
@@ -799,7 +810,7 @@ export default function PhcWorkspace() {
                           <form className="space-y-4" onSubmit={createEncounter}>
                             <div>
                               <Label htmlFor="complaint">Chief complaint</Label>
-                              <Textarea id="complaint" className="mt-1.5" value={chiefComplaint} onChange={(event) => setChiefComplaint(event.target.value)} disabled={!selectedPatient || Boolean(activeEncounter)} placeholder="Record the patient’s own words and relevant intake context." />
+                              <Textarea id="complaint" className="mt-1.5" value={chiefComplaint} onChange={(event) => setChiefComplaint(event.target.value)} disabled={!selectedPatient || Boolean(activeEncounter)} placeholder="Record the patientâ€™s own words and relevant intake context." />
                             </div>
                             {!activeEncounter && (
                               <Button type="submit" disabled={!selectedPatient || !chiefComplaint.trim() || busy === 'encounter'}>
@@ -809,7 +820,7 @@ export default function PhcWorkspace() {
                             )}
                             {activeEncounter && (
                               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-                                <CheckCircle2 className="mr-2 inline h-4 w-4" /> Encounter open · record ID {activeEncounter.id.slice(0, 8)}
+                                <CheckCircle2 className="mr-2 inline h-4 w-4" /> Encounter open Â· record ID {activeEncounter.id.slice(0, 8)}
                               </div>
                             )}
                           </form>
@@ -897,7 +908,7 @@ export default function PhcWorkspace() {
                             {aiSuggestion && (
                               <div className="mt-4 rounded-xl border border-violet-200 bg-white p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <Badge className="bg-violet-700 text-white hover:bg-violet-700">AI draft · human review required</Badge>
+                                  <Badge className="bg-violet-700 text-white hover:bg-violet-700">AI draft Â· human review required</Badge>
                                   <Badge variant="outline">{titleCase(aiSuggestion.status)}</Badge>
                                 </div>
                                 <p className="mt-3 whitespace-pre-wrap text-sm text-slate-800">{aiSuggestion.output?.handoverDraft || aiSuggestion.output?.summary}</p>
@@ -964,7 +975,7 @@ export default function PhcWorkspace() {
                                   <Badge variant={priorityVariant(entry.priority)}>{titleCase(entry.priority)}</Badge>
                                   <Badge variant="outline">{titleCase(entry.status)}</Badge>
                                 </div>
-                                <p className="mt-1 text-sm text-slate-600">{entry.local_patient_number || 'No local number'} · {entry.chief_complaint || 'No complaint recorded'}</p>
+                                <p className="mt-1 text-sm text-slate-600">{entry.local_patient_number || 'No local number'} Â· {entry.chief_complaint || 'No complaint recorded'}</p>
                               </div>
                               <div className="text-sm text-slate-600">
                                 <p className="flex items-center gap-2"><Clock3 className="h-4 w-4" /> Entered {readableDate(entry.entered_at)}</p>
@@ -1001,14 +1012,20 @@ export default function PhcWorkspace() {
                             </div>
                           );
                         })}
-                        {queue.length === 0 && <p className="py-12 text-center text-sm text-slate-500">No queue entries in this programme and facility.</p>}
+                        {queue.length === 0 && (
+              <EmptyState
+                icon={UsersRound}
+                title="No patients are waiting"
+                description="When a nurse records intake and hands a patient over, the case appears here for a clinician to claim."
+              />
+            )}
                       </div>
 
                       {aiSuggestion && (
                         <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50 p-5">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              <Badge className="bg-violet-700 text-white hover:bg-violet-700">AI draft · human review required</Badge>
+                              <Badge className="bg-violet-700 text-white hover:bg-violet-700">AI draft Â· human review required</Badge>
                               <h3 className="mt-3 font-semibold">Grounded encounter handover</h3>
                             </div>
                             <Badge variant="outline">{titleCase(aiSuggestion.status)}</Badge>
@@ -1071,14 +1088,20 @@ export default function PhcWorkspace() {
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <p className="font-semibold">{task.title}</p>
-                                <p className="mt-1 text-sm text-slate-600">{task.patient_first_name} {task.patient_last_name} · {task.local_patient_number || 'No local number'}</p>
+                                <p className="mt-1 text-sm text-slate-600">{task.patient_first_name} {task.patient_last_name} Â· {task.local_patient_number || 'No local number'}</p>
                               </div>
                               <Badge variant={task.status === 'completed' ? 'success' : 'outline'}>{titleCase(task.status)}</Badge>
                             </div>
                             <p className="mt-3 flex items-center gap-2 text-xs text-slate-500"><Clock3 className="h-3.5 w-3.5" /> Due {readableDate(task.due_at)}</p>
                           </div>
                         ))}
-                        {followUps.length === 0 && <p className="col-span-full py-12 text-center text-sm text-slate-500">No follow-up tasks in this context.</p>}
+                        {followUps.length === 0 && (
+                <EmptyState
+                  icon={Clock3}
+                  title="No follow-up tasks"
+                  description="Create a follow-up after a consultation so the next person to see this patient knows what is due."
+                />
+              )}
                       </div>
                     </CardContent>
                   </Card>
@@ -1122,7 +1145,7 @@ export default function PhcWorkspace() {
                                 <div key={value.internalKey} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                   <p className="text-xs text-slate-600">{value.displayName}</p>
                                   <p className="mt-1 text-2xl font-bold">{value.value}</p>
-                                  <p className="mt-1 text-[11px] text-slate-500">Source v{value.sourceVersion} · {value.sourceTable}</p>
+                                  <p className="mt-1 text-[11px] text-slate-500">Source v{value.sourceVersion} Â· {value.sourceTable}</p>
                                 </div>
                               ))}
                             </div>
@@ -1146,7 +1169,7 @@ export default function PhcWorkspace() {
                               <div className="flex items-start justify-between gap-2">
                                 <div>
                                   <p className="font-semibold">{report.report_period}</p>
-                                  <p className="text-xs text-slate-500">{titleCase(report.status)} · source v{report.source_definition_version}</p>
+                                  <p className="text-xs text-slate-500">{titleCase(report.status)} Â· source v{report.source_definition_version}</p>
                                 </div>
                                 <Badge variant="success">Aggregate</Badge>
                               </div>
@@ -1204,10 +1227,10 @@ export default function PhcWorkspace() {
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="font-semibold">{referral.patient_first_name} {referral.patient_last_name}</p>
                                 <Badge variant={priorityVariant(referral.priority)}>{titleCase(referral.priority)}</Badge>
-                                <Badge variant="outline">{titleCase(referral.status)}</Badge>
+                                <StatusPill status={referral.status} label={titleCase(referral.status)} />
                               </div>
                               <p className="mt-1 text-sm text-slate-700">{referral.reason}</p>
-                              <p className="mt-1 text-xs text-slate-500">Destination: {referral.target_name || titleCase(referral.destination_type)} · Created {readableDate(referral.created_at)}</p>
+                              <p className="mt-1 text-xs text-slate-500">Destination: {referral.target_name || titleCase(referral.destination_type)} Â· Created {readableDate(referral.created_at)}</p>
                               {referral.response_summary && <p className="mt-2 rounded bg-slate-50 p-2 text-sm">Outcome: {referral.response_summary}</p>}
                             </div>
                             <div className="flex flex-wrap gap-2 lg:justify-end">
@@ -1226,7 +1249,13 @@ export default function PhcWorkspace() {
                             </div>
                           </div>
                         ))}
-                        {referrals.length === 0 && <p className="py-12 text-center text-sm text-slate-500">No referrals in this programme and facility.</p>}
+                        {referrals.length === 0 && (
+                <EmptyState
+                  icon={ClipboardList}
+                  title="No referrals yet"
+                  description="Referrals you raise from an encounter appear here until they are accepted and closed with an outcome."
+                />
+              )}
                       </div>
                     </CardContent>
                   </Card>

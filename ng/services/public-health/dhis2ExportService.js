@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * ng/services/public-health/dhis2ExportService.js
@@ -35,7 +35,7 @@ function exportError(statusCode, message, code) {
   return error;
 }
 
-/** "2026-09" -> "September 2026", the DHIS2 monthly period label. */
+/** "2026-09" -> "September 2026", the human label used in reports and printouts. */
 function formatPeriod(period) {
   const value = String(period || '').trim();
   if (!PERIOD_PATTERN.test(value)) {
@@ -47,6 +47,26 @@ function formatPeriod(period) {
     throw exportError(400, `Invalid month in period: ${period}.`, 'PERIOD_INVALID');
   }
   return `${MONTHS[index]} ${year}`;
+}
+
+/**
+ * "2026-09" -> "202609".
+ *
+ * The DHIS2 data API expects the period identifier (for example "202201"), not a
+ * display label. A human label like "September 2026" is what appears in
+ * dashboards and printouts, so both forms are produced deliberately: the ISO
+ * form goes on the wire, the label stays for people.
+ */
+function apiPeriod(period) {
+  const value = String(period || '').trim();
+  if (!PERIOD_PATTERN.test(value)) {
+    throw exportError(400, `Invalid period: ${period}. Expected YYYY-MM.`, 'PERIOD_INVALID');
+  }
+  const month = Number(value.split('-')[1]);
+  if (month < 1 || month > 12) {
+    throw exportError(400, `Invalid month in period: ${period}.`, 'PERIOD_INVALID');
+  }
+  return value.replace('-', '');
 }
 
 function requireNonEmpty(value, field, code) {
@@ -116,7 +136,7 @@ function assertNoPatientIdentifiers(payload) {
  */
 function buildDataValueSet({ orgUnit, orgUnitName, period, values = [], mappings = [] }) {
   const unit = requireNonEmpty(orgUnit, 'orgUnit', 'ORG_UNIT_REQUIRED');
-  const label = formatPeriod(period);
+  const periodId = apiPeriod(period);
 
   const dataValues = values.map((entry) => {
     const mapping = resolveMapping({ indicatorKey: entry.indicatorKey, mappings });
@@ -141,7 +161,7 @@ function buildDataValueSet({ orgUnit, orgUnitName, period, values = [], mappings
     return {
       dataElement: mapping.dataElement,
       orgUnit: unit,
-      period: label,
+      period: periodId,
       value: String(numeric),
       ...(entry.note ? { comment: String(entry.note).slice(0, 255) } : {}),
     };
@@ -150,7 +170,8 @@ function buildDataValueSet({ orgUnit, orgUnitName, period, values = [], mappings
   const payload = {
     dataSet: values.length ? undefined : undefined,
     orgUnit: unit,
-    period: label,
+    period: periodId,
+    periodLabel: formatPeriod(period),
     dataValues,
     ...(orgUnitName ? { orgUnitName: String(orgUnitName) } : {}),
   };
@@ -173,7 +194,7 @@ function computeSubmissionKey({ orgUnit, period, values = [] }) {
     .sort();
   return crypto
     .createHash('sha256')
-    .update(`${orgUnit}|${formatPeriod(period)}|${parts.join('|')}`)
+    .update(`${orgUnit}|${apiPeriod(period)}|${parts.join('|')}`)
     .digest('hex');
 }
 
@@ -274,6 +295,7 @@ function reconcile({ items = [], responses = [] } = {}) {
 
 module.exports = {
   applyFailure,
+  apiPeriod,
   assertNoPatientIdentifiers,
   buildDataValueSet,
   classifyFailure,
