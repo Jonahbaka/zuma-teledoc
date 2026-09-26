@@ -22,6 +22,7 @@ const {
   userIdOf,
 } = require('../services/clinical/clinicalAccessService');
 const integrity = require('../services/clinical/clinicalRecordIntegrityService');
+const patientSafety = require('../services/clinical/patientSafetyService');
 
 const CLINICAL_LIST_ROLE_GUARD = integrity.assertClinicalListRole;
 const coveringReasonFrom = integrity.coveringReasonFrom;
@@ -180,7 +181,31 @@ router.post('/prescriptions', express.json(), asyncHandler(async (req, res) => {
     ]
   );
 
-  res.status(201).json({ ok: true, prescription: rows[0] });
+  // Prescription safety net. Allergies are flagged for clinician review; the
+  // prescription is never silently blocked, and a failed check is surfaced.
+  let allergyAlerts = [];
+  try {
+    const allergies = await patientSafety.listAllergies(pool, req.body.patientUserId);
+    const medications = items
+      .map((item) => item?.name || item?.medication || item?.medicine || item?.drug)
+      .filter(Boolean);
+    allergyAlerts = await patientSafety.guardPrescriptionAllergies(pool, {
+      prescriptionId: rows[0].id,
+      patientUserId: req.body.patientUserId,
+      medications,
+      allergies,
+    });
+  } catch (allergyError) {
+    console.error('[clinical] allergy check failed:', allergyError.message);
+    allergyAlerts = [{
+      severity: 'review',
+      matchType: 'manual',
+      requiresAcknowledgement: true,
+      error: 'ALLERGY_CHECK_UNAVAILABLE',
+    }];
+  }
+
+  res.status(201).json({ ok: true, prescription: rows[0], allergyAlerts });
 }));
 
 // GET /clinical/encounters
@@ -603,6 +628,274 @@ router.post('/referrals', asyncHandler(async (req, res) => {
     ]
   );
   res.status(201).json({ ok: true, referral: rows[0] });
+}));
+
+// ---------------------------------------------------------------------------
+// Patient safety: allergies and problem list (never hard-deleted, always attributed)
+// ---------------------------------------------------------------------------
+
+router.get('/allergies', asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const target = req.query.patient_user_id || (requestRole(req) === 'patient' ? requestUserId(req) : null);
+  if (!target) return res.status(400).json({ error: 'patient_user_id required' });
+  await assertClinicalAccess(req, { pool, patientUserId: target, mode: 'read' });
+
+  const includeInactive = String(req.query.include_inactive || '') === 'true';
+  const allergies = await patientSafety.listAllergies(pool, target, { includeInactive });
+  res.json({ ok: true, allergies, count: allergies.length });
+}));
+
+router.post('/allergies', express.json(), asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const body = req.body || {};
+  const patientUserId = body.patient_user_id;
+  if (!patientUserId) return res.status(400).json({ error: 'patient_user_id required' });
+  req.body.patientUserId = patientUserId;
+  const access = await assertClinicalWriteAccess(req, patientUserId);
+
+  const allergy = await patientSafety.recordAllergy(pool, {
+    patientUserId,
+    actorUserId: requestUserId(req),
+    actorRole: requestRole(req),
+    source: body.source === 'patient_reported' ? 'patient_reported' : 'clinician',
+    substanceText: body.substance_text || body.substanceText,
+    substanceCode: body.substance_code || body.substanceCode,
+    reactionText: body.reaction_text || body.reactionText,
+    reactionCode: body.reaction_code || body.reactionCode,
+    criticality: body.criticality,
+    clinicalStatus: body.clinical_status || body.clinicalStatus,
+    verificationStatus: body.verification_status || body.verificationStatus,
+    category: body.category,
+    onsetDate: body.onset_date || body.onsetDate,
+    note: body.note,
+  });
+
+  await integrity.writeIntegrityAudit(pool, {
+    actorUserId: requestUserId(req),
+    action: 'allergy_recorded',
+    resourceType: 'patient_allergy',
+    resourceId: allergy.id,
+    patientUserId,
+    request: req,
+    metadata: { criticality: allergy.criticality, source: allergy.source, providerId: access?.providerId || null },
+  });
+
+  res.status(201).json({ ok: true, allergy });
+}));
+
+router.post('/allergies/:id/correct', express.json(), asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const body = req.body || {};
+  const patientUserId = body.patient_user_id;
+  if (!patientUserId) return res.status(400).json({ error: 'patient_user_id required' });
+  req.body.patientUserId = patientUserId;
+  await assertClinicalWriteAccess(req, patientUserId);
+
+  const result = await patientSafety.supersedeAllergy(pool, {
+    allergyId: req.params.id,
+    patientUserId,
+    actorUserId: requestUserId(req),
+    reason: body.reason || null,
+    next: {
+      substanceText: body.substance_text || body.substanceText,
+      reactionText: body.reaction_text || body.reactionText,
+      criticality: body.criticality,
+      clinicalStatus: body.clinical_status || body.clinicalStatus,
+      verificationStatus: body.verification_status || body.verificationStatus,
+      category: body.category,
+      note: body.note,
+    },
+  });
+
+  await integrity.writeIntegrityAudit(pool, {
+    actorUserId: requestUserId(req),
+    action: 'allergy_corrected',
+    resourceType: 'patient_allergy',
+    resourceId: req.params.id,
+    patientUserId,
+    request: req,
+    metadata: { supersededBy: result.correction.id, reasonProvided: Boolean(body.reason) },
+  });
+
+  res.status(201).json({ ok: true, ...result });
+}));
+
+router.get('/problems', asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const target = req.query.patient_user_id || (requestRole(req) === 'patient' ? requestUserId(req) : null);
+  if (!target) return res.status(400).json({ error: 'patient_user_id required' });
+  await assertClinicalAccess(req, { pool, patientUserId: target, mode: 'read' });
+
+  const includeInactive = String(req.query.include_inactive || '') === 'true';
+  const problems = await patientSafety.listProblems(pool, target, { includeInactive });
+  res.json({ ok: true, problems, count: problems.length });
+}));
+
+router.post('/problems', express.json(), asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const body = req.body || {};
+  const patientUserId = body.patient_user_id;
+  if (!patientUserId) return res.status(400).json({ error: 'patient_user_id required' });
+  req.body.patientUserId = patientUserId;
+  req.body.encounterId = body.encounter_id || null;
+  await assertClinicalWriteAccess(req, patientUserId);
+
+  const problem = await patientSafety.recordProblem(pool, {
+    patientUserId,
+    encounterId: body.encounter_id || null,
+    actorUserId: requestUserId(req),
+    actorRole: requestRole(req),
+    source: body.source === 'patient_reported' ? 'patient_reported' : 'clinician',
+    problemText: body.problem_text || body.problemText,
+    problemCode: body.problem_code || body.problemCode,
+    clinicalStatus: body.clinical_status || body.clinicalStatus,
+    verificationStatus: body.verification_status || body.verificationStatus,
+    category: body.category,
+    severity: body.severity,
+    onsetDate: body.onset_date || body.onsetDate,
+    resolvedDate: body.resolved_date || body.resolvedDate,
+    note: body.note,
+  });
+
+  res.status(201).json({ ok: true, problem });
+}));
+
+router.patch('/problems/:id/status', express.json(), asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const body = req.body || {};
+  const patientUserId = body.patient_user_id;
+  if (!patientUserId) return res.status(400).json({ error: 'patient_user_id required' });
+  req.body.patientUserId = patientUserId;
+  await assertClinicalWriteAccess(req, patientUserId);
+
+  const result = await patientSafety.changeProblemStatus(pool, {
+    problemId: req.params.id,
+    patientUserId,
+    clinicalStatus: body.clinical_status || body.clinicalStatus,
+  });
+
+  res.json({ ok: true, ...result });
+}));
+
+// GET /clinical/patients/:patientUserId/timeline — longitudinal continuity view.
+router.get('/patients/:patientUserId/timeline', asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const patientUserId = req.params.patientUserId;
+  await assertClinicalAccess(req, { pool, patientUserId, mode: 'read' });
+
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const params = [patientUserId];
+  let cursorClause = '';
+  if (req.query.cursor) {
+    const cursor = new Date(req.query.cursor);
+    if (!Number.isNaN(cursor.getTime())) {
+      params.push(cursor.toISOString());
+      cursorClause = 'AND event_at < $2';
+    }
+  }
+  params.push(limit);
+
+  const { rows } = await pool.query(
+    `SELECT * FROM (
+       SELECT e.created_at AS event_at, 'encounter' AS type, e.id::text AS id,
+              e.encounter_type AS title, e.status AS status, e.provider_user_id AS author_user_id
+         FROM ng_clinical_encounters e WHERE e.patient_user_id = $1
+       UNION ALL
+       SELECT n.created_at, 'clinical_note', n.id::text,
+              COALESCE(NULLIF(n.assessment,''), 'Clinical note'), n.ai_assist_status, n.provider_user_id
+         FROM ng_soap_notes n WHERE n.patient_user_id = $1
+       UNION ALL
+       SELECT d.created_at, 'diagnosis', d.id::text,
+              COALESCE(d.diagnosis_name, d.diagnosis_code, 'Diagnosis'), d.clinical_status, d.provider_user_id
+         FROM ng_diagnoses d WHERE d.patient_user_id = $1
+       UNION ALL
+       SELECT p.recorded_at, 'problem', p.id::text, p.problem_text, p.clinical_status, p.recorded_by_user_id
+         FROM ng_problem_list_items p WHERE p.patient_user_id = $1
+       UNION ALL
+       SELECT a.recorded_at, 'allergy', a.id::text,
+              CONCAT(a.substance_text, COALESCE(CONCAT(' - ', a.reaction_text), '')),
+              a.clinical_status, a.recorded_by_user_id
+         FROM ng_patient_allergies a WHERE a.patient_user_id = $1
+       UNION ALL
+       SELECT r.created_at, 'referral', r.id::text, COALESCE(r.reason, 'Referral'), r.status, r.provider_user_id
+         FROM ng_referrals r WHERE r.patient_user_id = $1
+     ) events
+     WHERE TRUE ${cursorClause}
+     ORDER BY event_at DESC
+     LIMIT $${params.length}`,
+    params
+  );
+
+  res.json({
+    ok: true,
+    events: rows,
+    count: rows.length,
+    nextCursor: rows.length === limit ? rows[rows.length - 1].event_at : null,
+  });
+}));
+
+// GET /clinical/patients/:patientUserId/summary — referral / handover summary.
+router.get('/patients/:patientUserId/summary', asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const patientUserId = req.params.patientUserId;
+  await assertClinicalAccess(req, { pool, patientUserId, mode: 'read' });
+
+  const [patient, allergies, problems, medications, encounters, observations, referrals] = await Promise.all([
+    pool.query('SELECT first_name, last_name, date_of_birth, sex FROM users WHERE id = $1', [patientUserId]),
+    patientSafety.listAllergies(pool, patientUserId),
+    patientSafety.listProblems(pool, patientUserId),
+    pool.query(
+      `SELECT name, status FROM ng_medication_history
+        WHERE patient_user_id = $1 AND status IN ('active','on_hold')
+        ORDER BY created_at DESC LIMIT 25`,
+      [patientUserId]
+    ),
+    pool.query(
+      `SELECT id, encounter_type, status, started_at, created_at, signed_at
+         FROM ng_clinical_encounters WHERE patient_user_id = $1
+        ORDER BY created_at DESC LIMIT 10`,
+      [patientUserId]
+    ),
+    pool.query(
+      `SELECT observation_code, display_name, value_numeric, value_text, value_code, unit, observed_at, method
+         FROM ng_clinical_observations WHERE patient_user_id = $1
+        ORDER BY observed_at DESC LIMIT 20`,
+      [patientUserId]
+    ),
+    pool.query(
+      `SELECT id, status, priority, target_name, created_at
+         FROM ng_referrals WHERE patient_user_id = $1
+        ORDER BY created_at DESC LIMIT 10`,
+      [patientUserId]
+    ),
+  ]);
+
+  const row = patient.rows[0] || {};
+  const summary = patientSafety.buildClinicalSummary({
+    patient: {
+      displayName: [row.first_name, row.last_name].filter(Boolean).join(' ') || null,
+      date_of_birth: row.date_of_birth,
+      sex: row.sex,
+    },
+    allergies,
+    problems,
+    medications: medications.rows,
+    encounters: encounters.rows,
+    observations: observations.rows,
+    referrals: referrals.rows,
+  });
+
+  await integrity.writeIntegrityAudit(pool, {
+    actorUserId: requestUserId(req),
+    action: 'clinical_summary_viewed',
+    resourceType: 'clinical_summary',
+    resourceId: patientUserId,
+    patientUserId,
+    request: req,
+    metadata: { allergyCount: allergies.length, problemCount: problems.length },
+  });
+
+  res.json({ ok: true, summary });
 }));
 
 module.exports = router;
