@@ -21,6 +21,14 @@ const {
   canonicalRole,
   userIdOf,
 } = require('../services/clinical/clinicalAccessService');
+const integrity = require('../services/clinical/clinicalRecordIntegrityService');
+
+const CLINICAL_LIST_ROLE_GUARD = integrity.assertClinicalListRole;
+const coveringReasonFrom = integrity.coveringReasonFrom;
+
+function assertClinicalListRole(req) {
+  return CLINICAL_LIST_ROLE_GUARD(requestRole(req));
+}
 
 function requestUserId(req) {
   return userIdOf(req.user);
@@ -70,7 +78,7 @@ function asyncHandler(fn) {
 router.get('/prescriptions', asyncHandler(async (req, res) => {
   const pool = getPool();
   const userId = req.user.id || req.user.userId || req.user.sub;
-  const role = req.user.role;
+  const role = assertClinicalListRole(req);
 
   let query, params;
   if (role === 'patient') {
@@ -179,7 +187,7 @@ router.post('/prescriptions', express.json(), asyncHandler(async (req, res) => {
 router.get('/encounters', asyncHandler(async (req, res) => {
   const pool = getPool();
   const userId = req.user.id || req.user.userId || req.user.sub;
-  const role = req.user.role;
+  const role = assertClinicalListRole(req);
   const { status, limit = 20 } = req.query;
 
   const conditions = [];
@@ -243,11 +251,26 @@ router.get('/encounters/:id', asyncHandler(async (req, res) => {
     encounterId: req.params.id,
     mode: 'read',
   });
-  const [soap, dx] = await Promise.all([
-    pool.query('SELECT * FROM ng_soap_notes WHERE encounter_id = $1 ORDER BY created_at DESC', [req.params.id]),
+  const [soap, dx, amendments] = await Promise.all([
+    pool.query(
+      `SELECT * FROM ng_soap_notes
+        WHERE encounter_id = $1
+        ORDER BY COALESCE(is_current, TRUE) DESC, created_at DESC`,
+      [req.params.id]
+    ),
     pool.query('SELECT * FROM ng_diagnoses WHERE encounter_id = $1 ORDER BY created_at DESC', [req.params.id]),
+    pool.query(
+      'SELECT * FROM ng_clinical_record_amendments WHERE encounter_id = $1 ORDER BY created_at ASC',
+      [req.params.id]
+    ).catch(() => ({ rows: [] })),
   ]);
-  res.json({ ok: true, encounter: enc.rows[0], soap_notes: soap.rows, diagnoses: dx.rows });
+  res.json({
+    ok: true,
+    encounter: enc.rows[0],
+    soap_notes: soap.rows,
+    diagnoses: dx.rows,
+    amendments: amendments.rows,
+  });
 }));
 
 // POST /clinical/encounters/:id/soap
@@ -257,23 +280,105 @@ router.post('/encounters/:id/soap', asyncHandler(async (req, res) => {
   const { subjective, objective, assessment, plan, provider_attestation } = req.body;
 
   const enc = await pool.query(
-    'SELECT patient_user_id FROM ng_clinical_encounters WHERE id = $1', [req.params.id]
+    'SELECT patient_user_id, provider_user_id, status FROM ng_clinical_encounters WHERE id = $1', [req.params.id]
   );
   if (!enc.rows.length) return res.status(404).json({ error: 'Encounter not found' });
   req.body.patientUserId = enc.rows[0].patient_user_id;
   req.body.encounterId = req.params.id;
-  await assertClinicalWriteAccess(req, req.body.patientUserId);
+  const writeAccess = await assertClinicalWriteAccess(req, req.body.patientUserId);
+
+  // A clinician may only add notes to an encounter they own unless the shift
+  // handover is explicitly documented; the cover is recorded with the note.
+  const ownership = integrity.assertEncounterWriteOwnership({
+    encounter: enc.rows[0],
+    actorUserId: userId,
+    coveringReason: coveringReasonFrom(req),
+    isAdminOverride: writeAccess?.adminOverride === true,
+  });
 
   const { rows } = await pool.query(
     `INSERT INTO ng_soap_notes
-       (encounter_id, patient_user_id, provider_user_id, subjective, objective, assessment, plan, provider_attestation)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (encounter_id, patient_user_id, provider_user_id, subjective, objective, assessment, plan, provider_attestation, is_current)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE)
      RETURNING *`,
     [req.params.id, enc.rows[0].patient_user_id, userId,
      subjective || null, objective || null, assessment || null, plan || null, provider_attestation || null]
   );
-  res.status(201).json({ ok: true, soap_note: rows[0] });
+  res.status(201).json({ ok: true, soap_note: rows[0], coveringClinician: ownership.covering });
 }));
+
+// POST /clinical/encounters/:id/sign — clinician sign-off / finalization.
+router.post('/encounters/:id/sign', express.json(), asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const userId = req.user.id || req.user.userId || req.user.sub;
+  const { noteIds = [], attestation } = req.body || {};
+  const noteIdList = Array.isArray(noteIds) ? noteIds.filter(Boolean) : [];
+
+  const enc = await pool.query('SELECT * FROM ng_clinical_encounters WHERE id = $1', [req.params.id]);
+  if (!enc.rows.length) return res.status(404).json({ error: 'Encounter not found' });
+  const encounter = enc.rows[0];
+
+  req.body.patientUserId = encounter.patient_user_id;
+  req.body.encounterId = req.params.id;
+  const access = await assertClinicalWriteAccess(req, encounter.patient_user_id);
+
+  integrity.assertEncounterWriteOwnership({
+    encounter,
+    actorUserId: userId,
+    coveringReason: coveringReasonFrom(req),
+    isAdminOverride: access?.adminOverride === true,
+  });
+
+  const signedEncounter = await integrity.signEncounter(pool, req, {
+    encounter,
+    noteIds: noteIdList,
+    attestation: attestation || null,
+    actorUserId: userId,
+  });
+
+  res.json({ ok: true, encounter: signedEncounter, signedNoteIds: noteIdList });
+}));
+
+// POST /clinical/encounters/:id/notes/:noteId/amend — append-only correction.
+router.post('/encounters/:id/notes/:noteId/amend', express.json(), asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const userId = requestUserId(req);
+  const { reason, subjective, objective, assessment, plan } = req.body || {};
+
+  const enc = await pool.query('SELECT * FROM ng_clinical_encounters WHERE id = $1', [req.params.id]);
+  if (!enc.rows.length) return res.status(404).json({ error: 'Encounter not found' });
+  const encounter = enc.rows[0];
+
+  req.body.patientUserId = encounter.patient_user_id;
+  req.body.encounterId = req.params.id;
+  const access = await assertClinicalWriteAccess(req, encounter.patient_user_id);
+
+  const ownership = integrity.assertEncounterWriteOwnership({
+    encounter,
+    actorUserId: userId,
+    coveringReason: coveringReasonFrom(req),
+    isAdminOverride: access?.adminOverride === true,
+  });
+
+  const note = await pool.query(
+    'SELECT * FROM ng_soap_notes WHERE id = $1 AND encounter_id = $2 AND patient_user_id = $3',
+    [req.params.noteId, req.params.id, encounter.patient_user_id]
+  );
+  if (!note.rows.length) return res.status(404).json({ error: 'Note not found' });
+
+  const result = await integrity.amendNote(pool, req, {
+    encounterId: req.params.id,
+    originalNote: note.rows[0],
+    replacement: { subjective, objective, assessment, plan },
+    reason,
+    actorUserId: userId,
+    providerId: access?.providerId || null,
+    coveringUserId: ownership.covering ? userId : null,
+  });
+
+  res.status(201).json({ ok: true, ...result, coveringClinician: ownership.covering });
+}));
+
 
 // GET /clinical/diagnoses
 router.get('/diagnoses', asyncHandler(async (req, res) => {
@@ -389,38 +494,80 @@ router.patch('/referrals/:id/status', express.json(), asyncHandler(async (req, r
     return res.status(400).json({ error: 'status is required' });
   }
 
-  const referral = await pool.query('SELECT * FROM ng_referrals WHERE id = $1', [req.params.id]);
-  if (!referral.rows.length) {
-    return res.status(404).json({ error: 'Referral not found' });
+  const client = await pool.connect();
+  let updated;
+  try {
+    await client.query('BEGIN');
+    const referral = await client.query('SELECT * FROM ng_referrals WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (!referral.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Referral not found' });
+    }
+
+    req.body.patientUserId = referral.rows[0].patient_user_id;
+    await assertClinicalWriteAccess(req, req.body.patientUserId);
+
+    // Only legal transitions are accepted, so a referral cannot silently jump
+    // backwards or be re-sent after it closed.
+    const transition = integrity.validateReferralTransition(referral.rows[0].status, status);
+
+    const auditMetadata = {
+      ...(referral.rows[0].audit_metadata || {}),
+      lastStatusUpdate: {
+        status: transition.to,
+        actorUserId: requestUserId(req),
+        soapNoteIds,
+        prescriptionIds,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+
+    const { rows } = await client.query(
+      `UPDATE ng_referrals
+          SET status = $1,
+              response_summary = COALESCE($2, response_summary),
+              audit_metadata = $3,
+              completed_at = CASE WHEN $1 = 'completed' THEN NOW() ELSE completed_at END,
+              updated_at = NOW()
+        WHERE id = $4 AND status = $5
+      RETURNING *`,
+      [transition.to, response_summary || null, auditMetadata, req.params.id, transition.from]
+    );
+    if (!rows.length) {
+      throw Object.assign(
+        new Error('Referral status changed while this update was in flight.'),
+        { statusCode: 409, code: 'REFERRAL_STATUS_CONFLICT' }
+      );
+    }
+
+    // Durable, append-only transition history; the prior transition is retained.
+    const event = await integrity.appendReferralStatusEvent(client, {
+      referralId: req.params.id,
+      fromStatus: transition.from,
+      toStatus: transition.to,
+      reason: req.body?.reason || null,
+      actorUserId: requestUserId(req),
+      actorRole: requestRole(req),
+      request: req,
+      metadata: { soapNoteIds, prescriptionIds },
+    });
+
+    await client.query('COMMIT');
+    updated = { referral: rows[0], event };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
   }
 
-  req.body.patientUserId = referral.rows[0].patient_user_id;
-  await assertClinicalWriteAccess(req, req.body.patientUserId);
-
-  const auditMetadata = {
-    ...(referral.rows[0].audit_metadata || {}),
-    lastStatusUpdate: {
-      status,
-      actorUserId: requestUserId(req),
-      soapNoteIds,
-      prescriptionIds,
-      updatedAt: new Date().toISOString(),
-    },
-  };
-
-  const { rows } = await pool.query(
-    `UPDATE ng_referrals
-        SET status = $1,
-            response_summary = COALESCE($2, response_summary),
-            audit_metadata = $3,
-            completed_at = CASE WHEN $1 = 'completed' THEN NOW() ELSE completed_at END,
-            updated_at = NOW()
-      WHERE id = $4
-      RETURNING *`,
-    [status, response_summary || null, auditMetadata, req.params.id]
-  );
-
-  res.json({ ok: true, referral: rows[0], soapNoteIds, prescriptionIds });
+  res.json({
+    ok: true,
+    referral: updated.referral,
+    statusEvent: updated.event,
+    soapNoteIds,
+    prescriptionIds,
+  });
 }));
 
 // POST /clinical/referrals
@@ -459,4 +606,4 @@ router.post('/referrals', asyncHandler(async (req, res) => {
 }));
 
 module.exports = router;
-module.exports._test = { assertClinicalWriteAccess };
+module.exports._test = { assertClinicalWriteAccess, assertClinicalListRole, coveringReasonFrom };
