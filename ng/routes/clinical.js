@@ -22,6 +22,17 @@ const {
   userIdOf,
 } = require('../services/clinical/clinicalAccessService');
 const integrity = require('../services/clinical/clinicalRecordIntegrityService');
+/**
+ * Page size must be a positive integer. A negative or non-numeric limit produces
+ * `LIMIT -5`, which is a database error rather than a bad request, so the value is
+ * clamped rather than trusted.
+ */
+function clampLimit(value, { fallback = 20, max = 100 } = {}) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(parsed, max);
+}
+
 const patientSafety = require('../services/clinical/patientSafetyService');
 
 const CLINICAL_LIST_ROLE_GUARD = integrity.assertClinicalListRole;
@@ -217,7 +228,6 @@ router.get('/encounters', asyncHandler(async (req, res) => {
 
   const conditions = [];
   const params = [];
-
   if (role === 'patient') {
     params.push(userId);
     conditions.push(`patient_user_id = $${params.length}`);
@@ -232,7 +242,7 @@ router.get('/encounters', asyncHandler(async (req, res) => {
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  params.push(Math.min(Number(limit) || 20, 100));
+  params.push(clampLimit(limit, { fallback: 20, max: 100 }));
 
   const { rows } = await pool.query(
     `SELECT * FROM ng_clinical_encounters ${where}
@@ -783,7 +793,7 @@ router.get('/patients/:patientUserId/timeline', asyncHandler(async (req, res) =>
   const patientUserId = req.params.patientUserId;
   await assertClinicalAccess(req, { pool, patientUserId, mode: 'read' });
 
-  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const limit = clampLimit(req.query.limit, { fallback: 50, max: 200 });
   const params = [patientUserId];
   let cursorClause = '';
   if (req.query.cursor) {
@@ -899,4 +909,4 @@ router.get('/patients/:patientUserId/summary', asyncHandler(async (req, res) => 
 }));
 
 module.exports = router;
-module.exports._test = { assertClinicalWriteAccess, assertClinicalListRole, coveringReasonFrom };
+module.exports._test = { assertClinicalWriteAccess, assertClinicalListRole, coveringReasonFrom, clampLimit };
