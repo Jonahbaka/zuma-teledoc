@@ -117,6 +117,35 @@ so the sitemap is regenerated, and link it from the Nigeria site navigation.
 - Confirming the exact cause needs the CI step log (needs repository Actions access) and the live
   `/api/deploy/log` endpoint (needs the deploy token).
 
+### Root cause of the upload failure (identified from the CI step log)
+
+- The step logged `artifact-upload: curl_rc=0 http_code=524`. **524 is Cloudflare's origin-timeout**,
+  not an application error and not an auth rejection: the request reached the edge, and the origin did
+  not return a response inside Cloudflare's proxy timeout.
+- The uploaded artifact is only **55 MB**, comfortably under Cloudflare's request-body limit, so this is
+  not a payload-size rejection. The origin simply took too long to accept the upload and respond.
+- Corroborating signals: `GET /api/health` timed out once from an external network before succeeding on
+  retry, and the health payload reported the server heap at **97%** (`heapUsedMB 266 / heapTotalMB 273`)
+  on the running instance. The origin is CPU/heap constrained and slow to service large uploads.
+- The log also shows the workflow took the **GitHub OIDC** branch, i.e. the `DEPLOY_SECRET` repository
+  secret is not configured. That is fine for `/api/upload-build-binary`, but the existing chunked route
+  (`/api/upload-build-chunked`, 100 MB per chunk) authenticates with `DEPLOY_SECRET` **only** and has no
+  OIDC path, so it cannot be used until that secret is set.
+- **This is an infrastructure/deploy-transport limitation, not a defect in the change being deployed.**
+  Note that this increment *reduced* the payload: the training images it touches went from 15.9 MB to
+  5.9 MB.
+
+Infrastructure actions that would clear it, all of which need the account owner:
+
+1. Configure the `DEPLOY_SECRET` GitHub secret and switch the upload to the existing chunked endpoint,
+   so no single request has to outlast Cloudflare's proxy timeout.
+2. Upload straight to the origin (bypass Cloudflare for the deploy endpoint), or raise the Cloudflare
+   origin response timeout for that path.
+3. Give the instance more headroom: the healthy-but-slow t3-class instance is at 97% heap.
+
+Note: AWS access from the development workstation is currently unusable - the `default` profile returns
+`AuthFailure` and the `iamjonah` profile reports `Your session has expired` (re-run `aws login`).
+
 ---
 ## 2. State of the wider care journey
 
