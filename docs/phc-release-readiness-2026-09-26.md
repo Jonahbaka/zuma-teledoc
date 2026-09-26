@@ -101,6 +101,22 @@ statement attributed to FCT PHCB is published. To publish after approval: add
 `/ng/fct-phcb-assessment` to `PUBLIC_ROUTES` in `lib/seo/public-seo-config.cjs`, run `npm run build`
 so the sitemap is regenerated, and link it from the Nigeria site navigation.
 
+### Deployment attempt log
+
+- `c3102fe` pushed to `main` on 2026-09-26. CI, Video WebRTC E2E (NG), and LiveKit SFU E2E (NG) all
+  completed **success**. The `Deploy to EC2` run failed at the step
+  "Upload artifact and start EC2 deploy", after `npm ci`, the deploy gate, the production build, and
+  artifact packaging had all succeeded.
+- That step calls the authenticated `POST https://doctarx.com/api/upload-build-binary`. The endpoint
+  answers `401` without a valid `x-deploy-token` (GitHub secret `DEPLOY_SECRET`) or a GitHub OIDC
+  bearer token for audience `doctarx-deploy`. The failure is therefore a **deploy-credential or
+  upload-transport issue on the live host, not a code, test, or build defect**.
+- **No partial rollout occurred.** Immediately after the failure, `GET https://doctarx.com/api/health`
+  reported `status: healthy` and `gitCommit: 1358dbe171e3` (the previous commit) with a healthy
+  primary database. Production was never moved onto the new build.
+- Confirming the exact cause needs the CI step log (needs repository Actions access) and the live
+  `/api/deploy/log` endpoint (needs the deploy token).
+
 ---
 ## 2. State of the wider care journey
 
