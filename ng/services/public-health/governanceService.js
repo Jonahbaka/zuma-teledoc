@@ -350,11 +350,13 @@ async function getSubmission(submissionId) {
   return rows[0] || null;
 }
 
-async function listSubmissions({ status, jurisdictionId, period, allowedJurisdictionIds = null, limit = 50, page = 1 } = {}) {
+async function listSubmissions({ status, jurisdictionId, period, allowedJurisdictionIds = null, reportIds = null, limit = 50, page = 1 } = {}) {
   const pool = getPool();
   const conditions = [];
   const params = [];
   let idx = 1;
+
+  if (Array.isArray(reportIds)) { conditions.push(`s.report_id = ANY($${idx++}::uuid[])`); params.push(reportIds); }
 
   if (status) { conditions.push(`s.status = $${idx++}`); params.push(status); }
   if (jurisdictionId) { conditions.push(`s.jurisdiction_id = $${idx++}`); params.push(jurisdictionId); }

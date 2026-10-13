@@ -16,6 +16,7 @@ const express = require('express');
 const service  = require('../services/public-health/publicHealthProgrammeService');
 const rbac     = require('../middleware/rbac');
 const govSvc   = require('../services/public-health/governanceService');
+const { requireReportScope, requireReportApproval, requireReportExport, accessibleReportIds, canAccessReport } = require('../middleware/reportScope');
 
 const router = express.Router();
 
@@ -44,7 +45,7 @@ function actor(req) {
 
 router.get(
   '/programme/overview',
-  rbac.requireAnalystPlus,
+  rbac.requirePlatformAdmin,
   rbac.auditRequest('view', 'programme_overview'),
   wrap(async (req, res) => {
     res.json(await service.getOverview(req.query));
@@ -54,6 +55,7 @@ router.get(
 router.get(
   '/programme/executive-dashboard',
   rbac.requireExecutiveView,
+  rbac.requirePlatformAdmin,
   rbac.auditRequest('view', 'executive_dashboard'),
   wrap(async (req, res) => {
     const jurisdictionIds = await rbac.getAccessibleJurisdictionIds(req.user);
@@ -66,7 +68,7 @@ router.get(
 
 router.get(
   '/programme/areas',
-  rbac.requireAnalystPlus,
+  rbac.requirePlatformAdmin,
   wrap(async (req, res) => {
     res.json({ areas: await service.getProgrammeAreas(req.query) });
   })
@@ -76,7 +78,7 @@ router.get(
 
 router.get(
   '/analytics',
-  rbac.requireAnalystPlus,
+  rbac.requirePlatformAdmin,
   rbac.auditRequest('view', 'analytics'),
   wrap(async (req, res) => {
     res.json(await service.getAnalytics(req.query));
@@ -85,7 +87,7 @@ router.get(
 
 router.get(
   '/chart-data',
-  rbac.requireAnalystPlus,
+  rbac.requirePlatformAdmin,
   wrap(async (req, res) => {
     res.json(await service.getChartData(req.query));
   })
@@ -123,7 +125,7 @@ router.patch(
 
 router.post(
   '/reports/generate',
-  rbac.requireAnalystPlus,
+  rbac.requirePlatformAdmin,
   wrap(async (req, res) => {
     const report = await service.generateReport({ ...(req.body || {}), actorUserId: actor(req) });
 
@@ -147,12 +149,31 @@ router.get(
   rbac.requireAnalystPlus,
   rbac.auditRequest('view', 'reports'),
   wrap(async (req, res) => {
-    res.json(await service.listReports(req.query));
+    const result = await service.listReports({ ...req.query, reportIds: await accessibleReportIds(req.user) });
+    result.reports = await Promise.all(result.reports.map(async (report) => ({ ...report, permissions: {
+      approve: await canAccessReport(req.user, report.id, 'approve'),
+      export: await canAccessReport(req.user, report.id, 'export'),
+    } })));
+    res.json(result);
+  })
+);
+
+router.get(
+  '/reports/:id/delivery',
+  requireReportScope,
+  rbac.requireAnalystPlus,
+  rbac.auditRequest('view', 'dhis2_delivery'),
+  wrap(async (req, res) => {
+    const { getPool } = require('../../server/db');
+    const { publicJob } = require('../services/public-health/dhis2DeliveryService');
+    const { rows } = await getPool().query('SELECT * FROM ng_dhis2_delivery_jobs WHERE report_id=$1 ORDER BY created_at DESC', [req.params.id]);
+    res.json({ deliveries: rows.map(publicJob) });
   })
 );
 
 router.get(
   '/reports/:id',
+  requireReportScope,
   rbac.requireAnalystPlus,
   rbac.auditRequest('view', 'report'),
   wrap(async (req, res) => {
@@ -162,6 +183,7 @@ router.get(
 
 router.post(
   '/reports/:id/approve',
+  requireReportApproval,
   rbac.requireApprovalAuthority(),
   wrap(async (req, res) => {
     const result = await service.approveReport(req.params.id, actor(req), req.body?.notes);
@@ -184,6 +206,7 @@ router.post(
 
 router.post(
   '/reports/:id/export/csv',
+  requireReportExport,
   rbac.requireExportAuthority(),
   wrap(async (req, res) => {
     const bundle = await service.getReport(req.params.id);
@@ -207,6 +230,7 @@ router.post(
 
 router.post(
   '/reports/:id/export/json',
+  requireReportExport,
   rbac.requireExportAuthority(),
   wrap(async (req, res) => {
     const bundle = service.reportToJson(await service.getReport(req.params.id));
@@ -227,6 +251,7 @@ router.post(
 
 router.post(
   '/reports/:id/export/dhis2-preview',
+  requireReportExport,
   rbac.requireExportAuthority(),
   wrap(async (req, res) => {
     const preview = await service.buildDhis2Preview(req.params.id);
@@ -249,7 +274,7 @@ router.post(
 
 router.get(
   '/forecast',
-  rbac.requireAnalystPlus,
+  rbac.requirePlatformAdmin,
   wrap(async (req, res) => {
     res.json(await service.getForecast(req.query));
   })
@@ -257,7 +282,7 @@ router.get(
 
 router.get(
   '/insights',
-  rbac.requireAnalystPlus,
+  rbac.requirePlatformAdmin,
   wrap(async (req, res) => {
     res.json(await service.getInsights(req.query));
   })

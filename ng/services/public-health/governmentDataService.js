@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const ExcelJS = require('exceljs');
 const { jsPDF } = require('jspdf');
 const { getPool } = require('../../../server/db');
+const rbac = require('../../middleware/rbac');
 
 const MAX_ROWS = 10_000;
 const TARGET_FIELDS = new Set([
@@ -176,17 +177,18 @@ async function registerSource(input, actor) {
   return result.rows[0];
 }
 
-async function listSources({ accessibleJurisdictionIds, status = 'active' } = {}) {
+async function listSources({ accessibleJurisdictionIds, status = 'active', actor } = {}) {
   const params = [status];
-  const scope = Array.isArray(accessibleJurisdictionIds)
-    ? ` AND s.jurisdiction_id = ANY($${params.push(accessibleJurisdictionIds)}::uuid[])`
+  let scope = Array.isArray(accessibleJurisdictionIds)
+    ? ` AND ds.jurisdiction_id = ANY($${params.push(accessibleJurisdictionIds)}::uuid[])`
     : '';
+  if (actor) scope += ` AND ${actorScopeClause(actor, params, 'read', 'ds')}`;
   const result = await getPool().query(
-    `SELECT s.*, j.name AS jurisdiction_name, f.name AS facility_name
-       FROM ng_government_data_sources s
-       JOIN ng_jurisdictions j ON j.id=s.jurisdiction_id
-       LEFT JOIN public_health_facilities f ON f.id=s.facility_id
-      WHERE s.status=$1${scope} ORDER BY s.name`, params
+    `SELECT ds.*, j.name AS jurisdiction_name, f.name AS facility_name
+       FROM ng_government_data_sources ds
+       JOIN ng_jurisdictions j ON j.id=ds.jurisdiction_id
+       LEFT JOIN public_health_facilities f ON f.id=ds.facility_id
+      WHERE ds.status=$1${scope} ORDER BY ds.name`, params
   );
   return result.rows;
 }
@@ -540,9 +542,29 @@ function addFilter(filters, params, sql, value, transform = (item) => item) {
   filters.push(sql.replace('?', `$${params.length}`));
 }
 
-async function searchRecords(input, actor, accessibleJurisdictionIds) {
+function actorScopeClause(actor, params, permission = 'read', recordAlias = 'r') {
+  if (rbac.isPlatformAdministrator(actor)) return 'TRUE';
+  const id = actorId(actor);
+  if (!id) return 'FALSE';
+  params.push(id);
+  const actorParameter = params.length;
+  const permissionFilter = permission === 'export'
+    ? "AND s.can_export = true AND s.role IN ('analyst','reviewer','approver','programme_admin','platform_admin','super_admin')" : '';
+  return `EXISTS (SELECT 1 FROM ng_user_jurisdiction_roles s WHERE s.user_id=$${actorParameter}
+    AND s.active=true AND (s.expires_at IS NULL OR s.expires_at>NOW()) AND s.can_view_aggregate=true
+    ${permissionFilter}
+    AND (s.facility_id IS NULL OR s.facility_id=${recordAlias}.facility_id)
+    AND (s.programme_area IS NULL OR s.programme_area=${recordAlias}.programme_area)
+    AND s.jurisdiction_id IN (WITH RECURSIVE ancestors AS (
+      SELECT id,parent_id FROM ng_jurisdictions WHERE id=${recordAlias}.jurisdiction_id
+      UNION ALL SELECT j.id,j.parent_id FROM ng_jurisdictions j JOIN ancestors a ON a.parent_id=j.id
+    ) SELECT id FROM ancestors))`;
+}
+
+async function searchRecords(input, actor, accessibleJurisdictionIds, { permission = 'read', recordRecent = true } = {}) {
   const filters = ['r.rolled_back_at IS NULL'];
   const params = [];
+  filters.push(actorScopeClause(actor, params, permission));
   let queryParameter = null;
   addFilter(filters, params, `r.approval_status=?`, input.approvalStatus || 'approved');
   if (Array.isArray(accessibleJurisdictionIds)) {
@@ -564,8 +586,8 @@ async function searchRecords(input, actor, accessibleJurisdictionIds) {
   addFilter(filters, params, 'r.observation_date<=?::date', input.dateTo);
   addFilter(filters, params, 'r.referral_status=?', input.referralStatus);
   addFilter(filters, params, 'r.data_quality_status=?', input.dataQualityStatus);
-  const pageSize = Math.min(Math.max(Number(input.pageSize) || 25, 1), 5_000);
-  const page = Math.max(Number(input.page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number.parseInt(input.pageSize, 10) || 25, 1), 5_000);
+  const page = Math.max(Number.parseInt(input.page, 10) || 1, 1);
   const ordering = queryParameter
     ? `ts_rank_cd(r.search_vector,websearch_to_tsquery('simple',$${queryParameter})) DESC,r.created_at DESC`
     : 'r.created_at DESC';
@@ -586,7 +608,7 @@ async function searchRecords(input, actor, accessibleJurisdictionIds) {
     params
   );
   const total = result.rows[0]?.total_count || 0;
-  if (actorId(actor) && cleanText(input.q)) {
+  if (recordRecent && actorId(actor) && cleanText(input.q)) {
     await getPool().query(
       `INSERT INTO ng_government_recent_searches (user_id,query_text,filters_json,result_count)
        VALUES ($1,$2,$3::jsonb,$4)`, [actorId(actor), cleanText(input.q, 200), JSON.stringify(input), total]
@@ -595,7 +617,7 @@ async function searchRecords(input, actor, accessibleJurisdictionIds) {
   return { records: result.rows.map(({ total_count, ...row }) => row), total, page, pageSize };
 }
 
-async function autocomplete(q, accessibleJurisdictionIds) {
+async function autocomplete(q, accessibleJurisdictionIds, actor) {
   const params = [cleanText(q, 120) || ''];
   let scope = '';
   if (Array.isArray(accessibleJurisdictionIds)) {
@@ -603,8 +625,9 @@ async function autocomplete(q, accessibleJurisdictionIds) {
     params.push(accessibleJurisdictionIds);
     scope = ` AND jurisdiction_id=ANY($2::uuid[])`;
   }
+  scope += ` AND ${actorScopeClause(actor, params)}`;
   const result = await getPool().query(
-    `SELECT DISTINCT title FROM ng_government_records
+    `SELECT DISTINCT title FROM ng_government_records r
       WHERE rolled_back_at IS NULL AND approval_status='approved' AND title ILIKE $1||'%'${scope}
       ORDER BY title LIMIT 10`, params
   );
@@ -655,7 +678,7 @@ const EXPORT_COLUMNS = [
 ];
 
 async function exportSearch(format, input, actor, accessibleJurisdictionIds) {
-  const result = await searchRecords({ ...input, page: 1, pageSize: 5_000 }, null, accessibleJurisdictionIds);
+  const result = await searchRecords({ ...input, page: 1, pageSize: 5_000 }, actor, accessibleJurisdictionIds, { permission: 'export', recordRecent: false });
   if (format === 'csv') {
     return { contentType: 'text/csv; charset=utf-8', extension: 'csv', body: [
       EXPORT_COLUMNS.map(([, label]) => csvEscape(label)).join(','),

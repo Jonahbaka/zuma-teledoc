@@ -10,6 +10,14 @@ const { auditMiddleware } = require('../middleware/audit');
 const insuranceWalletService = require('../services/insuranceWalletService');
 const ocrService = require('../services/ocrService');
 const eligibilityService = require('../services/eligibilityService');
+const { scopedFinancialRecord, patientFinancialAccess } = require('../middleware/financialRecordScope');
+const insuranceScope = scopedFinancialRecord('patient_insurance', 'insurance');
+async function patientScope(req, res, next) {
+  try {
+    if (!await patientFinancialAccess(req.user, req.params.patientId)) return res.status(404).json({ success: false, error: 'Patient not found' });
+    next();
+  } catch (error) { next(error); }
+}
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -21,6 +29,7 @@ router.get('/patient/:patientId/wallet',
   authenticate,
   requireRole('provider', 'admin', 'super_admin'),
   canAccessPatient,
+  patientScope,
   async (req, res) => {
     try {
       const wallet = await insuranceWalletService.getWallet(req.params.patientId);
@@ -37,8 +46,11 @@ router.get('/patient/:patientId/:id',
   authenticate,
   requireRole('provider', 'admin', 'super_admin'),
   canAccessPatient,
+  patientScope,
+  insuranceScope,
   async (req, res) => {
     try {
+      if (String(req.insurance.patient_id) !== String(req.params.patientId)) return res.status(404).json({ success: false, error: 'Insurance not found' });
       const insurance = await insuranceWalletService.getInsuranceById(
         req.params.id,
         req.user.id,
@@ -80,7 +92,7 @@ router.get('/wallet', authenticate, async (req, res) => {
 });
 
 // Get insurance by ID
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, insuranceScope, async (req, res) => {
   try {
     const insurance = await insuranceWalletService.getInsuranceById(
       req.params.id,
@@ -171,7 +183,7 @@ router.patch('/:id/primary', authenticate, auditMiddleware('update', 'insurance'
 });
 
 // Verify eligibility
-router.post('/:id/verify', authenticate, auditMiddleware('verify', 'insurance'), async (req, res) => {
+router.post('/:id/verify', authenticate, insuranceScope, auditMiddleware('verify', 'insurance'), async (req, res) => {
   try {
     const result = await insuranceWalletService.verifyEligibility(req.params.id);
     res.json({ success: true, ...result });
@@ -182,7 +194,7 @@ router.post('/:id/verify', authenticate, auditMiddleware('verify', 'insurance'),
 });
 
 // Update insurance status
-router.patch('/:id/status', authenticate, auditMiddleware('update', 'insurance'), async (req, res) => {
+router.patch('/:id/status', authenticate, insuranceScope, auditMiddleware('update', 'insurance'), async (req, res) => {
   try {
     if (req.user.role !== 'patient') {
       return res.status(403).json({ success: false, error: 'Only patients can update status' });
@@ -201,7 +213,7 @@ router.patch('/:id/status', authenticate, auditMiddleware('update', 'insurance')
 });
 
 // Capture consent
-router.post('/:id/consent', authenticate, auditMiddleware('update', 'insurance', { phiAccessed: true }), async (req, res) => {
+router.post('/:id/consent', authenticate, insuranceScope, auditMiddleware('update', 'insurance', { phiAccessed: true }), async (req, res) => {
   try {
     if (req.user.role !== 'patient') {
       return res.status(403).json({ success: false, error: 'Only patients can give consent' });

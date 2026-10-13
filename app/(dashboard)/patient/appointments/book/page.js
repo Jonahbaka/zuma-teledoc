@@ -24,7 +24,7 @@ import { toast } from '@/components/ui/use-toast';
 const STEPS = [
   { id: 1, title: 'Health Issue', icon: Heart },
   { id: 2, title: 'Symptoms', icon: FileText },
-  { id: 3, title: 'AI Analysis', icon: Brain },
+  { id: 3, title: 'Optional guidance', icon: Brain },
   { id: 4, title: 'Schedule', icon: Calendar },
   { id: 5, title: 'Insurance', icon: CreditCard },
   { id: 6, title: 'Confirm', icon: CheckCircle2 }
@@ -283,6 +283,7 @@ export default function BookAppointmentPage({ market = 'US' }) {
   
   // Step 3: AI Triage
   const [triageResult, setTriageResult] = useState(null);
+  const [historyReviewed, setHistoryReviewed] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   // Step 3: Schedule
@@ -363,12 +364,10 @@ export default function BookAppointmentPage({ market = 'US' }) {
     }
   }, []);
 
-  // Auto-run AI triage when symptoms are entered and user moves to step 3
   useEffect(() => {
-    if (currentStep === 3 && symptoms.trim() && !triageResult && !isAnalyzing) {
-      runAITriage();
-    }
-  }, [currentStep, symptoms, triageResult, isAnalyzing, runAITriage]);
+    setHistoryReviewed(false);
+    setTriageResult(null);
+  }, [symptoms, medications, allergies]);
 
   useEffect(() => {
     loadProviders();
@@ -467,13 +466,6 @@ export default function BookAppointmentPage({ market = 'US' }) {
       return;
     }
     
-    if (currentStep === 3) {
-      // AI Analysis step - if not analyzed yet, run it
-      if (!triageResult && !isAnalyzing) {
-        await runAITriage();
-      }
-      // Continue even if triage failed
-    }
     
     if (currentStep === 4) {
       if (!selectedDate || !selectedTime) {
@@ -568,6 +560,11 @@ export default function BookAppointmentPage({ market = 'US' }) {
       }
       
       const insuranceData = insuranceForm.getValues();
+      if (!historyReviewed) {
+        toast({ title: 'Review your history', description: 'Confirm that you have reviewed your medication and allergy information.', variant: 'destructive' });
+        setIsLoading(false);
+        return;
+      }
       
       // Check if insurance data is provided
       const hasInsuranceData = insuranceData.insuranceProvider && 
@@ -582,7 +579,12 @@ export default function BookAppointmentPage({ market = 'US' }) {
         providerId: selectedProviderId,
         type: visitType,
         reasonForVisit: `${selectedCategory.name}: ${symptoms}`,
-        patientNotes: `Severity: ${severity}\nDuration: ${duration}\nMedications: ${medications || 'None'}\nAllergies: ${allergies || 'None'}`,
+        patientNotes: `Patient-reported severity: ${severity}\nDuration: ${duration}\nMedications: ${medications.trim() || 'Unknown / not supplied'}\nAllergies: ${allergies.trim() || 'Unknown / not supplied'}`,
+        intake: {
+          historyReviewed,
+          medicationStatus: medications.trim() ? 'reported' : 'unknown',
+          allergyStatus: allergies.trim() ? 'reported' : 'unknown',
+        },
         durationMinutes: 30,
         autoMatch: !selectedProviderId,
         triageResult: triageResult || null // Include AI triage data
@@ -602,15 +604,7 @@ export default function BookAppointmentPage({ market = 'US' }) {
           throw new Error('Appointment created but no ID returned');
         }
         
-        // Save triage data to appointment if available
-        if (triageResult && appointmentId) {
-          try {
-            await triageAPI.store(appointmentId, symptoms, triageResult);
-          } catch (triageError) {
-            // Don't fail booking if triage save fails
-            console.warn('Failed to save triage data:', triageError);
-          }
-        }
+        // Optional client guidance is not stored as a verified clinical assessment.
         
         // Save insurance only if provided (optional - don't fail if this errors)
         if (hasInsuranceData) {
@@ -705,10 +699,7 @@ export default function BookAppointmentPage({ market = 'US' }) {
   };
 
   return (
-    <div className={config.isNigeria
-      ? 'min-h-screen bg-gradient-to-br from-background via-emerald-50/40 to-background dark:from-slate-950 dark:via-emerald-950/20 dark:to-slate-950'
-      : 'min-h-screen bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950'
-    }>
+    <div className="clinical-readable min-h-screen bg-background">
       {/* Header */}
       <div className="bg-card border-b border-border sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4">
@@ -914,7 +905,8 @@ export default function BookAppointmentPage({ market = 'US' }) {
               ) : (
                 <div className="text-center py-12">
                   <Brain className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
-                  <p className="text-muted-foreground">No analysis available. Please go back and describe your symptoms.</p>
+                  <p className="text-base text-muted-foreground">You can book without AI guidance. Your clinician will review your symptoms and history.</p>
+                  <Button className="mt-4" variant="outline" onClick={runAITriage} disabled={isAnalyzing}>Request optional guidance</Button>
                 </div>
               )}
             </div>
@@ -1329,6 +1321,15 @@ export default function BookAppointmentPage({ market = 'US' }) {
             <div className="p-6">
               <h2 className="text-2xl font-bold text-foreground mb-2">{config.confirmTitle}</h2>
               <p className="text-muted-foreground mb-6">{config.confirmHelp}</p>
+              <div className="mb-4 rounded-xl border border-slate-200 p-4 text-base">
+                <p className="mb-2 font-semibold">Medication and allergy review</p>
+                <p>Medications: {medications.trim() || 'Unknown / not supplied'}</p>
+                <p>Allergies: {allergies.trim() || 'Unknown / not supplied'}</p>
+                <label className="mt-4 flex min-h-11 items-start gap-3">
+                  <input type="checkbox" className="mt-1 h-5 w-5" checked={historyReviewed} onChange={(event) => setHistoryReviewed(event.target.checked)} />
+                  <span>I have reviewed this information. Unknown information will be reviewed with my clinician.</span>
+                </label>
+              </div>
               
               <div className="space-y-4">
                 <div className="p-4 bg-muted rounded-xl">

@@ -2,6 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+.clinical-readable {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.clinical-readable h1, .clinical-readable h2, .clinical-readable h3,
+.clinical-readable button, .clinical-readable input, .clinical-readable select, .clinical-readable textarea {
+  font-family: inherit;
+}
+.clinical-readable p, .clinical-readable input, .clinical-readable select, .clinical-readable textarea {
+  font-size: 1rem;
+}
+.clinical-readable .text-xs {
+  font-size: 0.875rem;
+}
+.clinical-readable button {
+  min-height: 44px;
+}
+
 @layer base {
   :root {
     --safe-top: env(safe-area-inset-top, 0px);

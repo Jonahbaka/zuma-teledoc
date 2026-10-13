@@ -36,8 +36,9 @@ router.get('/', authenticate, async (req, res) => {
     const { specialty } = req.query;
     
     let whereClause = "WHERE role = 'provider' AND provider_status = 'approved' AND is_active = true";
-    const values = [];
-    let paramIndex = 1;
+    whereClause += ` AND ${userMarketScopeSql('users')} = $1`;
+    const values = [getAuthenticatedMarketScope(req.user)];
+    let paramIndex = 2;
     
     if (specialty) {
       whereClause += ` AND specialty ILIKE $${paramIndex}`;

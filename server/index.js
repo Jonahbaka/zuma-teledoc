@@ -594,7 +594,12 @@ async function initializeApp() {
   app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
   
   // Body parsing
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({
+    limit: '10mb',
+    verify: (req, _res, buffer) => {
+      if (['/api/ng/webhooks/paystack', '/api/ng/webhooks/livekit'].includes(req.originalUrl.split('?')[0])) req.rawBody = Buffer.from(buffer);
+    },
+  }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(cookieParser(process.env.SESSION_SECRET));
   

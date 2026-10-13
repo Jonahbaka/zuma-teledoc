@@ -1424,12 +1424,16 @@ async function generateReport({ period, reportType = 'monthly_aggregate', facili
   }
 }
 
-async function listReports({ limit = 25, page = 1, status, period } = {}) {
+async function listReports({ limit = 25, page = 1, status, period, reportIds = null } = {}) {
   const pool = getPool();
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 25, 1), 100);
   const safePage = Math.max(parseInt(page, 10) || 1, 1);
   const where = [];
   const values = [];
+  if (Array.isArray(reportIds)) {
+    values.push(reportIds);
+    where.push(`r.id = ANY($${values.length}::uuid[])`);
+  }
   if (status && REPORT_STATUSES.has(status)) {
     values.push(status);
     where.push(`r.status = $${values.length}`);
@@ -1503,12 +1507,12 @@ async function approveReport(id, actorUserId, notes) {
             approved_at = NOW(),
             notes = COALESCE($3, notes),
             updated_at = NOW()
-      WHERE id = $1 AND status IN ('generated', 'draft')
+      WHERE id = $1 AND status IN ('generated', 'draft') AND generated_by <> $2
       RETURNING *`,
     [id, actorUserId, notes || null]
   );
   if (!result.rows[0]) {
-    const error = new Error('Report must exist and be in draft/generated status before approval.');
+    const error = new Error('Report must be draft/generated and approved by another authorized user.');
     error.status = 400;
     throw error;
   }
@@ -1749,7 +1753,7 @@ async function buildDhis2Preview(reportId) {
 
   const payload = {
     dataSet: settings.datasetId || null,
-    completeDate: isoDate(new Date()),
+    completeDate: isoDate(reportBundle.report.approved_at || reportBundle.report.created_at),
     period: parsePeriod(reportBundle.report.report_period).dhis2Period,
     orgUnit: settings.orgUnitId || null,
     attributeOptionCombo: settings.attributeOptionComboId || undefined,
@@ -1779,13 +1783,16 @@ function validateDhis2Sync(reportBundle, settings, preview) {
   if (!settings.enabled) blockers.push('DHIS2 integration is disabled.');
   if (settings.dryRunOnly) blockers.push('DHIS2 integration is configured for dry-run only.');
   if (process.env.DHIS2_ALLOW_LIVE_SYNC !== 'true') blockers.push('Server live sync safety flag DHIS2_ALLOW_LIVE_SYNC is not enabled.');
-  if (reportBundle.report.status !== 'approved') blockers.push('Report must be approved before any sync attempt.');
+  if (!['approved','sync_pending','synced','sync_failed'].includes(reportBundle.report.status) || !reportBundle.report.approved_by || !reportBundle.report.approved_at) blockers.push('Report must be approved before any sync attempt.');
+  if (reportBundle.report.approved_by === reportBundle.report.generated_by) blockers.push('The report requires independent approval.');
   if (!settings.datasetId) blockers.push('Dataset ID is missing.');
   if (!settings.orgUnitId) blockers.push('Organisation-unit ID is missing.');
   if (preview.missingMappings.length) blockers.push('One or more report indicators are missing DHIS2 data-element mappings.');
   if (preview.missingValues.length) blockers.push('One or more mapped report indicators have unavailable source data.');
+  if (!preview.payload?.dataValues?.length) blockers.push('The report has no approved data values to submit.');
   if (settings.governmentApprovalStatus !== 'approved') blockers.push('Government reporting approval is pending.');
   if (settings.dataSharingAgreementStatus !== 'approved') blockers.push('Data-sharing agreement is pending.');
+  if (settings.ndprReviewStatus !== 'approved') blockers.push('Privacy review is pending.');
   if (settings.apiCredentialsStatus !== 'configured') blockers.push('API credentials are pending.');
   return blockers;
 }
@@ -1833,26 +1840,14 @@ async function syncDhis2(reportId, actorUserId) {
     throw error;
   }
 
-  const response = await fetch(`${String(baseUrl).replace(/\/+$/, '')}/api/dataValueSets`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: username ? `Basic ${Buffer.from(`${username}:${apiToken}`).toString('base64')}` : `ApiToken ${apiToken}`,
-    },
-    body: JSON.stringify(preview.payload),
+  const delivery = require('./dhis2DeliveryService');
+  const job = await delivery.enqueueDelivery(pool, {
+    report: reportBundle.report, payload: preview.payload, payloadHash: preview.payloadHash,
+    destinationHash: delivery.destinationIdentity(baseUrl, username, preview.payload), actorUserId,
   });
-  const body = await response.text();
-  await pool.query(
-    `INSERT INTO dhis2_sync_logs (report_id, status, request_payload_hash, response_status, response_body_summary, attempted_by)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [reportId, response.ok ? 'submitted' : 'failed', preview.payloadHash, String(response.status), body.slice(0, 1000), actorUserId || null]
-  );
-  await pool.query(
-    `UPDATE public_health_reports SET status = $2, updated_at = NOW() WHERE id = $1`,
-    [reportId, response.ok ? 'synced' : 'sync_failed']
-  );
-  await logAudit('public_health.dhis2.sync_attempt', actorUserId, 'public_health_report', reportId, { status: response.status });
-  return { ok: response.ok, status: response.status, bodySummary: body.slice(0, 1000), preview };
+  const result = await delivery.deliverOrReconcile(pool, job, { baseUrl, username, apiToken });
+  await logAudit('public_health.dhis2.sync_attempt', actorUserId, 'public_health_report', reportId, { deliveryId: job.id, outcome: result.delivery.status });
+  return { ...result, preview };
 }
 
 async function getSyncLogs({ limit = 50 } = {}) {

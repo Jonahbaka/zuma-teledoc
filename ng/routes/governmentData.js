@@ -31,26 +31,27 @@ function wrap(fn) {
 function actor(req) { return req.user; }
 function userId(req) { return req.user?.id || req.user?.userId; }
 
-async function ensureScope(req, res, resource) {
+async function ensureScope(req, res, resource, permission = 'read') {
   const access = await rbac.userCanAccessResource(req.user, {
     jurisdictionId: resource?.jurisdiction_id || resource?.jurisdictionId,
     facilityId: resource?.facility_id || resource?.facilityId,
     programmeArea: resource?.programme_area || resource?.programmeArea,
+    permission,
   });
   if (access === null) { res.status(503).json({ error: 'Government authorization scopes are unavailable.' }); return false; }
   if (!access) { res.status(403).json({ error: 'Access outside your assigned government scope is denied.' }); return false; }
   return true;
 }
 
-async function accessibleJurisdictions(req, res) {
-  const ids = await rbac.getAccessibleJurisdictionIds(req.user);
+async function accessibleJurisdictions(req, res, permission = 'read') {
+  const ids = await rbac.getAccessibleJurisdictionIds(req.user, permission);
   if (ids === undefined) res.status(503).json({ error: 'Government authorization scopes are unavailable.' });
   return ids;
 }
 
-async function scopedBatch(req, res) {
+async function scopedBatch(req, res, permission = 'read') {
   const report = await service.getBatchReport(req.params.id);
-  if (!(await ensureScope(req, res, report.batch))) return null;
+  if (!(await ensureScope(req, res, report.batch, permission))) return null;
   return report;
 }
 
@@ -79,7 +80,7 @@ router.post('/access/accounts/:userId/revoke', rbac.requirePlatformAdmin, wrap(a
 router.get('/sources', requireGovernmentReader, wrap(async (req, res) => {
   const ids = await accessibleJurisdictions(req, res);
   if (ids === undefined) return;
-  res.json({ sources: await service.listSources({ accessibleJurisdictionIds: ids, status: req.query.status || 'active' }) });
+  res.json({ sources: await service.listSources({ accessibleJurisdictionIds: ids, status: req.query.status || 'active', actor: actor(req) }) });
 }));
 
 router.post(
@@ -87,7 +88,7 @@ router.post(
   rbac.requireNgRole('programme_admin', 'platform_admin', 'super_admin'),
   rbac.auditRequest('modify', 'government_data_source'),
   wrap(async (req, res) => {
-    if (!(await ensureScope(req, res, req.body || {}))) return;
+    if (!(await ensureScope(req, res, req.body || {}, 'prepare'))) return;
     res.status(201).json({ source: await service.registerSource(req.body || {}, actor(req)) });
   })
 );
@@ -99,8 +100,9 @@ router.post(
   wrap(async (req, res) => {
     const ids = await accessibleJurisdictions(req, res);
     if (ids === undefined) return;
-    const source = (await service.listSources({ accessibleJurisdictionIds: ids })).find((item) => String(item.id) === String(req.params.sourceId));
+    const source = (await service.listSources({ accessibleJurisdictionIds: ids, actor: actor(req) })).find((item) => String(item.id) === String(req.params.sourceId));
     if (!source) return res.status(404).json({ error: 'Source not found in your assigned scope.' });
+    if (!(await ensureScope(req, res, source, 'prepare'))) return;
     res.status(201).json({ mapping: await service.saveMapping(req.params.sourceId, req.body || {}, actor(req)) });
   })
 );
@@ -138,7 +140,7 @@ router.post(
       filename: req.file.originalname,
       mediaType: req.file.mimetype,
     };
-    if (!(await ensureScope(req, res, input))) return;
+    if (!(await ensureScope(req, res, input, 'prepare'))) return;
     const result = await service.createImport(input, actor(req));
     res.status(result.created ? 201 : 200).json(result);
   })
@@ -149,7 +151,7 @@ router.post(
   rbac.requireAnalystPlus,
   rbac.auditRequest('import', 'government_import_batch'),
   wrap(async (req, res) => {
-    if (!(await ensureScope(req, res, req.body || {}))) return;
+    if (!(await ensureScope(req, res, req.body || {}, 'prepare'))) return;
     const result = await service.createImport({
       ...(req.body || {}),
       rows: req.body?.records,
@@ -165,27 +167,27 @@ router.get('/imports/:id', requireGovernmentReader, rbac.auditRequest('view', 'g
 }));
 
 router.post('/imports/:id/validate', rbac.requireAnalystPlus, rbac.auditRequest('validate', 'government_import_batch'), wrap(async (req, res) => {
-  if (!(await scopedBatch(req, res))) return;
+  if (!(await scopedBatch(req, res, 'prepare'))) return;
   res.json(await service.validateBatch(req.params.id, actor(req)));
 }));
 
 router.post('/imports/:id/submit', rbac.requireAnalystPlus, rbac.auditRequest('submit', 'government_import_batch'), wrap(async (req, res) => {
-  if (!(await scopedBatch(req, res))) return;
+  if (!(await scopedBatch(req, res, 'prepare'))) return;
   res.json(await service.decideBatch(req.params.id, 'submit', actor(req), req.body?.notes));
 }));
 
 router.post('/imports/:id/approve', rbac.requireApprovalAuthority(), rbac.auditRequest('approve', 'government_import_batch'), wrap(async (req, res) => {
-  if (!(await scopedBatch(req, res))) return;
+  if (!(await scopedBatch(req, res, 'approve'))) return;
   res.json(await service.decideBatch(req.params.id, 'approve', actor(req), req.body?.notes));
 }));
 
 router.post('/imports/:id/reject', rbac.requireReviewer, rbac.auditRequest('reject', 'government_import_batch'), wrap(async (req, res) => {
-  if (!(await scopedBatch(req, res))) return;
+  if (!(await scopedBatch(req, res, 'review'))) return;
   res.json(await service.decideBatch(req.params.id, 'reject', actor(req), req.body?.notes));
 }));
 
 router.post('/imports/:id/commit', rbac.requireApprovalAuthority(), rbac.auditRequest('approve', 'government_import_commit'), wrap(async (req, res) => {
-  if (!(await scopedBatch(req, res))) return;
+  if (!(await scopedBatch(req, res, 'approve'))) return;
   res.json(await service.commitBatch(req.params.id, actor(req)));
 }));
 
@@ -195,7 +197,7 @@ router.post('/imports/:id/rollback', rbac.requirePlatformAdmin, rbac.auditReques
 }));
 
 router.get('/imports/:id/dhis2-export', rbac.requireExportAuthority(), rbac.auditRequest('export', 'government_dhis2_export'), wrap(async (req, res) => {
-  if (!(await scopedBatch(req, res))) return;
+  if (!(await scopedBatch(req, res, 'export'))) return;
   res.json(await service.dhis2Export(req.params.id));
 }));
 
@@ -209,7 +211,7 @@ router.get('/search', requireGovernmentReader, rbac.auditRequest('search', 'gove
 router.get('/search/autocomplete', requireGovernmentReader, wrap(async (req, res) => {
   const ids = await accessibleJurisdictions(req, res);
   if (ids === undefined) return;
-  res.json({ suggestions: await service.autocomplete(req.query.q, ids) });
+  res.json({ suggestions: await service.autocomplete(req.query.q, ids, actor(req)) });
 }));
 
 router.get('/search/recent', requireGovernmentReader, wrap(async (req, res) => {
@@ -225,7 +227,7 @@ router.post('/saved-views', requireGovernmentReader, rbac.auditRequest('modify',
 }));
 
 router.get('/search/export/:format', rbac.requireExportAuthority(), rbac.auditRequest('export', 'government_records'), wrap(async (req, res) => {
-  const ids = await accessibleJurisdictions(req, res);
+  const ids = await accessibleJurisdictions(req, res, 'export');
   if (ids === undefined) return;
   const exported = await service.exportSearch(req.params.format, req.query, actor(req), ids);
   res.setHeader('Content-Type', exported.contentType);

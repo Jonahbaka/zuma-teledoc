@@ -224,6 +224,7 @@ router.post('/rooms/:id/token', express.json(), async (req, res) => {
     );
 
     const lk = require('../services/conferencing/livekitService');
+    if (room.status !== 'live' || room.media_server !== 'livekit') return res.status(409).json({ ok: false, error: 'The LiveKit room is not live.' });
     if (!lk.isLiveKitConfigured()) {
       return res.status(409).json({
         ok: false,
@@ -233,9 +234,10 @@ router.post('/rooms/:id/token', express.json(), async (req, res) => {
     }
 
     const userId      = req.user.id;
-    const displayName = (req.body?.display_name || req.user?.name || req.user?.display_name || 'Participant').slice(0, 80);
+    const displayName = String(req.body?.display_name || req.user?.name || req.user?.display_name || 'Participant').slice(0, 80);
 
-    const token      = lk.generateRoomToken(room.id, userId, displayName, { canPublish: true, canSubscribe: true });
+    const token = await lk.generateRoomToken(room.id, userId, displayName,
+      lk.participantMediaGrants(room.actor_participant_role, room.actor_permissions));
     const { url }    = lk.getLiveKitConfig();
 
     res.json({ ok: true, token, livekitUrl: url, roomId: room.id, displayName });

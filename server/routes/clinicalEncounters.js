@@ -1146,6 +1146,7 @@ router.get('/consent/template',
  */
 router.post('/consent',
   authenticate,
+  requireRole('patient', 'provider'),
   auditMiddleware('create', 'telehealth_consent'),
   async (req, res) => {
     try {
@@ -1160,6 +1161,8 @@ router.post('/consent',
           error: 'Patient ID is required'
         });
       }
+      const { patientFinancialAccess } = require('../middleware/financialRecordScope');
+      if (!await patientFinancialAccess(req.user, patientId)) return res.status(403).json({ success: false, error: 'Patient access denied' });
       
       const consent = await telehealthConsentService.captureConsent(patientId, data, req);
       
@@ -1170,7 +1173,7 @@ router.post('/consent',
       });
     } catch (error) {
       logger.error('Capture consent error:', error);
-      res.status(500).json({
+      res.status(error.statusCode || error.status || 500).json({
         success: false,
         error: error.message || 'Failed to capture consent'
       });

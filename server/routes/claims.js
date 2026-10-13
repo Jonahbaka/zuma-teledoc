@@ -7,28 +7,25 @@ const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const { auditMiddleware } = require('../middleware/audit');
 const claimsService = require('../services/claimsService');
+const db = require('../db');
+const { patientMarketSql, actorMarket, patientFinancialAccess, scopedFinancialRecord } = require('../middleware/financialRecordScope');
+const claimScope = scopedFinancialRecord('claims', 'claim');
 
 // Get claims for current user
 router.get('/', authenticate, async (req, res) => {
   try {
-    let claims;
-    
-    if (req.user.role === 'patient') {
-      claims = await claimsService.getClaimsByPatient(req.user.id);
-    } else if (req.user.role === 'provider' || req.user.role === 'admin') {
-      // Providers and admins can see claims requiring review
-      if (req.query.status === 'review') {
-        claims = await claimsService.getClaimsRequiringReview();
-      } else {
-        // Get all claims (in production, add pagination and filtering)
-        const result = await require('../db').pool.query(
-          'SELECT * FROM claims ORDER BY created_at DESC LIMIT 100'
-        );
-        claims = result.rows;
-      }
-    } else {
+    if (!['patient', 'provider', 'admin', 'super_admin'].includes(req.user.role)) {
       return res.status(403).json({ success: false, error: 'Unauthorized' });
     }
+    const { rows: claims } = await db.query(
+      `SELECT c.* FROM claims c JOIN users p ON p.id = c.patient_id
+        WHERE ${patientMarketSql('p')} = $1
+          AND ($2 <> 'patient' OR c.patient_id = $3)
+          AND ($2 <> 'provider' OR c.provider_id = $3)
+          AND ($4 = false OR c.requires_review = true)
+        ORDER BY c.created_at DESC LIMIT 100`,
+      [actorMarket(req.user), req.user.role, req.user.id, req.query.status === 'review']
+    );
     
     res.json({ success: true, claims });
   } catch (error) {
@@ -38,14 +35,9 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // Get claim by ID
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, claimScope, async (req, res) => {
   try {
-    const result = await require('../db').pool.query(
-      'SELECT * FROM claims WHERE id = $1',
-      [req.params.id]
-    );
-    
-    const claim = result.rows[0];
+    const claim = req.claim;
     
     if (!claim) {
       return res.status(404).json({ success: false, error: 'Claim not found' });
@@ -66,8 +58,11 @@ router.get('/:id', authenticate, async (req, res) => {
 // Create and scrub claim
 router.post('/', authenticate, auditMiddleware('create', 'claim'), async (req, res) => {
   try {
-    if (req.user.role !== 'provider' && req.user.role !== 'admin') {
+    if (req.user.role !== 'provider') {
       return res.status(403).json({ success: false, error: 'Only providers can create claims' });
+    }
+    if (!await patientFinancialAccess(req.user, req.body.patientId)) {
+      return res.status(403).json({ success: false, error: 'Patient access denied' });
     }
     
     const claim = await claimsService.createAndScrubClaim({
@@ -79,12 +74,12 @@ router.post('/', authenticate, auditMiddleware('create', 'claim'), async (req, r
     res.status(201).json({ success: true, claim });
   } catch (error) {
     console.error('Error creating claim:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : 'Claim creation failed', code: error.code });
   }
 });
 
 // Submit claim to clearinghouse
-router.post('/:id/submit', authenticate, auditMiddleware('update', 'claim'), async (req, res) => {
+router.post('/:id/submit', authenticate, claimScope, auditMiddleware('update', 'claim'), async (req, res) => {
   try {
     if (req.user.role !== 'provider' && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, error: 'Unauthorized' });
@@ -95,12 +90,12 @@ router.post('/:id/submit', authenticate, auditMiddleware('update', 'claim'), asy
     res.json({ success: true, claim });
   } catch (error) {
     console.error('Error submitting claim:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : 'Claim submission failed', code: error.code });
   }
 });
 
 // Apply auto-corrections to claim
-router.patch('/:id/correct', authenticate, auditMiddleware('update', 'claim'), async (req, res) => {
+router.patch('/:id/correct', authenticate, claimScope, auditMiddleware('update', 'claim'), async (req, res) => {
   try {
     if (req.user.role !== 'provider' && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, error: 'Unauthorized' });
@@ -119,7 +114,7 @@ router.patch('/:id/correct', authenticate, auditMiddleware('update', 'claim'), a
 });
 
 // Update claim remittance
-router.patch('/:id/remittance', authenticate, auditMiddleware('update', 'claim'), async (req, res) => {
+router.patch('/:id/remittance', authenticate, claimScope, auditMiddleware('update', 'claim'), async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ success: false, error: 'Only admins can update remittance' });

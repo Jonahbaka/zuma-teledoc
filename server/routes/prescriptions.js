@@ -231,9 +231,10 @@ router.post('/:id/sign-and-send',
       });
     } catch (error) {
       logger.error('Sign and send error:', error);
-      res.status(error.message?.includes('not found') ? 404 : 500).json({
+      res.status(error.statusCode || (error.message?.includes('not found') ? 404 : 500)).json({
         success: false,
-        error: error.message || 'Failed to send prescription'
+        error: error.message || 'Failed to send prescription',
+        code: error.code
       });
     }
   }

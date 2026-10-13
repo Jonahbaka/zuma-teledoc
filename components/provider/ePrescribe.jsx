@@ -39,10 +39,7 @@ export default function EPrescribe({ patientId, visitId, appointmentId, aiSugges
         console.log('Using DoctaService result:', result);
       }
 
-      // Auto-initiate PA if required
-      if (result.requiresPriorAuth) {
-        await handleAutoSubmitPA(result);
-      }
+      // An estimated benefit result does not authorize payer submission.
     } catch (error) {
       toast({
         title: 'Error',
@@ -93,16 +90,11 @@ export default function EPrescribe({ patientId, visitId, appointmentId, aiSugges
 
     setPrescribing(true);
     try {
-      // In production, integrate with ePrescribe system
       toast({
-        title: 'Prescription Authorized',
-        description: 'Rx sent to pharmacy successfully'
+        title: 'Delivery is not connected',
+        description: 'Use the connected prescribing workflow. No prescription has been sent.',
+        variant: 'destructive'
       });
-      
-      // Reset
-      setSelectedDrug('');
-      setRtbcResult(null);
-      setPriorAuth(null);
     } catch (error) {
       toast({
         title: 'Error',
@@ -146,7 +138,8 @@ export default function EPrescribe({ patientId, visitId, appointmentId, aiSugges
       <Card>
         <CardHeader>
           <CardTitle>ePrescribe</CardTitle>
-          <p className="text-sm text-gray-500">Medication Search & Real-Time Benefit Check</p>
+          <p className="text-base text-gray-600">Medication review and estimated pricing</p>
+          <p className="text-sm text-gray-600">Coverage, prior authorization, and pharmacy delivery are not verified in this view.</p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-4">
@@ -295,7 +288,7 @@ export default function EPrescribe({ patientId, visitId, appointmentId, aiSugges
               <div className="p-4 bg-white border-t border-gray-200 flex justify-end">
                 <Button
                   onClick={handleFinalizeRx}
-                  disabled={prescribing || (rtbcResult.requiresPriorAuth && !priorAuth)}
+                  disabled
                   className="bg-green-600 hover:bg-green-700"
                 >
                   {prescribing ? (
@@ -306,7 +299,7 @@ export default function EPrescribe({ patientId, visitId, appointmentId, aiSugges
                   ) : (
                     <>
                       <Send className="w-4 h-4 mr-2" />
-                      Authorize Rx
+                      Delivery not connected
                     </>
                   )}
                 </Button>

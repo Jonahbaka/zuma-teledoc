@@ -105,6 +105,7 @@ class PrescriptionService {
    * Sign and send prescription to pharmacy
    */
   async signAndSend(prescriptionId, providerId, deaNumber = null, signature = null) {
+    require('../utils/integrationReadiness').requireLegacyPrescriptionTransport();
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');

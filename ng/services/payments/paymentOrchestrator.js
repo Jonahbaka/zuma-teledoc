@@ -7,6 +7,8 @@
 const paystackService = require('./paystackService');
 const flutterwaveService = require('./flutterwaveService');
 const { getPool } = require('../../../server/db');
+const { randomUUID } = require('crypto');
+const { toMinorUnits } = require('./paymentIntegrity');
 
 class PaymentOrchestrator {
   constructor() {
@@ -19,7 +21,7 @@ class PaymentOrchestrator {
    */
   generateReference(prefix = 'NG-RX') {
     const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const rand = randomUUID();
     return `${prefix}-${date}-${rand}`;
   }
 
@@ -43,15 +45,14 @@ class PaymentOrchestrator {
   async initializePayment({
     orderId, email, amount, pharmacySubaccountCode, pharmacySubaccountId,
     platformFee, patientName, patientPhone, paymentMethod = 'card',
-    provider = null,
+    provider = null, paymentReference = null,
   }) {
-    const reference = this.generateReference();
+    const reference = paymentReference || this.generateReference();
     const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/ng/patient/orders?ref=${reference}`;
     const selectedProvider = provider || this.primaryProvider;
 
     const metadata = {
       order_id: orderId,
-      patient_name: patientName,
       payment_method: paymentMethod,
     };
 
@@ -68,13 +69,13 @@ class PaymentOrchestrator {
 
         result = await paystackService.initializeTransaction({
           email,
-          amount: amount * 100, // Convert to kobo
+          amount: toMinorUnits(amount),
           reference,
           callbackUrl,
           metadata,
           channels: channelMap[paymentMethod] || channelMap.all,
           subaccountCode: pharmacySubaccountCode,
-          platformFee: platformFee * 100,
+          platformFee: toMinorUnits(platformFee),
         });
 
         return {
@@ -107,15 +108,8 @@ class PaymentOrchestrator {
 
       throw new Error(`Unknown payment provider: ${selectedProvider}`);
     } catch (error) {
-      // Fallback to secondary provider
-      if (selectedProvider === this.primaryProvider) {
-        console.error(`Primary provider (${this.primaryProvider}) failed, falling back:`, error.message);
-        return this.initializePayment({
-          orderId, email, amount, pharmacySubaccountCode, pharmacySubaccountId,
-          platformFee, patientName, patientPhone, paymentMethod,
-          provider: this.fallbackProvider,
-        });
-      }
+      // A timeout may follow successful initialization. Do not create another
+      // collectible transaction on a different gateway without reconciliation.
       throw error;
     }
   }
@@ -128,6 +122,10 @@ class PaymentOrchestrator {
       const result = await paystackService.verifyTransaction(reference);
       return {
         verified: result.data.status === 'success',
+        reference: result.data.reference,
+        currency: result.data.currency,
+        amountMinor: result.data.amount,
+        environment: result.data.domain,
         amount: result.data.amount / 100, // Convert from kobo
         channel: result.data.channel,
         paidAt: result.data.paid_at,
@@ -141,6 +139,9 @@ class PaymentOrchestrator {
       const result = await flutterwaveService.verifyTransaction(reference);
       return {
         verified: result.data.status === 'successful',
+        reference: result.data.tx_ref,
+        currency: result.data.currency,
+        amountMinor: toMinorUnits(result.data.amount),
         amount: result.data.amount,
         channel: result.data.payment_type,
         paidAt: result.data.created_at,

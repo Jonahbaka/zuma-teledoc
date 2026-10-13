@@ -4,12 +4,25 @@
  */
 
 const logger = require('../middleware/logger');
+const { demoIntegrationsEnabled } = require('../utils/integrationReadiness');
 
 class EligibilityService {
   /**
    * Verify insurance eligibility via Change Healthcare RTE
    */
   async verifyRealTime(memberId, payerName) {
+    // No live payer adapter is installed here. Credentials alone do not make
+    // the commented-out transport an operational eligibility connection.
+    if (!demoIntegrationsEnabled()) {
+      return {
+        status: 'UNKNOWN',
+        payer: payerName || null,
+        verificationSource: 'unavailable',
+        verified: false,
+        code: 'INTEGRATION_NOT_ACTIVATED',
+        timestamp: new Date().toISOString(),
+      };
+    }
     try {
       const apiKey = process.env.CHANGE_HEALTHCARE_RTE_API_KEY;
       const apiUrl = process.env.CHANGE_HEALTHCARE_RTE_API_URL || 'https://api.changehealthcare.com/eligibility';
@@ -87,7 +100,8 @@ class EligibilityService {
           },
           effectiveDate: '2024-01-01',
           expirationDate: '2024-12-31',
-          verificationSource: 'Change Healthcare (ANSI X12 270/271)',
+          verificationSource: 'synthetic_demo',
+          synthetic: true,
           timestamp: new Date().toISOString()
         });
       }, 2000);

@@ -43,7 +43,9 @@ function wrap(fn) {
 }
 
 // All routes require at least executive_read_only
-router.use(rbac.requireExecutiveView);
+// These legacy calculations aggregate the entire market. Scoped officials use
+// approved records/reports until every KPI query supports all assignment axes.
+router.use(rbac.requireExecutiveView, rbac.requirePlatformAdmin);
 
 // ─── Dashboard (full payload) ────────────────────────────────────────────────
 

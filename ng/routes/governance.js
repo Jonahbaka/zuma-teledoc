@@ -29,6 +29,7 @@ const svc     = require('../services/public-health/governanceService');
 const rbac    = require('../middleware/rbac');
 
 const router = express.Router();
+const { canAccessReport, accessibleReportIds } = require('../middleware/reportScope');
 
 // ─── Async error boundary ────────────────────────────────────────────────────
 
@@ -55,11 +56,16 @@ async function runGate(middleware, req, res) {
   return allowed;
 }
 
-async function ensureResourceScope(req, res, resource) {
+async function ensureResourceScope(req, res, resource, permission = 'read') {
+  if (resource?.report_id) {
+    if (!await canAccessReport(req.user, resource.report_id, permission)) { res.status(404).json({ error: 'Submission not found in your assigned report scope.' }); return false; }
+    return true;
+  }
   const allowed = await rbac.userCanAccessResource(req.user, {
     jurisdictionId: resource?.jurisdiction_id || resource?.jurisdictionId || null,
     facilityId: resource?.facility_id || resource?.facilityId || null,
     programmeArea: resource?.programme_area || resource?.programmeArea || null,
+    permission,
   });
   if (allowed === null) {
     res.status(503).json({ error: 'Government authorization scopes are unavailable.' });
@@ -108,6 +114,7 @@ router.get(
 router.get(
   '/executive-summary',
   rbac.requireExecutiveView,
+  rbac.requirePlatformAdmin,
   rbac.auditRequest('view', 'executive_summary'),
   wrap(async (req, res) => {
     const jurisdictionIds = await accessibleJurisdictions(req, res);
@@ -153,6 +160,7 @@ router.get(
       limit:          Number(req.query.limit) || 50,
       page:           Number(req.query.page)  || 1,
       allowedJurisdictionIds,
+      reportIds: await accessibleReportIds(req.user),
     }));
   })
 );
@@ -168,7 +176,15 @@ router.post(
     if (!jurisdictionId) {
       return res.status(422).json({ error: 'jurisdictionId is required for an auditable government submission.' });
     }
-    if (!(await ensureResourceScope(req, res, { jurisdictionId, facilityId }))) return;
+    if (!await canAccessReport(req.user, reportId, 'prepare')) return res.status(404).json({ error: 'Report not found in your preparation scope.' });
+    const bundle = await require('../services/public-health/publicHealthProgrammeService').getReport(reportId);
+    if (String(bundle.report.facility_id || '') !== String(facilityId || '')) return res.status(422).json({ error: 'Submission facility must match the report.' });
+    if (String(bundle.report.report_period) !== String(period)) return res.status(422).json({ error: 'Submission period must match the report.' });
+    const { rows: prior } = await require('../../server/db').getPool().query('SELECT jurisdiction_id FROM ng_governance_submissions WHERE report_id=$1 ORDER BY created_at DESC LIMIT 1', [reportId]);
+    if (prior[0]?.jurisdiction_id && String(prior[0].jurisdiction_id) !== String(jurisdictionId)) return res.status(409).json({ error: 'An existing report jurisdiction cannot be changed through submission metadata.' });
+    for (const programmeArea of new Set(bundle.values.length ? bundle.values.map((value) => value.programme_area) : [null])) {
+      if (!(await ensureResourceScope(req, res, { jurisdictionId, facilityId, programmeArea }, 'prepare'))) return;
+    }
     const submission = await svc.submitReport({
       reportId,
       facilityId:      facilityId      || null,
@@ -234,7 +250,8 @@ router.post(
 
     const existing = await svc.getSubmission(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Submission not found.' });
-    if (!(await ensureResourceScope(req, res, existing))) return;
+    const permission = approverTargets.has(targetStatus) ? 'approve' : exporterTargets.has(targetStatus) ? 'export' : reviewerTargets.has(targetStatus) ? 'review' : 'prepare';
+    if (!(await ensureResourceScope(req, res, existing, permission))) return;
 
     const submission = await svc.advanceWorkflow({
       submissionId: req.params.id,

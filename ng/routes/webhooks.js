@@ -9,30 +9,30 @@ const paystackService = require('../services/payments/paystackService');
 const flutterwaveService = require('../services/payments/flutterwaveService');
 const orderService = require('../services/pharmacy/orderService');
 const complianceService = require('../services/compliance/complianceService');
+const { getPool } = require('../../server/db');
+const paymentWebhookService = require('../services/payments/paymentWebhookService');
 
 // Paystack webhook
 router.post('/paystack', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     const signature = req.headers['x-paystack-signature'];
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    const rawBody = req.rawBody || (Buffer.isBuffer(req.body) ? req.body : null);
 
     // Verify webhook signature
-    if (!paystackService.verifyWebhookSignature(body, signature)) {
+    if (!paystackService.verifyWebhookSignature(rawBody, signature)) {
       console.error('Paystack webhook signature verification failed');
       return res.status(401).json({ error: 'Invalid signature' });
     }
+
+    const body = JSON.parse(rawBody.toString('utf8'));
+    if (!body || typeof body.event !== 'string') return res.status(400).json({ error: 'Invalid payment event' });
+    const receiptOutcome = await paymentWebhookService.acceptVerifiedEvent(getPool(), body, rawBody);
 
     const result = await paystackService.handleWebhook(body);
 
     switch (result.type) {
       case 'payment_success': {
-        const reference = result.data.reference;
-        try {
-          await orderService.confirmPayment(reference, 'paystack');
-          console.log(`Payment confirmed: ${reference}`);
-        } catch (err) {
-          console.error(`Payment confirmation failed for ${reference}:`, err.message);
-        }
+        // The durable receipt handler verifies the consultation invoice or order.
         break;
       }
 
@@ -56,11 +56,22 @@ router.post('/paystack', express.raw({ type: 'application/json' }), async (req, 
         break;
     }
 
-    res.status(200).json({ received: true });
+    res.status(200).json({ received: true, handled: !receiptOutcome.ignored });
   } catch (err) {
     console.error('Paystack webhook error:', err.message);
     res.status(500).json({ error: 'Webhook processing failed' });
   }
+});
+
+// Flutterwave webhook
+router.post('/livekit', express.raw({ type: 'application/webhook+json' }), async (req, res) => {
+  const service = require('../services/conferencing/livekitWebhookService');
+  const rawBody = req.rawBody || (Buffer.isBuffer(req.body) ? req.body : null);
+  let event;
+  try { event = await service.receiveEvent(rawBody, req.headers.authorization); }
+  catch { return res.status(401).json({ error: 'Invalid LiveKit event signature' }); }
+  try { res.json({ received: true, ...await service.recordEvent(getPool(), event) }); }
+  catch { res.status(500).json({ error: 'LiveKit event could not be persisted' }); }
 });
 
 // Flutterwave webhook
@@ -81,6 +92,7 @@ router.post('/flutterwave', async (req, res) => {
           await orderService.confirmPayment(reference, 'flutterwave');
         } catch (err) {
           console.error(`FLW payment confirmation failed for ${reference}:`, err.message);
+          throw err;
         }
         break;
       }

@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDateTime } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 export default function PatientRecordsPage() {
   const [records, setRecords] = useState([]);
@@ -27,15 +28,22 @@ export default function PatientRecordsPage() {
   const [consents, setConsents] = useState([]);
   const [consentState, setConsentState] = useState('CA');
   const [capturingConsent, setCapturingConsent] = useState(false);
+  const [consentTemplate, setConsentTemplate] = useState(null);
+  const [consentAcknowledged, setConsentAcknowledged] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [viewedRecord, setViewedRecord] = useState(null);
 
   useEffect(() => {
     fetchAll();
   }, []);
 
   const fetchAll = async () => {
+    setLoading(true);
+    setLoadError('');
     try {
       const meRes = await api.get('/auth/me');
       const user = meRes?.data?.user;
+      if (!user?.id) throw new Error('Your account could not be loaded');
       setMe(user);
 
       const [recordsRes, encountersRes, consentsRes] = await Promise.all([
@@ -47,6 +55,11 @@ export default function PatientRecordsPage() {
       if (recordsRes.data.success) setRecords(recordsRes.data.records || []);
       if (encountersRes.data.success) setEncounters(encountersRes.data.encounters || []);
       if (consentsRes.data.success) setConsents(consentsRes.data.consents || []);
+      if (!recordsRes.data.success || !encountersRes.data.success || !consentsRes.data.success) {
+        setLoadError('Some records could not be loaded. Retry before treating this list as complete.');
+      }
+    } catch {
+      setLoadError('Health records could not be loaded. Please retry.');
     } finally {
       setLoading(false);
     }
@@ -77,24 +90,37 @@ export default function PatientRecordsPage() {
     }
   };
 
+  const reviewConsent = async () => {
+    setCapturingConsent(true);
+    setConsentAcknowledged(false);
+    try {
+      const { data } = await clinicalEhrAPI.getConsentTemplate(consentState);
+      if (!data?.success || !data.template?.id || !data.template.contentPlain?.trim()) throw new Error('Readable consent text is unavailable. Contact your care team.');
+      setConsentTemplate({ ...data.template, patientState: consentState });
+    } catch (error) {
+      toast({ title: 'Consent unavailable', description: error.message, variant: 'destructive' });
+    } finally {
+      setCapturingConsent(false);
+    }
+  };
+
   const captureConsent = async () => {
     if (!me?.id) return;
+    if (!consentTemplate || !consentAcknowledged || consentTemplate.patientState !== consentState) return;
     setCapturingConsent(true);
     try {
-      const templateRes = await clinicalEhrAPI.getConsentTemplate(consentState);
-      if (!templateRes.data?.success || !templateRes.data?.template?.id) {
-        throw new Error('Consent template unavailable');
-      }
-      const template = templateRes.data.template;
+      const template = consentTemplate;
       const res = await clinicalEhrAPI.captureConsent({
         templateId: template.id,
         templateVersion: template.version,
         patientState: consentState,
         consentMethod: 'electronic_signature',
-        signatureData: { type: 'patient_ack', timestamp: new Date().toISOString() }
+        signatureData: { type: 'patient_ack', reviewed: true, timestamp: new Date().toISOString() }
       });
       if (res.data?.success) {
         toast({ title: 'Consent captured', variant: 'success' });
+        setConsentTemplate(null);
+        setConsentAcknowledged(false);
         const consentsRes = await clinicalEhrAPI.getConsents(me.id);
         if (consentsRes.data?.success) setConsents(consentsRes.data.consents || []);
       }
@@ -106,7 +132,7 @@ export default function PatientRecordsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="clinical-readable space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
@@ -116,6 +142,29 @@ export default function PatientRecordsPage() {
           <p className="text-slate-500 mt-1">Documents and visit notes</p>
         </div>
       </div>
+
+      {loadError && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-base text-amber-950">
+        <p>{loadError}</p><Button variant="outline" className="mt-3" onClick={fetchAll} disabled={loading}>Retry loading records</Button>
+      </div>}
+
+      <Dialog open={Boolean(viewedRecord)} onOpenChange={(open) => { if (!open) setViewedRecord(null); }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{viewedRecord?.title || 'Health record'}</DialogTitle><DialogDescription>Review the recorded information.</DialogDescription></DialogHeader>
+          <p className="whitespace-pre-wrap text-base leading-7">{viewedRecord?.content || 'No readable content is available for this record. Contact your care team for the attachment.'}</p>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(consentTemplate)} onOpenChange={(open) => { if (!open) { setConsentTemplate(null); setConsentAcknowledged(false); } }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader><DialogTitle>{consentTemplate?.title || 'Telehealth consent'}</DialogTitle><DialogDescription>Version {consentTemplate?.version}. Read the consent before signing.</DialogDescription></DialogHeader>
+          <div className="whitespace-pre-wrap text-base leading-7">{consentTemplate?.contentPlain}</div>
+          <label className="flex min-h-11 items-start gap-3 text-base">
+            <input type="checkbox" className="mt-1 h-5 w-5" checked={consentAcknowledged} onChange={(event) => setConsentAcknowledged(event.target.checked)} />
+            <span>I have read this consent and agree to the described telehealth service.</span>
+          </label>
+          <Button onClick={captureConsent} disabled={!consentAcknowledged || capturingConsent}>{capturingConsent ? 'Saving consent...' : 'Agree and sign'}</Button>
+        </DialogContent>
+      </Dialog>
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
@@ -176,7 +225,7 @@ export default function PatientRecordsPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" onClick={() => setViewedRecord(record)}>
                             <Eye className="w-4 h-4 mr-2" />
                             View
                           </Button>
@@ -264,7 +313,7 @@ export default function PatientRecordsPage() {
                 <div className="grid md:grid-cols-3 gap-4 items-end">
                   <div className="space-y-2">
                     <Label>State</Label>
-                    <Select value={consentState} onValueChange={setConsentState}>
+                    <Select value={consentState} onValueChange={(value) => { setConsentState(value); setConsentTemplate(null); setConsentAcknowledged(false); }}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {['CA','NY','TX','FL','WA','IL','AZ','CO','GA','NC'].map(s => (
@@ -273,7 +322,7 @@ export default function PatientRecordsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button onClick={captureConsent} disabled={capturingConsent} className="bg-purple-600 hover:bg-purple-700">
+                  <Button onClick={reviewConsent} disabled={capturingConsent} className="bg-purple-600 hover:bg-purple-700">
                     {capturingConsent ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                     Review & Sign
                   </Button>

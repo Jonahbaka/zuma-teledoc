@@ -6,6 +6,7 @@
 
 const https = require('https');
 const ngConfig = require('../../config');
+const { verifyPaystackSignature } = require('./paymentIntegrity');
 
 const PAYSTACK_BASE = ngConfig.paystack.baseUrl;
 const SECRET_KEY = ngConfig.paystack.secretKey;
@@ -70,9 +71,11 @@ class PaystackService {
     channels = ['card', 'bank', 'ussd', 'bank_transfer'],
     subaccountCode = null, platformFee = 0,
   }) {
+    if (!SECRET_KEY) throw new Error('Paystack is not configured');
+    if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('A positive integer kobo amount is required');
     const body = {
       email,
-      amount: Math.round(amount), // Must be in kobo
+      amount,
       reference,
       callback_url: callbackUrl,
       metadata: {
@@ -173,13 +176,8 @@ class PaystackService {
   /**
    * Verify webhook signature
    */
-  verifyWebhookSignature(body, signature) {
-    const crypto = require('crypto');
-    const hash = crypto
-      .createHmac('sha512', ngConfig.paystack.webhookSecret)
-      .update(JSON.stringify(body))
-      .digest('hex');
-    return hash === signature;
+  verifyWebhookSignature(rawBody, signature) {
+    return verifyPaystackSignature(rawBody, signature, SECRET_KEY);
   }
 
   /**

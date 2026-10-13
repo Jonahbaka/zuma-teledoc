@@ -142,6 +142,22 @@ test('government imports enforce scope, maker-checker, quarantine, duplicate det
   assert.equal(dhis2.dataValues.length, 0);
   assert.equal(dhis2.omissions.length, 2);
 
+  // A read-only assignment in one programme must not borrow export or write
+  // rights from an unrelated assignment in the same jurisdiction/facility.
+  await pool.query(`INSERT INTO ng_user_jurisdiction_roles
+    (user_id,jurisdiction_id,facility_id,programme_area,role,can_export,can_approve)
+    VALUES ($1,$2,$3,'maternal_health','executive_read_only',false,false),
+           ($1,$2,$3,'communicable_disease','analyst',true,false)`, [outsider.id, amac.id, facility.id]);
+  assert.equal((await service.searchRecords({ facilityId: facility.id }, outsider, [amac.id])).total, 2);
+  assert.equal(await rbac.userCanAccessResource(outsider, { jurisdictionId: amac.id, facilityId: facility.id, programmeArea: 'maternal_health', permission: 'prepare' }), false);
+  const forbiddenExport = await service.exportSearch('csv', { facilityId: facility.id }, outsider, [amac.id]);
+  assert.doesNotMatch(forbiddenExport.body, /PNC-A/);
+  const sources = await service.listSources({ accessibleJurisdictionIds: [amac.id], actor: outsider });
+  assert.ok(sources.some((item) => item.id === source.id));
+  await pool.query('UPDATE ng_user_jurisdiction_roles SET active=false WHERE user_id=$1', [outsider.id]);
+  assert.equal((await service.searchRecords({ facilityId: facility.id }, outsider, [amac.id])).total, 0);
+  assert.equal((await service.listSources({ accessibleJurisdictionIds: [amac.id], actor: outsider })).length, 0);
+
   const rolledBack = await service.rollbackBatch(created.batch.id, checker, 'Fictional rollback recovery proof');
   assert.equal(rolledBack.rolledBack, 2);
   const afterRollback = await service.searchRecords({ q: 'PNC', facilityId: facility.id }, maker, [amac.id]);

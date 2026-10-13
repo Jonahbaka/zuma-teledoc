@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -82,7 +82,7 @@ const VITAL_OPTIONS = {
     label: 'Temperature',
     code: '8310-5',
     valueType: 'numeric',
-    unit: 'Â°C',
+    unit: '°C',
     primaryLabel: 'Value',
   },
   oxygen_saturation: {
@@ -121,7 +121,7 @@ function priorityVariant(priority) {
   return 'secondary';
 }
 
-function WorkspaceShell({ children, user, context, online, pendingCount, onSync, syncing, onLogout }) {
+function WorkspaceShell({ children, user, context, online, pendingCount, onSync, syncing, onLogout, standalone }) {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950">
       <header className="border-b border-slate-200 bg-white">
@@ -131,8 +131,8 @@ function WorkspaceShell({ children, user, context, online, pendingCount, onSync,
               <HeartPulse className="h-6 w-6" aria-hidden="true" />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">DoctaRx Nigeria</p>
-              <h1 className="text-xl font-bold">PHC Care Workspace</h1>
+              <p className="text-sm font-semibold text-emerald-700">{standalone ? 'DoctaRx CareOps' : 'DoctaRx Nigeria'}</p>
+              <h1 className="text-xl font-bold">{standalone ? 'Clinical workspace' : 'PHC Care Workspace'}</h1>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -161,7 +161,7 @@ function WorkspaceShell({ children, user, context, online, pendingCount, onSync,
   );
 }
 
-export default function PhcWorkspace() {
+export default function PhcWorkspace({ standalone = false }) {
   const router = useRouter();
   const { user, loading: authLoading, isAuthenticated, logout } = useAuth();
   const [online, setOnline] = useState(true);
@@ -204,6 +204,8 @@ export default function PhcWorkspace() {
   const context = useMemo(() => contexts.find((item) => (
     `${item.programme_id}:${item.facility_id}` === contextKey
   )) || contexts[0] || null, [contexts, contextKey]);
+  const currentContext = useRef(context);
+  currentContext.current = context;
   const programmeRole = context?.programme_role;
   const canViewQueue = CLINICAL_QUEUE_ROLES.has(programmeRole);
   const canIntake = programmeRole === 'phc_nurse' || programmeRole === 'remote_clinician';
@@ -231,9 +233,9 @@ export default function PhcWorkspace() {
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) {
-      router.replace('/ng/auth/login?role=provider&returnTo=%2Fng%2Fphc');
+      router.replace(standalone ? '/careops/login' : '/ng/auth/login?role=provider&returnTo=%2Fng%2Fphc');
     }
-  }, [authLoading, isAuthenticated, router]);
+  }, [authLoading, isAuthenticated, router, standalone]);
 
   useEffect(() => {
     if (authLoading || !isAuthenticated) return;
@@ -266,6 +268,7 @@ export default function PhcWorkspace() {
 
   const refreshWorklists = useCallback(async () => {
     if (!context) return;
+    const requestedContext = context;
     setBusy('refresh');
     setError('');
     try {
@@ -286,19 +289,21 @@ export default function PhcWorkspace() {
           ? phcAPI.listClinicalDevices(context)
           : Promise.resolve({ data: { devices: [] } }),
       ]);
+      if (currentContext.current !== requestedContext) return;
       setQueue(queueResponse.data.entries || []);
       setFollowUps(followUpResponse.data.tasks || []);
       setReports(reportResponse.data.reports || []);
       setReferrals(referralResponse.data.referrals || []);
       setClinicalDevices(deviceResponse.data.devices || []);
     } catch (requestError) {
-      setError(errorMessage(requestError, 'Worklists could not be refreshed.'));
+      if (currentContext.current === requestedContext) setError(errorMessage(requestError, 'Worklists could not be refreshed.'));
     } finally {
-      setBusy('');
+      if (currentContext.current === requestedContext) setBusy('');
     }
   }, [context]);
 
   useEffect(() => {
+    let cancelled = false;
     setSelectedPatient(null);
     setActiveEncounter(null);
     setPatients([]);
@@ -306,12 +311,17 @@ export default function PhcWorkspace() {
     setDhis2Preview(null);
     setAiSuggestion(null);
     setReferralEntry(null);
+    setQueue([]); setFollowUps([]); setReports([]); setReferrals([]); setClinicalDevices([]);
+    setCapabilities({ offlineClinicalSyncEnabled: false, clinicalAiEnabled: false, deviceCaptureEnabled: false });
+    setChiefComplaint(''); setVitalPrimary(''); setVitalSecondary(''); setQuery('');
+    setNotice('');
     if (!context) return;
     refreshWorklists();
     refreshOfflineCounts();
     phcAPI.getConfiguration(context)
-      .then(({ data }) => setCapabilities(data.capabilities || {}))
-      .catch((requestError) => setError(errorMessage(requestError, 'Programme configuration could not be loaded.')));
+      .then(({ data }) => { if (!cancelled) setCapabilities(data.capabilities || {}); })
+      .catch((requestError) => { if (!cancelled) setError(errorMessage(requestError, 'Programme configuration could not be loaded.')); });
+    return () => { cancelled = true; };
   }, [context, refreshOfflineCounts, refreshWorklists]);
 
   const synchronizeOffline = useCallback(async () => {
@@ -365,18 +375,20 @@ export default function PhcWorkspace() {
   }, [capabilities.offlineClinicalSyncEnabled, online, pendingOfflineCount, synchronizeOffline]);
 
   const run = async (name, operation, successMessage) => {
+    const requestedContext = context;
     setBusy(name);
     setError('');
     setNotice('');
     try {
       const result = await operation();
+      if (currentContext.current !== requestedContext) return null;
       if (successMessage) setNotice(successMessage);
       return result;
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      if (currentContext.current === requestedContext) setError(errorMessage(requestError));
       return null;
     } finally {
-      setBusy('');
+      if (currentContext.current === requestedContext) setBusy('');
     }
   };
 
@@ -640,7 +652,7 @@ export default function PhcWorkspace() {
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
           <Loader2 className="mx-auto h-9 w-9 animate-spin text-emerald-700" />
-          <p className="mt-3 text-sm text-slate-600">Loading your programme workspaceâ€¦</p>
+          <p className="mt-3 text-base text-slate-600">Loading your programme workspace...</p>
         </div>
       </div>
     );
@@ -661,6 +673,7 @@ export default function PhcWorkspace() {
 
   return (
     <WorkspaceShell
+      standalone={standalone}
       user={user}
       context={context}
       online={online}
@@ -679,19 +692,20 @@ export default function PhcWorkspace() {
         {contexts.length === 0 ? (
           <Card className="mx-auto max-w-2xl border-amber-200">
             <CardHeader>
-              <CardTitle>No active PHC programme assignment</CardTitle>
+              <CardTitle>{error ? 'Programme access could not be loaded' : 'No active PHC programme assignment'}</CardTitle>
               <CardDescription>
-                Your account is signed in, but it has no active programme and facility membership.
+                {error || 'Your account is signed in, but it has no active programme and facility membership.'}
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {error && <Button className="mr-3" variant="outline" onClick={() => window.location.reload()}>Retry loading access</Button>}
               <Button variant="outline" onClick={() => router.push('/ng/provider/dashboard')}>Return to portal</Button>
             </CardContent>
           </Card>
         ) : (
           <>
             <section className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-              <div className="rounded-2xl bg-gradient-to-br from-emerald-800 to-teal-700 p-6 text-white shadow-sm">
+              <div className="rounded-2xl bg-emerald-800 p-6 text-white shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-medium text-emerald-100">Active care context</p>
@@ -721,7 +735,7 @@ export default function PhcWorkspace() {
                   >
                     {contexts.map((item) => (
                       <option key={`${item.programme_id}:${item.facility_id}`} value={`${item.programme_id}:${item.facility_id}`}>
-                        {item.programme_name} â€” {item.facility_name}
+                        {item.programme_name} — {item.facility_name}
                       </option>
                     ))}
                   </select>
@@ -781,7 +795,7 @@ export default function PhcWorkspace() {
                               <div className="flex items-start justify-between gap-2">
                                 <div>
                                   <p className="font-semibold">{patient.first_name} {patient.last_name}</p>
-                                  <p className="mt-1 text-xs text-slate-600">{patient.local_patient_number || 'No local number'} Â· Phone ending {patient.phone_suffix || 'â€”'}</p>
+                                  <p className="mt-1 text-sm text-slate-600">{patient.local_patient_number || 'No local number'} · Phone ending {patient.phone_suffix || 'Unknown'}</p>
                                 </div>
                                 <Badge variant={patient.consent_status === 'granted' ? 'success' : 'warning'}>{titleCase(patient.consent_status)}</Badge>
                               </div>
@@ -810,7 +824,7 @@ export default function PhcWorkspace() {
                           <form className="space-y-4" onSubmit={createEncounter}>
                             <div>
                               <Label htmlFor="complaint">Chief complaint</Label>
-                              <Textarea id="complaint" className="mt-1.5" value={chiefComplaint} onChange={(event) => setChiefComplaint(event.target.value)} disabled={!selectedPatient || Boolean(activeEncounter)} placeholder="Record the patientâ€™s own words and relevant intake context." />
+                              <Textarea id="complaint" className="mt-1.5" value={chiefComplaint} onChange={(event) => setChiefComplaint(event.target.value)} disabled={!selectedPatient || Boolean(activeEncounter)} placeholder="Record the patient's own words and relevant intake context." />
                             </div>
                             {!activeEncounter && (
                               <Button type="submit" disabled={!selectedPatient || !chiefComplaint.trim() || busy === 'encounter'}>
@@ -820,7 +834,7 @@ export default function PhcWorkspace() {
                             )}
                             {activeEncounter && (
                               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-                                <CheckCircle2 className="mr-2 inline h-4 w-4" /> Encounter open Â· record ID {activeEncounter.id.slice(0, 8)}
+                                <CheckCircle2 className="mr-2 inline h-4 w-4" /> Encounter open · record ID {activeEncounter.id.slice(0, 8)}
                               </div>
                             )}
                           </form>
@@ -908,7 +922,7 @@ export default function PhcWorkspace() {
                             {aiSuggestion && (
                               <div className="mt-4 rounded-xl border border-violet-200 bg-white p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <Badge className="bg-violet-700 text-white hover:bg-violet-700">AI draft Â· human review required</Badge>
+                                  <Badge className="bg-violet-700 text-white hover:bg-violet-700">AI draft · human review required</Badge>
                                   <Badge variant="outline">{titleCase(aiSuggestion.status)}</Badge>
                                 </div>
                                 <p className="mt-3 whitespace-pre-wrap text-sm text-slate-800">{aiSuggestion.output?.handoverDraft || aiSuggestion.output?.summary}</p>
@@ -975,7 +989,7 @@ export default function PhcWorkspace() {
                                   <Badge variant={priorityVariant(entry.priority)}>{titleCase(entry.priority)}</Badge>
                                   <Badge variant="outline">{titleCase(entry.status)}</Badge>
                                 </div>
-                                <p className="mt-1 text-sm text-slate-600">{entry.local_patient_number || 'No local number'} Â· {entry.chief_complaint || 'No complaint recorded'}</p>
+                                <p className="mt-1 text-sm text-slate-600">{entry.local_patient_number || 'No local number'} · {entry.chief_complaint || 'No complaint recorded'}</p>
                               </div>
                               <div className="text-sm text-slate-600">
                                 <p className="flex items-center gap-2"><Clock3 className="h-4 w-4" /> Entered {readableDate(entry.entered_at)}</p>
@@ -1025,7 +1039,7 @@ export default function PhcWorkspace() {
                         <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50 p-5">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              <Badge className="bg-violet-700 text-white hover:bg-violet-700">AI draft Â· human review required</Badge>
+                              <Badge className="bg-violet-700 text-white hover:bg-violet-700">AI draft · human review required</Badge>
                               <h3 className="mt-3 font-semibold">Grounded encounter handover</h3>
                             </div>
                             <Badge variant="outline">{titleCase(aiSuggestion.status)}</Badge>
@@ -1088,7 +1102,7 @@ export default function PhcWorkspace() {
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <p className="font-semibold">{task.title}</p>
-                                <p className="mt-1 text-sm text-slate-600">{task.patient_first_name} {task.patient_last_name} Â· {task.local_patient_number || 'No local number'}</p>
+                                <p className="mt-1 text-sm text-slate-600">{task.patient_first_name} {task.patient_last_name} · {task.local_patient_number || 'No local number'}</p>
                               </div>
                               <Badge variant={task.status === 'completed' ? 'success' : 'outline'}>{titleCase(task.status)}</Badge>
                             </div>
@@ -1145,7 +1159,7 @@ export default function PhcWorkspace() {
                                 <div key={value.internalKey} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                   <p className="text-xs text-slate-600">{value.displayName}</p>
                                   <p className="mt-1 text-2xl font-bold">{value.value}</p>
-                                  <p className="mt-1 text-[11px] text-slate-500">Source v{value.sourceVersion} Â· {value.sourceTable}</p>
+                                  <p className="mt-1 text-sm text-slate-500">Source v{value.sourceVersion} · {value.sourceTable}</p>
                                 </div>
                               ))}
                             </div>
@@ -1169,7 +1183,7 @@ export default function PhcWorkspace() {
                               <div className="flex items-start justify-between gap-2">
                                 <div>
                                   <p className="font-semibold">{report.report_period}</p>
-                                  <p className="text-xs text-slate-500">{titleCase(report.status)} Â· source v{report.source_definition_version}</p>
+                                  <p className="text-sm text-slate-500">{titleCase(report.status)} · source v{report.source_definition_version}</p>
                                 </div>
                                 <Badge variant="success">Aggregate</Badge>
                               </div>
@@ -1230,7 +1244,7 @@ export default function PhcWorkspace() {
                                 <StatusPill status={referral.status} label={titleCase(referral.status)} />
                               </div>
                               <p className="mt-1 text-sm text-slate-700">{referral.reason}</p>
-                              <p className="mt-1 text-xs text-slate-500">Destination: {referral.target_name || titleCase(referral.destination_type)} Â· Created {readableDate(referral.created_at)}</p>
+                              <p className="mt-1 text-sm text-slate-500">Destination: {referral.target_name || titleCase(referral.destination_type)} · Created {readableDate(referral.created_at)}</p>
                               {referral.response_summary && <p className="mt-2 rounded bg-slate-50 p-2 text-sm">Outcome: {referral.response_summary}</p>}
                             </div>
                             <div className="flex flex-wrap gap-2 lg:justify-end">

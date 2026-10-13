@@ -95,7 +95,8 @@ const authenticate = async (req, res, next) => {
     // Get user from database
     const { rows } = await db.query(
       `SELECT id, email, role, first_name, last_name, is_active, mfa_enabled, provider_status, access_level,
-              must_change_password, testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
+              must_change_password, testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier,
+              market_scope, region, country
        FROM users WHERE id = $1`,
       [decoded.userId]
     );
@@ -133,6 +134,7 @@ const authenticate = async (req, res, next) => {
       id: user.id,
       email: user.email,
       role: canonicalRole(user.role),
+      marketScope: user.market_scope || user.region || user.country || 'US',
       firstName: user.first_name,
       lastName: user.last_name,
       mfaEnabled: user.mfa_enabled,
@@ -238,7 +240,7 @@ const requireMfa = async (req, res, next) => {
   
   // If user has MFA enabled, check if session has been MFA verified
   if (req.user.mfaEnabled) {
-    const mfaVerified = req.cookies.mfaVerified === 'true';
+    const mfaVerified = require('../utils/mfaAttestation').hasVerifiedMfa(req);
     
     if (!mfaVerified) {
       return res.status(403).json({

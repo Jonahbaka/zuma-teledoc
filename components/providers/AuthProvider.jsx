@@ -25,6 +25,7 @@ function getCountryAwarePortalPath(role, pathname = '') {
 }
 
 function getCountryAwareLoginPath(role, pathname = '') {
+  if (pathname.startsWith('/careops')) return '/careops/login';
   const isNigeriaPath = pathname.startsWith('/ng');
 
   switch (role) {
@@ -124,7 +125,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const login = async (email, password, mfaCode = null, role = null) => {
+  const login = async (email, password, mfaCode = null, role = null, options = {}) => {
     const requestId = ++authRequestId.current;
 
     try {
@@ -171,7 +172,7 @@ export function AuthProvider({ children }) {
         
         // Redirect based on role + access level
         const redirectPath = getRedirectPath(response.data.user);
-        router.replace(redirectPath);
+        if (options.redirect !== false) router.replace(redirectPath);
         
         return { success: true, redirectPath };
       }

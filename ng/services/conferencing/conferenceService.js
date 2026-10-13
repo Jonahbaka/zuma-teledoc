@@ -289,6 +289,10 @@ async function endRoom(id, actor, pool = getPool()) {
   await assertRoomAccess(id, actor, { moderatorOnly: true }, pool);
   const room = await getRoom(id, pool);
   if (!room) throwNotFound();
+    if (room.status === 'ended') {
+      if (room.media_server === 'livekit') await require('./livekitService').closeMediaRoom(id);
+      return room;
+    }
   if (!isValidRoomTransition(room.status, 'ended')) throwInvalid(`Cannot end from ${room.status}`);
   const r = await pool.query(
     `UPDATE ng_conf_rooms SET status='ended', ended_at=NOW(), updated_at=NOW()
@@ -303,6 +307,7 @@ async function endRoom(id, actor, pool = getPool()) {
       WHERE room_id=$1 AND status='admitted'`, [id]
   );
   await logEvent(id, null, actor, 'room_ended', null, pool);
+  if (room.media_server === 'livekit') await require('./livekitService').closeMediaRoom(id);
   return r.rows[0];
 }
 
@@ -450,8 +455,9 @@ async function leaveRoom(roomId, participantId, actor, pool = getPool()) {
 }
 
 async function removeParticipant(roomId, participantId, actor, { reason } = {}, pool = getPool()) {
+  const room = await assertRoomAccess(roomId, actor, { admittedOnly: true, allowAdmin: false }, pool);
   const actorPart = await getActorParticipant(roomId, actor?.user_id, pool);
-  const target = (await pool.query(`SELECT role FROM ng_conf_participants WHERE id=$1`, [participantId])).rows[0];
+  const target = (await pool.query(`SELECT role FROM ng_conf_participants WHERE id=$1 AND room_id=$2`, [participantId, roomId])).rows[0];
   if (!actorPart || !target) throwNotFound();
   if (!can(actorPart.role, actorPart.permissions_json, 'kick_others') || !canActOn(actorPart.role, target.role)) {
     const e = new Error('Cannot remove this participant'); e.code = 'FORBIDDEN'; throw e;
@@ -463,16 +469,31 @@ async function removeParticipant(roomId, participantId, actor, { reason } = {}, 
     [participantId, roomId, actor?.user_id || null]
   );
   await logEvent(roomId, participantId, actor, 'removed', { reason }, pool);
+  if (room.media_server === 'livekit' && r.rows[0]?.user_id) await require('./livekitService').disconnectParticipant(roomId, r.rows[0].user_id);
   return r.rows[0];
 }
 
 async function promoteParticipant(roomId, participantId, actor, { role, permissions_overrides } = {}, pool = getPool()) {
+  const room = await assertRoomAccess(roomId, actor, { admittedOnly: true, allowAdmin: false }, pool);
   const actorPart = await getActorParticipant(roomId, actor?.user_id, pool);
   if (actorPart?.role !== 'host' && actorPart?.role !== 'consultant') {
     const e = new Error('Only host or consultant can promote'); e.code = 'FORBIDDEN'; throw e;
   }
   // Coerce to a valid enum member; null leaves the existing role untouched.
   role = role ? coerceConfRole(role, 'observer') : null;
+  const target = (await pool.query('SELECT role FROM ng_conf_participants WHERE id=$1 AND room_id=$2', [participantId, roomId])).rows[0];
+  if (!target) throwNotFound();
+  const owner = String(room.host_user_id) === String(actor.user_id);
+  if (!owner && (!canActOn(actorPart.role, target.role) || (role && !canActOn(actorPart.role, role)))) {
+    const error = new Error('Cannot grant an equal or higher conference role'); error.code = 'FORBIDDEN'; throw error;
+  }
+  if (permissions_overrides) {
+    const { PERMISSION_KEYS } = require('../../../lib/ng/conferencePermissions');
+    if (typeof permissions_overrides !== 'object' || Array.isArray(permissions_overrides) || Object.entries(permissions_overrides).some(([key, value]) =>
+      !PERMISSION_KEYS.includes(key) || typeof value !== 'boolean' || (value && !can(actorPart.role, actorPart.permissions_json, key)))) {
+      const error = new Error('Conference permission override is invalid or exceeds moderator authority'); error.code = 'FORBIDDEN'; throw error;
+    }
+  }
   const r = await pool.query(
     `UPDATE ng_conf_participants
         SET role = COALESCE($3::ng_conf_role, role),
@@ -483,6 +504,7 @@ async function promoteParticipant(roomId, participantId, actor, { role, permissi
   );
   if (!r.rows[0]) throwNotFound();
   await logEvent(roomId, participantId, actor, 'promoted', { new_role: role, overrides: permissions_overrides }, pool);
+  if (room.media_server === 'livekit' && r.rows[0]?.status === 'admitted') await require('./livekitService').updateMediaPermissions(roomId, r.rows[0]);
   return r.rows[0];
 }
 

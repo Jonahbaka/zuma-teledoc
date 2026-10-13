@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
+const { issueMfaAttestation, rotateMfaAttestation } = require('../utils/mfaAttestation');
 const { v4: uuidv4 } = require('uuid');
 
 const db = require('../db');
@@ -519,7 +520,7 @@ const loginHandler = async (req, res) => {
     if (user.mfa_enabled) {
       const isProd = process.env.NODE_ENV === 'production';
       const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.doctarx.com' : undefined);
-      res.cookie('mfaVerified', 'true', {
+      res.cookie('mfaVerified', issueMfaAttestation(user.id, accessToken), {
         httpOnly: true,
         secure: isProd,
         sameSite: isProd ? 'lax' : 'strict',
@@ -619,7 +620,7 @@ router.post('/refresh', async (req, res) => {
     
     // Get user
     const { rows: users } = await db.query(
-      `SELECT id, email, role, first_name, last_name, is_active
+      `SELECT id, email, role, first_name, last_name, is_active, mfa_enabled
        FROM users WHERE id = $1`,
       [decoded.userId]
     );
@@ -652,6 +653,12 @@ router.post('/refresh', async (req, res) => {
     
     // Set cookies
     setAuthCookies(res, accessToken, newRefreshToken);
+    const rotatedMfa = user.mfa_enabled ? rotateMfaAttestation(req, user.id, accessToken) : null;
+    if (rotatedMfa) {
+      const isProd = process.env.NODE_ENV === 'production';
+      const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.doctarx.com' : undefined);
+      res.cookie('mfaVerified', rotatedMfa.value, { httpOnly: true, secure: isProd, sameSite: isProd ? 'lax' : 'strict', ...(cookieDomain ? { domain: cookieDomain } : {}), maxAge: rotatedMfa.maxAge });
+    }
     
     res.json({
       success: true,

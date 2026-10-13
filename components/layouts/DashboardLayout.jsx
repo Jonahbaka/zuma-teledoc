@@ -313,7 +313,7 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="app-shell-root min-h-[100dvh] bg-background text-foreground">
+    <div className="app-shell-root clinical-readable min-h-[100dvh] bg-background text-foreground">
       {/* Mobile sidebar backdrop */}
       {!useImmersiveVideoLayout && sidebarOpen && (
         <div 

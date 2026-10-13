@@ -10,6 +10,7 @@ class FHIRValidator {
    */
   validate(resource) {
     const errors = [];
+    if (!resource || typeof resource !== 'object' || Array.isArray(resource)) return { valid: false, errors: ['Resource must be an object'] };
 
     // Check required fields
     if (!resource.resourceType) {
@@ -55,14 +56,19 @@ class FHIRValidator {
       errors.push('Bundle must have a type');
     }
 
-    if (!bundle.entry || bundle.entry.length === 0) {
+    if (!Array.isArray(bundle.entry) || bundle.entry.length === 0) {
       errors.push('Bundle must have at least one entry');
     }
 
     // Validate each entry
-    if (bundle.entry) {
+    if (Array.isArray(bundle.entry)) {
+      const urls = new Set();
+      if (bundle.type === 'message' && bundle.entry[0]?.resource?.resourceType !== 'MessageHeader') errors.push('Message Bundle must start with MessageHeader');
       for (let i = 0; i < bundle.entry.length; i++) {
         const entry = bundle.entry[i];
+        if (!entry.fullUrl || (!/^https?:\/\//.test(entry.fullUrl) && !/^urn:uuid:[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(entry.fullUrl))) errors.push(`Entry ${i} has an invalid fullUrl`);
+        if (urls.has(entry.fullUrl)) errors.push(`Entry ${i} duplicates a fullUrl`);
+        urls.add(entry.fullUrl);
         if (!entry.resource) {
           errors.push(`Entry ${i} is missing resource`);
           continue;

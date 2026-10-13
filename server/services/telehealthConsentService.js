@@ -110,12 +110,19 @@ class TelehealthConsentService {
     
     // Validate template exists
     const { rows: templates } = await db.query(
-      `SELECT id, version FROM telehealth_consent_templates WHERE id = $1`,
-      [templateId]
+      `SELECT id, version FROM telehealth_consent_templates WHERE id = $1
+         AND is_active = true AND effective_date <= CURRENT_DATE
+         AND (expiry_date IS NULL OR expiry_date > CURRENT_DATE)
+         AND (applicable_states IS NULL OR $2 = ANY(applicable_states))`,
+      [templateId, patientState]
     );
     
     if (templates.length === 0) {
-      throw new Error('Consent template not found');
+      throw Object.assign(new Error('Consent template is no longer available for this state'), { statusCode: 409 });
+    }
+    if (templateVersion !== templates[0].version) throw Object.assign(new Error('Review the current consent version before signing'), { statusCode: 409 });
+    if (consentMethod === 'electronic_signature' && signatureData?.reviewed !== true) {
+      throw Object.assign(new Error('Consent review acknowledgement is required'), { statusCode: 400 });
     }
     
     // Encrypt signature data if provided
@@ -141,8 +148,8 @@ class TelehealthConsentService {
       [
         patientId,
         templateId,
-        templateVersion || templates[0].version,
-        templateVersion || templates[0].version,
+        templates[0].version,
+        templates[0].version,
         consentMethod,
         patientState,
         sigEnc.encrypted, sigEnc.iv, sigEnc.tag,

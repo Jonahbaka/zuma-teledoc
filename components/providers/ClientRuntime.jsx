@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { usePathname } from 'next/navigation';
 
 const GoogleAnalytics = dynamic(() => import('@/components/analytics/GoogleAnalytics'), {
   ssr: false,
@@ -14,9 +15,11 @@ const PwaBootstrap = dynamic(() => import('@/components/pwa/PwaBootstrap'), {
 });
 
 export default function ClientRuntime() {
+  const pathname = usePathname() || '';
+  const isCareOps = pathname.startsWith('/careops') || pathname.startsWith('/ng/phc') || pathname.startsWith('/ng/government-data');
   return (
     <>
-      <GoogleAnalytics />
+      {!isCareOps && <GoogleAnalytics />}
       <DeploymentVersionCheck />
       <PwaBootstrap />
     </>

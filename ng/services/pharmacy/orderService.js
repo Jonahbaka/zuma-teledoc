@@ -182,12 +182,20 @@ class OrderService {
        FROM ng_orders o
        JOIN users u ON u.id = o.patient_user_id
        JOIN ng_pharmacies p ON p.id = o.pharmacy_id
-       WHERE o.id = $1 AND o.patient_user_id = $2 AND o.payment_status = 'pending'`,
+       WHERE o.id = $1 AND o.patient_user_id = $2 AND o.payment_status = 'pending' AND o.status <> 'cancelled'`,
       [orderId, patientUserId]
     );
 
     if (!order.rows.length) throw new Error('Order not found or already paid');
     const o = order.rows[0];
+    const paymentReference = paymentOrchestrator.generateReference();
+    const reserved = await pool.query(
+      `UPDATE ng_orders SET payment_reference = $1, payment_provider = 'paystack', updated_at = NOW()
+       WHERE id = $2 AND patient_user_id = $3 AND payment_status = 'pending' AND status <> 'cancelled' AND payment_reference IS NULL
+       RETURNING id`,
+      [paymentReference, orderId, patientUserId]
+    );
+    if (!reserved.rows.length) throw new Error('A payment attempt already exists. Reconcile it before starting another.');
 
     const payment = await paymentOrchestrator.initializePayment({
       orderId: o.id,
@@ -199,6 +207,8 @@ class OrderService {
       patientName: `${o.first_name} ${o.last_name}`,
       patientPhone: o.phone_number,
       paymentMethod: o.payment_method,
+      paymentReference,
+      provider: 'paystack',
     });
 
     // Store payment reference
@@ -227,9 +237,33 @@ class OrderService {
       throw new Error('Payment verification failed');
     }
 
-    // Update order
-    const order = await pool.query(
-      `UPDATE ng_orders SET
+    const client = await pool.connect();
+    let o;
+    try {
+      await client.query('BEGIN');
+      const locked = await client.query(
+        'SELECT * FROM ng_orders WHERE payment_reference = $1 AND payment_provider = $2 FOR UPDATE',
+        [paymentReference, provider]
+      );
+      if (!locked.rows.length) throw new Error('Order not found for payment reference');
+      o = locked.rows[0];
+      const { assertPaymentMatches, toMinorUnits } = require('../payments/paymentIntegrity');
+      const secretKey = require('../../config').paystack.secretKey;
+      assertPaymentMatches(verification, {
+        reference: paymentReference,
+        amountMinor: toMinorUnits(o.total_amount),
+        currency: 'NGN',
+        environment: provider === 'paystack' ? (secretKey?.startsWith('sk_live_') ? 'live' : 'test') : null,
+      });
+      if (o.payment_status === 'completed') {
+        await client.query('COMMIT');
+        return { order: o, verification, alreadyConfirmed: true };
+      }
+      if (o.payment_status !== 'pending' || o.status === 'cancelled') {
+        throw new Error('Payment requires reconciliation against the current order state');
+      }
+      const order = await client.query(
+        `UPDATE ng_orders SET
         payment_status = 'completed',
         paid_at = NOW(),
         status = 'confirmed',
@@ -237,26 +271,25 @@ class OrderService {
       WHERE payment_reference = $1
       RETURNING *`,
       [paymentReference]
-    );
-
-    if (!order.rows.length) throw new Error('Order not found for payment reference');
-    const o = order.rows[0];
+      );
+      o = order.rows[0];
 
     // Credit pharmacy wallet (pending settlement)
-    await pool.query(
+    const walletCredit = await client.query(
       `UPDATE ng_pharmacy_wallets SET
         pending_balance = pending_balance + $1,
         updated_at = NOW()
-      WHERE pharmacy_id = $2`,
+      WHERE pharmacy_id = $2 RETURNING id`,
       [parseFloat(o.pharmacy_payout_amount), o.pharmacy_id]
     );
+    if (!walletCredit.rows.length) throw new Error('Pharmacy settlement wallet is unavailable; reconciliation is required');
 
     // Record wallet transaction
-    const wallet = await pool.query(
+    const wallet = await client.query(
       'SELECT * FROM ng_pharmacy_wallets WHERE pharmacy_id = $1', [o.pharmacy_id]
     );
     if (wallet.rows.length) {
-      await pool.query(
+      await client.query(
         `INSERT INTO ng_wallet_transactions (
           wallet_id, pharmacy_id, order_id, type, amount, balance_after,
           description, reference, payment_provider
@@ -264,7 +297,7 @@ class OrderService {
         [
           wallet.rows[0].id, o.pharmacy_id, o.id,
           parseFloat(o.pharmacy_payout_amount),
-          parseFloat(wallet.rows[0].pending_balance) + parseFloat(o.pharmacy_payout_amount),
+          wallet.rows[0].pending_balance,
           `Order ${o.order_number} payment received`,
           paymentReference, provider,
         ]
@@ -272,7 +305,7 @@ class OrderService {
     }
 
     // Record platform revenue
-    await pool.query(
+    await client.query(
       `INSERT INTO ng_platform_revenue (date, pharmacy_id, rx_fee_revenue, total_orders, total_gmv)
        VALUES (CURRENT_DATE, $1, $2, 1, $3)
        ON CONFLICT (date, pharmacy_id)
@@ -283,15 +316,18 @@ class OrderService {
       [o.pharmacy_id, parseFloat(o.platform_fee), parseFloat(o.total_amount)]
     );
 
-    await complianceService.logAction({
-      actorUserId: o.patient_user_id,
-      actorType: 'system',
-      action: 'order.payment_confirmed',
-      resourceType: 'order',
-      resourceId: o.id,
-      details: { amount: o.total_amount, provider, reference: paymentReference },
-      pharmacyId: o.pharmacy_id,
-    });
+      await complianceService.logAction({
+        actorUserId: o.patient_user_id, actorType: 'system', action: 'order.payment_confirmed',
+        resourceType: 'order', resourceId: o.id, pharmacyId: o.pharmacy_id,
+        details: { amount: o.total_amount, provider, reference: paymentReference },
+      }, client);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
 
     return { order: o, verification };
   }

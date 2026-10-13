@@ -157,8 +157,8 @@ class InsuranceWalletService {
         RETURNING *
       `;
       
-      const isActive = eligibilityResult.status === 'ACTIVE';
-      const status = isActive ? 'active' : 'inactive';
+      const isActive = eligibilityResult.status === 'ACTIVE' && eligibilityResult.synthetic !== true;
+      const status = isActive ? 'active' : eligibilityResult.status === 'INACTIVE' ? 'inactive' : 'unknown';
       
       const result = await client.query(updateQuery, [
         isActive,

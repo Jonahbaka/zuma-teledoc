@@ -29,6 +29,7 @@ export const nigeriaPatientNavigation = [
   { name: 'Video Visits', href: '/ng/patient/call', icon: Video },
   { name: 'Prescriptions', href: '/ng/patient/prescriptions', icon: Pill },
   { name: 'Orders', href: '/ng/patient/orders', icon: Package },
+  { name: 'Consultation Payments', href: '/ng/patient/consultation-billing', icon: CreditCard },
   { name: 'Find Care', href: '/ng/patient/search', icon: Search },
   { name: 'Records', href: '/ng/patient/records', icon: FileText },
   { name: 'Messages', href: '/ng/patient/messages', icon: MessageSquare },

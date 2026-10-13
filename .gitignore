@@ -5,6 +5,8 @@ node_modules/
 
 # Build outputs
 .next/
+.next-careops-preview/
+work/careops-ui/
 out/
 build/
 dist/

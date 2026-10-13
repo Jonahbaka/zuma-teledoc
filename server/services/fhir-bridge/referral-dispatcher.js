@@ -87,8 +87,7 @@ class SmartReferralDispatcher {
       resourceType: 'Bundle',
       id: uuidv4(),
       meta: {
-        lastUpdated: new Date().toISOString(),
-        profile: ['http://hl7.org/fhir/us/core/StructureDefinition/us-core-documentreference']
+        lastUpdated: new Date().toISOString()
       },
       identifier: {
         system: `${this.systemUrl}/referral-bundle`,
@@ -97,9 +96,9 @@ class SmartReferralDispatcher {
       type: 'message',
       timestamp: new Date().toISOString(),
       entry: [
-        { fullUrl: `urn:uuid:${messageHeader.id}`, resource: messageHeader },
+        { fullUrl: `${this.systemUrl}/MessageHeader/${messageHeader.id}`, resource: messageHeader },
         ...resources.map(resource => ({
-          fullUrl: `urn:uuid:${resource.id}`,
+          fullUrl: `${this.systemUrl}/${resource.resourceType}/${resource.id}`,
           resource
         }))
       ]

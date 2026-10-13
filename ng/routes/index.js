@@ -228,6 +228,9 @@ const requireAdmin = (req, res, next) => {
 router.use('/discovery', discoveryRoutes);
 router.use('/clinical', authenticate, clinicalRoutes);
 router.use('/phc', authenticate, phcRoutes);
+router.use('/interop/fhir', authenticate, require('./clinicalFhir'));
+router.use('/funding', authenticate, require('./funding'));
+router.use('/billing', authenticate, require('./billing'));
 router.use('/pharmacy', authenticate, pharmacyRoutes);
 router.use('/prescriptions', authenticate, prescriptionsRoutes);
 // These routers enforce their own government RBAC/ABAC policies per route.

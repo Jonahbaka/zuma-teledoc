@@ -2,7 +2,7 @@
  * FHIR R4 Resource Mappers
  * 
  * Maps internal PostgreSQL data models to HL7 FHIR R4 resources.
- * Compliant with US Core Implementation Guide.
+ * Base R4 representations; partner profile conformance requires validation.
  * 
  * @see https://www.hl7.org/fhir/R4/
  * @see https://www.hl7.org/fhir/us/core/
@@ -25,13 +25,9 @@ class FHIRMapper {
     const { rows } = await this.db.query(
       `SELECT 
         u.id, u.email, u.first_name, u.last_name, u.date_of_birth,
-        u.phone, u.created_at, u.gender,
-        pp.address_line1, pp.address_line2, pp.city, pp.state, pp.zip_code,
-        pp.emergency_contact_name, pp.emergency_contact_phone,
-        pp.insurance_provider, pp.insurance_member_id,
-        pp.primary_language, pp.ethnicity, pp.race
+        COALESCE(u.phone_number,u.phone) AS phone, u.created_at, u.updated_at, u.gender, u.is_active,
+        u.address_line1, u.address_line2, u.city, u.state, u.zip_code, u.country
        FROM users u
-       LEFT JOIN patient_profiles pp ON pp.user_id = u.id
        WHERE u.id = $1 AND u.role = 'patient'`,
       [patientId]
     );
@@ -42,12 +38,11 @@ class FHIRMapper {
 
     const patient = rows[0];
 
-    return {
+    const resource = {
       resourceType: 'Patient',
       id: patient.id,
       meta: {
-        profile: ['http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient'],
-        lastUpdated: new Date().toISOString()
+        lastUpdated: (patient.updated_at || patient.created_at)?.toISOString()
       },
       identifier: [
         {
@@ -67,7 +62,7 @@ class FHIRMapper {
           value: patient.insurance_member_id
         }] : [])
       ],
-      active: true,
+      active: patient.is_active === true,
       name: [{
         use: 'official',
         family: patient.last_name,
@@ -85,14 +80,14 @@ class FHIRMapper {
         }
       ],
       gender: this.mapGender(patient.gender),
-      birthDate: patient.date_of_birth ? patient.date_of_birth.toISOString().split('T')[0] : undefined,
+      birthDate: patient.date_of_birth ? (patient.date_of_birth instanceof Date ? patient.date_of_birth.toISOString().slice(0, 10) : String(patient.date_of_birth).slice(0, 10)) : undefined,
       address: patient.address_line1 ? [{
         use: 'home',
         line: [patient.address_line1, patient.address_line2].filter(Boolean),
         city: patient.city,
         state: patient.state,
         postalCode: patient.zip_code,
-        country: 'US'
+        country: patient.country || undefined
       }] : [],
       communication: patient.primary_language ? [{
         language: {
@@ -138,6 +133,11 @@ class FHIRMapper {
         }] : [])
       ]
     };
+    // Omit absent optional collections rather than emitting empty FHIR arrays.
+    for (const key of ['address', 'communication', 'contact', 'extension']) {
+      if (!resource[key]?.length) delete resource[key];
+    }
+    return resource;
   }
 
   /**
@@ -146,8 +146,8 @@ class FHIRMapper {
   async toEncounter(encounterId) {
     const { rows } = await this.db.query(
       `SELECT 
-        a.id, a.patient_id, a.provider_id, a.scheduled_time, a.end_time,
-        a.status, a.visit_type, a.reason, a.chief_complaint,
+        a.id, a.patient_id, a.provider_id, a.scheduled_at AS scheduled_time, a.completed_at AS end_time,
+        a.status, a.type AS visit_type, a.reason_for_visit AS chief_complaint,
         a.created_at, a.updated_at,
         u_patient.first_name as patient_first, u_patient.last_name as patient_last,
         u_provider.first_name as provider_first, u_provider.last_name as provider_last,
@@ -169,7 +169,6 @@ class FHIRMapper {
       resourceType: 'Encounter',
       id: encounter.id,
       meta: {
-        profile: ['http://hl7.org/fhir/us/core/StructureDefinition/us-core-encounter'],
         lastUpdated: encounter.updated_at?.toISOString() || new Date().toISOString()
       },
       identifier: [{
@@ -227,9 +226,10 @@ class FHIRMapper {
   async toMedicationRequest(prescriptionId) {
     const { rows } = await this.db.query(
       `SELECT 
-        p.id, p.patient_id, p.provider_id, p.medication_name, p.dosage,
-        p.frequency, p.quantity, p.refills, p.instructions, p.rxnorm_code,
-        p.status, p.prescribed_date, p.start_date, p.end_date,
+        p.id, p.patient_id, p.provider_id, p.medication_name,
+        p.quantity, p.quantity_unit, p.refills_allowed AS refills,
+        p.sig_directions AS instructions, p.rx_norm_code AS rxnorm_code,
+        p.status, p.dispense_as_written, p.created_at AS prescribed_date,
         p.pharmacy_name, p.pharmacy_address, p.pharmacy_phone,
         p.created_at, p.updated_at,
         u_patient.first_name as patient_first, u_patient.last_name as patient_last,
@@ -251,7 +251,6 @@ class FHIRMapper {
       resourceType: 'MedicationRequest',
       id: rx.id,
       meta: {
-        profile: ['http://hl7.org/fhir/us/core/StructureDefinition/us-core-medicationrequest'],
         lastUpdated: rx.updated_at?.toISOString() || new Date().toISOString()
       },
       identifier: [{
@@ -278,32 +277,17 @@ class FHIRMapper {
       },
       authoredOn: rx.prescribed_date?.toISOString(),
       dosageInstruction: [{
-        text: `${rx.dosage} ${rx.frequency}`,
-        timing: {
-          code: {
-            text: rx.frequency
-          }
-        },
-        doseAndRate: [{
-          doseQuantity: {
-            value: parseFloat(rx.dosage) || undefined,
-            unit: this.extractDosageUnit(rx.dosage)
-          }
-        }]
+        text: rx.instructions
       }],
       dispenseRequest: {
         numberOfRepeatsAllowed: rx.refills || 0,
         quantity: {
           value: rx.quantity,
-          unit: 'tablets'
-        },
-        validityPeriod: {
-          start: rx.start_date?.toISOString(),
-          end: rx.end_date?.toISOString()
+          unit: rx.quantity_unit
         }
       },
       substitution: {
-        allowedBoolean: true
+        allowedBoolean: rx.dispense_as_written !== true
       },
       note: rx.instructions ? [{
         text: rx.instructions
@@ -427,9 +411,6 @@ class FHIRMapper {
     return {
       resourceType: 'Observation',
       id: `bp-${vital.id}`,
-      meta: {
-        profile: ['http://hl7.org/fhir/us/core/StructureDefinition/us-core-blood-pressure']
-      },
       status: 'final',
       category: [{
         coding: [{
@@ -491,9 +472,6 @@ class FHIRMapper {
     return {
       resourceType: 'Observation',
       id: `${config.code}-${vital.id}`,
-      meta: {
-        profile: ['http://hl7.org/fhir/us/core/StructureDefinition/us-core-vital-signs']
-      },
       status: 'final',
       category: [{
         coding: [{
@@ -549,6 +527,15 @@ class FHIRMapper {
 
   mapMedicationStatus(status) {
     const statusMap = {
+      'draft': 'draft',
+      'pending_review': 'draft',
+      'signed': 'active',
+      'sent': 'active',
+      'received': 'active',
+      'processing': 'active',
+      'ready': 'active',
+      'picked_up': 'active',
+      'delivered': 'active',
       'pending': 'draft',
       'active': 'active',
       'completed': 'completed',

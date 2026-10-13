@@ -32,10 +32,12 @@ for (const actor of ACTORS) {
     expect(session.success).toBe(true);
     // Production cookies are Secure and scoped to doctarx.com, which an HTTP
     // localhost browser cannot retain. The login above still verifies the real
-    // TOTP; mirror only its short-lived MFA marker onto the isolated test host.
+    // TOTP; mirror the server-signed, token-bound attestation onto the test host.
     if (actor.mfa) {
+      const attestation = /mfaVerified=([^;\s]+)/.exec(login.headers()['set-cookie'] || '')?.[1];
+      expect(attestation, 'server-issued MFA attestation').toBeTruthy();
       await context.addCookies([{
-        name: 'mfaVerified', value: 'true', url: 'http://127.0.0.1:8080',
+        name: 'mfaVerified', value: decodeURIComponent(attestation), url: 'http://127.0.0.1:8080',
         httpOnly: true, secure: false, sameSite: 'Lax',
       }]);
     }

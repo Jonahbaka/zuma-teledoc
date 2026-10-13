@@ -4,6 +4,9 @@ import { usePathname } from 'next/navigation';
 import SiteFooter from './SiteFooter';
 
 const HIDE_PREFIXES = [
+  '/careops',
+  '/ng/phc',
+  '/ng/government-data',
   '/patient',
   '/provider',
   '/admin',

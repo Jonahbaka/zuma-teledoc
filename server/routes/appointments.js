@@ -25,6 +25,25 @@ const {
   getTelehealthIceServers
 } = require('../services/telehealthSessionService');
 const { normalizeMarketScope } = require('../utils/marketScope');
+const { z } = require('zod');
+const { withProviderReservation } = require('../services/appointmentReservationService');
+const { patientFinancialAccess } = require('../middleware/financialRecordScope');
+
+const smartBookingSchema = z.object({
+  category: z.string().trim().min(1).max(100),
+  specialties: z.union([z.array(z.string().trim().min(1).max(100)).max(12), z.string().max(500)]).optional(),
+  providerId: z.string().uuid().nullable().optional(),
+  scheduledAt: z.string().datetime({ offset: true }),
+  type: z.enum(['video', 'phone', 'in_person']).default('video'),
+  reasonForVisit: z.string().trim().min(1).max(1000),
+  patientNotes: z.string().max(2000).optional(),
+  durationMinutes: z.number().int().min(15).max(120).default(30),
+  intake: z.object({
+    historyReviewed: z.literal(true),
+    medicationStatus: z.enum(['unknown', 'none_reported', 'reported']),
+    allergyStatus: z.enum(['unknown', 'none_reported', 'reported']),
+  }),
+});
 
 const router = express.Router();
 const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
@@ -46,11 +65,19 @@ END`;
  */
 router.post('/',
   authenticate,
+  requireRole('patient', 'provider', 'admin'),
   requirePaidAccess,
   auditMiddleware('create', 'appointment'),
   async (req, res) => {
     try {
       const data = validate(createAppointmentSchema, req.body);
+      const bookingPatientId = req.user.role === 'patient' ? req.user.id : req.body.patientId;
+      if (!await patientFinancialAccess(req.user, bookingPatientId)) {
+        return res.status(403).json({ success: false, error: 'Patient access denied' });
+      }
+      if (req.user.role === 'provider' && data.providerId !== req.user.id) {
+        return res.status(403).json({ success: false, error: 'Provider may only book their own schedule' });
+      }
       
       // Verify provider exists and is approved
       const { rows: providers } = await db.query(
@@ -103,7 +130,10 @@ router.post('/',
       const paymentRequired = !patientTestingAccess.testingBypassActive;
       const paymentCompleted = Boolean(patientTestingAccess.testingBypassActive);
       
-      const { rows } = await db.query(
+      const { rows } = await withProviderReservation(db, {
+        patientId, providerId: data.providerId, marketScope: getAuthenticatedMarketScope(req.user),
+        scheduledAt, durationMinutes: data.durationMinutes,
+      }, (client) => client.query(
         `INSERT INTO appointments (
           patient_id, provider_id, scheduled_at, duration_minutes,
           type, reason_for_visit, patient_notes, room_id,
@@ -122,7 +152,7 @@ router.post('/',
           paymentRequired,
           paymentCompleted
         ]
-      );
+      ));
       
       // Get patient and provider details for notifications
       const { rows: patientRows } = await db.query(
@@ -205,6 +235,7 @@ router.post('/',
         appointment: keysToCamel(rows[0])
       });
     } catch (error) {
+      if (error.statusCode) return res.status(error.statusCode).json({ success: false, error: error.message, code: error.code });
       if (error.status === 400) {
         return res.status(400).json({
           success: false,
@@ -448,9 +479,15 @@ router.get('/upcoming', authenticate, async (req, res) => {
  */
 router.post('/smart-book',
   authenticate,
+  requireRole('patient'),
   auditMiddleware('create', 'appointment'),
   async (req, res) => {
     try {
+      const parsed = smartBookingSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({
+        success: false, error: 'Review your history and appointment details before booking', code: 'BOOKING_INTAKE_REQUIRED',
+        errors: parsed.error.issues.map(({ path, message }) => ({ path: path.join('.'), message })),
+      });
       const {
         category,
         specialties,
@@ -460,8 +497,8 @@ router.post('/smart-book',
         reasonForVisit,
         patientNotes,
         durationMinutes = 30,
-        triageResult
-      } = req.body;
+      } = parsed.data;
+      const marketScope = getAuthenticatedMarketScope(req.user);
       
       // Validate required fields
       if (!scheduledAt) {
@@ -526,8 +563,9 @@ router.post('/smart-book',
            AND role = 'provider'
            AND provider_status = 'approved'
            AND is_active = true
+           AND ${userMarketScopeSql('users')} = $2
            LIMIT 1`,
-          [providerId]
+          [providerId, marketScope]
         );
 
         if (requestedProviders.length === 0) {
@@ -555,10 +593,11 @@ router.post('/smart-book',
              WHERE role = 'provider'
              AND provider_status = 'approved'
              AND is_active = true
+             AND ${userMarketScopeSql('users')} = $3
              AND (specialty ILIKE $1 OR specialty ILIKE $2)
              ORDER BY RANDOM()
              LIMIT 1`,
-            [`%${specialty.trim()}%`, `%${category}%`]
+            [`%${specialty.trim()}%`, `%${category}%`, marketScope]
           );
           
           if (providers.length > 0) {
@@ -577,8 +616,9 @@ router.post('/smart-book',
            WHERE role = 'provider'
            AND provider_status = 'approved'
            AND is_active = true
+           AND ${userMarketScopeSql('users')} = $1
            ORDER BY RANDOM()
-           LIMIT 1`
+           LIMIT 1`, [marketScope]
         );
         
         if (anyProviders.length > 0) {
@@ -597,37 +637,9 @@ router.post('/smart-book',
       // Generate room ID for video calls
       const roomId = type === 'video' ? generateRoomId() : null;
       
-      // Prepare metadata with triage data if available
-      let metadata = null;
-      if (triageResult) {
-        try {
-          // Ensure metadata column exists
-          await db.query(`
-            ALTER TABLE appointments 
-            ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb
-          `);
-          
-          // Build safe triage data
-          const flagsJson = JSON.stringify(Array.isArray(triageResult.flags) ? triageResult.flags : []);
-          const medsJson = JSON.stringify(Array.isArray(triageResult.suggestedMeds) ? triageResult.suggestedMeds : []);
-          
-          metadata = {
-            triage: {
-              severity: triageResult.severity || 0,
-              soapDraft: triageResult.soapDraft || '',
-              triageLevel: triageResult.triageLevel || (triageResult.severity >= 4 ? 'URGENT' : 'ROUTINE'),
-              suggestedSpecialty: triageResult.suggestedSpecialty || 'Primary Care',
-              flags: JSON.parse(flagsJson),
-              suggestedMeds: JSON.parse(medsJson),
-              symptoms: reasonForVisit || '',
-              timestamp: new Date().toISOString()
-            }
-          };
-        } catch (metadataError) {
-          // If metadata creation fails, continue without it
-          console.warn('Failed to create metadata:', metadataError);
-        }
-      }
+      const metadata = { intake: { ...parsed.data.intake, source: 'patient_report', reviewedAt: new Date().toISOString() } };
+      // Clinical triage must originate from the governed server-side pathway.
+      // Client-generated severity or medication recommendations are not trusted.
       
       // Create the appointment
       const insertValues = [
@@ -644,7 +656,9 @@ router.post('/smart-book',
         paymentCompleted // $11
       ];
       
-      const { rows } = await db.query(
+      const { rows } = await withProviderReservation(db, {
+        patientId, providerId, marketScope, scheduledAt: scheduledDate, durationMinutes,
+      }, (client) => client.query(
         `INSERT INTO appointments (
           patient_id, provider_id, scheduled_at, duration_minutes,
           type, reason_for_visit, patient_notes, room_id, status, metadata,
@@ -652,7 +666,7 @@ router.post('/smart-book',
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'scheduled', $9::jsonb, $10, $11)
         RETURNING *`,
         insertValues
-      );
+      ));
       
       if (!rows || rows.length === 0) {
         throw new Error('Failed to create appointment - no rows returned');
@@ -667,7 +681,7 @@ router.post('/smart-book',
           `New ${type || 'video'} appointment scheduled for ${scheduledDate.toLocaleString()}`,
           rows[0].id
         ]
-      );
+      ).catch((error) => logger.warn('Appointment notification failed', { error: error.message }));
       
       // Send email notifications
       try {
@@ -737,12 +751,12 @@ router.post('/smart-book',
     } catch (error) {
       logger.error('Smart booking error', { 
         error: error.message, 
-        stack: error.stack,
-        body: req.body 
+        code: error.code
       });
-      res.status(500).json({
+      res.status(error.statusCode || 500).json({
         success: false,
-        error: error.message || 'Failed to book appointment. Please check your inputs and try again.'
+        error: error.statusCode ? error.message : 'Failed to book appointment. Please try again.',
+        code: error.code
       });
     }
   }
@@ -864,6 +878,7 @@ router.get('/:id', authenticate, async (req, res) => {
  */
 router.put('/:id',
   authenticate,
+  requireRole('patient', 'provider', 'admin'),
   auditMiddleware('update', 'appointment', { logChanges: true }),
   async (req, res) => {
     try {
@@ -872,7 +887,7 @@ router.put('/:id',
       
       // Get current appointment
       const { rows: current } = await db.query(
-        'SELECT * FROM appointments WHERE id = $1',
+        'SELECT *, xmin::text AS reservation_revision FROM appointments WHERE id = $1',
         [id]
       );
       
@@ -896,6 +911,15 @@ router.put('/:id',
           success: false,
           error: 'Access denied'
         });
+      }
+
+      if (req.user.role === 'patient' && (data.providerNotes !== undefined || (data.status && data.status !== 'cancelled'))) {
+        return res.status(403).json({ success: false, error: 'Clinical status and notes require a clinician.' });
+      }
+      if (['completed', 'cancelled', 'no_show'].includes(appointment.status) ||
+          (data.scheduledAt && !['scheduled', 'confirmed'].includes(appointment.status)) ||
+          (appointment.status === 'in_progress' && data.status && !['completed'].includes(data.status))) {
+        return res.status(409).json({ success: false, error: 'This appointment state cannot be changed through scheduling.' });
       }
       
       // Build update query
@@ -956,12 +980,19 @@ router.put('/:id',
       
       values.push(id);
       
-      const { rows } = await db.query(
+      const { rows } = await withProviderReservation(db, {
+        patientId: appointment.patient_id, providerId: appointment.provider_id,
+        marketScope: getAuthenticatedMarketScope(req.user),
+        scheduledAt: data.scheduledAt || appointment.scheduled_at,
+        durationMinutes: appointment.duration_minutes, excludeId: id,
+        status: data.status || appointment.status,
+        expectedRevision: appointment.reservation_revision,
+      }, (client) => client.query(
         `UPDATE appointments SET ${updates.join(', ')}, updated_at = NOW()
          WHERE id = $${paramIndex}
          RETURNING *`,
         values
-      );
+      ));
       
       // Create notification for status changes
       if (data.status) {
@@ -997,7 +1028,7 @@ router.put('/:id',
       }
       
       logger.error('Update appointment error', { error: error.message });
-      res.status(500).json({
+      res.status(error.statusCode || 500).json({
         success: false,
         error: 'Failed to update appointment'
       });
@@ -1009,7 +1040,7 @@ router.put('/:id',
  * POST /api/appointments/:id/cancel
  * Cancel appointment
  */
-router.post('/:id/cancel', authenticate, async (req, res) => {
+router.post('/:id/cancel', authenticate, requireRole('patient', 'provider', 'admin'), async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -1030,6 +1061,7 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
     const appointment = current[0];
     
     // Check access
+    if (!await patientFinancialAccess(req.user, appointment.patient_id)) return res.status(404).json({ success: false, error: 'Appointment not found' });
     if (req.user.role === 'patient' && appointment.patient_id !== req.user.id) {
       return res.status(403).json({
         success: false,
@@ -1060,10 +1092,11 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
         cancelled_by = $1,
         cancellation_reason = $2,
         updated_at = NOW()
-       WHERE id = $3
+       WHERE id = $3 AND status IN ('scheduled','confirmed')
        RETURNING *`,
       [req.user.id, reason, id]
     );
+    if (!rows.length) return res.status(409).json({ success: false, error: 'The appointment changed and cannot be cancelled. Refresh your schedule.' });
     
     // Notify the other party
     const notifyUserId = req.user.id === appointment.patient_id 
