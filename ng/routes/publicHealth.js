@@ -97,7 +97,7 @@ router.get(
 
 router.get(
   '/indicators',
-  rbac.requireAnalystPlus,
+  rbac.requireNgRole('analyst','reviewer','approver','programme_admin','executive_read_only','platform_admin','super_admin'),
   wrap(async (_req, res) => {
     res.json({ indicators: await service.listIndicators() });
   })

@@ -27,12 +27,12 @@ router.get('/partners', async (req, res) => {
     );
     res.json({ ok: true, partners: rows, liveAdaptersAvailable: false });
   } catch (error) {
-    res.status(['42P01', '42703'].includes(error.code) ? 503 : 500).json({ error: 'Partner registry is unavailable. Verify the funding migration.' });
+    res.status(['42P01', '42703'].includes(error.code) ? 503 : 500).json({ error: 'The insurer registry is unavailable. Contact your administrator.' });
   }
 });
 router.post('/partners', async (req, res) => {
   const input = partnerSchema.safeParse(req.body);
-  if (!input.success) return res.status(400).json({ error: 'Partner details are invalid.' });
+  if (!input.success) return res.status(400).json({ error: 'Insurer details are invalid.' });
   try {
     const data = input.data;
     const context = req.programmeContext;
@@ -45,7 +45,7 @@ router.post('/partners', async (req, res) => {
     await recordProgrammeAudit(getPool(), req, context, { action: 'funding.partner_created', resourceType: 'insurance_partner', resourceId: rows[0].id, metadata: { status: data.onboardingStatus } });
     res.status(201).json({ ok: true, partner: rows[0] });
   } catch (error) {
-    res.status(error.code === '23505' ? 409 : ['42P01', '42703'].includes(error.code) ? 503 : 500).json({ error: error.code === '23505' ? 'This partner is already registered for the programme.' : 'Partner could not be saved.' });
+    res.status(error.code === '23505' ? 409 : ['42P01', '42703'].includes(error.code) ? 503 : 500).json({ error: error.code === '23505' ? 'This insurer is already registered for the programme.' : 'Insurer could not be saved.' });
   }
 });
 module.exports = router;

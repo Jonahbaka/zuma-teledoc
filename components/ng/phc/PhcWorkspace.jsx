@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import {
   Activity,
   ArrowRight,
@@ -127,12 +129,10 @@ function WorkspaceShell({ children, user, context, online, pendingCount, onSync,
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-[1480px] flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-700 text-white shadow-sm">
-              <HeartPulse className="h-6 w-6" aria-hidden="true" />
-            </div>
+            {!standalone && <div className="rounded-xl bg-[#101d36] px-3 py-2"><DoctaRxLogo glow={false} className="h-9" /></div>}
             <div>
-              <p className="text-sm font-semibold text-emerald-700">{standalone ? 'DoctaRx CareOps' : 'DoctaRx Nigeria'}</p>
-              <h1 className="text-xl font-bold">{standalone ? 'Clinical workspace' : 'PHC Care Workspace'}</h1>
+              <h1 className="text-2xl font-semibold">{standalone ? 'Clinical workspace' : 'DoctaRx PHC workspace'}</h1>
+              <p className="mt-1 text-base text-slate-600">Patient intake, consultations, and continuity of care.</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -705,25 +705,28 @@ export default function PhcWorkspace({ standalone = false }) {
         ) : (
           <>
             <section className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-              <div className="rounded-2xl bg-emerald-800 p-6 text-white shadow-sm">
+              <div className="relative isolate overflow-hidden rounded-[1.5rem] bg-[#101d36] p-7 text-white shadow-[0_16px_40px_rgba(15,35,70,0.14)] sm:p-8">
+                <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[38%] lg:block"><Image src="/marketing/ng/hero-image-container.png" alt="" fill sizes="400px" className="object-cover object-[center_35%]" /><div className="absolute inset-0 bg-gradient-to-r from-[#101d36] via-[#101d36]/30 to-transparent" /></div>
+                <div className="relative z-10 lg:max-w-[70%]">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-medium text-emerald-100">Active care context</p>
-                    <h2 className="mt-1 text-2xl font-bold">{context?.facility_name}</h2>
-                    <p className="mt-2 max-w-2xl text-sm text-emerald-50">{context?.programme_name}</p>
+                    <p className="font-medium text-cyan-200">DoctaRx · Connected clinical care</p>
+                    <h2 className="mt-3 text-3xl font-semibold leading-tight">Care that stays connected.</h2>
+                    <p className="mt-3 max-w-2xl text-base text-slate-200">{context?.demo_only ? 'DoctaRx demo workspace' : context?.facility_name}</p>
                   </div>
                   {context?.demo_only && (
-                    <Badge className="border-white/20 bg-white/15 text-white hover:bg-white/15">Synthetic demo data only</Badge>
+                    <Badge className="border-white/20 bg-white/10 text-white hover:bg-white/10">Demo account</Badge>
                   )}
                 </div>
-                <div className="mt-6 flex flex-wrap gap-4 text-sm text-emerald-50">
+                <div className="mt-6 flex flex-wrap gap-4 text-base text-slate-200">
                   <span className="flex items-center gap-2"><Building2 className="h-4 w-4" /> {context?.facility_code || 'Programme facility'}</span>
                   <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Scoped access and audited activity</span>
+                </div>
                 </div>
               </div>
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Programme and facility</CardTitle>
+                  <CardTitle className="text-xl">Care location</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <Label htmlFor="phc-context" className="sr-only">Programme and facility</Label>
@@ -735,7 +738,7 @@ export default function PhcWorkspace({ standalone = false }) {
                   >
                     {contexts.map((item) => (
                       <option key={`${item.programme_id}:${item.facility_id}`} value={`${item.programme_id}:${item.facility_id}`}>
-                        {item.programme_name} — {item.facility_name}
+                        {item.demo_only ? 'DoctaRx demo workspace' : `${item.programme_name} — ${item.facility_name}`}
                       </option>
                     ))}
                   </select>

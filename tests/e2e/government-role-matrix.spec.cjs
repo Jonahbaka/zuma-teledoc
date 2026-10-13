@@ -10,7 +10,7 @@ const ACTORS = [
   { name: 'patient', email: 'e2e-patient@example.test', role: 'patient', path: '/ng/patient/appointments', text: /appointments/i },
   { name: 'provider', email: 'e2e-provider@example.test', role: 'provider', path: '/ng/provider/dashboard', text: /provider|clinical|dashboard/i },
   { name: 'pharmacy', email: 'e2e-pharmacy@example.test', role: 'pharmacy', path: '/ng/pharmacy/dashboard', text: /pharmacy|prescription|dashboard/i },
-  { name: 'government', email: 'e2e-government@example.test', role: 'patient', mfa: true, path: '/ng/government-data', text: /government data intake and search/i },
+  { name: 'government', email: 'e2e-government@example.test', role: 'patient', mfa: true, path: '/ng/government-data', text: /public health data/i },
   { name: 'executive', email: 'e2e-executive@example.test', role: 'patient', mfa: true, path: '/ng/executive-view', text: /executive command center/i },
 ];
 

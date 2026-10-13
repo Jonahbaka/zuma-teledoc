@@ -21,7 +21,8 @@ process.env.ENCRYPTION_KEY ||= '0123456789abcdef0123456789abcdef0123456789abcdef
 process.env.NG_AUTO_SEED_DISCOVERY = 'false';
 process.env.NEXT_PUBLIC_API_URL = 'http://127.0.0.1:18080/api';
 const db = require('../server/db');
-const { seedDemoAccounts } = require('../ng/scripts/seed-demo-accounts');
+const { listUserProgrammeContexts } = require('../ng/services/phc/programmeScopeService');
+const demoPassword = process.env.CAREOPS_E2E_PASSWORD || 'Demo12345678!';
 const outputDir = path.resolve(process.env.CAREOPS_UI_OUTPUT_DIR || path.join(__dirname, '..', 'work', 'careops-ui'));
 fs.mkdirSync(outputDir, { recursive: true });
 
@@ -33,8 +34,20 @@ async function waitFor(url) {
   throw new Error('CareOps preview did not become ready');
 }
 
+async function settleVisuals(page) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await Promise.all(Array.from(document.images).map((image) => image.decode()));
+  });
+}
+
 async function main() {
-  const seeded = await seedDemoAccounts({ pool: db.getPool(), password: 'Synthetic-Browser-Pass-2099!', mfaSecret: 'JBSWY3DPEHPK3PXP' });
+  // Reuse provisioned demo accounts. Browser inspection does not create or
+  // rename facilities/patients and never resets an account's password.
+  const account = (await db.getPool().query("SELECT id,role FROM users WHERE email='nurse@demo.doctarx.com' AND is_active=true")).rows[0];
+  if (!account) throw new Error('Provision the existing DoctaRx demo accounts before browser testing.');
+  const existingContext = (await listUserProgrammeContexts(db.getPool(), account))[0];
+  if (!existingContext) throw new Error('The existing nurse demo account needs its programme/facility assignment.');
   const app = express();
   app.use(cors({ origin: 'http://127.0.0.1:3002', credentials: true }));
   app.use(cookieParser());
@@ -63,11 +76,15 @@ async function main() {
     await page.goto('http://127.0.0.1:3002/careops');
     await page.waitForURL('**/careops/login');
     await page.getByRole('heading', { name: 'Sign in to CareOps' }).waitFor();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
     await page.keyboard.press('Tab');
     assert.match(await page.evaluate(() => document.activeElement.textContent), /Skip to (main content|workspace)/);
+    await page.keyboard.press('Escape');
+    await page.getByRole('heading', { name: 'Sign in to CareOps' }).click();
+    await settleVisuals(page);
     await page.screenshot({ path: path.join(outputDir, 'CareOps sign-in desktop.png'), fullPage: true });
     await page.getByLabel('Email', { exact: true }).fill('nurse@demo.doctarx.com');
-    await page.getByLabel('Password', { exact: true }).fill('Synthetic-Browser-Pass-2099!');
+    await page.getByLabel('Password', { exact: true }).fill(demoPassword);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.waitForURL('**/careops');
     await page.getByRole('heading', { name: 'Clinical workspace', exact: true }).waitFor();
@@ -76,6 +93,7 @@ async function main() {
     await page.getByRole('button', { name: 'Refresh worklists' }).waitFor({ state: 'visible' });
     await page.waitForFunction(() => !Array.from(document.querySelectorAll('button')).find((button) => button.textContent.includes('Refresh worklists'))?.disabled);
     await page.getByRole('button', { name: 'Refresh worklists' }).evaluate((button) => Promise.all(button.getAnimations().map((animation) => animation.finished)));
+    await settleVisuals(page);
     const clinicalAccessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
     fs.writeFileSync(path.join(outputDir, 'clinical-accessibility.json'), JSON.stringify({ violations: clinicalAccessibility.violations.map(({ id, impact, description, nodes }) => ({ id, impact, description, nodes: nodes.map(({ target, html, failureSummary }) => ({ target, html, failureSummary })) })) }, null, 2));
     await page.screenshot({ path: path.join(outputDir, 'CareOps clinical desktop.png'), fullPage: true });
@@ -84,24 +102,27 @@ async function main() {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: path.join(outputDir, 'CareOps clinical mobile.png'), fullPage: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1), false, 'CareOps must not overflow the mobile viewport');
-    await page.goto('http://127.0.0.1:3002/careops/partners');
-    await page.getByText('No active funding-administration assignment. Contact your programme administrator.').waitFor();
+    await page.goto('http://127.0.0.1:3002/careops/insurance');
+    await page.getByText('Insurance administration access is required. Contact your programme administrator.').waitFor();
     // A clinical user cannot acquire financial privileges through navigation.
     assert.equal(await page.getByRole('button', { name: 'Add for review' }).count(), 0);
     await context.close();
 
     const government = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
     const govPage = await government.newPage();
+    govPage.on('pageerror', (error) => errors.push(error.message));
     await govPage.goto('http://127.0.0.1:3002/careops/login');
     await govPage.getByLabel('Workspace', { exact: true }).selectOption('/careops/government');
     await govPage.getByLabel('Email', { exact: true }).fill('government@demo.doctarx.com');
-    await govPage.getByLabel('Password', { exact: true }).fill('Synthetic-Browser-Pass-2099!');
+    await govPage.getByLabel('Password', { exact: true }).fill(demoPassword);
     await govPage.getByRole('button', { name: 'Sign in', exact: true }).click();
     await govPage.getByLabel('Authenticator code').waitFor();
+    assert.equal(await govPage.getByLabel('Workspace', { exact: true }).inputValue(), '/careops/government', 'MFA challenge must preserve the selected workspace');
     await govPage.getByLabel('Authenticator code').fill(speakeasy.totp({ secret: 'JBSWY3DPEHPK3PXP', encoding: 'base32' }));
     await govPage.getByRole('button', { name: 'Sign in', exact: true }).click();
     await govPage.waitForURL('**/careops/government');
-    await govPage.getByRole('heading', { name: /Government/i }).first().waitFor();
+    await govPage.getByRole('heading', { name: 'Public health data' }).waitFor();
+    await settleVisuals(govPage);
     const governmentAccessibility = await new AxeBuilder({ page: govPage }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
     fs.writeFileSync(path.join(outputDir, 'government-accessibility.json'), JSON.stringify({ violations: governmentAccessibility.violations.map(({ id, impact, description, nodes }) => ({ id, impact, description, targets: nodes.map((node) => node.target) })) }, null, 2));
     assert.equal(governmentAccessibility.violations.filter((violation) => ['serious', 'critical'].includes(violation.impact)).length, 0, 'Government accessibility has serious violations');
@@ -112,13 +133,19 @@ async function main() {
     await govPage.getByRole('heading', { name: 'Reports and DHIS2 delivery' }).waitFor();
     await govPage.waitForFunction(() => !document.querySelector('[role="status"]')?.textContent?.includes('Loading authorised'));
     assert.equal(await govPage.getByRole('button', { name: 'Submit approved report' }).count(), 0);
-    const deniedFhir = await govPage.request.get(`http://127.0.0.1:18080/api/ng/interop/fhir/Encounter/${seeded.demoProgramme.facilityId}?programmeId=${seeded.demoProgramme.programmeId}&facilityId=${seeded.demoProgramme.facilityId}`);
+    await govPage.goto('http://127.0.0.1:3002/ng/executive-view');
+    await govPage.getByRole('heading', { name: 'Executive command center' }).waitFor();
+    assert.equal(await govPage.getByRole('tab', { name: 'Data management' }).count(), 0);
+    assert.equal(await govPage.getByRole('button', { name: 'Excel', exact: true }).count(), 0);
+    const executiveAlerts = govPage.locator('main [role="alert"]');
+    assert.equal(await executiveAlerts.count(), 0, `Approved-record executive view must load scoped reference data: ${(await executiveAlerts.allTextContents()).join('; ')}`);
+    const deniedFhir = await govPage.request.get(`http://127.0.0.1:18080/api/ng/interop/fhir/Encounter/${existingContext.facility_id}?programmeId=${existingContext.programme_id}&facilityId=${existingContext.facility_id}`);
     assert.equal(deniedFhir.status(), 403, 'Government membership must not grant clinical FHIR access');
     const deniedNational = await govPage.request.get('http://127.0.0.1:18080/api/ng/public-health/analytics');
     assert.equal(deniedNational.status(), 403, 'Scoped analyst must not read legacy national analytics');
     assert.equal(errors.length, 0, errors.join('\n'));
     await government.close();
-    console.log(JSON.stringify({ passed: ['unauthenticated redirect', 'clinical sign-in', 'nurse role navigation', 'readable typography', 'mobile width', 'financial privilege denial', 'government MFA sign-in', 'clinical and government accessibility', 'clinical FHIR denied to government', 'national analytics denied to scoped analyst', 'scoped delivery workspace'], screenshots: 4 }));
+    console.log(JSON.stringify({ passed: ['unauthenticated redirect', 'clinical sign-in', 'nurse role navigation', 'readable typography', 'mobile width', 'insurance administration privilege denial', 'government MFA sign-in', 'clinical and government accessibility', 'clinical FHIR denied to government', 'national analytics denied to scoped analyst', 'scoped delivery workspace', 'read-only approved-record executive view'], screenshots: 4 }));
   } finally {
     if (browser) await browser.close();
     next.kill(); fs.closeSync(log);

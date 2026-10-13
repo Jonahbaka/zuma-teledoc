@@ -91,7 +91,7 @@ async function accessibleJurisdictions(req, res) {
 
 router.get(
   '/hierarchy',
-  rbac.requireAnalystPlus,
+  rbac.requireNgRole('analyst','reviewer','approver','programme_admin','executive_read_only','platform_admin','super_admin'),
   rbac.auditRequest('view', 'jurisdiction_hierarchy'),
   wrap(async (req, res) => {
     res.json(await svc.getJurisdictionHierarchy());

@@ -56,7 +56,7 @@ export default function ConsultationBilling() {
   }
 
   return <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 text-base">
-    <div><h1 className="text-2xl font-semibold">Consultation payments</h1><p className="mt-2 text-slate-600">Review your invoice and payment status. Returning from checkout does not confirm payment.</p></div>
+    <div><p className="font-medium text-blue-700">DoctaRx · Your care</p><h1 className="mt-2 text-3xl font-semibold">Consultation payments</h1><p className="mt-3 text-slate-600">Your consultation invoices, receipts, and payment status in one place.</p></div>
     {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800"><p>{error}</p><Button className="mt-3" variant="outline" onClick={load}>Retry loading</Button></div>}
     {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">{notice}</p>}
     {appointments.length > 0 && <form onSubmit={createInvoice} className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">

@@ -48,7 +48,7 @@ export default function DeliveryPage() {
   }
 
   return <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-    <h1 className="text-3xl font-semibold">Reports and DHIS2 delivery</h1>
+    <p className="font-medium text-blue-700">DoctaRx · Public health</p><h1 className="mt-2 text-3xl font-semibold">Reports and DHIS2 delivery</h1>
     <p className="mt-3 text-slate-600">Review approved aggregate reports and retained delivery evidence inside your assigned scope. A network response alone does not confirm delivery.</p>
     {error && <div role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-900">{error}<Button className="ml-3" variant="outline" onClick={load} disabled={busy}>Reload reports</Button></div>}
     {notice && <p role="status" className="mt-4 rounded-lg bg-emerald-50 p-4 text-emerald-900">{notice}</p>}

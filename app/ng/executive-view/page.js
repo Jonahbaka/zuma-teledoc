@@ -1,4 +1,4 @@
-import ExecutiveView from '@/components/ng/portal/ExecutiveView';
+import GovernmentDataWorkspace from '@/components/ng/government/GovernmentDataWorkspace';
 
 export const metadata = {
   title: 'Executive Command Center | DoctaRx Nigeria',
@@ -6,5 +6,5 @@ export const metadata = {
 };
 
 export default function ExecutiveViewPage() {
-  return <ExecutiveView />;
+  return <div className="clinical-readable"><GovernmentDataWorkspace readOnly heading="Executive command center" /></div>;
 }

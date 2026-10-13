@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import {
   AlertTriangle, Bookmark, CheckCircle2, ChevronRight, Database,
   Download, FileSearch, Filter, Loader2, RotateCcw, Search, ShieldCheck,
@@ -49,26 +50,26 @@ function Field({ label, children }) {
 function Select({ value, onChange, children, ariaLabel }) {
   return (
     <select aria-label={ariaLabel} value={value} onChange={onChange}
-      className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-200">
+      className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200">
       {children}
     </select>
   );
 }
 
 function Input(props) {
-  return <input {...props} className={`min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-200 ${props.className || ''}`} />;
+  return <input {...props} className={`min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-200 ${props.className || ''}`} />;
 }
 
 function Button({ children, tone = 'primary', className = '', ...props }) {
   const tones = {
-    primary: 'bg-emerald-700 text-white hover:bg-emerald-800',
+    primary: 'bg-blue-600 text-white hover:bg-blue-700',
     secondary: 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50',
     danger: 'bg-rose-700 text-white hover:bg-rose-800',
   };
   return <button {...props} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone]} ${className}`}>{children}</button>;
 }
 
-export default function GovernmentDataWorkspace() {
+export default function GovernmentDataWorkspace({ readOnly = false, heading = 'Public health data' }) {
   const [tab, setTab] = useState('search');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -220,14 +221,14 @@ export default function GovernmentDataWorkspace() {
     finally { setBusy(''); }
   }
 
-  if (loading) return <div className="flex min-h-screen items-center justify-center bg-slate-50"><Loader2 className="h-8 w-8 animate-spin text-emerald-700" /><span className="ml-3 font-semibold text-slate-700">Checking government access…</span></div>;
+  if (loading) return <div className="flex min-h-screen items-center justify-center bg-slate-50"><Loader2 className="h-8 w-8 animate-spin text-blue-700" /><span className="ml-3 font-semibold text-slate-700">Checking government access…</span></div>;
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950">
-      <header className="border-b border-slate-200 bg-slate-950 text-white">
+    <main className="clinical-readable min-h-screen bg-slate-50 text-slate-950">
+      <header className="border-b border-slate-200 bg-[#101d36] text-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-6 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-          <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-300">DoctaRx Nigeria · protected workspace</p><h1 className="mt-2 text-2xl font-black sm:text-3xl">Government data intake and search</h1><p className="mt-2 max-w-3xl text-sm text-slate-300">Import, validate, approve, reconcile, search, and export records inside your assigned jurisdiction.</p></div>
-          <div className="flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm"><ShieldCheck className="h-5 w-5 text-emerald-300" /> MFA and scoped access required</div>
+          <div><DoctaRxLogo glow={false} className="h-10" /><h1 className="mt-4 text-3xl font-semibold sm:text-4xl">{heading}</h1><p className="mt-3 max-w-3xl text-base leading-7 text-slate-200">{readOnly ? 'Explore approved reports and records within your authorised institutions and programmes.' : 'Review, validate, and manage public-health records within your authorised institutions and programmes.'}</p></div>
+          <div className="flex items-center gap-3 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-base"><ShieldCheck className="h-6 w-6 text-cyan-200" /> Protected institutional access</div>
         </div>
       </header>
 
@@ -235,7 +236,7 @@ export default function GovernmentDataWorkspace() {
         {error && <div role="alert" className="mb-4 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" /><div>{error}<div className="mt-2"><Link className="font-bold underline" href="/login">Open secure sign-in</Link></div></div></div>}
         {notice && <div role="status" className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900"><CheckCircle2 className="h-5 w-5" />{notice}</div>}
         <div className="mb-6 flex gap-2" role="tablist" aria-label="Government data tools">
-          {[['search', FileSearch, 'Search approved records'], ['import', Upload, 'Import and approve']].map(([key, Icon, label]) => <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${tab === key ? 'bg-slate-950 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}><Icon className="h-4 w-4" />{label}</button>)}
+          {(readOnly ? [['search', FileSearch, 'Approved records']] : [['search', FileSearch, 'Approved records'], ['import', Upload, 'Data management']]).map(([key, Icon, label]) => <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={`inline-flex min-h-12 items-center gap-2 rounded-xl px-4 text-base font-semibold ${tab === key ? 'bg-blue-600 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}><Icon className="h-5 w-5" />{label}</button>)}
         </div>
 
         {tab === 'search' ? <section className="space-y-5">
@@ -256,7 +257,7 @@ export default function GovernmentDataWorkspace() {
               <Field label="Referral status"><Select ariaLabel="Referral status" value={filters.referralStatus} onChange={(event) => updateFilter('referralStatus', event.target.value)}><option value="">All referral statuses</option><option value="pending">Pending</option><option value="completed">Completed</option><option value="unresolved">Unresolved</option></Select></Field>
               <Field label="Data-quality status"><Select ariaLabel="Data quality" value={filters.dataQualityStatus} onChange={(event) => updateFilter('dataQualityStatus', event.target.value)}><option value="">All quality statuses</option><option value="valid">Valid</option><option value="warning">Needs review</option><option value="invalid">Invalid</option></Select></Field>
             </div>
-            <div className="mt-5 flex flex-wrap gap-2"><Button onClick={() => search()}><Filter className="h-4 w-4" />Apply filters</Button><Button tone="secondary" onClick={() => { setFilters(EMPTY_FILTERS); setSearchResult({ records: [], total: null }); }}><RotateCcw className="h-4 w-4" />Clear all</Button>{['csv', 'xlsx', 'pdf'].map((format) => <Button key={format} tone="secondary" onClick={() => exportRecords(format)} disabled={busy === `export-${format}`}><Download className="h-4 w-4" />{format === 'xlsx' ? 'Excel' : format.toUpperCase()}</Button>)}</div>
+            <div className="mt-5 flex flex-wrap gap-2"><Button onClick={() => search()}><Filter className="h-4 w-4" />Apply filters</Button><Button tone="secondary" onClick={() => { setFilters(EMPTY_FILTERS); setSearchResult({ records: [], total: null }); }}><RotateCcw className="h-4 w-4" />Clear all</Button>{!readOnly && ['csv', 'xlsx', 'pdf'].map((format) => <Button key={format} tone="secondary" onClick={() => exportRecords(format)} disabled={busy === `export-${format}`}><Download className="h-4 w-4" />{format === 'xlsx' ? 'Excel' : format.toUpperCase()}</Button>)}</div>
           </div>
 
           <div className="grid gap-5 lg:grid-cols-[1fr_300px]">

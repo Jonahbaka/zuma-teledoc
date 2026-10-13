@@ -12,11 +12,12 @@
 .clinical-readable p, .clinical-readable input, .clinical-readable select, .clinical-readable textarea {
   font-size: 1rem;
 }
-.clinical-readable .text-xs {
-  font-size: 0.875rem;
+.clinical-readable .text-xs, .clinical-readable .text-sm, .clinical-readable [class*="text-[11px]"], .clinical-readable label {
+  font-size: 1rem;
+  line-height: 1.5;
 }
 .clinical-readable button {
-  min-height: 44px;
+  min-height: 48px;
 }
 
 @layer base {
