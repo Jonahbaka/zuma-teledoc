@@ -67,7 +67,7 @@ function VideoTile({ stream, label, isSelf, audioMuted, handRaised, pinned, onPi
   );
 
   const qualityIcon = {
-    good: <Wifi   className="h-3 w-3 text-emerald-400" />,
+    good: <Wifi   className="h-3 w-3 text-blue-400" />,
     fair: <WifiLow className="h-3 w-3 text-amber-400" />,
     poor: <WifiOff className="h-3 w-3 text-rose-400" />,
   }[quality] || null;
@@ -75,7 +75,7 @@ function VideoTile({ stream, label, isSelf, audioMuted, handRaised, pinned, onPi
   return (
     <div
       className={`group relative flex overflow-hidden rounded-xl bg-slate-900 ${
-        pinned ? 'ring-2 ring-emerald-500' : ''
+        pinned ? 'ring-2 ring-blue-500' : ''
       }`}
       style={{ minHeight: '120px' }}
     >
@@ -210,7 +210,7 @@ function CtrlBtn({ onClick, active, danger, label, badge, children, size = 'md',
     >
       {children}
       {badge > 0 && (
-        <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold text-white">
+        <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">
           {badge > 9 ? '9+' : badge}
         </span>
       )}
@@ -227,7 +227,7 @@ function ControlBar({
   isHost, participantCount, waitingCount, connectionQuality, unreadChat,
 }) {
   const qIcon = {
-    good: <Wifi    className="h-3.5 w-3.5 text-emerald-400" />,
+    good: <Wifi    className="h-3.5 w-3.5 text-blue-400" />,
     fair: <WifiLow className="h-3.5 w-3.5 text-amber-400"   />,
     poor: <WifiOff className="h-3.5 w-3.5 text-rose-400"    />,
   }[connectionQuality] || <Wifi className="h-3.5 w-3.5 text-slate-500" />;
@@ -241,7 +241,7 @@ function ControlBar({
           {connectionQuality && <span className="capitalize">{connectionQuality}</span>}
         </span>
         <span className="flex items-center gap-1">
-          <Radio className="h-3.5 w-3.5 text-emerald-500" />
+          <Radio className="h-3.5 w-3.5 text-blue-500" />
           {participantCount}
         </span>
         {waitingCount > 0 && (
@@ -409,12 +409,12 @@ function DarkChatPanel({ roomId, room }) {
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) send(e); }}
             disabled={disabled || sending}
             placeholder={disabled ? 'Chat is disabled' : 'Message everyone…'}
-            className="flex-1 rounded-lg bg-slate-800 px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+            className="flex-1 rounded-lg bg-slate-800 px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={disabled || sending || !text.trim()}
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40"
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-700 text-white hover:bg-blue-600 disabled:opacity-40"
           >
             <Send className="h-3.5 w-3.5" />
           </button>
@@ -460,7 +460,7 @@ function ParticipantsSidebar({ roomId, participants, isHost }) {
                   <button
                     disabled={busy === `adm-${p.id}`}
                     onClick={() => doAction(`adm-${p.id}`, () => conf.admit(roomId, p.id))}
-                    className="rounded-md bg-emerald-700 px-2 py-0.5 text-xs text-white hover:bg-emerald-600 disabled:opacity-50"
+                    className="rounded-md bg-blue-700 px-2 py-0.5 text-xs text-white hover:bg-blue-600 disabled:opacity-50"
                     title="Admit"
                   >
                     <UserCheck className="h-3.5 w-3.5" />
@@ -494,7 +494,7 @@ function ParticipantsSidebar({ roomId, participants, isHost }) {
                 <span className="truncate text-xs font-semibold text-slate-200">
                   {p.display_name || 'Guest'}
                 </span>
-                {p.role === 'host' && <Crown className="h-3 w-3 shrink-0 text-purple-400" />}
+                {p.role === 'host' && <Crown className="h-3 w-3 shrink-0 text-blue-400" />}
               </div>
               <span className="text-[10px] capitalize text-slate-500">{p.role}</span>
             </div>
@@ -693,8 +693,8 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
       <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
         <div className="w-full max-w-md space-y-6">
           <div className="text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-900/40">
-              <Video className="h-6 w-6 text-emerald-400" />
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-900/40">
+              <Video className="h-6 w-6 text-blue-400" />
             </div>
             <h2 className="text-xl font-black text-white">{room?.title || 'Conference Room'}</h2>
             <p className="mt-1 text-sm text-slate-400">
@@ -726,7 +726,7 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
               onChange={(e) => setDisplayName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') joinMeeting(); }}
               placeholder="e.g. Dr. Amina Okafor"
-              className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm text-white placeholder-slate-500 ring-1 ring-slate-700 focus:outline-none focus:ring-emerald-500"
+              className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm text-white placeholder-slate-500 ring-1 ring-slate-700 focus:outline-none focus:ring-blue-500"
             />
           </div>
 
@@ -736,7 +736,7 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
 
           {/* Managed media notice */}
           {isLiveKitRoom && (
-            <div className="rounded-xl bg-emerald-900/20 px-4 py-3 text-xs text-emerald-300">
+            <div className="rounded-xl bg-blue-900/20 px-4 py-3 text-xs text-blue-300">
               <strong>Adaptive media:</strong> Joining connects through the managed clinical media service for multi-party audio, video, screen share, and connection recovery.
             </div>
           )}
@@ -744,7 +744,7 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
           <button
             onClick={joinMeeting}
             disabled={!displayName.trim() || phase === 'joining'}
-            className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-40"
+            className="w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-40"
           >
             {phase === 'joining' ? (
               <span className="flex items-center justify-center gap-2">
@@ -812,7 +812,7 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
           <p className="mt-2 text-sm text-slate-400">The room may still be active.</p>
           <button
             onClick={() => setPhase('lobby')}
-            className="mt-6 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-emerald-500"
+            className="mt-6 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-500"
           >
             Rejoin
           </button>
@@ -845,7 +845,7 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
       <div className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-sm font-bold text-white">{room?.title || 'Conference'}</span>
-          <span className="shrink-0 rounded-full bg-emerald-900/60 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+          <span className="shrink-0 rounded-full bg-blue-900/60 px-2 py-0.5 text-[10px] font-bold text-blue-400">
             LIVE
           </span>
         </div>

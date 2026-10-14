@@ -45,7 +45,7 @@ export default function AccessURLsPage() {
       name: 'Provider Portal',
       description: 'Invite-only access for healthcare providers',
       icon: Stethoscope,
-      color: 'from-blue-500 to-indigo-600',
+      color: 'from-blue-500 to-blue-600',
       bgColor: 'bg-blue-50',
       textColor: 'text-blue-600',
       urls: {
@@ -67,9 +67,9 @@ export default function AccessURLsPage() {
       name: 'Admin Console',
       description: 'Restricted access for system administrators',
       icon: Shield,
-      color: 'from-emerald-500 to-teal-600',
-      bgColor: 'bg-emerald-50',
-      textColor: 'text-emerald-600',
+      color: 'from-blue-500 to-blue-600',
+      bgColor: 'bg-blue-50',
+      textColor: 'text-blue-600',
       urls: {
         login: '/secure/admin'
       },
@@ -104,7 +104,7 @@ export default function AccessURLsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
               <Link2 className="w-6 h-6 text-white" />
             </div>
             Access URLs
@@ -180,7 +180,7 @@ export default function AccessURLsPage() {
                         variant="outline" 
                         className={
                           portal.visibility === 'public' 
-                            ? 'text-green-600 border-green-300' 
+                            ? 'text-blue-600 border-blue-300'
                             : portal.visibility === 'invite-only'
                             ? 'text-blue-600 border-blue-300'
                             : 'text-red-600 border-red-300'

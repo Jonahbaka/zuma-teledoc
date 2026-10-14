@@ -8,6 +8,7 @@ const router = express.Router();
 const { getPool } = require('../../server/db');
 const { authenticate, requireRole } = require('../../server/middleware/auth');
 const { v4: uuidv4 } = require('uuid');
+const adminDecisions = require('../services/adminVerificationService');
 
 // --- ORGANIZATION REGISTRATION ---
 
@@ -264,22 +265,39 @@ router.get('/', authenticate, requireRole(['admin']), async (req, res) => {
 });
 
 router.post('/:orgId/verify', authenticate, requireRole(['admin']), async (req, res) => {
-  const pool = getPool();
   try {
-    const { action, reason } = req.body;
-    const statusMap = { approve: 'active', reject: 'rejected', suspend: 'suspended' };
-    if (!statusMap[action]) return res.status(400).json({ error: 'Invalid action' });
-
-    await pool.query(`
-      UPDATE ng_organizations SET
-        status = $1, rejection_reason = $2,
-        verified_at = CASE WHEN $1 = 'active' THEN NOW() ELSE verified_at END,
-        verified_by = $3, updated_at = NOW()
-      WHERE id = $4
-    `, [statusMap[action], reason || null, req.user.id, req.params.orgId]);
-    res.json({ success: true });
+    const decision = adminDecisions.validateDecision(req.params.orgId, req.body, {
+      approve: 'active', reject: 'rejected', suspend: 'suspended',
+    });
+    const organization = await adminDecisions.withActionTransaction(getPool(), async (client) => {
+      await adminDecisions.requireCurrentNGActor(client, req.user.id);
+      const current = await client.query(
+        `SELECT o.id, o.status, o.owner_user_id FROM ng_organizations o
+          WHERE o.id = $1 AND LOWER(COALESCE(o.country, 'Nigeria')) IN ('ng', 'nigeria')
+            AND (o.owner_user_id IS NULL OR EXISTS (
+              SELECT 1 FROM users u WHERE u.id = o.owner_user_id AND u.market_scope = 'NG'))
+          FOR UPDATE OF o`, [req.params.orgId]
+      );
+      if (!current.rowCount) throw adminDecisions.actionError(404, 'Organization not found in this market.');
+      const before = current.rows[0];
+      await adminDecisions.requireNGRecordOwner(client, before.owner_user_id, 'Organization');
+      const result = await client.query(
+        `UPDATE ng_organizations SET status = $1::text::ng_org_status, rejection_reason = $2,
+          verified_at = CASE WHEN $1::text = 'active' THEN COALESCE(verified_at, NOW()) ELSE verified_at END,
+          verified_by = $3, updated_at = NOW() WHERE id = $4
+          RETURNING id, status, verified_at, verified_by`,
+        [decision.status, decision.reason, req.user.id, req.params.orgId]
+      );
+      if (result.rowCount !== 1) throw adminDecisions.actionError(404, 'Organization not found in this market.');
+      await adminDecisions.auditDecision(client, {
+        actorId: req.user.id, resourceType: 'ng_organization', resourceId: before.id,
+        ...decision, before: { status: before.status }, after: { status: result.rows[0].status },
+      });
+      return result.rows[0];
+    });
+    res.json({ success: true, status: organization.status, organization });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    adminDecisions.sendActionError(res, err);
   }
 });
 

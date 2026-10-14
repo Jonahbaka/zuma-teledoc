@@ -1,92 +1,25 @@
 'use client';
 
-import { Crown, Gem, ShieldCheck } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Crown, Gem, BadgeCheck } from 'lucide-react';
+import { membershipDate, verifiedMembership } from '@/lib/membershipWorkspace';
 
-function formatISODate(value) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toISOString().slice(0, 10);
-}
+export default function MembershipCard({ user, subscription }) {
+  if (!verifiedMembership(subscription, user) || !['gold', 'platinum'].includes(subscription.tier)) return null;
+  const gold = subscription.tier === 'gold';
+  const testPayment = subscription.paymentEnvironment === 'test';
+  const Icon = gold ? Crown : Gem;
+  const name = [user.firstName || user.first_name, user.lastName || user.last_name].filter(Boolean).join(' ');
 
-export default function MembershipCard({ user, card, subscription }) {
-  const tier = card?.tier || subscription?.tier || user?.subscriptionTier || null;
-  const status = card?.status || (subscription?.status === 'active' ? 'active' : subscription?.status) || 'inactive';
-
-  if (!tier || tier === 'free' || tier === 'basic') return null;
-
-  const isGold = tier === 'gold';
-  const isPlatinum = tier === 'platinum';
-
-  const Icon = isGold ? Crown : isPlatinum ? Gem : ShieldCheck;
-  const title = isGold ? 'Docta Gold' : 'Docta Platinum';
-
-  const gradient = isGold
-    ? 'bg-[radial-gradient(circle_at_top_left,rgba(255,215,0,0.45),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(251,191,36,0.55),transparent_60%),linear-gradient(135deg,#3b2f00,#b45309,#f59e0b)]'
-    : 'bg-[radial-gradient(circle_at_top_left,rgba(148,163,184,0.55),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.25),transparent_60%),linear-gradient(135deg,#0b1220,#334155,#0ea5e9)]';
-
-  const textTone = isGold ? 'text-amber-50' : 'text-slate-50';
-  const borderTone = isGold ? 'border-amber-200/30' : 'border-slate-200/20';
-
-  const memberName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Member';
-  const cardNumber = card?.card_number || card?.cardNumber || '';
-  const exp = subscription?.current_period_end || subscription?.currentPeriodEnd || card?.current_period_end || card?.currentPeriodEnd;
-
-  return (
-    <div className={cn('relative overflow-hidden rounded-2xl border shadow-xl', borderTone, gradient)}>
-      <div className="absolute inset-0 opacity-30 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.25),transparent)] translate-x-[-60%] animate-[shimmer_3.5s_infinite]" />
-
-      <div className="relative p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className={cn('flex items-center gap-2', textTone)}>
-            <div className="h-10 w-10 rounded-xl bg-white/15 flex items-center justify-center border border-white/20">
-              <Icon className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-widest opacity-90">Membership</p>
-              <p className="text-lg font-bold">{title}</p>
-            </div>
-          </div>
-
-          <div className={cn('text-right', textTone)}>
-            <p className="text-xs uppercase tracking-widest opacity-90">Status</p>
-            <p className={cn('text-sm font-semibold', status === 'active' ? 'text-emerald-200' : 'text-rose-200')}>
-              {String(status).replace(/_/g, ' ')}
-            </p>
-          </div>
-        </div>
-
-        <div className={cn('mt-6', textTone)}>
-          <p className="text-xs uppercase tracking-widest opacity-90">Member</p>
-          <p className="text-xl font-semibold">{memberName}</p>
-        </div>
-
-        <div className={cn('mt-4 flex items-end justify-between gap-4', textTone)}>
-          <div className="min-w-0">
-            <p className="text-xs uppercase tracking-widest opacity-90">Card</p>
-            <p className="font-mono text-sm tracking-widest truncate">{cardNumber || '—'}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs uppercase tracking-widest opacity-90">Renews</p>
-            <p className="text-sm font-semibold">{formatISODate(exp) || '—'}</p>
-          </div>
-        </div>
-
-        <div className={cn('mt-6 flex items-center justify-between text-xs', textTone)}>
-          <p className="opacity-90">HIPAA-ready access controls | Privacy Protected | DoctaRx</p>
-          <div className="h-8 w-12 rounded-lg bg-white/15 border border-white/20" />
-        </div>
+  return <section aria-label={'DoctaRx ' + (gold ? 'Gold' : 'Platinum') + ' membership'} className="relative overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 p-6 text-white shadow-lg sm:p-8">
+    <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-blue-700/30 blur-3xl" aria-hidden="true" />
+    <div className="relative">
+      <div className="flex flex-wrap items-start justify-between gap-5">
+        <div className="flex items-center gap-3"><div className={'flex h-12 w-12 items-center justify-center rounded-2xl border ' + (gold ? 'border-amber-200/40 bg-amber-200/10 text-amber-200' : 'border-blue-200/40 bg-blue-200/10 text-blue-200')}><Icon size={26} aria-hidden="true" /></div><div><p className="text-base text-slate-300">DoctaRx membership</p><h2 className="mt-1 text-2xl font-semibold">{gold ? 'DoctaRx Gold' : 'DoctaRx Platinum'}</h2></div></div>
+        <p className="flex items-center gap-2 rounded-full border border-blue-200/40 bg-blue-200/10 px-4 py-2 text-base text-blue-100"><BadgeCheck size={20} aria-hidden="true" />{testPayment ? 'Test payment verified' : 'Payment verified'}</p>
       </div>
-
-      <style jsx>{`
-        @keyframes shimmer {
-          0% { transform: translateX(-60%); }
-          100% { transform: translateX(160%); }
-        }
-      `}</style>
+      {name && <div className="mt-8"><p className="text-base text-slate-300">Member</p><p className="mt-2 break-words text-xl font-medium">{name}</p></div>}
+      <dl className="mt-7 grid gap-5 border-t border-white/20 pt-6 sm:grid-cols-2"><div><dt className="text-base text-slate-300">Current period ends</dt><dd className="mt-2 text-base font-medium">{membershipDate(subscription.current_period_end)}</dd></div><div><dt className="text-base text-slate-300">Renewal instruction</dt><dd className="mt-2 text-base font-medium">{subscription.cancel_at_period_end === true ? 'Cancels at period end' : subscription.cancel_at_period_end === false ? 'Continues unless canceled' : 'Not recorded'}</dd></div></dl>
+      <p className="mt-6 border-t border-white/20 pt-5 text-base leading-7 text-slate-300">{testPayment ? 'This membership uses a Stripe test payment. It does not confirm a live charge.' : 'Membership status is separate from insurance eligibility and individual care arrangements.'}</p>
     </div>
-  );
+  </section>;
 }
-
-

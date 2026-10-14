@@ -1,5 +1,7 @@
 # DoctaRx Nigeria — Production Deploy Runbook (EC2 host)
 
+> This runbook contains historical branch/build examples. Resolve the approved release commit, current migration manifest and environment configuration before deployment. Current work is tracked in [the scope ledger](DOCTARX_SCOPE_LEDGER.md); a previous build count is not release evidence. Separate CareOps deployment and external activation remain explicit gates.
+
 This runbook covers the steps that **must run on the EC2 instance** (they need the
 real `.env`, the Neon/RDS network path, PM2, nginx, and coturn). The application
 build itself is CI-verified — `npm run build` produces a clean `.next/BUILD_ID`

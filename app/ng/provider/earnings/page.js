@@ -33,7 +33,7 @@ export default function ProviderEarnings() {
 
   const statusBadge = (s) => ({
     pending: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
-    paid: 'bg-green-500/10 text-green-600 border-green-500/20',
+    paid: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
     failed: 'bg-red-500/10 text-red-600 border-red-500/20',
   }[s] || 'bg-muted text-muted-foreground border-border');
 
@@ -53,10 +53,10 @@ export default function ProviderEarnings() {
         {/* Summary cards */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: 'Total Earned', value: formatNaira(earnings?.total_earned || 0), icon: TrendingUp, color: 'text-green-500', bg: 'bg-green-500/10' },
+            { label: 'Total Earned', value: formatNaira(earnings?.total_earned || 0), icon: TrendingUp, color: 'text-blue-500', bg: 'bg-blue-500/10' },
             { label: 'Pending Payout', value: formatNaira(earnings?.pending_payout || 0), icon: Clock, color: 'text-amber-500', bg: 'bg-amber-500/10' },
             { label: 'Total Paid Out', value: formatNaira(earnings?.total_paid_out || 0), icon: CreditCard, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-            { label: 'Consultations', value: (earnings?.total_consultations || 0).toString(), icon: Calendar, color: 'text-purple-500', bg: 'bg-purple-500/10' },
+            { label: 'Consultations', value: (earnings?.total_consultations || 0).toString(), icon: Calendar, color: 'text-blue-500', bg: 'bg-blue-500/10' },
           ].map((stat) => {
             const Icon = stat.icon;
             return (
@@ -81,7 +81,7 @@ export default function ProviderEarnings() {
           <div className="grid sm:grid-cols-2 gap-3 text-muted-foreground">
             <div>
               <p className="font-medium text-foreground text-xs mb-1">Commission Model</p>
-              <p>DoctaRx takes <strong className="text-foreground">15%</strong> of each consultation fee. You keep <strong className="text-green-500">85%</strong>.</p>
+              <p>DoctaRx takes <strong className="text-foreground">15%</strong> of each consultation fee. You keep <strong className="text-blue-500">85%</strong>.</p>
             </div>
             <div>
               <p className="font-medium text-foreground text-xs mb-1">Payout Schedule</p>
@@ -146,7 +146,7 @@ export default function ProviderEarnings() {
                         <p className="text-xs text-muted-foreground">{new Date(tx.created_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold text-green-500">{formatNaira(tx.provider_amount)}</p>
+                        <p className="text-sm font-bold text-blue-500">{formatNaira(tx.provider_amount)}</p>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${statusBadge(tx.payout_status)}`}>
                           {tx.payout_status}
                         </span>

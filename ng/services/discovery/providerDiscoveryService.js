@@ -1,18 +1,10 @@
 const ngConfig = require('../../config');
 const { getPool } = require('../../../server/db');
 const {
-  haversineDistanceKm,
   normalizeText,
   scoreProvider,
   splitMultiValue,
 } = require('./utils');
-const {
-  getSeedFeaturedCategories,
-  getSeedFeaturedMedicines,
-  getSeedMedicines,
-  getSeedPayers,
-  getSeedProviders,
-} = require('./seedFallbackData');
 
 const DEFAULT_LIMIT = 12;
 const BLOCKED_PUBLIC_PROVIDER_TERMS = [
@@ -29,10 +21,61 @@ const BLOCKED_PUBLIC_PROVIDER_TERMS = [
   'abigail simon',
 ];
 
-function logFallbackWarning(scope, error) {
-  if (error) {
-    console.warn(`[NG Discovery] Using seed fallback for ${scope}: ${error.message}`);
+function unavailableDirectory() {
+  return Object.assign(new Error('The DoctaRx directory is currently unavailable. Please retry.'), { statusCode: 503, code: 'DIRECTORY_UNAVAILABLE' });
+}
+
+function recordedCoordinates(provider) {
+  if (/city|state|area|centroid|postal|country|unresolved/i.test(provider?.geocodeQuality || '')) return null;
+  if (provider?.latitude === null || provider?.latitude === undefined || provider?.longitude === null || provider?.longitude === undefined) return null;
+  if (![provider.latitude, provider.longitude].every(value => ['number', 'string'].includes(typeof value) && String(value).trim())) return null;
+  const latitude = Number(provider.latitude);
+  const longitude = Number(provider.longitude);
+  return Number.isFinite(latitude) && Math.abs(latitude) <= 90 && Number.isFinite(longitude) && Math.abs(longitude) <= 180
+    ? { latitude, longitude } : null;
+}
+
+function applyNearbyScope(conditions, values, location, alias, checkPrecision = false) {
+  if (location.latitude === null || location.latitude === undefined || location.longitude === null || location.longitude === undefined) return null;
+  const latitude = Number(location.latitude); const longitude = Number(location.longitude); const radius = Number(location.radius || 20000);
+  if (!recordedCoordinates({ latitude, longitude }) || !Number.isFinite(radius) || radius < 1 || radius > 20000) {
+    throw Object.assign(new Error('Valid device coordinates and a radius of at most 20000 metres are required.'), { statusCode: 400 });
   }
+  const latitudeRange = radius / 110000; // Conservative bound around the spherical distance calculation.
+  const longitudeRange = Math.abs(latitude) + latitudeRange >= 90
+    ? 180 : Math.min(180, radius / (110000 * Math.cos(latitude * Math.PI / 180)));
+  values.push(latitude, longitude, radius);
+  const first = values.length - 2;
+  const distance = `CASE WHEN ${alias}.latitude BETWEEN -90 AND 90 AND ${alias}.longitude BETWEEN -180 AND 180
+    THEN 6371000 * ACOS(LEAST(1.0, GREATEST(-1.0,
+    SIN(RADIANS($${first}::double precision)) * SIN(RADIANS(${alias}.latitude::double precision)) +
+    COS(RADIANS($${first}::double precision)) * COS(RADIANS(${alias}.latitude::double precision)) *
+    COS(RADIANS(${alias}.longitude::double precision) - RADIANS($${first + 1}::double precision))))) ELSE NULL END`;
+  conditions.push(`${alias}.latitude BETWEEN -90 AND 90`, `${alias}.longitude BETWEEN -180 AND 180`);
+  values.push(Math.max(-90, latitude - latitudeRange), Math.min(90, latitude + latitudeRange));
+  conditions.push(`${alias}.latitude BETWEEN $${values.length - 1} AND $${values.length}`);
+  if (longitudeRange < 180) {
+    const west = longitude - longitudeRange; const east = longitude + longitudeRange;
+    values.push(west < -180 ? west + 360 : west, east > 180 ? east - 360 : east);
+    conditions.push(west < -180 || east > 180
+      ? `(${alias}.longitude >= $${values.length - 1} OR ${alias}.longitude <= $${values.length})`
+      : `${alias}.longitude BETWEEN $${values.length - 1} AND $${values.length}`);
+  }
+  if (checkPrecision) conditions.push(`COALESCE(${alias}.geocode_quality, '') !~* 'city|state|area|centroid|postal|country|unresolved'`);
+  conditions.push(`(${distance}) <= $${first + 2}::double precision`);
+  return distance;
+}
+
+function recordedDistance(a, b) {
+  const left = recordedCoordinates(a);
+  const right = recordedCoordinates(b);
+  if (!left || !right) return null;
+  // The shared utility historically treats 0 as missing. Offset-independent
+  // Haversine calculation preserves valid equator/prime-meridian coordinates.
+  const radians = value => value * Math.PI / 180;
+  const angle = Math.sin(radians(right.latitude - left.latitude) / 2) ** 2 +
+    Math.cos(radians(left.latitude)) * Math.cos(radians(right.latitude)) * Math.sin(radians(right.longitude - left.longitude) / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(Math.min(1, angle)), Math.sqrt(Math.max(0, 1 - angle)));
 }
 
 function providerMatchesType(provider, requestedType) {
@@ -136,8 +179,8 @@ function mapPharmacyRow(row, medicineName) {
     addressRaw: row.address_line1,
     latitude: row.latitude,
     longitude: row.longitude,
-    geocodeQuality: row.latitude && row.longitude ? 'street' : 'city_only',
-    addressConfidence: row.latitude && row.longitude ? 'street' : 'city_only',
+    geocodeQuality: recordedCoordinates(row) ? 'street' : 'city_only',
+    addressConfidence: recordedCoordinates(row) ? 'street' : 'city_only',
     phone: splitMultiValue(row.phone),
     email: splitMultiValue(row.email),
     website: row.website,
@@ -155,7 +198,7 @@ function mapPharmacyRow(row, medicineName) {
     popularityScore: Number(row.total_orders ? Math.min(1, Number(row.total_orders) / 100) : 0.6),
     dataConfidence: 0.88,
     sourceCount: 1,
-    lastVerifiedAt: row.verified_at || row.updated_at,
+    lastVerifiedAt: row.verified_at || null,
     services: ['medication_fulfilment', 'pharmacy_review'],
     specialties: medicineName ? [medicineName] : [],
     insurances: [],
@@ -224,13 +267,10 @@ function hasBlockedPublicProviderMarker(provider = {}) {
   const haystack = normalizeText([
     provider.canonicalName,
     provider.email,
-    provider.providerType,
-    provider.providerSubtype,
-    provider.sourceType,
-    provider.kind,
   ].filter(Boolean).join(' '));
 
-  return BLOCKED_PUBLIC_PROVIDER_TERMS.some((term) => haystack.includes(term));
+  return BLOCKED_PUBLIC_PROVIDER_TERMS.some((term) => /^[a-z]+$/.test(term)
+    ? new RegExp(`\\b${term}\\b`).test(haystack) : haystack.includes(term));
 }
 
 function sanitizePublicProvider(provider) {
@@ -255,13 +295,12 @@ function sanitizePublicProvider(provider) {
 }
 
 function buildProviderResponse(provider, scoring) {
-  const distanceKm = scoring?.distanceKm ?? haversineDistanceKm(scoring?.userLocation, provider);
-  const etaMinutes = distanceKm !== null ? Math.max(8, Math.round(distanceKm * 4.5)) : null;
+  const distanceKm = recordedDistance(scoring?.userLocation, provider);
 
   return {
     ...provider,
     distanceKm,
-    etaMinutes,
+    etaMinutes: null,
     score: Number((scoring?.finalScore || 0).toFixed(4)),
     displayBadges: [
       ...(provider.sourceBadges || []),
@@ -315,11 +354,8 @@ async function getFeaturedMedicines(limit = 18) {
         therapeuticClass: row.therapeutic_class,
       }));
     }
-  } catch (error) {
-    logFallbackWarning('featured medicines', error);
-  }
-
-  return getSeedFeaturedMedicines(limit);
+  } catch (_) { throw unavailableDirectory(); }
+  return [];
 }
 
 async function getFeaturedMedicineCategories(limit = 8) {
@@ -350,11 +386,8 @@ async function getFeaturedMedicineCategories(limit = 8) {
         medicineExamples: (row.medicine_examples || []).slice(0, 4),
       }));
     }
-  } catch (error) {
-    logFallbackWarning('featured medicine categories', error);
-  }
-
-  return getSeedFeaturedCategories(limit);
+  } catch (_) { throw unavailableDirectory(); }
+  return [];
 }
 
 async function getPayers(limit = 50) {
@@ -399,11 +432,8 @@ async function getPayers(limit = 50) {
         })),
       };
     }
-  } catch (error) {
-    logFallbackWarning('payers', error);
-  }
-
-  return getSeedPayers(limit);
+  } catch (_) { throw unavailableDirectory(); }
+  return { hmos: [], stateSchemes: [] };
 }
 
 async function getGroupProviders(filters = {}) {
@@ -431,12 +461,13 @@ async function getGroupProviders(filters = {}) {
     values.push(`%${normalized}%`);
     conditions.push(`normalized_name ILIKE $${values.length}`);
   }
+  const distanceOrder = applyNearbyScope(conditions, values, filters, 'g', true);
 
   const sql = `
     SELECT *
-    FROM ng_provider_match_groups
+    FROM ng_provider_match_groups g
     ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
-    ORDER BY trust_score DESC, source_count DESC, canonical_name ASC
+    ORDER BY ${distanceOrder ? `(${distanceOrder}) ASC,` : ''} trust_score DESC, source_count DESC, canonical_name ASC
     LIMIT 200
   `;
 
@@ -445,26 +476,28 @@ async function getGroupProviders(filters = {}) {
     if (result.rows.length > 0) {
       return result.rows.map(mapGroupRow);
     }
-  } catch (error) {
-    logFallbackWarning('provider groups', error);
-  }
-
-  return getSeedProviders(filters);
+  } catch (_) { throw unavailableDirectory(); }
+  return [];
 }
 
-async function getApprovedPharmacies({ state, city, medicine }) {
+async function getApprovedPharmacies({ state, city, medicine, query, latitude, longitude, radius }) {
   const pool = getPoolSafe();
   const values = [];
-  const conditions = [`status = 'approved'`];
+  const conditions = [`p.status = 'approved'`, `p.account_status = 'active'`, `p.pcn_license_expiry >= CURRENT_DATE`];
 
   if (state) {
     values.push(state);
-    conditions.push(`state ILIKE $${values.length}`);
+    conditions.push(`p.state ILIKE $${values.length}`);
   }
 
   if (city) {
     values.push(city);
-    conditions.push(`city ILIKE $${values.length}`);
+    conditions.push(`p.city ILIKE $${values.length}`);
+  }
+
+  if (query && !medicine) {
+    values.push(`%${normalizeText(query)}%`);
+    conditions.push(`LOWER(p.name) LIKE $${values.length}`);
   }
 
   let stockJoin = '';
@@ -493,15 +526,16 @@ async function getApprovedPharmacies({ state, city, medicine }) {
     `;
     conditions.push(`stock.medicine_stock_hint IS NOT NULL`);
   }
+  const distanceOrder = applyNearbyScope(conditions, values, { latitude, longitude, radius }, 'p');
 
   const sql = `
     SELECT
       p.*,
-      stock.medicine_stock_hint
+      ${medicine ? 'stock.medicine_stock_hint' : 'NULL::json AS medicine_stock_hint'}
     FROM ng_pharmacies p
     ${stockJoin}
     WHERE ${conditions.join(' AND ')}
-    ORDER BY verified_at DESC NULLS LAST, rating DESC NULLS LAST, total_orders DESC NULLS LAST
+    ORDER BY ${distanceOrder ? `(${distanceOrder}) ASC,` : ''} verified_at DESC NULLS LAST, rating DESC NULLS LAST, total_orders DESC NULLS LAST
     LIMIT 100
   `;
 
@@ -510,16 +544,8 @@ async function getApprovedPharmacies({ state, city, medicine }) {
     if (result.rows.length > 0) {
       return result.rows.map((row) => mapPharmacyRow(row, medicine));
     }
-  } catch (error) {
-    logFallbackWarning('approved pharmacies', error);
-  }
-
-  return getSeedProviders({
-    state,
-    city,
-    providerType: 'pharmacy',
-    query: medicine,
-  });
+  } catch (_) { throw unavailableDirectory(); }
+  return [];
 }
 
 async function getInternalTelehealthProviders({ state, city, specialty, query }) {
@@ -531,7 +557,7 @@ async function getInternalTelehealthProviders({ state, city, specialty, query })
     `u.is_active = TRUE`,
     `COALESCE(u.is_test_account, FALSE) = FALSE`,
     `COALESCE(u.account_status, 'active') NOT IN ('deleted', 'suspended', 'revoked', 'inactive')`,
-    `(COALESCE(u.region::text, '') = 'NG' OR LOWER(COALESCE(u.country, '')) IN ('nigeria', 'ng'))`,
+    `u.market_scope = 'NG'`,
     `COALESCE(u.test_account_metadata->>'testAccount', '') NOT IN ('true', 'TRUE')`,
     `COALESCE(u.test_account_metadata->>'isTestAccount', '') NOT IN ('true', 'TRUE')`,
     `COALESCE(u.test_account_metadata->>'createdFrom', '') NOT IN ('admin_portal', 'us_admin_portal', 'ng_admin_portal', 'admin_testing_access')`,
@@ -539,8 +565,8 @@ async function getInternalTelehealthProviders({ state, city, specialty, query })
     `NOT EXISTS (
       SELECT 1
       FROM testing_access_links tal
-      WHERE tal.target_user_id = u.id
-         OR LOWER(COALESCE(tal.target_email, '')) = LOWER(u.email)
+      WHERE to_jsonb(tal)->>'target_user_id' = u.id::text
+         OR LOWER(COALESCE(to_jsonb(tal)->>'target_email', '')) = LOWER(u.email)
          OR tal.last_used_by = u.id
     )`,
     `NOT EXISTS (
@@ -607,10 +633,7 @@ async function getInternalTelehealthProviders({ state, city, specialty, query })
   try {
     const result = await pool.query(sql, values);
     return result.rows.map(mapInternalProviderRow).map(sanitizePublicProvider).filter(Boolean);
-  } catch (error) {
-    logFallbackWarning('internal telehealth providers', error);
-    return [];
-  }
+  } catch (_) { throw unavailableDirectory(); }
 }
 
 async function searchProviders(params = {}) {
@@ -626,10 +649,21 @@ async function searchProviders(params = {}) {
     lga,
     latitude,
     longitude,
+    postalCode,
+    radius = 20000,
     medicine,
     limit = DEFAULT_LIMIT,
     sessionId,
   } = params;
+
+  const hasLatitude = latitude !== null && latitude !== undefined;
+  const hasLongitude = longitude !== null && longitude !== undefined;
+  if (hasLatitude !== hasLongitude || (hasLatitude && (!recordedCoordinates({ latitude, longitude }) || state || city || postalCode))) {
+    throw Object.assign(new Error('Choose valid device coordinates or a manual area, without combining them.'), { statusCode: 400 });
+  }
+  if (postalCode && !state && !city) throw Object.assign(new Error('Postal-code-only lookup is not supported in the Nigeria directory. Choose a city or state.'), { statusCode: 400, code: 'POSTAL_AREA_UNSUPPORTED' });
+  if (!hasLatitude && !state && !city) return { providers: [], total: 0, locationSource: 'unresolved' };
+  if (!Number.isFinite(Number(radius)) || Number(radius) < 1 || Number(radius) > 20000) throw Object.assign(new Error('Search radius must be between 1 and 20000 metres.'), { statusCode: 400 });
 
   const preferredTypes =
     providerType && providerType !== 'all'
@@ -639,20 +673,20 @@ async function searchProviders(params = {}) {
         : [];
 
   const userLocation = {
-    latitude: latitude ? Number(latitude) : null,
-    longitude: longitude ? Number(longitude) : null,
+    latitude: hasLatitude ? Number(latitude) : null,
+    longitude: hasLongitude ? Number(longitude) : null,
     state: state || null,
     city: city || null,
     lga: lga || null,
   };
 
   const [groups, telehealthProviders, pharmacies] = await Promise.all([
-    getGroupProviders({ state, city, providerType, query }),
+    getGroupProviders({ state, city, providerType, query, latitude: mode === 'teleconsult' ? null : latitude, longitude: mode === 'teleconsult' ? null : longitude, radius }),
     mode === 'teleconsult' || specialty || !providerType || providerType === 'doctor'
       ? getInternalTelehealthProviders({ state, city, specialty, query })
       : Promise.resolve([]),
     mode === 'pharmacy' || medicine
-      ? getApprovedPharmacies({ state, city, medicine: medicine || query })
+      ? getApprovedPharmacies({ state, city, medicine, query, latitude, longitude, radius })
       : Promise.resolve([]),
   ]);
 
@@ -715,7 +749,8 @@ async function searchProviders(params = {}) {
 
       return buildProviderResponse(provider, { ...scoring, userLocation });
     })
-    .sort((a, b) => b.score - a.score)
+    .filter(provider => !hasLatitude || mode === 'teleconsult' || (provider.distanceKm !== null && provider.distanceKm * 1000 <= Number(radius)))
+    .sort((a, b) => hasLatitude && mode !== 'teleconsult' ? a.distanceKm - b.distanceKm : b.score - a.score)
     .slice(0, Number(limit || DEFAULT_LIMIT));
 
   await logDiscoverySearch({
@@ -734,7 +769,7 @@ async function searchProviders(params = {}) {
   return {
     providers: mergedProviders,
     total: mergedProviders.length,
-    locationSource: latitude && longitude ? 'gps' : state || city ? 'manual' : 'unresolved',
+    locationSource: hasLatitude ? 'gps' : state || city ? 'manual' : 'unresolved',
   };
 }
 
@@ -834,13 +869,7 @@ async function searchMedicines(params = {}) {
       accessMode: row.access_mode,
       productLogicNote: row.product_logic_note,
     }));
-  } catch (error) {
-    logFallbackWarning('medicine search', error);
-  }
-
-  if (medicines.length === 0) {
-    medicines = getSeedMedicines({ query, symptom, category, accessMode }).slice(0, Number(limit || DEFAULT_LIMIT));
-  }
+  } catch (_) { throw unavailableDirectory(); }
 
   return {
     medicines,
@@ -925,8 +954,8 @@ async function logDiscoverySearch({
       `,
       [
         sessionId || null,
-        latitude ? Number(latitude) : null,
-        longitude ? Number(longitude) : null,
+        null,
+        null,
         state || null,
         city || null,
         lga || null,
@@ -934,12 +963,10 @@ async function logDiscoverySearch({
         symptomTags || [],
         preferredProviderTypes || [],
         sortMode || 'nearest',
-        latitude && longitude ? 'gps' : state || city ? 'manual' : 'unresolved',
+        latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined ? 'gps' : state || city ? 'manual' : 'unresolved',
       ]
     );
-  } catch (error) {
-    console.error('[NG Discovery] Failed to log search', error.message);
-  }
+  } catch (_) { /* A metrics failure cannot replace an actual directory result. */ }
 }
 
 async function logDiscoveryEvent({ eventType, sessionId, providerReference, medReference, query, payload }) {

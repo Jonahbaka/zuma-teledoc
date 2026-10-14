@@ -3015,6 +3015,14 @@ const migrations = [
 
 const SQL_FILE_MIGRATIONS = [
   {
+    name: '037_encrypted_manual_insurance',
+    file: '037_encrypted_manual_insurance.sql'
+  },
+  {
+    name: '038_crm_recorded_workspace',
+    file: '038_crm_recorded_workspace.sql'
+  },
+  {
     name: '400_agent_orchestrator_schema',
     file: '400_agent_orchestrator_schema.sql'
   }

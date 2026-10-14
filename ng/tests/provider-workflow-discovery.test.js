@@ -29,22 +29,22 @@ const adminApi = read('ng/routes/admin.js');
 
 describe('Provider dashboard exposes the operating workspace (discoverable)', () => {
   it('shows a Telehealth entry point that routes to the clinical room', () => {
-    assert.match(dashboard, /Telehealth Center/);
+    assert.match(dashboard, /Video consultations/);
     // market-aware base resolves to /ng/provider or /provider at runtime
     assert.match(dashboard, /\$\{base\}\/call/);
   });
 
-  it('exposes EMR/SOAP, Prescriptions, Referrals, and Pharmacy status', () => {
-    assert.match(dashboard, /EMR \/ SOAP Notes/);
+  it('exposes clinical notes, prescriptions, referrals, and patient records', () => {
+    assert.match(dashboard, /Clinical notes/);
     assert.match(dashboard, /Prescriptions/);
     assert.match(dashboard, /Referrals/);
-    assert.match(dashboard, /Pharmacy Status/);
+    assert.match(dashboard, /\/patients/);
   });
 
   it('exposes Appointments and Visits/Encounters', () => {
     assert.match(dashboard, /Appointments/);
-    assert.match(dashboard, /Visits \/ Encounters/);
-    assert.match(dashboard, /\$\{base\}\/visits/);
+    assert.match(dashboard, /Open encounter/);
+    assert.match(dashboard, /'\/visits'/);
   });
 
   it('routes "Start" on a video appointment to a call page with appointment context', () => {
@@ -79,17 +79,28 @@ describe('Premium clinical video room is wired (not a placeholder)', () => {
   it('links SOAP/EMR and Create Prescription to the consultation context', () => {
     assert.match(room, /openClinicalRecord/);
     assert.match(room, /createPrescription/);
-    assert.match(room, /\/ng\/provider\/appointments\/\$\{appointmentId\}\/visit/);
+    assert.match(room, /\$\{providerBase\}\/appointments\/\$\{appointmentId\}\/visit/);
+    assert.match(room, /window\.open\(path/);
   });
 
   it('has return-to-dashboard navigation both in-call and on the ended screen', () => {
-    const matches = room.match(/\/ng\/provider\/dashboard/g) || [];
+    const matches = room.match(/\$\{providerBase\}\/dashboard/g) || [];
     assert.ok(matches.length >= 2, 'expected at least two dashboard return paths');
   });
 
   it('passes appointment/patient linkage when creating a room', () => {
     assert.match(room, /appointment_id: appointmentId/);
     assert.match(room, /patient_user_id: patientId/);
+  });
+
+  it('never fabricates vitals or promotes a failed connection into an active consultation', () => {
+    assert.doesNotMatch(room, /setHr|HR simulation|Vitals: HR|BP 120\/80|SpO2: 98%|local-preview mode/);
+    assert.match(room, /setConnState\('failed'\)/);
+    assert.match(room, /setPhase\('pre'\)/);
+    assert.match(room, /remoteParticipants\.map/);
+    assert.match(room, /Track\.Source\.ScreenShare/);
+    assert.match(room, /devices\.microphone \? createLocalAudioTrack/);
+    assert.match(room, /devices\.camera \? createLocalVideoTrack/);
   });
 });
 

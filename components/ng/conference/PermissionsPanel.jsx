@@ -27,7 +27,7 @@ export default function PermissionsPanel({ participant }) {
             {g.keys.map(k => (
               <li key={k} className="flex items-center gap-2 text-xs text-slate-700">
                 {perms[k]
-                  ? <Check className="h-3.5 w-3.5 text-emerald-600" />
+                  ? <Check className="h-3.5 w-3.5 text-blue-600" />
                   : <X     className="h-3.5 w-3.5 text-slate-300" />}
                 <span className={perms[k] ? '' : 'text-slate-400 line-through'}>{labelFor(k)}</span>
               </li>

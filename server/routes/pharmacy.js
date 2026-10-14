@@ -9,21 +9,27 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { auditMiddleware } = require('../middleware/audit');
 const pharmacyService = require('../services/pharmacyService');
 const logger = require('../middleware/logger');
-const { z } = require('zod');
-const { validate } = require('../../lib/validation');
-
-// Validation schemas
-const addPharmacySchema = z.object({
-  pharmacyName: z.string().min(1).max(255),
-  pharmacyAddress: z.string().min(1),
-  pharmacyPhone: z.string().optional(),
-  pharmacyNpi: z.string().optional(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-  distanceMiles: z.number().optional(),
-  isPreferred: z.boolean().optional(),
-  source: z.enum(['patient_selected', 'ocr_extracted', 'gps_located']).optional()
-});
+const uuid = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
+function preferenceTarget(req) {
+  if (!['patient', 'provider', 'admin', 'super_admin'].includes(req.user.role)) throw Object.assign(new Error('Pharmacy preference access is unavailable for this account.'), { statusCode: 403, code: 'PHARMACY_PREFERENCE_FORBIDDEN' });
+  const bodyId = req.body?.patientId;
+  const queryId = req.query?.patientId;
+  const hasBody = Object.prototype.hasOwnProperty.call(req.body || {}, 'patientId');
+  const hasQuery = Object.prototype.hasOwnProperty.call(req.query || {}, 'patientId');
+  if ((hasBody && (typeof bodyId !== 'string' || !uuid.test(bodyId))) || (hasQuery && (typeof queryId !== 'string' || !uuid.test(queryId)))) throw Object.assign(new Error('Choose a valid patient account.'), { statusCode: 400, code: 'PHARMACY_PREFERENCE_INPUT_INVALID' });
+  if (hasBody && hasQuery && bodyId !== queryId) throw Object.assign(new Error('Choose one patient account.'), { statusCode: 400, code: 'PHARMACY_PREFERENCE_INPUT_INVALID' });
+  const selected = hasBody ? bodyId : hasQuery ? queryId : req.user.role === 'patient' ? req.user.id : null;
+  if (typeof selected !== 'string' || !uuid.test(selected)) throw Object.assign(new Error('Choose a valid patient account.'), { statusCode: 400, code: 'PHARMACY_PREFERENCE_INPUT_INVALID' });
+  return selected;
+}
+function preferenceFailure(res, error) {
+  const status = [400, 403, 404, 409, 503].includes(error.statusCode) ? error.statusCode : 503;
+  const code = error.statusCode && String(error.code || '').startsWith('PHARMACY_PREFERENCE_') ? error.code : 'PHARMACY_PREFERENCE_STORAGE_UNAVAILABLE';
+  logger.warn('Pharmacy preference request failed', { status, code });
+  res.set('Cache-Control', 'private, no-store');
+  return res.status(status).json({ success: false, code, ...(status === 503 ? { status: 'unavailable' } : {}),
+    error: error.statusCode ? error.message : 'Pharmacy preferences could not be accessed. Try again later.' });
+}
 
 /**
  * GET /api/pharmacy/nearby
@@ -107,23 +113,16 @@ router.get('/preferences',
   authenticate,
   async (req, res) => {
     try {
-      // For providers/admins, allow querying specific patient
-      const patientId = ['provider', 'admin', 'super_admin'].includes(req.user.role)
-        ? req.query.patientId || req.user.id
-        : req.user.id;
-      
-      const pharmacies = await pharmacyService.getPatientPharmacies(patientId);
+      const patientId = preferenceTarget(req);
+      const pharmacies = await pharmacyService.getPatientPharmacies(patientId, req);
+      res.set('Cache-Control', 'private, no-store');
       
       res.json({
         success: true,
         pharmacies
       });
     } catch (error) {
-      logger.error('Get pharmacy preferences error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get pharmacy preferences'
-      });
+      preferenceFailure(res, error);
     }
   }
 );
@@ -137,30 +136,16 @@ router.post('/preferences',
   auditMiddleware('create', 'pharmacy_preference'),
   async (req, res) => {
     try {
-      const data = validate(addPharmacySchema, req.body);
-      
-      // For providers/admins, allow setting for specific patient
-      const patientId = ['provider', 'admin', 'super_admin'].includes(req.user.role)
-        ? req.body.patientId || req.user.id
-        : req.user.id;
-      
-      const pharmacy = await pharmacyService.addPatientPharmacy(patientId, data);
-      
-      logger.info('Pharmacy preference added', {
-        patientId,
-        pharmacyName: data.pharmacyName
-      });
-      
-      res.status(201).json({
+      const patientId = preferenceTarget(req);
+      const saved = await pharmacyService.addPatientPharmacy(patientId, req.body, req);
+      res.set('Cache-Control', 'private, no-store');
+      res.status(saved.created ? 201 : 200).json({
         success: true,
-        pharmacy
+        pharmacy: saved.pharmacy,
+        created: saved.created
       });
     } catch (error) {
-      logger.error('Add pharmacy preference error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to add pharmacy preference'
-      });
+      preferenceFailure(res, error);
     }
   }
 );
@@ -174,7 +159,8 @@ router.put('/preferences/:id/preferred',
   auditMiddleware('update', 'pharmacy_preference'),
   async (req, res) => {
     try {
-      const pharmacy = await pharmacyService.setPreferredPharmacy(req.user.id, req.params.id);
+      const pharmacy = await pharmacyService.setPreferredPharmacy(preferenceTarget(req), req.params.id, req);
+      res.set('Cache-Control', 'private, no-store');
       
       if (!pharmacy) {
         return res.status(404).json({
@@ -188,11 +174,7 @@ router.put('/preferences/:id/preferred',
         pharmacy
       });
     } catch (error) {
-      logger.error('Set preferred pharmacy error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to set preferred pharmacy'
-      });
+      preferenceFailure(res, error);
     }
   }
 );
@@ -206,7 +188,8 @@ router.delete('/preferences/:id',
   auditMiddleware('delete', 'pharmacy_preference'),
   async (req, res) => {
     try {
-      const deleted = await pharmacyService.removePatientPharmacy(req.user.id, req.params.id);
+      const deleted = await pharmacyService.removePatientPharmacy(preferenceTarget(req), req.params.id, req);
+      res.set('Cache-Control', 'private, no-store');
       
       if (!deleted) {
         return res.status(404).json({
@@ -220,11 +203,7 @@ router.delete('/preferences/:id',
         message: 'Pharmacy removed from preferences'
       });
     } catch (error) {
-      logger.error('Remove pharmacy preference error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to remove pharmacy preference'
-      });
+      preferenceFailure(res, error);
     }
   }
 );

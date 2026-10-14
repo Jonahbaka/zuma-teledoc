@@ -489,7 +489,7 @@ class OrderService {
     const pool = getPool();
     const offset = (page - 1) * limit;
 
-    let sql = `SELECT o.*, u.first_name, u.last_name, u.phone_number
+    let sql = `SELECT o.*, u.first_name, u.last_name, u.phone AS phone_number
        FROM ng_orders o JOIN users u ON u.id = o.patient_user_id
        WHERE o.pharmacy_id = $1`;
     const params = [pharmacyId];

@@ -19,8 +19,8 @@ const MARKET_COPY = {
     dashboardHref: '/provider/dashboard',
     title: 'Create a new provider password',
     subtitle: 'Set a permanent password before entering US provider ops.',
-    accent: 'from-purple-600 to-indigo-600',
-    focus: 'focus:border-purple-500 focus:ring-purple-500/20',
+    accent: 'from-blue-600 to-blue-600',
+    focus: 'focus:border-blue-500 focus:ring-blue-500/20',
   },
   US_PHARMACY: {
     homeHref: '/',
@@ -28,8 +28,8 @@ const MARKET_COPY = {
     dashboardHref: '/pharmacy/dashboard',
     title: 'Create a new pharmacy password',
     subtitle: 'Set a permanent password before entering the DoctaRx Pharmacy Portal.',
-    accent: 'from-purple-600 to-indigo-600',
-    focus: 'focus:border-purple-500 focus:ring-purple-500/20',
+    accent: 'from-blue-600 to-blue-600',
+    focus: 'focus:border-blue-500 focus:ring-blue-500/20',
   },
   NG: {
     homeHref: '/ng',
@@ -37,8 +37,8 @@ const MARKET_COPY = {
     dashboardHref: '/ng/provider/dashboard',
     title: 'Create a new provider password',
     subtitle: 'Set a permanent password before entering Nigeria provider ops.',
-    accent: 'from-emerald-600 to-teal-600',
-    focus: 'focus:border-emerald-500 focus:ring-emerald-500/20',
+    accent: 'from-blue-600 to-blue-600',
+    focus: 'focus:border-blue-500 focus:ring-blue-500/20',
   },
   NG_PHARMACY: {
     homeHref: '/ng',
@@ -46,8 +46,8 @@ const MARKET_COPY = {
     dashboardHref: '/ng/pharmacy/dashboard',
     title: 'Create a new pharmacy password',
     subtitle: 'Set a permanent password before entering the DoctaRx Nigeria Pharmacy Portal.',
-    accent: 'from-emerald-600 to-teal-600',
-    focus: 'focus:border-emerald-500 focus:ring-emerald-500/20',
+    accent: 'from-blue-600 to-blue-600',
+    focus: 'focus:border-blue-500 focus:ring-blue-500/20',
   },
 };
 
@@ -263,7 +263,7 @@ export default function ProviderCreatePasswordPage({ market = 'US', role = 'prov
                     {showNew ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
                   </button>
                 </div>
-                <p className={policySatisfied ? 'text-xs text-emerald-300' : 'text-xs text-slate-400'}>
+                <p className={policySatisfied ? 'text-xs text-blue-300' : 'text-xs text-slate-400'}>
                   Use at least 8 characters with uppercase, lowercase, number, and symbol.
                 </p>
               </div>

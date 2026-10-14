@@ -73,7 +73,7 @@ function TypingMessage({ text, speed = 12, onComplete, scrollRef }) {
     <>
       <pre className="whitespace-pre-wrap font-sans">{displayed}</pre>
       {!done && (
-        <span className="inline-block w-2 h-4 bg-purple-400 animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+        <span className="inline-block w-2 h-4 bg-blue-400 animate-pulse ml-0.5 align-text-bottom rounded-sm" />
       )}
     </>
   );
@@ -401,7 +401,7 @@ export default function AgentChatPage() {
     return (
       <div className="min-h-screen contrast-dark bg-gray-950 flex items-center justify-center">
         <div className="text-center">
-          <MessageSquare className="w-16 h-16 text-purple-400 animate-pulse mx-auto mb-4" />
+          <MessageSquare className="w-16 h-16 text-blue-400 animate-pulse mx-auto mb-4" />
           <p className="text-gray-400 text-lg">Opening communication channel...</p>
         </div>
       </div>
@@ -414,14 +414,14 @@ export default function AgentChatPage() {
       <div className="bg-gray-900 border-b border-gray-800 px-6 py-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-indigo-700 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
               <MessageSquare className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-indigo-300 bg-clip-text text-transparent">AGENT COMMAND CENTER</h1>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-blue-300 bg-clip-text text-transparent">AGENT COMMAND CENTER</h1>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400" /> Runtime health below
+                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400" /> Runtime health below
                 </span>
                 <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
                   <Heart className="w-2.5 h-2.5" /> Legacy chat
@@ -441,7 +441,7 @@ export default function AgentChatPage() {
                 <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20" title="Goal Engine — Daily/Weekly/Monthly/Yearly/Infinite Forecasts">
                   <Target className="w-2.5 h-2.5" /> Goals
                 </span>
-                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20" title="Nerve Bridge — Real app events → Agent reactions">
+                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20" title="Nerve Bridge — Real app events → Agent reactions">
                   <Sparkles className="w-2.5 h-2.5" /> Nerve Bridge
                 </span>
                 <span className="text-[10px] text-gray-500">Operational status comes from persisted runtime tasks</span>
@@ -475,7 +475,7 @@ export default function AgentChatPage() {
               ].map(tab => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                   className={`px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 ${
-                    activeTab === tab.id ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
+                    activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
                   <tab.icon className="w-4 h-4" /> {tab.label}
                 </button>
               ))}
@@ -496,7 +496,7 @@ export default function AgentChatPage() {
               <h2 className="text-xl font-bold flex items-center gap-2"><FileText className="w-6 h-6 text-cyan-400" /> Uploads for Analysis</h2>
               <p className="text-sm text-gray-400 mt-1">Upload PDFs / text docs to attach to a chat message. Images are stored; OCR requires an OCR provider.</p>
             </div>
-            <label className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium cursor-pointer">
+            <label className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium cursor-pointer">
               {uploading ? 'Uploading…' : 'Upload Files'}
               <input
                 type="file"
@@ -529,7 +529,7 @@ export default function AgentChatPage() {
               ) : (uploads || []).map((u) => {
                 const selected = attachmentIds.includes(u.id);
                 return (
-                  <div key={u.id} className={`rounded-xl border p-4 ${selected ? 'border-purple-500/40 bg-purple-600/10' : 'border-gray-800 bg-gray-950/40'}`}>
+                  <div key={u.id} className={`rounded-xl border p-4 ${selected ? 'border-blue-500/40 bg-blue-600/10' : 'border-gray-800 bg-gray-950/40'}`}>
                     <div className="flex items-start justify-between gap-3">
                       <button
                         type="button"
@@ -572,7 +572,7 @@ export default function AgentChatPage() {
           <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold flex items-center gap-2"><GitBranch className="w-6 h-6 text-emerald-400" /> GitHub Connect</h2>
+                <h2 className="text-xl font-bold flex items-center gap-2"><GitBranch className="w-6 h-6 text-blue-400" /> GitHub Connect</h2>
                 <p className="text-sm text-gray-400 mt-1">Store a GitHub PAT in Credential Vault: platform GitHub → API Key.</p>
               </div>
               <button
@@ -619,7 +619,7 @@ export default function AgentChatPage() {
             {/* Chat Header */}
             <div className="bg-gray-900/50 border-b border-gray-800 px-6 py-3 flex items-center gap-3">
               {selectedAgent === 'all' ? (
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-blue-600 flex items-center justify-center">
                   <currentAgent.icon className="w-5 h-5 text-white" />
                 </div>
               ) : (
@@ -636,15 +636,15 @@ export default function AgentChatPage() {
                   {selectedAgent === 'all' ? 'Broadcasting to all agents' : `${currentPersona.role} — Direct Channel`}
                 </p>
               </div>
-              <span className="ml-auto text-xs text-emerald-400 flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Online
+              <span className="ml-auto text-xs text-blue-400 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" /> Online
               </span>
             </div>
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               {attachmentIds.length > 0 && (
-                <div className="bg-purple-600/10 border border-purple-500/20 rounded-xl px-4 py-2 text-sm text-purple-200">
+                <div className="bg-blue-600/10 border border-blue-500/20 rounded-xl px-4 py-2 text-sm text-blue-200">
                   Next message includes <span className="font-mono">{attachmentIds.length}</span> attachment(s). Manage in the Uploads tab.
                 </div>
               )}
@@ -680,18 +680,18 @@ export default function AgentChatPage() {
                   if (eng.startsWith('agent_loop')) {
                     const isClaudeLoop = eng.includes('claude');
                     engineLabel = (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono flex items-center gap-1 ${isClaudeLoop ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'}`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono flex items-center gap-1 ${isClaudeLoop ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-500/20 text-blue-300'}`}>
                         <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse inline-block" />
                         {isClaudeLoop ? 'Claude Agent' : 'Gemini Agent'}
                         {meta.iterations > 0 && <span className="opacity-60 ml-1">{meta.iterations}it</span>}
                       </span>
                     );
                   } else if (eng === 'claude+gemini' || eng === 'claude') {
-                    engineLabel = <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-mono">Claude AI</span>;
+                    engineLabel = <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">Claude AI</span>;
                   } else if (eng === 'gemini' || eng === 'fast') {
                     engineLabel = <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">Gemini AI</span>;
                   } else if (eng === 'medical_unit') {
-                    engineLabel = <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono">Medical Unit</span>;
+                    engineLabel = <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">Medical Unit</span>;
                   }
                   // Tool call trace — render below the message bubble
                   const calls = Array.isArray(meta.toolCalls) ? meta.toolCalls : [];
@@ -700,7 +700,7 @@ export default function AgentChatPage() {
                     toolTraceEl = (
                       <div className="mt-1.5 rounded-lg bg-gray-950/70 border border-gray-800 px-3 py-2 text-[11px] font-mono space-y-0.5">
                         <div className="text-gray-600 text-[10px] uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
                           {calls.length} tool call{calls.length !== 1 ? 's' : ''} executed
                         </div>
                         {calls.map((c, i) => {
@@ -709,7 +709,7 @@ export default function AgentChatPage() {
                           return (
                             <div key={i} className="flex items-center gap-2">
                               <span>{TOOL_ICON[name] || '⚡'}</span>
-                              <span className={ok ? 'text-emerald-300' : 'text-red-400'}>{name}</span>
+                              <span className={ok ? 'text-blue-300' : 'text-red-400'}>{name}</span>
                               {!ok && <span className="text-red-500 text-[10px] truncate max-w-[200px]">failed</span>}
                             </div>
                           );
@@ -761,7 +761,7 @@ export default function AgentChatPage() {
                         )}
                       </div>
                       <div className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
-                        isOperator ? 'bg-purple-600/20 border border-purple-500/20 text-gray-200' :
+                        isOperator ? 'bg-blue-600/20 border border-blue-500/20 text-gray-200' :
                         isSystem ? 'bg-gray-800/50 border border-gray-700 text-gray-400 italic' :
                         'bg-gray-800/80 border border-gray-700/50 text-gray-300'}`}>
                         {shouldType ? (
@@ -791,9 +791,9 @@ export default function AgentChatPage() {
                     {(() => { const p = getAgentPersona(selectedAgent === 'all' ? 'runtime' : selectedAgent); return <HolographicAvatar persona={p} size="sm" isSpeaking online />; })()}
                   </div>
                   <div className="bg-gray-800/80 border border-gray-700/50 rounded-xl px-4 py-3 text-sm text-gray-400 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '300ms' }} />
                     <span className="text-xs text-gray-500 ml-1">Running tools&hellip;</span>
                   </div>
                 </div>
@@ -822,10 +822,10 @@ export default function AgentChatPage() {
                   <input ref={inputRef} type="text" value={inputMessage} onChange={e => setInputMessage(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }}}
                     placeholder={`Message ${currentAgent.codeName}...`}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500 placeholder-gray-500" />
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 placeholder-gray-500" />
                 </div>
                 <button onClick={sendMessage} disabled={!inputMessage.trim() || sending}
-                  className="px-5 py-3 bg-purple-600 hover:bg-purple-700 rounded-xl font-medium text-sm flex items-center gap-2 disabled:opacity-50 transition-colors">
+                  className="px-5 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-medium text-sm flex items-center gap-2 disabled:opacity-50 transition-colors">
                   <Send className="w-4 h-4" /> {sending ? 'Sending...' : 'Send'}
                 </button>
               </div>
@@ -849,10 +849,10 @@ export default function AgentChatPage() {
                     onClick={() => setSelectedAgent(agent.id)}
                     title={label}
                     className={`w-full flex items-center justify-center p-1.5 rounded-lg transition-colors ${
-                      selectedAgent === agent.id ? 'bg-purple-600/20 ring-1 ring-purple-500/40' : 'hover:bg-gray-800/60'}`}
+                      selectedAgent === agent.id ? 'bg-blue-600/20 ring-1 ring-blue-500/40' : 'hover:bg-gray-800/60'}`}
                   >
                     {agent.id === 'all' ? (
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-blue-600 flex items-center justify-center">
                         <AgentIcon className="w-4 h-4 text-white" />
                       </div>
                     ) : (
@@ -879,20 +879,20 @@ export default function AgentChatPage() {
               <h2 className="text-xl font-bold flex items-center gap-2"><Key className="w-6 h-6 text-amber-400" /> Credential Vault</h2>
               <p className="text-sm text-gray-400 mt-1">AES-256-GCM encrypted. Submit platform logins for agents to access the world.</p>
             </div>
-            <button onClick={() => setShowCredForm(true)} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium flex items-center gap-2">
+            <button onClick={() => setShowCredForm(true)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium flex items-center gap-2">
               <Plus className="w-4 h-4" /> Add Credential
             </button>
           </div>
 
           {/* Add Credential Form */}
           {showCredForm && (
-            <div className="bg-gray-900 border border-purple-800/30 rounded-xl p-6 mb-6">
-              <h3 className="font-medium text-lg mb-4 flex items-center gap-2"><Lock className="w-5 h-5 text-purple-400" /> Add New Platform Credential</h3>
+            <div className="bg-gray-900 border border-blue-800/30 rounded-xl p-6 mb-6">
+              <h3 className="font-medium text-lg mb-4 flex items-center gap-2"><Lock className="w-5 h-5 text-blue-400" /> Add New Platform Credential</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Platform *</label>
                   <select value={credForm.platform} onChange={e => setCredForm(f => ({ ...f, platform: e.target.value }))}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500">
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
                     <option value="">Select platform...</option>
                     {PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.icon} {p.name}</option>)}
                   </select>
@@ -900,27 +900,27 @@ export default function AgentChatPage() {
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Account Label</label>
                   <input type="text" value={credForm.accountLabel} onChange={e => setCredForm(f => ({ ...f, accountLabel: e.target.value }))}
-                    placeholder="e.g. DoctaRx Main" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500" />
+                    placeholder="e.g. DoctaRx Main" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Username / Email</label>
                   <input type="text" value={credForm.username} onChange={e => setCredForm(f => ({ ...f, username: e.target.value }))}
-                    placeholder="Username or email" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500" />
+                    placeholder="Username or email" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Password</label>
                   <input type="password" value={credForm.password} onChange={e => setCredForm(f => ({ ...f, password: e.target.value }))}
-                    placeholder="••••••••" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500" />
+                    placeholder="••••••••" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">API Key (optional)</label>
                   <input type="password" value={credForm.apiKey} onChange={e => setCredForm(f => ({ ...f, apiKey: e.target.value }))}
-                    placeholder="API key" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500" />
+                    placeholder="API key" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">API Secret (optional)</label>
                   <input type="password" value={credForm.apiSecret} onChange={e => setCredForm(f => ({ ...f, apiSecret: e.target.value }))}
-                    placeholder="API secret" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500" />
+                    placeholder="API secret" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                 </div>
               </div>
               <div className="mb-4">
@@ -934,7 +934,7 @@ export default function AgentChatPage() {
                         : [...f.assignedAgents, agent.id]
                     }))} className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 border transition-colors ${
                       credForm.assignedAgents.includes(agent.id)
-                        ? 'border-purple-500 bg-purple-900/30 text-purple-300'
+                        ? 'border-blue-500 bg-blue-900/30 text-blue-300'
                         : 'border-gray-700 ui-dark-chip-action hover:border-gray-600'}`}>
                       <agent.icon className={`w-3 h-3 ${credForm.assignedAgents.includes(agent.id) ? agent.color : 'text-gray-500'}`} />
                       {agent.codeName}
@@ -946,10 +946,10 @@ export default function AgentChatPage() {
                 <label className="text-xs text-gray-400 block mb-1">Notes</label>
                 <textarea value={credForm.notes} onChange={e => setCredForm(f => ({ ...f, notes: e.target.value }))}
                   placeholder="Any notes about this credential..." rows={2}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500" />
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
               </div>
               <div className="flex items-center gap-3">
-                <button onClick={saveCredential} className="px-5 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium flex items-center gap-2">
+                <button onClick={saveCredential} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium flex items-center gap-2">
                   <Lock className="w-4 h-4" /> Encrypt & Save
                 </button>
                 <button onClick={() => setShowCredForm(false)} className="px-5 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium">Cancel</button>
@@ -989,7 +989,7 @@ export default function AgentChatPage() {
                         <span>Added {new Date(cred.created_at).toLocaleDateString()}</span>
                       </div>
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        cred.status === 'active' ? 'bg-emerald-900/40 text-emerald-300' :
+                        cred.status === 'active' ? 'bg-blue-900/40 text-blue-300' :
                         cred.status === 'expired' ? 'bg-red-900/40 text-red-300' : 'ui-dark-chip'}`}>
                         {cred.status.toUpperCase()}
                       </span>
@@ -1019,27 +1019,27 @@ export default function AgentChatPage() {
       {activeTab === 'results' && (
         <div className="p-6 max-w-[1400px] mx-auto">
           <div className="mb-6">
-            <h2 className="text-xl font-bold flex items-center gap-2"><BarChart3 className="w-6 h-6 text-emerald-400" /> Agent Results — Tangible &amp; Measurable</h2>
+            <h2 className="text-xl font-bold flex items-center gap-2"><BarChart3 className="w-6 h-6 text-blue-400" /> Agent Results — Tangible &amp; Measurable</h2>
             <p className="text-sm text-gray-400 mt-1">No black boxes. Every action produces a measurable result. Every result is logged here.</p>
           </div>
 
           {/* Results summary cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <div className="flex items-center gap-2 mb-2"><BarChart3 className="w-4 h-4 text-emerald-400" /><span className="text-sm text-gray-400">Total Results</span></div>
+              <div className="flex items-center gap-2 mb-2"><BarChart3 className="w-4 h-4 text-blue-400" /><span className="text-sm text-gray-400">Total Results</span></div>
               <p className="text-3xl font-bold">{results.length}</p>
             </div>
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <div className="flex items-center gap-2 mb-2"><Check className="w-4 h-4 text-green-400" /><span className="text-sm text-gray-400">Verified</span></div>
-              <p className="text-3xl font-bold text-green-400">{results.filter(r => r.status === 'verified').length}</p>
+              <div className="flex items-center gap-2 mb-2"><Check className="w-4 h-4 text-blue-400" /><span className="text-sm text-gray-400">Verified</span></div>
+              <p className="text-3xl font-bold text-blue-400">{results.filter(r => r.status === 'verified').length}</p>
             </div>
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
               <div className="flex items-center gap-2 mb-2"><Globe className="w-4 h-4 text-blue-400" /><span className="text-sm text-gray-400">Accounts Created</span></div>
               <p className="text-3xl font-bold text-blue-400">{results.filter(r => r.result_type === 'account_created').length}</p>
             </div>
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <div className="flex items-center gap-2 mb-2"><TrendingUp className="w-4 h-4 text-purple-400" /><span className="text-sm text-gray-400">Active Agents</span></div>
-              <p className="text-3xl font-bold text-purple-400">{new Set(results.map(r => r.agent_type)).size}</p>
+              <div className="flex items-center gap-2 mb-2"><TrendingUp className="w-4 h-4 text-blue-400" /><span className="text-sm text-gray-400">Active Agents</span></div>
+              <p className="text-3xl font-bold text-blue-400">{new Set(results.map(r => r.agent_type)).size}</p>
             </div>
           </div>
 
@@ -1068,7 +1068,7 @@ export default function AgentChatPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        result.status === 'verified' ? 'bg-green-900/40 text-green-300' :
+                        result.status === 'verified' ? 'bg-blue-900/40 text-blue-300' :
                         result.status === 'disputed' ? 'bg-red-900/40 text-red-300' : 'bg-gray-800 text-gray-300'}`}>
                         {result.status}
                       </span>
@@ -1080,7 +1080,7 @@ export default function AgentChatPage() {
                     <div className="flex gap-3 flex-wrap">
                       {Object.entries(typeof result.metrics === 'string' ? JSON.parse(result.metrics) : result.metrics).map(([key, val]) => (
                         <span key={key} className="text-xs bg-gray-800 px-2 py-1 rounded">
-                          {key.replace(/_/g, ' ')}: <span className="font-medium text-emerald-300">{typeof val === 'number' ? val.toLocaleString() : val}</span>
+                          {key.replace(/_/g, ' ')}: <span className="font-medium text-blue-300">{typeof val === 'number' ? val.toLocaleString() : val}</span>
                         </span>
                       ))}
                     </div>
@@ -1138,12 +1138,12 @@ function GoalsDashboard({ apiCall, agents }) {
 
   const TIMEFRAMES = ['daily', 'weekly', 'monthly', 'yearly', 'infinite'];
   const TF_LABELS = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', yearly: 'Yearly', infinite: 'Infinite' };
-  const TF_COLORS = { daily: 'text-blue-400', weekly: 'text-cyan-400', monthly: 'text-emerald-400', yearly: 'text-amber-400', infinite: 'text-purple-400' };
+  const TF_COLORS = { daily: 'text-blue-400', weekly: 'text-cyan-400', monthly: 'text-blue-400', yearly: 'text-amber-400', infinite: 'text-blue-400' };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center p-16">
-        <Target className="w-12 h-12 text-purple-400 animate-pulse" />
+        <Target className="w-12 h-12 text-blue-400 animate-pulse" />
         <p className="ml-4 text-gray-400">Loading goals & forecasts...</p>
       </div>
     );
@@ -1166,7 +1166,7 @@ function GoalsDashboard({ apiCall, agents }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Gauge className="w-4 h-4 text-purple-400" />
+          <Gauge className="w-4 h-4 text-blue-400" />
           <span className="text-xs text-gray-500">Harmonic: {frequency.harmonicMaster || 369}</span>
           <span className="text-xs text-gray-600 mx-2">|</span>
           <Sparkles className="w-4 h-4 text-amber-400" />
@@ -1180,7 +1180,7 @@ function GoalsDashboard({ apiCall, agents }) {
           <button key={tf} onClick={() => setSelectedTimeframe(tf)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               selectedTimeframe === tf
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/30'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30'
                 : 'ui-dark-chip-action hover:text-slate-100'}`}>
             {TF_LABELS[tf]}
           </button>
@@ -1190,8 +1190,8 @@ function GoalsDashboard({ apiCall, agents }) {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <div className="flex items-center gap-2 mb-2"><DollarSign className="w-4 h-4 text-emerald-400" /><span className="text-xs text-gray-400">Revenue Target</span></div>
-          <p className="text-2xl font-bold text-emerald-400">${Number(currentTF?.total_revenue_target || 0).toLocaleString()}</p>
+          <div className="flex items-center gap-2 mb-2"><DollarSign className="w-4 h-4 text-blue-400" /><span className="text-xs text-gray-400">Revenue Target</span></div>
+          <p className="text-2xl font-bold text-blue-400">${Number(currentTF?.total_revenue_target || 0).toLocaleString()}</p>
           <p className="text-xs text-gray-500 mt-1">Actual: ${Number(currentTF?.total_revenue_actual || 0).toLocaleString()}</p>
         </div>
         <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
@@ -1208,8 +1208,8 @@ function GoalsDashboard({ apiCall, agents }) {
           <p className="text-2xl font-bold text-yellow-400">{Number(currentTF?.avg_velocity || 0).toFixed(0)}%</p>
         </div>
         <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <div className="flex items-center gap-2 mb-2"><Sparkles className="w-4 h-4 text-purple-400" /><span className="text-xs text-gray-400">Harmonic Alignment</span></div>
-          <p className="text-2xl font-bold text-purple-400">{((Number(currentTF?.avg_harmonic || 0)) * 100).toFixed(0)}%</p>
+          <div className="flex items-center gap-2 mb-2"><Sparkles className="w-4 h-4 text-blue-400" /><span className="text-xs text-gray-400">Harmonic Alignment</span></div>
+          <p className="text-2xl font-bold text-blue-400">{((Number(currentTF?.avg_harmonic || 0)) * 100).toFixed(0)}%</p>
           <p className="text-xs text-gray-500 mt-1">Resonance: {Number(currentTF?.avg_resonance || 0).toFixed(2)}</p>
         </div>
       </div>
@@ -1240,7 +1240,7 @@ function GoalsDashboard({ apiCall, agents }) {
                     <p className="text-xs text-gray-500">{agent?.codeName || ap.agent_id}</p>
                   </div>
                   <div className={`px-2 py-0.5 rounded text-xs font-medium ${
-                    harmonic >= 0.7 ? 'bg-emerald-900/40 text-emerald-300' :
+                    harmonic >= 0.7 ? 'bg-blue-900/40 text-blue-300' :
                     harmonic >= 0.4 ? 'bg-amber-900/40 text-amber-300' : 'bg-red-900/40 text-red-300'}`}>
                     {(harmonic * 100).toFixed(0)}% aligned
                   </div>
@@ -1249,10 +1249,10 @@ function GoalsDashboard({ apiCall, agents }) {
                   <div className="mb-2">
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-gray-400">Revenue</span>
-                      <span className="text-emerald-400">${Number(ap.revenue_actual || 0).toLocaleString()} / ${Number(ap.revenue_target).toLocaleString()}</span>
+                      <span className="text-blue-400">${Number(ap.revenue_actual || 0).toLocaleString()} / ${Number(ap.revenue_target).toLocaleString()}</span>
                     </div>
                     <div className="w-full bg-gray-800 rounded-full h-1.5">
-                      <div className="bg-emerald-500 rounded-full h-1.5 transition-all" style={{ width: `${revPct}%` }} />
+                      <div className="bg-blue-500 rounded-full h-1.5 transition-all" style={{ width: `${revPct}%` }} />
                     </div>
                   </div>
                 )}
@@ -1269,7 +1269,7 @@ function GoalsDashboard({ apiCall, agents }) {
                 )}
                 <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
                   <span>Resonance: {Number(ap.resonance_score || 0).toFixed(2)}</span>
-                  <span className={`${ap.status === 'exceeded' ? 'text-emerald-400' : ap.status === 'active' ? 'text-blue-400' : 'text-gray-400'}`}>{ap.status?.toUpperCase()}</span>
+                  <span className={`${ap.status === 'exceeded' ? 'text-blue-400' : ap.status === 'active' ? 'text-blue-400' : 'text-gray-400'}`}>{ap.status?.toUpperCase()}</span>
                 </div>
               </div>
             );
@@ -1297,20 +1297,20 @@ function GoalsDashboard({ apiCall, agents }) {
         ) : milestones.map(ms => (
           <div key={ms.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800 flex items-center gap-4">
             <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-              ms.status === 'achieved' ? 'bg-emerald-900/40' : ms.status === 'in_progress' ? 'bg-blue-900/40' : 'bg-gray-800'}`}>
-              {ms.status === 'achieved' ? <Check className="w-5 h-5 text-emerald-400" /> : <Target className="w-5 h-5 text-blue-400" />}
+              ms.status === 'achieved' ? 'bg-blue-900/40' : ms.status === 'in_progress' ? 'bg-blue-900/40' : 'bg-gray-800'}`}>
+              {ms.status === 'achieved' ? <Check className="w-5 h-5 text-blue-400" /> : <Target className="w-5 h-5 text-blue-400" />}
             </div>
             <div className="flex-1">
               <h4 className="text-sm font-medium">{ms.title}</h4>
               {ms.description && <p className="text-xs text-gray-500 mt-0.5">{ms.description}</p>}
             </div>
             <div className="text-right text-xs">
-              <p className="text-emerald-400 font-medium">${Number(ms.dollars_value || 0).toLocaleString()}</p>
+              <p className="text-blue-400 font-medium">${Number(ms.dollars_value || 0).toLocaleString()}</p>
               <p className="text-yellow-400">{ms.energy_value || 0} energy</p>
-              <p className="text-purple-400">{ms.frequency_reading || 432}Hz</p>
+              <p className="text-blue-400">{ms.frequency_reading || 432}Hz</p>
             </div>
             <span className={`px-2 py-1 rounded text-xs font-medium ${
-              ms.status === 'achieved' ? 'bg-emerald-900/40 text-emerald-300' :
+              ms.status === 'achieved' ? 'bg-blue-900/40 text-blue-300' :
               ms.status === 'in_progress' ? 'bg-blue-900/40 text-blue-300' : 'ui-dark-chip'}`}>
               {ms.status?.toUpperCase()}
             </span>

@@ -28,9 +28,9 @@ const ROLE_CONFIG = {
   admin: { 
     label: 'Admin', 
     icon: Shield, 
-    color: 'bg-purple-500', 
-    textColor: 'text-purple-600',
-    bgColor: 'bg-purple-50',
+    color: 'bg-blue-500',
+    textColor: 'text-blue-600',
+    bgColor: 'bg-blue-50',
     description: 'Administrative access'
   },
   provider: { 
@@ -44,15 +44,15 @@ const ROLE_CONFIG = {
   patient: { 
     label: 'Patient', 
     icon: User, 
-    color: 'bg-green-500', 
-    textColor: 'text-green-600',
-    bgColor: 'bg-green-50',
+    color: 'bg-blue-500',
+    textColor: 'text-blue-600',
+    bgColor: 'bg-blue-50',
     description: 'Patient access'
   }
 };
 
 const STATUS_CONFIG = {
-  active: { label: 'Active', color: 'bg-green-100 text-green-800' },
+  active: { label: 'Active', color: 'bg-blue-100 text-blue-800' },
   pending: { label: 'Pending', color: 'bg-yellow-100 text-yellow-800' },
   suspended: { label: 'Suspended', color: 'bg-red-100 text-red-800' },
   inactive: { label: 'Inactive', color: 'bg-gray-100 text-gray-800' }
@@ -226,7 +226,7 @@ export default function AdminRolesPage() {
   if (loading && users.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -237,7 +237,7 @@ export default function AdminRolesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
               <Users className="w-6 h-6 text-white" />
             </div>
             Role Management
@@ -246,7 +246,7 @@ export default function AdminRolesPage() {
         </div>
         
         {isSuperAdmin && (
-          <Button onClick={() => setShowCreateModal(true)} className="bg-purple-600 hover:bg-purple-700">
+          <Button onClick={() => setShowCreateModal(true)} className="bg-blue-600 hover:bg-blue-700">
             <UserPlus className="w-4 h-4 mr-2" />
             Create Admin
           </Button>
@@ -262,7 +262,7 @@ export default function AdminRolesPage() {
                 <p className="text-sm text-muted-foreground">Administrators</p>
                 <p className="text-2xl font-bold">{stats.totalAdmins}</p>
               </div>
-              <Shield className="w-8 h-8 text-purple-500 opacity-50" />
+              <Shield className="w-8 h-8 text-blue-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -295,9 +295,9 @@ export default function AdminRolesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Active Users</p>
-                <p className="text-2xl font-bold text-green-600">{stats.activeUsers}</p>
+                <p className="text-2xl font-bold text-blue-600">{stats.activeUsers}</p>
               </div>
-              <CheckCircle className="w-8 h-8 text-green-500 opacity-50" />
+              <CheckCircle className="w-8 h-8 text-blue-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -312,7 +312,7 @@ export default function AdminRolesPage() {
               variant={roleFilter === role ? 'default' : 'outline'}
               size="sm"
               onClick={() => setRoleFilter(role)}
-              className={roleFilter === role ? 'bg-purple-600' : ''}
+              className={roleFilter === role ? 'bg-blue-600' : ''}
             >
               {role === 'all' ? 'All Roles' : ROLE_CONFIG[role]?.label || role}
             </Button>
@@ -373,7 +373,7 @@ export default function AdminRolesPage() {
                       </td>
                       <td className="p-4">
                         <div className="flex flex-col gap-1">
-                          <Badge className={user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                          <Badge className={user.isActive ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}>
                             {user.isActive ? 'Active' : 'Inactive'}
                           </Badge>
                           {user.role === 'provider' && user.providerStatus && (
@@ -394,7 +394,7 @@ export default function AdminRolesPage() {
                               <Button
                                 size="sm"
                                 onClick={() => handleUpdateUserStatus(user.id, 'active', 'approved')}
-                                className="bg-green-600 hover:bg-green-700"
+                                className="bg-blue-600 hover:bg-blue-700"
                               >
                                 <Check className="w-4 h-4" />
                               </Button>
@@ -519,7 +519,7 @@ export default function AdminRolesPage() {
             <Button
               onClick={handleCreateAdmin}
               disabled={submitting || !newAdminForm.email || !newAdminForm.firstName}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-blue-600 hover:bg-blue-700"
             >
               {submitting ? (
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />

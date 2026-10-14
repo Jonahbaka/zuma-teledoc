@@ -98,15 +98,15 @@ function VerifyEmailContent() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-950/30 to-slate-900 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950/30 to-slate-900 p-4">
       {/* Background glow */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-purple-600/10 rounded-full blur-[120px]" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-600/10 rounded-full blur-[120px]" />
       </div>
 
       <div className="relative w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
         {/* Header bar */}
-        <div className={`h-1.5 w-full ${status === 'success' ? 'bg-emerald-500' : status === 'error' ? 'bg-red-500' : 'bg-gradient-to-r from-purple-500 to-blue-500 animate-pulse'}`} />
+        <div className={`h-1.5 w-full ${status === 'success' ? 'bg-blue-500' : status === 'error' ? 'bg-red-500' : 'bg-gradient-to-r from-blue-500 to-blue-500 animate-pulse'}`} />
 
         <div className="p-8 text-center space-y-6">
           {/* Icon */}
@@ -117,8 +117,8 @@ function VerifyEmailContent() {
               </div>
             )}
             {status === 'success' && (
-              <div className="w-20 h-20 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                <CheckCircle className="w-10 h-10 text-emerald-400" />
+              <div className="w-20 h-20 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                <CheckCircle className="w-10 h-10 text-blue-400" />
               </div>
             )}
             {status === 'error' && (
@@ -141,7 +141,7 @@ function VerifyEmailContent() {
           {/* Success state */}
           {status === 'success' && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 justify-center text-emerald-400 text-sm font-medium">
+              <div className="flex items-center gap-2 justify-center text-blue-400 text-sm font-medium">
                 <Sparkles className="w-4 h-4" />
                 Redirecting you to your dashboard…
               </div>
@@ -156,7 +156,7 @@ function VerifyEmailContent() {
                     router.push('/patient/dashboard');
                   }
                 }}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl"
               >
                 Go to Dashboard
               </Button>
@@ -169,7 +169,7 @@ function VerifyEmailContent() {
               <Button
                 onClick={resendVerification}
                 disabled={resending}
-                className="w-full bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-xl"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl"
               >
                 {resending ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending…</>
@@ -211,7 +211,7 @@ function VerifyEmailFallback() {
   return (
     <div className="min-h-screen contrast-dark flex items-center justify-center bg-slate-900">
       <div className="flex items-center gap-3">
-        <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+        <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
         <span className="text-slate-400">Verifying…</span>
       </div>
     </div>

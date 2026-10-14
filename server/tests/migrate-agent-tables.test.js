@@ -16,19 +16,31 @@ test('npm run migrate includes the agent orchestrator schema migration', () => {
   assert.match(agentMigration.up, /CREATE TABLE IF NOT EXISTS ai_audit_log/);
 });
 
-test('agent schema is loaded from the reviewed SQL migration allowlist', () => {
+test('reviewed SQL migrations are loaded from the explicit allowlist', () => {
   assert.deepEqual(migrate.SQL_FILE_MIGRATIONS, [
+    {
+      name: '037_encrypted_manual_insurance',
+      file: '037_encrypted_manual_insurance.sql',
+    },
+    {
+      name: '038_crm_recorded_workspace',
+      file: '038_crm_recorded_workspace.sql',
+    },
     {
       name: '400_agent_orchestrator_schema',
       file: '400_agent_orchestrator_schema.sql',
     },
   ]);
 
-  const sqlPath = path.join(repoRoot, 'server/db/migrations/400_agent_orchestrator_schema.sql');
-  assert.equal(
-    migrate.loadSqlFileMigrations()[0].up,
-    fs.readFileSync(sqlPath, 'utf8')
-  );
+  const loaded = migrate.loadSqlFileMigrations();
+  for (const migration of migrate.SQL_FILE_MIGRATIONS) {
+    const sqlPath = path.join(repoRoot, 'server/db/migrations', migration.file);
+    assert.equal(
+      loaded.find((item) => item.name === migration.name)?.up,
+      fs.readFileSync(sqlPath, 'utf8'),
+      `${migration.name} must run the reviewed SQL file`
+    );
+  }
 });
 
 test('agent schema runs after inline core migrations', () => {

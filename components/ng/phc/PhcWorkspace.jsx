@@ -194,7 +194,6 @@ export default function PhcWorkspace({ standalone = false }) {
   const [referralTarget, setReferralTarget] = useState('');
   const [referralReason, setReferralReason] = useState('');
   const [referralOutcome, setReferralOutcome] = useState('');
-  const [clinicalDevices, setClinicalDevices] = useState([]);
   const [capabilities, setCapabilities] = useState({
     offlineClinicalSyncEnabled: false,
     clinicalAiEnabled: false,
@@ -272,7 +271,7 @@ export default function PhcWorkspace({ standalone = false }) {
     setBusy('refresh');
     setError('');
     try {
-      const [queueResponse, followUpResponse, reportResponse, referralResponse, deviceResponse] = await Promise.all([
+      const [queueResponse, followUpResponse, reportResponse, referralResponse] = await Promise.all([
         CLINICAL_QUEUE_ROLES.has(context.programme_role)
           ? phcAPI.listQueue(context)
           : Promise.resolve({ data: { entries: [] } }),
@@ -285,16 +284,12 @@ export default function PhcWorkspace({ standalone = false }) {
         ['remote_clinician', 'referral_coordinator'].includes(context.programme_role)
           ? phcAPI.listReferrals(context)
           : Promise.resolve({ data: { referrals: [] } }),
-        context.programme_role === 'phc_nurse'
-          ? phcAPI.listClinicalDevices(context)
-          : Promise.resolve({ data: { devices: [] } }),
       ]);
       if (currentContext.current !== requestedContext) return;
       setQueue(queueResponse.data.entries || []);
       setFollowUps(followUpResponse.data.tasks || []);
       setReports(reportResponse.data.reports || []);
       setReferrals(referralResponse.data.referrals || []);
-      setClinicalDevices(deviceResponse.data.devices || []);
     } catch (requestError) {
       if (currentContext.current === requestedContext) setError(errorMessage(requestError, 'Worklists could not be refreshed.'));
     } finally {
@@ -311,7 +306,7 @@ export default function PhcWorkspace({ standalone = false }) {
     setDhis2Preview(null);
     setAiSuggestion(null);
     setReferralEntry(null);
-    setQueue([]); setFollowUps([]); setReports([]); setReferrals([]); setClinicalDevices([]);
+    setQueue([]); setFollowUps([]); setReports([]); setReferrals([]);
     setCapabilities({ offlineClinicalSyncEnabled: false, clinicalAiEnabled: false, deviceCaptureEnabled: false });
     setChiefComplaint(''); setVitalPrimary(''); setVitalSecondary(''); setQuery('');
     setNotice('');
@@ -636,22 +631,11 @@ export default function PhcWorkspace({ standalone = false }) {
     }
   };
 
-  const captureSyntheticDeviceReading = async (fixtureName) => {
-    const device = clinicalDevices.find((item) => item.adapter_key === 'mock_device_v1');
-    if (!device || !activeEncounter) return;
-    await run(`device-${fixtureName}`, () => phcAPI.captureMockDevice(context, {
-      deviceId: device.id,
-      encounterId: activeEncounter.id,
-      fixtureName,
-      idempotencyKey: uuid(),
-    }), `Synthetic ${titleCase(fixtureName)} reading captured through the test adapter. Human confirmation remains required.`);
-  };
-
   if (authLoading || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
-          <Loader2 className="mx-auto h-9 w-9 animate-spin text-emerald-700" />
+          <Loader2 className="mx-auto h-9 w-9 animate-spin text-blue-700" />
           <p className="mt-3 text-base text-slate-600">Loading your programme workspace...</p>
         </div>
       </div>
@@ -734,7 +718,7 @@ export default function PhcWorkspace({ standalone = false }) {
                     id="phc-context"
                     value={contextKey}
                     onChange={(event) => setContextKey(event.target.value)}
-                    className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                    className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                   >
                     {contexts.map((item) => (
                       <option key={`${item.programme_id}:${item.facility_id}`} value={`${item.programme_id}:${item.facility_id}`}>
@@ -751,7 +735,7 @@ export default function PhcWorkspace({ standalone = false }) {
 
             {(error || notice || !online) && (
               <div className={`mb-5 rounded-xl border px-4 py-3 text-sm ${
-                error ? 'border-red-200 bg-red-50 text-red-800' : !online ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                error ? 'border-red-200 bg-red-50 text-red-800' : !online ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-blue-200 bg-blue-50 text-blue-800'
               }`} role="status">
                 {error || (!online
                   ? capabilities.offlineClinicalSyncEnabled
@@ -793,7 +777,7 @@ export default function PhcWorkspace({ standalone = false }) {
                               type="button"
                               key={patient.id}
                               onClick={() => { setSelectedPatient(patient); setActiveEncounter(null); }}
-                              className={`w-full rounded-xl border p-3 text-left transition ${selectedPatient?.id === patient.id ? 'border-emerald-600 bg-emerald-50' : 'border-slate-200 bg-white hover:border-emerald-300'}`}
+                              className={`w-full rounded-xl border p-3 text-left transition ${selectedPatient?.id === patient.id ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'}`}
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div>
@@ -818,7 +802,7 @@ export default function PhcWorkspace({ standalone = false }) {
                     <div className="space-y-5">
                       <Card>
                         <CardHeader>
-                          <CardTitle className="flex items-center gap-2 text-lg"><Stethoscope className="h-5 w-5 text-emerald-700" /> Start assisted encounter</CardTitle>
+                          <CardTitle className="flex items-center gap-2 text-lg"><Stethoscope className="h-5 w-5 text-blue-700" /> Start assisted encounter</CardTitle>
                           <CardDescription>
                             {selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name}` : 'Select an enrolled patient to continue.'}
                           </CardDescription>
@@ -836,7 +820,7 @@ export default function PhcWorkspace({ standalone = false }) {
                               </Button>
                             )}
                             {activeEncounter && (
-                              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
                                 <CheckCircle2 className="mr-2 inline h-4 w-4" /> Encounter open · record ID {activeEncounter.id.slice(0, 8)}
                               </div>
                             )}
@@ -872,16 +856,6 @@ export default function PhcWorkspace({ standalone = false }) {
                                   )}
                                 </div>
                                 <Button type="submit" variant="outline" disabled={busy === 'vital'}>Save observation</Button>
-                                {context.demo_only && clinicalDevices.some((item) => item.adapter_key === 'mock_device_v1') && online && (
-                                  <div className="rounded-lg border border-dashed border-slate-300 p-3">
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Developer device-gateway test</p>
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                      <Button type="button" size="sm" variant="outline" onClick={() => captureSyntheticDeviceReading('blood_pressure')}>Mock blood pressure</Button>
-                                      <Button type="button" size="sm" variant="outline" onClick={() => captureSyntheticDeviceReading('oxygen_saturation')}>Mock oxygen saturation</Button>
-                                    </div>
-                                    <p className="mt-2 text-xs text-slate-500">Synthetic fixture only; no vendor protocol or hardware support is claimed.</p>
-                                  </div>
-                                )}
                               </form>
                             </CardContent>
                           </Card>

@@ -114,7 +114,7 @@ export default function ClaimsDashboardPage() {
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
         <CheckCircle className="w-3 h-3" />
         Passed
       </span>
@@ -167,7 +167,7 @@ export default function ClaimsDashboardPage() {
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-gray-500">Paid</p>
-            <p className="text-2xl font-bold mt-1 text-green-600">{stats.paid}</p>
+            <p className="text-2xl font-bold mt-1 text-blue-600">{stats.paid}</p>
           </CardContent>
         </Card>
       </div>
@@ -271,11 +271,11 @@ export default function ClaimsDashboardPage() {
 
                 {/* Auto-corrected Issues */}
                 {claim.auto_corrected_issues && claim.auto_corrected_issues.length > 0 && (
-                  <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
-                    <p className="text-sm font-bold text-green-900 mb-2">Auto-corrected</p>
+                  <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-sm font-bold text-blue-900 mb-2">Auto-corrected</p>
                     <ul className="space-y-1">
                       {claim.auto_corrected_issues.map((fix, idx) => (
-                        <li key={idx} className="text-sm text-green-700">
+                        <li key={idx} className="text-sm text-blue-700">
                           <CheckCircle className="w-4 h-4 inline mr-2" />
                           {fix.field}: {fix.action} - {fix.value?.join(', ') || 'N/A'}
                         </li>

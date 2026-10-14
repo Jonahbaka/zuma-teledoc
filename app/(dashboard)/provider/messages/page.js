@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  MessageSquare, Send, Loader2, User, Search, 
+import {
+  MessageSquare, Send, Loader2, User, Search,
   Clock, Paperclip, Image as ImageIcon, AlertCircle, FileText, Plus, X,
   Circle, CheckCheck, Wifi, WifiOff
 } from 'lucide-react';
@@ -43,7 +43,7 @@ export default function ProviderMessagesPage() {
     isUserOnline,
     getTypingUser
   } = useSocket();
-  
+
   const [typingIndicator, setTypingIndicator] = useState(null);
 
   // Load draft from localStorage when conversation changes
@@ -93,18 +93,18 @@ export default function ProviderMessagesPage() {
             sentByMe: false
           }];
         });
-        
+
         // Send read receipt
         if (message.senderId && selectedConversation?.conversationId) {
           sendReadReceipt(message.id, selectedConversation.conversationId, message.senderId);
         }
-        
+
         scrollToBottom();
       }
-      
+
       // Update conversation list
       fetchConversations();
-      
+
       // Show notification toast if not in the same conversation
       if (!selectedConversation || selectedConversation.recipientId !== message.senderId) {
         toast({
@@ -113,7 +113,7 @@ export default function ProviderMessagesPage() {
         });
       }
     });
-    
+
     return cleanup;
   }, [onNewMessage, selectedConversation, sendReadReceipt]);
 
@@ -121,7 +121,7 @@ export default function ProviderMessagesPage() {
   useEffect(() => {
     if (selectedConversation?.conversationId && isConnected) {
       joinConversation(selectedConversation.conversationId, selectedConversation.recipientId);
-      
+
       return () => {
         leaveConversation(selectedConversation.conversationId);
       };
@@ -239,7 +239,7 @@ export default function ProviderMessagesPage() {
 
     setSending(true);
     const messageContent = newMessage;
-    
+
     // Optimistically add message to UI
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage = {
@@ -267,21 +267,21 @@ export default function ProviderMessagesPage() {
           localStorage.removeItem(draftKey);
         }
         setHasDraft(false);
-        
+
         // Replace optimistic message with real one
-        setMessages(prev => prev.map(msg => 
-          msg.id === tempId 
+        setMessages(prev => prev.map(msg =>
+          msg.id === tempId
             ? { ...msg, id: response.data.data.id, status: 'sent' }
             : msg
         ));
-        
+
         fetchConversations();
       }
     } catch (error) {
       // Remove optimistic message on error
       setMessages(prev => prev.filter(msg => msg.id !== tempId));
       setNewMessage(messageContent); // Restore message
-      
+
       toast({
         title: 'Send Failed',
         description: error.response?.data?.error || 'Failed to send message',
@@ -302,7 +302,7 @@ export default function ProviderMessagesPage() {
   // Handle typing indicator
   const handleTyping = (e) => {
     setNewMessage(e.target.value);
-    
+
     // Emit typing event
     if (selectedConversation?.conversationId && selectedConversation?.recipientId && isConnected) {
       if (e.target.value.trim()) {
@@ -371,8 +371,8 @@ export default function ProviderMessagesPage() {
             Messages
             {/* Real-time connection indicator */}
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-              isConnected 
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' 
+              isConnected
+                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                 : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
             }`}>
               {isConnected ? (
@@ -416,10 +416,10 @@ export default function ProviderMessagesPage() {
                 {conversations.map((conv) => {
                   const recipientId = conv.recipientId || conv.otherUser?.id;
                   const recipientName = conv.recipientName || (conv.otherUser ? `${conv.otherUser.firstName} ${conv.otherUser.lastName}` : 'Patient');
-                  const lastMessageText = typeof conv.lastMessage === 'string' 
-                    ? conv.lastMessage 
+                  const lastMessageText = typeof conv.lastMessage === 'string'
+                    ? conv.lastMessage
                     : conv.lastMessage?.preview || 'No messages yet';
-                  
+
                   return (
                     <button
                       key={recipientId || conv.conversationId}
@@ -434,12 +434,12 @@ export default function ProviderMessagesPage() {
                     >
                       <div className="flex items-center gap-3">
                         <div className="relative">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white font-bold">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold">
                             {recipientName?.[0] || 'P'}
                           </div>
                           {/* Online indicator */}
                           {isUserOnline(recipientId) && (
-                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full" />
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-blue-500 border-2 border-white dark:border-slate-800 rounded-full" />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -471,19 +471,19 @@ export default function ProviderMessagesPage() {
               <CardHeader className="border-b">
                 <CardTitle className="text-base flex items-center gap-2">
                   <div className="relative">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white text-sm font-bold">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-sm font-bold">
                       {selectedConversation.recipientName?.[0] || 'P'}
                     </div>
                     {/* Online status indicator */}
                     {isUserOnline(selectedConversation.recipientId) && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full" />
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-blue-500 border-2 border-white dark:border-slate-800 rounded-full" />
                     )}
                   </div>
                   <div className="flex flex-col">
                     <span>{selectedConversation.recipientName || 'Patient'}</span>
                     <span className={`text-xs font-normal ${
-                      isUserOnline(selectedConversation.recipientId) 
-                        ? 'text-emerald-600 dark:text-emerald-400' 
+                      isUserOnline(selectedConversation.recipientId)
+                        ? 'text-blue-600 dark:text-blue-400'
                         : 'text-slate-400'
                     }`}>
                       {isUserOnline(selectedConversation.recipientId) ? 'Online' : 'Offline'}
@@ -491,7 +491,7 @@ export default function ProviderMessagesPage() {
                   </div>
                 </CardTitle>
               </CardHeader>
-              
+
               <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
                 {messages.length === 0 ? (
                   <div className="text-center py-12 text-slate-500">
@@ -505,8 +505,8 @@ export default function ProviderMessagesPage() {
                       className={`flex ${msg.sentByMe ? 'justify-end' : 'justify-start'}`}
                     >
                       <div className={`max-w-[70%] rounded-lg p-3 ${
-                        msg.sentByMe 
-                          ? 'bg-blue-500 text-white' 
+                        msg.sentByMe
+                          ? 'bg-blue-500 text-white'
                           : 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white'
                       }`}>
                         {msg.isUrgent && !msg.sentByMe && (
@@ -545,7 +545,7 @@ export default function ProviderMessagesPage() {
                     <span>{typingIndicator.userName} is typing...</span>
                   </div>
                 )}
-                
+
                 {/* Draft indicator */}
                 {hasDraft && newMessage && !typingIndicator && (
                   <div className="mb-2 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded border border-blue-200 dark:border-blue-800">

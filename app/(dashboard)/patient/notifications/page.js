@@ -102,7 +102,7 @@ export default function PatientNotificationsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -112,7 +112,7 @@ export default function PatientNotificationsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Bell className="w-6 h-6 text-purple-500" />
+            <Bell className="w-6 h-6 text-blue-500" />
             Notifications
           </h1>
           <p className="text-slate-500 mt-1">
@@ -123,7 +123,7 @@ export default function PatientNotificationsPage() {
           <Button
             onClick={markAllAsRead}
             variant="outline"
-            className="bg-purple-50 hover:bg-purple-100 text-purple-800 border-purple-200"
+            className="bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200"
           >
             <Check className="w-4 h-4 mr-2" />
             Mark All Read
@@ -144,7 +144,7 @@ export default function PatientNotificationsPage() {
           {notifications.map((notification) => (
             <Card 
               key={notification.id}
-              className={`transition-all ${!notification.isRead ? 'bg-purple-50 border-purple-200' : ''}`}
+              className={`transition-all ${!notification.isRead ? 'bg-blue-50 border-blue-200' : ''}`}
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
@@ -152,7 +152,7 @@ export default function PatientNotificationsPage() {
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="font-semibold text-slate-900">{notification.title}</h3>
                       {!notification.isRead && (
-                        <span className="w-2 h-2 bg-purple-600 rounded-full"></span>
+                        <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
                       )}
                     </div>
                     <p className="text-slate-600 text-sm mb-2">{notification.message}</p>
@@ -162,7 +162,7 @@ export default function PatientNotificationsPage() {
                     {notification.actionUrl && (
                       <a
                         href={notification.actionUrl}
-                        className="text-sm text-purple-700 hover:text-purple-800 font-medium mt-2 inline-block"
+                        className="text-sm text-blue-700 hover:text-blue-800 font-medium mt-2 inline-block"
                       >
                         {notification.actionText || 'View Details'} →
                       </a>

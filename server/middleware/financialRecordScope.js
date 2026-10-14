@@ -30,7 +30,8 @@ function scopedFinancialRecord(table, property) {
       }
       const { rows } = await db.query(`SELECT * FROM ${table} WHERE id = $1`, [req.params.id]);
       const record = rows[0];
-      const allowed = record && await patientFinancialAccess(req.user, record.patient_id) &&
+      const patientId = table === 'patient_insurance' ? record?.user_id || record?.patient_id : record?.patient_id;
+      const allowed = record && await patientFinancialAccess(req.user, patientId) &&
         (table !== 'claims' || req.user.role !== 'provider' || String(record.provider_id) === String(req.user.id));
       if (!allowed) return res.status(404).json({ success: false, error: 'Record not found' });
       req[property] = record;

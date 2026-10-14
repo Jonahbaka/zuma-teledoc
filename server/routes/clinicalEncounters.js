@@ -24,6 +24,32 @@ const clinicalEncounterService = require('../services/clinicalEncounterService')
 const patientClinicalProfileService = require('../services/patientClinicalProfileService');
 const eRxIntegrationService = require('../services/eRxIntegrationService');
 const telehealthConsentService = require('../services/telehealthConsentService');
+const privatePrescriptionUploads = require('../../ng/services/rx-engine/privatePrescriptionUploadService');
+const db = require('../db');
+const validSubmissionPatient = (req,res,next) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.patientId || '') ? next() : res.status(400).json({ error:'Invalid patient reference.' });
+
+// Private patient-submitted documents use the same current care-relationship
+// boundary as the chart. Access does not verify or prescribe medication.
+router.get('/patient/:patientId/prescription-submissions', authenticate, requireRole('provider'), validSubmissionPatient, async (req, res) => {
+  try {
+    const submissions = await privatePrescriptionUploads.listProviderSubmissions(db, req, req.params.patientId);
+    res.set('Cache-Control','private, no-store').json({ success: true, submissions });
+  } catch (error) {
+    const status = error.status || error.statusCode || 503;
+    res.status(status).json({ error: status < 500 ? error.message : 'Patient submissions are temporarily unavailable.' });
+  }
+});
+
+router.get('/patient/:patientId/prescription-submissions/:id', authenticate, requireRole('provider'), validSubmissionPatient, async (req, res) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) return res.status(400).json({ error: 'Invalid submission.' });
+  try {
+    const submission = await privatePrescriptionUploads.readProviderSubmission(db, req, req.params.patientId, req.params.id);
+    res.set('Cache-Control','private, no-store').json({ success:true, submission });
+  } catch (error) {
+    const status = error.status || error.statusCode || 503;
+    res.status(status).json({ error: status < 500 ? error.message : 'This submission could not be opened.' });
+  }
+});
 
 // ============================================================================
 // VALIDATION SCHEMAS
@@ -1002,9 +1028,11 @@ router.post('/prescription-intents',
       });
     } catch (error) {
       logger.error('Create prescription intent error:', error);
-      res.status(500).json({
+      const status = [400,403,404,409,503].includes(error.statusCode || error.status) ? error.statusCode || error.status : 503;
+      res.status(status).json({
         success: false,
-        error: error.message || 'Failed to create prescription intent'
+        error: status < 500 ? 'The selected patient and encounter could not be authorized for this prescription draft.' : 'Prescription draft recording is temporarily unavailable.',
+        code: /^PRESCRIPTION_|^ENCOUNTER_/.test(error.code || '') ? error.code : 'PRESCRIPTION_DRAFT_UNAVAILABLE'
       });
     }
   }
@@ -1016,6 +1044,7 @@ router.post('/prescription-intents',
  */
 router.get('/:encounterId/prescription-intents',
   authenticate,
+  requireRole('patient', 'provider'),
   auditPhiAccess('prescription_intent'),
   async (req, res) => {
     try {
@@ -1031,9 +1060,10 @@ router.get('/:encounterId/prescription-intents',
       });
     } catch (error) {
       logger.error('Get prescription intents error:', error);
-      res.status(500).json({
+      res.status([400,403,404,409,503].includes(error.statusCode || error.status) ? error.statusCode || error.status : 503).json({
         success: false,
-        error: 'Failed to get prescription intents'
+        error: 'Prescription records could not be accessed for this account.',
+        code: 'PRESCRIPTION_READER_DENIED'
       });
     }
   }
@@ -1063,9 +1093,10 @@ router.post('/prescription-intents/:id/handoff',
       });
     } catch (error) {
       logger.error('eRx handoff error:', error);
-      res.status(500).json({
+      res.status([400,403,404,409,503].includes(error.statusCode || error.status) ? error.statusCode || error.status : 503).json({
         success: false,
-        error: error.message || 'Failed to initiate eRx handoff'
+        error: 'External prescribing handoff is unavailable. The prescription draft has not been transmitted.',
+        code: 'ERX_ADAPTER_NOT_ACTIVATED'
       });
     }
   }
@@ -1081,7 +1112,7 @@ router.post('/prescription-intents/:id/cancel',
   auditMiddleware('update', 'prescription_intent', { description: 'Cancelled' }),
   async (req, res) => {
     try {
-      const { reason } = req.body;
+      const { reason } = req.body || {};
       
       const intent = await eRxIntegrationService.cancelPrescriptionIntent(
         req.params.id,
@@ -1095,9 +1126,14 @@ router.post('/prescription-intents/:id/cancel',
       });
     } catch (error) {
       logger.error('Cancel prescription intent error:', error);
-      res.status(500).json({
+      const status = [400,403,404,409,503].includes(error.statusCode || error.status) ? error.statusCode || error.status : 503;
+      res.status(status).json({
         success: false,
-        error: error.message || 'Failed to cancel prescription intent'
+        error: status === 400 ? 'A valid prescription reference and cancellation reason are required.'
+          : status === 409 ? 'This prescription is no longer a mutable local draft. External prescriptions require a verified prescribing service.'
+          : status === 403 || status === 404 ? 'This prescription is not available for cancellation in your current clinical context.'
+          : 'Prescription draft cancellation is unavailable. No cancellation has been confirmed.',
+        code: /^PRESCRIPTION_[A-Z_]+$/.test(error.code || '') ? error.code : 'PRESCRIPTION_CANCELLATION_UNAVAILABLE'
       });
     }
   }

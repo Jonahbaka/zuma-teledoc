@@ -51,6 +51,17 @@ function serialProtection(serialNumber) {
   };
 }
 
+function requireIsolatedDeviceTest() {
+  let isolated = false;
+  try {
+    const target = new URL(process.env.DATABASE_URL || '');
+    isolated = ['localhost', '127.0.0.1', '[::1]'].includes(target.hostname) && target.pathname.endsWith('_test');
+  } catch { /* Missing or invalid test configuration never permits fixture writes. */ }
+  if (process.env.NODE_ENV === 'production' || !isolated) {
+    throw scopeError(403, 'Fixture device adapters are available only in an isolated test environment.', 'MOCK_DEVICE_TEST_ONLY');
+  }
+}
+
 async function registerDevice(pool, req, context, {
   deviceType,
   manufacturer = null,
@@ -62,6 +73,7 @@ async function registerDevice(pool, req, context, {
   if (!ADAPTER_CAPABILITIES[adapterKey]) {
     throw scopeError(400, 'Unknown clinical device adapter.', 'DEVICE_ADAPTER_UNKNOWN');
   }
+  if (adapterKey === 'mock_device_v1') requireIsolatedDeviceTest();
   if (!context.demo_only && adapterKey === 'mock_device_v1') {
     throw scopeError(403, 'Synthetic device adapters are restricted to demo programmes.', 'MOCK_DEVICE_DEMO_ONLY');
   }
@@ -117,6 +129,7 @@ async function captureMockFixture(pool, req, context, {
   fixtureName,
   idempotencyKey,
 }) {
+  requireIsolatedDeviceTest();
   if (!context.demo_only) {
     throw scopeError(403, 'Synthetic device capture is restricted to demo programmes.', 'MOCK_DEVICE_DEMO_ONLY');
   }

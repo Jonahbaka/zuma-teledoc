@@ -156,7 +156,7 @@ export default function ScheduleRoomTab() {
             <h2 className="text-sm font-bold text-slate-900">Meeting launcher</h2>
             <p className="mt-1 text-xs text-slate-500">Create a provider-led clinical room without an appointment.</p>
           </div>
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
             <Radio className="h-3.5 w-3.5" />
             Adaptive media
           </span>
@@ -175,7 +175,7 @@ export default function ScheduleRoomTab() {
                 onClick={() => applyPreset(preset)}
                 className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
                   active
-                    ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                    ? 'border-blue-500 bg-blue-50 text-blue-900'
                     : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                 }`}
               >
@@ -279,7 +279,7 @@ export default function ScheduleRoomTab() {
         </p>
       )}
       {ok && (
-        <p className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+        <p className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
           <CheckCircle2 className="h-4 w-4" />
           {ok.started ? 'Room is live' : 'Room created'}: <span className="font-mono">{ok.room.room_code}</span>
         </p>
@@ -288,7 +288,7 @@ export default function ScheduleRoomTab() {
       <button
         type="submit"
         disabled={busy}
-        className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+        className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
       >
         {form.start_now ? <PlayCircle className="h-4 w-4" /> : <Calendar className="h-4 w-4" />}
         {busy ? 'Working...' : submitLabel}

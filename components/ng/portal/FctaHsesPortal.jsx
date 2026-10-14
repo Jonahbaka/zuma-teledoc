@@ -21,7 +21,7 @@ function StatusPill({ status }) {
     submitted:           'bg-slate-100 text-slate-700',
     area_council_review: 'bg-amber-100 text-amber-700',
     fcta_review:         'bg-blue-100 text-blue-700',
-    approved:            'bg-emerald-100 text-emerald-700',
+    approved:            'bg-blue-100 text-blue-700',
     dhis2_ready:         'bg-violet-100 text-violet-700',
     exported:            'bg-cyan-100 text-cyan-700',
     rejected:            'bg-rose-100 text-rose-700',
@@ -179,7 +179,7 @@ export default function FctaHsesPortal() {
                         <button
                           onClick={() => setActionTarget({ id: sub.id, target: 'approved' })}
                           disabled={advancing === sub.id}
-                          className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                          className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                         >
                           Approve
                         </button>

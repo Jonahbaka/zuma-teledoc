@@ -836,7 +836,9 @@ router.get('/admin/all', authenticate, requireRole(['admin', 'super_admin']), as
 /**
  * Get single credentialing application details (Admin)
  */
-router.get('/admin/:providerId', authenticate, requireRole(['admin', 'super_admin']), async (req, res) => {
+// Match only provider UUIDs so static endpoints such as /admin/stats are not
+// consumed as identifiers or passed into PostgreSQL UUID casts.
+router.get('/admin/:providerId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})', authenticate, requireRole(['admin', 'super_admin']), async (req, res) => {
   try {
     const { providerId } = req.params;
     

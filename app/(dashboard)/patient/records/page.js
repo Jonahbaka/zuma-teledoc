@@ -136,7 +136,7 @@ export default function PatientRecordsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <FileText className="w-6 h-6 text-purple-500" />
+            <FileText className="w-6 h-6 text-blue-500" />
             Health Records
           </h1>
           <p className="text-slate-500 mt-1">Documents and visit notes</p>
@@ -168,7 +168,7 @@ export default function PatientRecordsPage() {
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
         </div>
       ) : (
         <Tabs defaultValue="documents" className="w-full">
@@ -242,7 +242,7 @@ export default function PatientRecordsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <ClipboardList className="w-5 h-5 text-purple-600" />
+                  <ClipboardList className="w-5 h-5 text-blue-600" />
                   Visit History
                 </CardTitle>
               </CardHeader>
@@ -255,7 +255,7 @@ export default function PatientRecordsPage() {
                       <button
                         key={e.id}
                         onClick={() => loadEncounterNotes(e.id)}
-                        className={`w-full text-left p-3 border rounded-lg hover:bg-slate-50 ${selectedEncounterId === e.id ? 'border-purple-300' : ''}`}
+                        className={`w-full text-left p-3 border rounded-lg hover:bg-slate-50 ${selectedEncounterId === e.id ? 'border-blue-300' : ''}`}
                       >
                         <div className="flex items-center justify-between">
                           <div>
@@ -276,7 +276,7 @@ export default function PatientRecordsPage() {
                     <h3 className="font-semibold text-slate-900 mb-2">Visit Notes</h3>
                     {loadingNotes ? (
                       <div className="flex items-center justify-center py-6">
-                        <Loader2 className="w-6 h-6 animate-spin text-purple-500" />
+                        <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
                       </div>
                     ) : encounterNotes.length === 0 ? (
                       <p className="text-slate-500">No notes found for this encounter.</p>
@@ -304,7 +304,7 @@ export default function PatientRecordsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-green-600" />
+                  <ShieldCheck className="w-5 h-5 text-blue-600" />
                   Telehealth Consent
                 </CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">Protected by encryption, role-based access controls, and audit logging.</p>
@@ -322,7 +322,7 @@ export default function PatientRecordsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button onClick={reviewConsent} disabled={capturingConsent} className="bg-purple-600 hover:bg-purple-700">
+                  <Button onClick={reviewConsent} disabled={capturingConsent} className="bg-blue-600 hover:bg-blue-700">
                     {capturingConsent ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                     Review & Sign
                   </Button>

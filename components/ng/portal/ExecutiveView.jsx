@@ -39,7 +39,7 @@ async function apiFetch(path, query = {}) {
 function KpiCard({ icon: Icon, label, value, unit, trend, trendLabel, color = 'blue' }) {
   const colorMap = {
     blue:    'from-blue-50 to-blue-100/60 border-blue-200 text-blue-700',
-    emerald: 'from-emerald-50 to-emerald-100/60 border-emerald-200 text-emerald-700',
+    emerald: 'from-blue-50 to-blue-100/60 border-blue-200 text-blue-700',
     violet:  'from-violet-50 to-violet-100/60 border-violet-200 text-violet-700',
     amber:   'from-amber-50 to-amber-100/60 border-amber-200 text-amber-700',
     rose:    'from-rose-50 to-rose-100/60 border-rose-200 text-rose-700',
@@ -48,7 +48,7 @@ function KpiCard({ icon: Icon, label, value, unit, trend, trendLabel, color = 'b
   const cls = colorMap[color] || colorMap.blue;
 
   const TrendIcon = trend > 0 ? TrendingUp : trend < 0 ? TrendingDown : Minus;
-  const trendCls  = trend > 0 ? 'text-emerald-600' : trend < 0 ? 'text-rose-500' : 'text-slate-600';
+  const trendCls  = trend > 0 ? 'text-blue-600' : trend < 0 ? 'text-rose-500' : 'text-slate-600';
 
   return (
     <div className={`rounded-2xl border bg-gradient-to-br p-5 shadow-sm ${cls}`}>
@@ -104,7 +104,7 @@ function WorkflowStatusPill({ status }) {
     submitted:           'bg-slate-100 text-slate-700',
     area_council_review: 'bg-amber-100 text-amber-700',
     fcta_review:         'bg-blue-100 text-blue-700',
-    approved:            'bg-emerald-100 text-emerald-700',
+    approved:            'bg-blue-100 text-blue-700',
     dhis2_ready:         'bg-violet-100 text-violet-700',
     exported:            'bg-cyan-100 text-cyan-700',
     rejected:            'bg-rose-100 text-rose-700',
@@ -231,8 +231,8 @@ export default function ExecutiveView() {
       </div>
 
       {/* Privacy notice */}
-      <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-2">
-        <p className="mx-auto max-w-7xl text-center text-xs font-medium text-emerald-700">
+      <div className="border-b border-blue-100 bg-blue-50 px-6 py-2">
+        <p className="mx-auto max-w-7xl text-center text-xs font-medium text-blue-700">
           All data is aggregate. No patient identifiers are included in this view.
         </p>
       </div>
@@ -536,7 +536,7 @@ function ForecastsTab({ forecasts }) {
                         {f.predicted_value != null ? Math.round(f.predicted_value) : '—'}
                       </span>
                       <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
-                        f.confidence_label === 'high'   ? 'bg-emerald-100 text-emerald-700' :
+                        f.confidence_label === 'high'   ? 'bg-blue-100 text-blue-700' :
                         f.confidence_label === 'medium' ? 'bg-amber-100 text-amber-700' :
                         'bg-slate-100 text-slate-500'
                       }`}>

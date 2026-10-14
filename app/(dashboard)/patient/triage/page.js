@@ -1,318 +1,112 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { BrainCircuit, CheckCircle, AlertTriangle, Loader2, Send, Sparkles, Pill, Calendar, History, MapPin } from 'lucide-react';
-import { appointmentsAPI, triageAPI } from '@/lib/api';
+import { Calendar, History, Loader2, MessageCircle } from 'lucide-react';
+import api from '@/lib/api';
 import { DoctaService } from '@/lib/doctaService';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/components/providers/AuthProvider';
+import PortalPageHeader from '@/components/branding/PortalPageHeader';
 
 export default function PatientTriagePage() {
-  const { user } = useAuth();
-  const [symptoms, setSymptoms] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [triageResult, setTriageResult] = useState(null);
-  const [upcomingAppointment, setUpcomingAppointment] = useState(null);
-  const [loadingAppointment, setLoadingAppointment] = useState(true);
+  const { user, loading: authLoading } = useAuth();
+  const owner = user?.id ? JSON.stringify([user.id, user.role, user.marketScope || user.region || user.country]) : null;
+  const ready = Boolean(user?.id && user.role === 'patient' && !authLoading);
+  const [summary, setSummary] = useState({ owner: null, symptoms: '', processing: false, guidanceMessage: '' });
+  const [visit, setVisit] = useState({ owner: null, appointment: null, loading: true, loadError: '' });
+  const [revision, setRevision] = useState(0);
+  const generation = useRef(0);
+  const account = useRef({ owner, ready, version: 0 });
+  const activeGuidance = useRef(null);
+  if (account.current.owner !== owner || account.current.ready !== ready) {
+    generation.current += 1;
+    account.current = { owner, ready, version: account.current.version + 1 };
+  }
 
-  // Verify user is a patient before allowing triage submission
   useEffect(() => {
-    if (user && user.role !== 'patient') {
-      console.warn('[TRIAGE] User role mismatch:', {
-        expected: 'patient',
-        actual: user.role,
-        userId: user.id
-      });
-    }
-  }, [user]);
+    setSummary({ owner, symptoms: '', processing: false, guidanceMessage: '' });
+    activeGuidance.current = null;
+    return () => { generation.current += 1; activeGuidance.current = null; };
+  }, [owner]);
 
-  // Fetch upcoming appointment on mount
   useEffect(() => {
-    const fetchUpcomingAppointment = async () => {
-      try {
-        const res = await appointmentsAPI.getUpcoming(1);
-        if (res.data.success && res.data.appointments.length > 0) {
-          setUpcomingAppointment(res.data.appointments[0]);
-        }
-      } catch (error) {
-        console.error('Error fetching upcoming appointment:', error);
-      } finally {
-        setLoadingAppointment(false);
-      }
-    };
-    fetchUpcomingAppointment();
-  }, []);
-
-  const handleTriage = async () => {
-    if (!symptoms.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Please describe your symptoms',
-        variant: 'destructive'
-      });
-      return;
+    const controller = new AbortController();
+    const version = account.current.version;
+    const current = () => !controller.signal.aborted && account.current.owner === owner && account.current.ready && account.current.version === version;
+    if (!ready) {
+      activeGuidance.current = null;
+      setSummary(previous => ({ ...previous, processing: false }));
+      setVisit({ owner, appointment: null, loading: Boolean(authLoading), loadError: authLoading ? '' : 'Sign in to your patient account to view your next visit.' });
+      return () => controller.abort();
     }
+    setVisit({ owner, appointment: null, loading: true, loadError: '' });
+    api.get('/appointments/upcoming', { params: { limit: 1 }, signal: controller.signal }).then(({ data }) => {
+      const appointment = data?.appointments?.[0] || null;
+      const patientId = appointment?.patientId || appointment?.patient_id;
+      if (!data?.success || !Array.isArray(data.appointments)
+        || appointment && (typeof appointment.id !== 'string' || patientId && String(patientId) !== String(user.id))) throw new Error('Your appointment could not be confirmed.');
+      if (current()) setVisit({ owner, appointment, loading: false, loadError: '' });
+    }).catch(() => {
+      if (current()) setVisit({ owner, appointment: null, loading: false, loadError: 'Your next appointment could not be loaded. Try again when ready.' });
+    });
+    return () => controller.abort();
+    // owner includes the actor ID, role and market.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner, ready, authLoading, revision]);
 
-    setIsProcessing(true);
-    try {
-      // 1. Run AI Analysis
-      const result = await DoctaService.runAITriage(symptoms);
-      
-      if (!result) {
-        throw new Error('AI triage returned no result');
-      }
-      
-      // Add safe defaults if AI misses fields
-      const safeResult = {
-        severity: result.severity || 1,
-        soapDraft: result.soapDraft || 'No assessment generated',
-        triageLevel: result.triageLevel || 'ROUTINE',
-        suggestedSpecialty: result.suggestedSpecialty || 'Primary Care',
-        flags: result.flags || [],
-        suggestedMeds: result.suggestedMeds || []
-      };
-      
-      // Store result in state immediately
-      setTriageResult(safeResult);
-      
-      // 2. CRITICAL: Save to Database
-      if (upcomingAppointment?.id) {
-        console.log('Transmitting to provider for appointment:', upcomingAppointment.id);
-        
-        try {
-          const saveRes = await triageAPI.store(
-            upcomingAppointment.id,
-            symptoms,
-            safeResult
-          );
-          
-          if (!saveRes?.data?.success) {
-            throw new Error(saveRes?.data?.error || 'Failed to save triage');
-          }
-          
-          // Successfully saved
-          const providerName = upcomingAppointment?.providerFirstName && upcomingAppointment?.providerLastName
-            ? `Dr. ${upcomingAppointment.providerFirstName} ${upcomingAppointment.providerLastName}`
-            : 'your provider';
-          
-          toast({
-            title: 'AI Assessment Complete',
-            description: `Results sent to ${providerName}`,
-            variant: 'default'
-          });
-        } catch (saveError) {
-          const errorStatus = saveError?.response?.status;
-          const errorData = saveError?.response?.data;
-          const errorMsg = errorData?.error || errorData?.message || saveError?.message || 'Unable to save';
-          
-          toast({
-            title: 'Transmission Failed',
-            description: `Analysis complete, but could not send to provider: ${errorMsg}`,
-            variant: 'destructive'
-          });
-        }
-      } else {
-        // 3. Handle Missing Appointment Case
-        console.warn('Analysis run, but no appointment ID found to attach data to.');
-        toast({
-          title: 'Analysis Complete',
-          description: 'Analysis complete, but we could not send this to your provider (No upcoming appointment found).',
-          variant: 'destructive'
-        });
-      }
-      
-    } catch (error) {
-      console.error('Triage failed:', error);
-      toast({
-        title: 'Error',
-        description: error?.message || 'Failed to process triage. Please try again.',
-        variant: 'destructive'
-      });
-    } finally {
-      setIsProcessing(false);
-    }
+  const { symptoms, processing, guidanceMessage } = ready && summary.owner === owner ? summary : { symptoms: '', processing: false, guidanceMessage: '' };
+  const { appointment, loading, loadError } = ready && visit.owner === owner ? visit : {
+    appointment: null, loading: Boolean(authLoading || ready), loadError: authLoading || ready ? '' : 'Sign in to your patient account to view your next visit.',
   };
+  function updateSummary(change) {
+    if (account.current.owner !== owner || !account.current.ready) return;
+    setSummary(previous => ({ ...(previous.owner === owner ? previous : { symptoms: '', processing: false, guidanceMessage: '' }), owner, ...change }));
+  }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <BrainCircuit className="w-6 h-6 text-purple-500" />
-            AI Symptom Checker
-          </h1>
-          <p className="text-muted-foreground mt-1">Powered by Med-Gemini</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link href="/patient/pharmacy">
-            <Button variant="outline" size="sm">
-              <MapPin className="w-4 h-4 mr-2" />
-              My Pharmacies
-            </Button>
-          </Link>
-          <Link href="/patient/triage/history">
-            <Button variant="outline" size="sm">
-              <History className="w-4 h-4 mr-2" />
-              View History
-            </Button>
-          </Link>
-        </div>
-      </div>
+  async function requestGuidance(event) {
+    event.preventDefault();
+    if (!ready || processing || activeGuidance.current !== null || !symptoms.trim() || account.current.owner !== owner) return;
+    const request = ++generation.current;
+    activeGuidance.current = request;
+    const current = () => request === generation.current && account.current.owner === owner && account.current.ready;
+    updateSummary({ processing: true, guidanceMessage: '' });
+    try {
+      await DoctaService.runAITriage(symptoms.trim());
+      // An unvalidated response must never become a routine severity, diagnosis,
+      // medication recommendation, or a clinician submission.
+      if (current()) updateSummary({ guidanceMessage: 'Automated guidance could not be validated. No assessment was recorded or sent. Share your symptoms with a clinician.' });
+    } catch {
+      if (current()) updateSummary({ guidanceMessage: 'Optional automated symptom guidance is not connected. You can continue booking and share your symptoms with a clinician.' });
+    } finally {
+      if (current()) updateSummary({ processing: false });
+      if (activeGuidance.current === request) activeGuidance.current = null;
+    }
+  }
 
-      {/* Appointment Info Banner */}
-      {upcomingAppointment && (
-        <Card className="border-l-4 border-l-purple-600 bg-purple-50/50">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <Calendar className="w-5 h-5 text-purple-600" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-purple-900">
-                  Triage will be sent to: <span className="font-bold">Dr. {upcomingAppointment.providerFirstName} {upcomingAppointment.providerLastName}</span>
-                </p>
-                <p className="text-xs text-purple-700 mt-1">
-                  Appointment scheduled for {new Date(upcomingAppointment.scheduledAt).toLocaleString()}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!upcomingAppointment && !loadingAppointment && (
-        <Card className="border-l-4 border-l-yellow-500 bg-yellow-50/50">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-yellow-600" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-yellow-900">
-                  No upcoming appointment found
-                </p>
-                <p className="text-xs text-yellow-700 mt-1">
-                  Please schedule an appointment first to submit triage results to your provider
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Describe Your Symptoms</CardTitle>
-            <CardDescription>Be as detailed as possible for better assessment</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <textarea
-              className="w-full border border-gray-200 bg-gray-50 rounded-xl p-4 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 h-40 resize-none"
-              placeholder="Describe symptoms (e.g. Swelling ankles, foamy urine, fatigue)..."
-              value={symptoms}
-              onChange={(e) => setSymptoms(e.target.value)}
-            />
-            <Button
-              onClick={handleTriage}
-              disabled={!symptoms.trim() || isProcessing}
-              className="w-full bg-gradient-to-r from-purple-600 to-purple-800"
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  <BrainCircuit className="w-4 h-4 mr-2" />
-                  Run AI Analysis
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {triageResult ? (
-          <Card className="border-l-4 border-l-purple-600">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-purple-500" />
-                Assessment Result
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  triageResult.severity >= 4
-                    ? 'bg-red-100 text-red-800'
-                    : triageResult.severity >= 3
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : 'bg-green-100 text-green-800'
-                }`}>
-                  Severity: {triageResult.severity}/5
-                </span>
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800">
-                  {triageResult.triageLevel}
-                </span>
-              </div>
-
-              <div className="p-4 bg-purple-50 rounded-xl">
-                <pre className="text-sm text-purple-900 whitespace-pre-wrap font-mono">
-                  {triageResult.soapDraft}
-                </pre>
-              </div>
-
-              {triageResult.suggestedMeds?.length > 0 && (
-                <div className="pt-4 border-t border-purple-100">
-                  <p className="text-xs text-gray-500 uppercase font-bold mb-2 flex items-center">
-                    <Pill className="w-3 h-3 mr-1" />
-                    AI Suggested Treatments (For Provider)
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {triageResult.suggestedMeds.map((med) => (
-                      <span
-                        key={med}
-                        className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium"
-                      >
-                        {med}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {triageResult.flags?.length > 0 && (
-                <div className="pt-4 border-t border-red-100">
-                  <div className="flex items-start gap-2 p-3 bg-red-50 rounded-lg">
-                    <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-bold text-red-900">Clinical Flags</p>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {triageResult.flags.map((flag) => (
-                          <span
-                            key={flag}
-                            className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-bold"
-                          >
-                            {flag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <BrainCircuit className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">Analysis results will appear here</p>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+  const provider = [appointment?.providerFirstName, appointment?.providerLastName].filter(Boolean).join(' ');
+  const schedule = appointment?.scheduledAt ? new Date(appointment.scheduledAt) : null;
+  return <div className="clinical-readable space-y-6">
+    <PortalPageHeader title="Symptom guidance" description="Prepare for your visit and describe what you are experiencing. Automated guidance is optional; booking and clinician care remain available.">
+      <Link href="/patient/appointments/book" className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white"><Calendar size={20} /> Book a visit</Link>
+      <Link href="/patient/triage/history" className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-900"><History size={20} /> Guidance history</Link>
+    </PortalPageHeader>
+    <div className="grid items-start gap-6 lg:grid-cols-2">
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8">
+        <h2 className="text-2xl font-semibold text-slate-950">Prepare your symptom summary</h2>
+        <p className="mt-3 leading-7 text-slate-600">Describe your symptoms, when they started, and any changes. Your clinician can review the summary you share during intake or your visit.</p>
+        <form onSubmit={requestGuidance} className="mt-6 space-y-5">
+          <label htmlFor="symptom-summary" className="block font-medium text-slate-800">Your symptoms<textarea id="symptom-summary" maxLength={5000} value={symptoms} disabled={!ready || processing} onChange={event => updateSummary({ symptoms: event.target.value, guidanceMessage: '' })} className="mt-2 min-h-48 w-full rounded-2xl border border-slate-300 bg-white p-4 text-base focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100" /></label>
+          <button disabled={!ready || processing || !symptoms.trim()} className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-blue-300 px-5 py-3 font-semibold text-blue-800 disabled:opacity-60">{processing && <Loader2 size={20} className="animate-spin" />}{processing ? 'Checking availability…' : 'Check optional guidance'}</button>
+          {guidanceMessage && <p role="status" className="rounded-2xl border border-blue-200 bg-blue-50 p-5 leading-7 text-blue-950">{guidanceMessage}</p>}
+          <p className="leading-7 text-slate-600">No automated assessment or medication recommendation is available until a supported clinical service is connected. This summary stays on this page unless you separately share it with your care team.</p>
+        </form>
+      </section>
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8">
+        <h2 className="text-2xl font-semibold text-slate-950">Your next visit</h2>
+        {loading ? <p role="status" className="mt-5 flex items-center gap-3 text-slate-600"><Loader2 size={20} className="animate-spin" /> Loading appointment…</p> : loadError ? <div role="alert" className="portal-error mt-5 rounded-2xl border border-red-200 bg-red-50 p-5 text-red-900"><p>{loadError}</p><button onClick={() => setRevision(value => value + 1)} className="mt-3 min-h-12 rounded-xl border border-red-300 px-4 font-semibold">Try again</button></div> : appointment ? <div className="mt-5 rounded-2xl bg-slate-50 p-5"><p className="text-xl font-semibold text-slate-950">{provider ? 'Dr. ' + provider : 'Provider name unavailable'}</p><p className="mt-3 leading-7 text-slate-600">{schedule && !Number.isNaN(schedule.getTime()) ? schedule.toLocaleString() : 'Appointment time unavailable'}</p><Link href={'/patient/appointments/' + appointment.id} className="mt-4 inline-flex min-h-12 items-center font-semibold text-blue-700">View appointment</Link></div> : <p className="mt-5 rounded-2xl bg-slate-50 p-5 leading-7 text-slate-600">No upcoming appointment is recorded. Choose a provider and time when you are ready.</p>}
+        <Link href="/patient/messages" className="mt-6 inline-flex min-h-12 items-center gap-2 rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-900"><MessageCircle size={20} /> Contact your care team</Link>
+      </section>
     </div>
-  );
+  </div>;
 }
 

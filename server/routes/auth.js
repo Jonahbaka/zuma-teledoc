@@ -12,6 +12,7 @@ const { issueMfaAttestation, rotateMfaAttestation } = require('../utils/mfaAttes
 const { v4: uuidv4 } = require('uuid');
 
 const db = require('../db');
+const consumerMembership = require('../services/consumerMembershipService');
 const logger = require('../middleware/logger');
 const { authenticate, requireMfa } = require('../middleware/auth');
 const { auditLogin, auditLogout, logAuditEvent } = require('../middleware/audit');
@@ -156,6 +157,8 @@ const clearAuthCookies = (res) => {
 router.post('/register', async (req, res) => {
   try {
     const data = validate(registerSchema, req.body);
+    if (!['patient','provider','pharmacy'].includes(data.role)) return res.status(403).json({ success: false,
+      code: 'PUBLIC_ROLE_NOT_ALLOWED', error: 'Staff accounts must be created through authorized administration.' });
     
     // Check if email already exists for this role
     const { rows: existingUsers } = await db.query(
@@ -231,6 +234,8 @@ router.post('/register', async (req, res) => {
         });
       });
     }
+    const currentRegistration = await db.query('SELECT market_scope FROM users WHERE id=$1', [user.id]);
+    user.market_scope = currentRegistration.rows[0]?.market_scope;
     
     // Create subscription record (free tier by default)
     await db.query(
@@ -327,6 +332,7 @@ router.post('/register', async (req, res) => {
         id: user.id,
         email: user.email,
         role: user.role,
+        marketScope: ['US','NG'].includes(user.market_scope) ? user.market_scope : null,
         firstName: user.first_name,
         lastName: user.last_name
       },
@@ -373,7 +379,7 @@ const loginHandler = async (req, res) => {
 
     const { rows } = await db.query(
       `SELECT id, email, password_hash, role, first_name, last_name,
-              is_active, mfa_enabled, mfa_secret, failed_login_attempts,
+              is_active, market_scope, mfa_enabled, mfa_secret, failed_login_attempts,
               locked_until, provider_status, access_level, must_change_password, is_verified,
               testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
        FROM users ${whereClause}
@@ -541,13 +547,14 @@ const loginHandler = async (req, res) => {
         id: user.id,
         email: user.email,
         role: user.role,
+        marketScope: ['US','NG'].includes(user.market_scope) ? user.market_scope : null,
         firstName: user.first_name,
         lastName: user.last_name,
         mfaEnabled: user.mfa_enabled,
         isVerified: user.is_verified,
         providerStatus: user.provider_status,
         mustChangePassword: user.must_change_password === true,
-        accessLevel: getEffectiveAccessLevel(user),
+        accessLevel: (await consumerMembership.readAuthority(user.id, { knownUser: user })).accessLevel,
         ...getTestingBypassPayload(user)
       },
       accessToken,
@@ -729,15 +736,13 @@ router.get('/me', authenticate, async (req, res) => {
     const { rows } = await db.query(
       `SELECT u.id, u.email, u.role, u.first_name, u.last_name,
               u.date_of_birth, u.phone, u.address_line1, u.address_line2,
-              u.city, u.state, u.zip_code, u.country,
+              u.city, u.state, u.zip_code, u.country, u.market_scope,
               u.mfa_enabled, u.is_verified, u.provider_status,
               u.license_number, u.license_state, u.specialty,
               u.credentials, u.bio, u.created_at, u.access_level,
               u.must_change_password,
-              u.testing_bypass_active, u.testing_bypass_expires_at, u.testing_bypass_tier,
-              s.tier as subscription_tier, s.status as subscription_status
+              u.testing_bypass_active, u.testing_bypass_expires_at, u.testing_bypass_tier
        FROM users u
-      LEFT JOIN subscriptions s ON s.user_id = u.id
        WHERE u.id = $1`,
       [req.user.id]
     );
@@ -757,6 +762,7 @@ router.get('/me', authenticate, async (req, res) => {
         id: user.id,
         email: user.email,
         role: user.role,
+        marketScope: ['US','NG'].includes(user.market_scope) ? user.market_scope : null,
         firstName: user.first_name,
         lastName: user.last_name,
         dateOfBirth: user.date_of_birth,
@@ -780,12 +786,9 @@ router.get('/me', authenticate, async (req, res) => {
           credentials: user.credentials,
           bio: user.bio
         } : null,
-        accessLevel: getEffectiveAccessLevel(user),
+        accessLevel: (await consumerMembership.readAuthority(user.id, { knownUser: user })).accessLevel,
         ...getTestingBypassPayload(user),
-        subscription: {
-          tier: user.subscription_tier,
-          status: user.subscription_status
-        },
+        subscription: req.financialAccess?.paymentVerified ? { tier: req.financialAccess.subscription.tier, status: req.financialAccess.subscription.status, paymentVerified: true } : null,
         createdAt: user.created_at
       }
     });
@@ -1032,7 +1035,7 @@ router.post('/password/change', authenticate, async (req, res) => {
     
     // Get user
     const { rows } = await db.query(
-      `SELECT password_hash, email, role, first_name, last_name, mfa_enabled,
+      `SELECT id, password_hash, email, role, market_scope, first_name, last_name, mfa_enabled,
               is_verified, provider_status, access_level, must_change_password,
               testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
          FROM users WHERE id = $1`,
@@ -1140,13 +1143,14 @@ router.post('/password/change', authenticate, async (req, res) => {
           id: req.user.id,
           email: user.email,
           role: user.role,
+          marketScope: ['US','NG'].includes(user.market_scope) ? user.market_scope : null,
           firstName: user.first_name,
           lastName: user.last_name,
           mfaEnabled: user.mfa_enabled,
           isVerified: user.is_verified,
           providerStatus: user.provider_status,
           mustChangePassword: false,
-          accessLevel: getEffectiveAccessLevel(user),
+          accessLevel: (await consumerMembership.readAuthority(user.id, { knownUser: user })).accessLevel,
           ...getTestingBypassPayload(user)
         },
         accessToken,

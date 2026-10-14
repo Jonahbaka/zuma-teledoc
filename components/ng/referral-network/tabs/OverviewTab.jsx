@@ -7,7 +7,7 @@ import { drn, fmtNaira } from '../drnApi';
 function KpiTile({ label, value, hint, icon: Icon, tone = 'slate' }) {
   const tones = {
     slate:  'bg-white border-slate-200',
-    green:  'bg-emerald-50 border-emerald-200',
+    green:  'bg-blue-50 border-blue-200',
     amber:  'bg-amber-50 border-amber-200',
     blue:   'bg-blue-50 border-blue-200',
     rose:   'bg-rose-50 border-rose-200',

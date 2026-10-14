@@ -6,6 +6,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const db = require('../db');
+const consumerMembership = require('../services/consumerMembershipService');
 const logger = require('./logger');
 const {
   getEffectiveAccessLevel,
@@ -129,18 +130,22 @@ const authenticate = async (req, res, next) => {
       });
     }
     
-    // Attach user to request
+    const financialAccess = await consumerMembership.readAuthority(user.id, { knownUser: user });
+    req.financialAccess = financialAccess;
+    // Attach current financial authority without promoting a cached paid tier.
     req.user = {
       id: user.id,
       email: user.email,
       role: canonicalRole(user.role),
-      marketScope: user.market_scope || user.region || user.country || 'US',
+      marketScope: ['US','NG'].includes(user.market_scope) ? user.market_scope : null,
       firstName: user.first_name,
       lastName: user.last_name,
       mfaEnabled: user.mfa_enabled,
       providerStatus: user.provider_status,
       mustChangePassword: user.must_change_password === true,
-      accessLevel: getEffectiveAccessLevel(user),
+      accessLevel: financialAccess.accessLevel,
+      financialAccessAvailable: financialAccess.financialAccessAvailable,
+      paymentVerified: financialAccess.paymentVerified,
       ...getTestingBypassPayload(user)
     };
 

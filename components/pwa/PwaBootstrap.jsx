@@ -16,7 +16,8 @@ function isStandaloneDisplay() {
 
 function wasDismissedRecently() {
   if (typeof window === 'undefined') return false;
-  const dismissedAt = Number(window.localStorage.getItem(DISMISS_KEY) || 0);
+  let dismissedAt = 0;
+  try { dismissedAt = Number(window.localStorage.getItem(DISMISS_KEY) || 0); } catch {}
   return Boolean(dismissedAt && Date.now() - dismissedAt < DISMISS_TTL_MS);
 }
 
@@ -39,11 +40,12 @@ function shouldReloadForVersion(version) {
   if (typeof window === 'undefined' || !version) return false;
 
   const storageKey = `${SW_RELOAD_PREFIX}${version}`;
-  if (window.sessionStorage.getItem(storageKey)) {
-    return false;
+  try {
+    if (window.sessionStorage.getItem(storageKey)) return false;
+    window.sessionStorage.setItem(storageKey, '1');
+  } catch {
+    // Storage restrictions must not break service-worker event delivery.
   }
-
-  window.sessionStorage.setItem(storageKey, '1');
   return true;
 }
 
@@ -71,7 +73,7 @@ function bindServiceWorkerLifecycle() {
     }
 
     if (runtime.controllerAtBoot && shouldReloadForVersion(event.data.version)) {
-      window.location.reload();
+      window.dispatchEvent(new CustomEvent('doctarx:application-update'));
     }
   };
 
@@ -139,7 +141,7 @@ function syncInstallMetadata(pathname = '') {
   const runtimeVersion = window.__doctarxPwaAssetVersion || PWA_ASSET_VERSION;
   const manifestHref = `${isNigeriaPath ? '/ng/manifest.webmanifest' : '/manifest.webmanifest'}?v=${runtimeVersion}`;
   const appTitle = isNigeriaPath ? 'DoctaRx Nigeria' : 'DoctaRx';
-  const themeColor = isNigeriaPath ? '#047857' : '#0f172a';
+  const themeColor = '#0f172a';
   const manifestLinks = Array.from(document.querySelectorAll('link[rel="manifest"]'));
   const primaryManifest = manifestLinks[0] || document.createElement('link');
 
@@ -149,7 +151,10 @@ function syncInstallMetadata(pathname = '') {
     document.head.appendChild(primaryManifest);
   }
 
-  manifestLinks.slice(1).forEach((link) => link.remove());
+  // Next may temporarily retain both route metadata links during navigation.
+  // It owns their removal; deleting one here can crash React's next commit.
+  // Keep either current browser manifest candidate pointed at this market.
+  manifestLinks.slice(1).forEach((link) => link.setAttribute('href', manifestHref));
 
   const ensureMeta = (name, content) => {
     let tag = document.querySelector(`meta[name="${name}"]`);
@@ -279,7 +284,7 @@ export default function PwaBootstrap() {
       setDeferredPrompt(null);
       setInstallMode('hidden');
       window.__doctarxBeforeInstallPrompt = null;
-      window.localStorage.removeItem(DISMISS_KEY);
+      try { window.localStorage.removeItem(DISMISS_KEY); } catch {}
     };
 
     syncDeferredPrompt();
@@ -304,7 +309,7 @@ export default function PwaBootstrap() {
 
   const dismissPrompt = () => {
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(DISMISS_KEY, String(Date.now()));
+      try { window.localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch {}
     }
     setDeferredPrompt(null);
     setInstallMode('hidden');

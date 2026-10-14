@@ -1,117 +1,19 @@
 'use client';
 
-import Link from 'next/link';
-import { ArrowLeft, HelpCircle, ChevronDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useState } from 'react';
-
-const faqs = [
-  {
-    question: 'How do I book an appointment?',
-    answer: 'You can book an appointment by logging into your account, clicking "Book Appointment," selecting a provider, choosing an available time slot, and confirming your booking. You\'ll receive a confirmation email with details about your appointment.'
-  },
-  {
-    question: 'Do you accept insurance?',
-    answer: 'We accept most major insurance plans. You can check your insurance coverage during the booking process. We also offer self-pay options and subscription plans for those without insurance.'
-  },
-  {
-    question: 'How do video consultations work?',
-    answer: 'Video consultations are conducted through our secure, HIPAA-compliant platform with encrypted sessions and access-controlled visit links. At your appointment time, simply click "Join Visit" from your appointment details. Make sure you have a stable internet connection and a device with a camera and microphone.'
-  },
-  {
-    question: 'Can I get prescriptions through Docta?',
-    answer: 'Yes, our licensed providers can prescribe medications when appropriate. Prescriptions are sent electronically to your preferred pharmacy. Controlled substances may have additional restrictions based on state regulations.'
-  },
-  {
-    question: 'What if I need to cancel or reschedule?',
-    answer: 'You can cancel or reschedule appointments up to 24 hours before your scheduled time through your account dashboard. Late cancellations may be subject to fees as outlined in our cancellation policy.'
-  },
-  {
-    question: 'Is my health information secure?',
-    answer: 'Absolutely. We use 256-bit SSL encryption, HIPAA-compliant data storage, and strict access controls. All health information is encrypted both in transit and at rest. We also apply privacy filtering, controlled AI routing, and comprehensive audit logging to reduce PHI exposure and protect your data.'
-  },
-  {
-    question: 'What is Docta Gold?',
-    answer: 'Docta Gold is our monthly subscription plan that provides unlimited video visits, priority scheduling, 24/7 provider access, and additional benefits. It\'s perfect for individuals and families who want comprehensive telehealth coverage.'
-  },
-  {
-    question: 'How do I access my medical records?',
-    answer: 'You can access your medical records anytime through your account dashboard under "Health Records." All records are encrypted and stored securely. You can also request a copy of your records or export them for your personal use.'
-  }
-];
+import Link from 'next/link';
+import { ArrowLeft, ChevronDown } from 'lucide-react';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
+import { doctarxFAQs } from '@/lib/faqData';
 
 export default function FAQPage() {
   const [openIndex, setOpenIndex] = useState(null);
-
-  const toggleFAQ = (index) => {
-    setOpenIndex(openIndex === index ? null : index);
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-purple-50 to-yellow-50">
-      <div className="container mx-auto px-6 py-16 max-w-4xl">
-        <Link href="/">
-          <Button variant="ghost" className="mb-8">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Home
-          </Button>
-        </Link>
-
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center">
-              <HelpCircle className="w-9 h-9 text-white" />
-            </div>
-            <h1 className="text-4xl md:text-5xl font-bold text-purple-900 font-serif">Frequently Asked Questions</h1>
-          </div>
-          <p className="text-xl text-gray-600">
-            Find answers to the most common questions about DoctaRx.
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          {faqs.map((faq, index) => (
-            <div
-              key={index}
-              className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100"
-            >
-              <button
-                onClick={() => toggleFAQ(index)}
-                className="w-full px-6 py-5 text-left flex items-center justify-between hover:bg-gray-50 transition-colors"
-              >
-                <span className="font-semibold text-gray-900 pr-4">{faq.question}</span>
-                <ChevronDown
-                  className={`w-5 h-5 text-purple-600 flex-shrink-0 transition-transform ${
-                    openIndex === index ? 'transform rotate-180' : ''
-                  }`}
-                />
-              </button>
-              {openIndex === index && (
-                <div className="px-6 pb-5 text-gray-600 leading-relaxed">
-                  {faq.answer}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-12 bg-white rounded-2xl shadow-lg p-8 text-center">
-          <h2 className="text-2xl font-bold text-purple-900 mb-4">Still have questions?</h2>
-          <p className="text-gray-600 mb-6">
-            Can't find what you're looking for? Email us at{' '}
-            <a href="mailto:info@doctarx.com" className="text-purple-600 hover:underline font-medium">
-              info@doctarx.com
-            </a>
-            {' '}or contact our support team.
-          </p>
-          <Link href="/contact">
-            <Button className="bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white">
-              Contact Support
-            </Button>
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="doctarx-site bg-[#f4f7fc] text-slate-950">
+    <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex min-h-24 max-w-5xl items-center justify-between gap-4 px-5 sm:px-8"><Link href="/" aria-label="DoctaRx home"><DoctaRxLogo tone="dark" glow={false} className="h-10 max-w-[160px]" /></Link><Link href="/" className="inline-flex min-h-12 items-center gap-2 px-4 font-semibold text-blue-700"><ArrowLeft size={20} /> Home</Link></div></header>
+    <main className="mx-auto max-w-5xl px-5 py-14 sm:px-8 sm:py-20">
+      <p className="font-semibold text-blue-700">DOCTARX · HELP</p><h1 className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">Frequently asked questions</h1><p className="mt-5 max-w-3xl text-lg leading-8 text-slate-600">Find your next step with booking, visits, insurance, records, and pharmacy choices.</p>
+      <div className="mt-10 space-y-4">{doctarxFAQs.map((faq, index) => <section key={faq.question} className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><h2><button onClick={() => setOpenIndex(openIndex === index ? null : index)} aria-expanded={openIndex === index} aria-controls={'faq-answer-' + index} id={'faq-question-' + index} className="flex min-h-16 w-full items-center justify-between gap-5 px-6 py-5 text-left text-lg font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">{faq.question}<ChevronDown size={22} className={'shrink-0 text-blue-700 transition-transform ' + (openIndex === index ? 'rotate-180' : '')} aria-hidden="true" /></button></h2><div id={'faq-answer-' + index} hidden={openIndex !== index} aria-labelledby={'faq-question-' + index} className="border-t border-slate-100 px-6 py-5"><p className="text-base leading-8 text-slate-600">{faq.answer}</p></div></section>)}</div>
+      <section className="mt-10 rounded-3xl bg-[#101d36] p-7 text-white sm:p-9"><h2 className="text-2xl font-semibold">Need help with your account?</h2><p className="mt-3 leading-7 text-slate-300">Contact DoctaRx with your question. Keep passwords and sensitive clinical details out of ordinary email.</p><Link href="/contact" className="mt-5 inline-flex min-h-12 items-center rounded-xl bg-white px-5 py-3 font-semibold text-slate-950">Contact DoctaRx</Link></section>
+    </main>
+  </div>;
 }
-

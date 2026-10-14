@@ -7,18 +7,14 @@
  * Data source: /api/ng/executive-view/* (aggregate, no patient identifiers)
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Shield, RefreshCw, Building2, Users, Activity, BarChart3 } from 'lucide-react';
-import {
-  PRESENTATION_DEMO_LABEL,
-  buildMinistryDemoData,
-  shouldShowPresentationDemoData,
-} from '@/lib/ngPresentationDemoData';
+import api from '@/lib/api';
+import { useAuth } from '@/components/providers/AuthProvider';
 
-async function fetchJson(path) {
-  const res = await fetch(path, { credentials: 'include' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
+async function fetchJson(path, signal) {
+  const { data } = await api.get(path, { signal });
+  return data;
 }
 
 function KpiTile({ label, value, icon: Icon }) {
@@ -36,64 +32,57 @@ function KpiTile({ label, value, icon: Icon }) {
 }
 
 export default function FmohPortal() {
+  const { user } = useAuth();
   const [data, setData]     = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState('');
-  const [usingDemoData, setUsingDemoData] = useState(false);
-  const demoData = useMemo(() => buildMinistryDemoData(), []);
-
-  const applyDemoData = useCallback(() => {
-    setData({ dashboard: demoData.dashboard, gov: demoData.fmohGov });
-    setUsingDemoData(true);
-    setError('');
-  }, [demoData]);
+  const [loadedAt, setLoadedAt] = useState(null);
+  const request = useRef(null);
 
   const load = useCallback(async () => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     setLoading(true);
     setError('');
-    if (shouldShowPresentationDemoData()) {
-      applyDemoData();
-      setLoading(false);
-      return;
-    }
+    setData(null);
+    setLoadedAt(null);
     try {
       const [dashboard, gov] = await Promise.all([
-        fetchJson('/api/ng/executive-view/dashboard'),
-        fetchJson('/api/ng/governance/executive-summary'),
+        fetchJson('/ng/executive-view/dashboard', controller.signal),
+        fetchJson('/ng/governance/executive-summary', controller.signal),
       ]);
+      if (controller.signal.aborted) return;
       setData({ dashboard, gov });
-      setUsingDemoData(false);
+      setLoadedAt(new Date());
     } catch (e) {
-      if (/^(401|403)\b/.test(e.message || '')) {
-        applyDemoData();
-      } else {
-        setUsingDemoData(false);
-        setError(e.message);
-      }
+      if (!controller.signal.aborted) setError([401, 403].includes(e.response?.status)
+        ? 'Your account is not authorized to view national aggregate data. Contact your programme administrator.'
+        : 'National aggregate data could not be loaded. Refresh to try again.');
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, [applyDemoData]);
+  }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); return () => request.current?.abort(); }, [load, user?.id]);
 
   const exec = data?.dashboard?.executive;
   const gov  = data?.gov;
   const m    = exec?.metrics || {};
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-green-50/30">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30">
       <div className="border-b border-slate-200 bg-white px-6 py-4">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-green-600" />
+            <Shield className="h-5 w-5 text-blue-600" />
             <div>
               <h1 className="text-lg font-black text-slate-900">FMOH — National Layer</h1>
               <p className="text-xs text-slate-500">Federal Ministry of Health aggregate intelligence</p>
             </div>
           </div>
           <button onClick={load} disabled={loading}
-            className="flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+            className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
@@ -101,26 +90,20 @@ export default function FmohPortal() {
       </div>
 
       <div className="mx-auto max-w-5xl px-6 py-8">
-        {usingDemoData && (
-          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-center text-xs font-semibold text-amber-800">
-            {PRESENTATION_DEMO_LABEL} - Abuja pilot aggregate sample for presentation only; no real patient data.
-          </div>
-        )}
-
         {error && (
-          <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
+          <div role="alert" className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-base text-rose-700">{error}</div>
         )}
 
         {loading && (
-          <div className="py-24 text-center text-sm text-slate-400">
-            <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin text-green-400" />
+          <div role="status" className="py-24 text-center text-base text-slate-600">
+            <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin text-blue-400" />
             Loading national intelligence…
           </div>
         )}
 
         {!loading && exec && (
           <div className="space-y-8">
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-700 text-center">
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700 text-center">
               All data is aggregate — no patient identifiers. Market scope: Nigeria (NG).
             </div>
 
@@ -148,13 +131,13 @@ export default function FmohPortal() {
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="mb-4 text-base font-black text-slate-900">Programme Spaces</h2>
               <p className="text-sm text-slate-400">
-                {gov?.programmeSpaces ?? 0} programme spaces configured. Navigate to the admin portal for full programme intelligence.
+                {gov?.programmeSpaces != null ? gov.programmeSpaces + ' programme spaces configured.' : 'Programme configuration counts are unavailable.'} Navigate to the admin portal for full programme intelligence.
               </p>
             </div>
 
             <p className="text-center text-xs text-slate-400">
               DoctaRx FMOH Portal — Live government submission requires official DHIS2 credentials,
-              mappings, and authorization. Data as of {new Date().toLocaleString('en-NG')}.
+              mappings, and authorization. Loaded {loadedAt?.toLocaleString('en-NG')}.
             </p>
           </div>
         )}

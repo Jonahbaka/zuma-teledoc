@@ -95,3 +95,53 @@ test('joining cannot elevate a new account with a client-supplied host role', as
   assert.equal(participant.role, 'observer');
   assert.equal(participant.status, 'waiting');
 });
+
+function joinPool(existing, count = 1) {
+  return {
+    async query(sql, params) {
+      if (sql.includes('SELECT * FROM ng_conf_rooms')) return { rows: [room] };
+      if (sql.includes('WHERE room_id=$1 AND user_id=$2')) return { rows: existing ? [existing] : [] };
+      if (sql.includes('COUNT(*)::int')) return { rows: [{ n: count }] };
+      if (sql.includes('INSERT INTO ng_conf_participants')) {
+        return { rows: [{ id: existing?.id || 'participant-new', role: params[3], status: params[4] }] };
+      }
+      if (sql.includes('INSERT INTO ng_conf_events')) return { rows: [] };
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+  };
+}
+
+test('a provider host joins as an admitted doctor without waiting-room self-admission', async () => {
+  const participant = await joinRoom(
+    room.id,
+    { user_id: room.host_user_id, role: 'provider' },
+    { display_name: 'Clinical host', role: 'doctor' },
+    joinPool({ id: 'host-participant', role: 'doctor', status: 'admitted' }, room.max_participants)
+  );
+  assert.equal(participant.role, 'doctor');
+  assert.equal(participant.status, 'admitted');
+});
+
+test('an admitted clinical participant retains admission when retrying a full room', async () => {
+  const participant = await joinRoom(
+    room.id,
+    { user_id: 'consultant-1', role: 'provider' },
+    { display_name: 'Consultant', role: 'host' },
+    joinPool({ id: 'consultant-participant', role: 'consultant', status: 'admitted' }, room.max_participants)
+  );
+  assert.equal(participant.role, 'consultant');
+  assert.equal(participant.status, 'admitted');
+});
+
+test('a waiting clinical participant cannot bypass capacity or gain admission on retry', async () => {
+  const existing = { id: 'waiting-participant', role: 'doctor', status: 'waiting' };
+  const participant = await joinRoom(
+    room.id, { user_id: 'waiting-1', role: 'provider' }, { role: 'host' }, joinPool(existing)
+  );
+  assert.equal(participant.role, 'doctor');
+  assert.equal(participant.status, 'waiting');
+  await assert.rejects(
+    joinRoom(room.id, { user_id: 'waiting-1', role: 'provider' }, {}, joinPool(existing, room.max_participants)),
+    (error) => error.code === 'ROOM_FULL'
+  );
+});

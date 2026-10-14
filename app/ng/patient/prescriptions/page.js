@@ -1,17 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, Pill, UploadCloud } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/components/providers/AuthProvider';
-import {
-  PRESENTATION_DEMO_LABEL,
-  buildPatientPortalDemoData,
-  shouldShowPresentationDemoData,
-} from '@/lib/ngPresentationDemoData';
+import PortalPageHeader from '@/components/branding/PortalPageHeader';
 
 function formatDate(value) {
   try {
@@ -22,43 +17,54 @@ function formatDate(value) {
 }
 
 export default function NigeriaPatientPrescriptionsPage() {
-  const { user } = useAuth();
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadMode, setUploadMode] = useState('');
   const [prescriptionText, setPrescriptionText] = useState('');
   const [uploadResult, setUploadResult] = useState(null);
-  const presentationDemoData = useMemo(() => buildPatientPortalDemoData(), []);
+  const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const textAttempt = useRef(null);
+  const imageAttempts = useRef(new WeakMap());
 
-  const loadPrescriptions = async () => {
+  const loadPrescriptions = useCallback(async () => {
+    setLoading(true); setLoadError('');
     try {
       const response = await api.get('/ng/patient/prescriptions');
-      setPrescriptions(Array.isArray(response.data) ? response.data : []);
+      if (!Array.isArray(response.data)) throw new Error();
+      setPrescriptions(response.data);
+    } catch {
+      setLoadError('Prescriptions could not be loaded. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadPrescriptions();
-  }, []);
+  }, [loadPrescriptions]);
 
-  const showDemoData = shouldShowPresentationDemoData(user);
-  const visiblePrescriptions = showDemoData && prescriptions.length === 0 ? presentationDemoData.prescriptions : prescriptions;
-  const usingDemoData = showDemoData && prescriptions.length === 0 && presentationDemoData.prescriptions.length > 0;
+  const visiblePrescriptions = prescriptions;
 
   const handleImageUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    setError(''); setUploadResult(null);
+    if (!['image/jpeg','image/png'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      setError('Choose a JPEG or PNG image up to 5 MB.'); return;
+    }
 
     setUploading(true);
     try {
-      const response = await api.post('/ng/patient/prescriptions/upload', {
-        imageUrl: URL.createObjectURL(file),
-      });
+      const form = new FormData(); form.append('image', file);
+      if (!imageAttempts.current.has(file)) imageAttempts.current.set(file, crypto.randomUUID());
+      const response = await api.post('/ng/patient/prescriptions/upload', form, { headers: { 'Content-Type': 'multipart/form-data', 'Idempotency-Key': imageAttempts.current.get(file) } });
       setUploadResult(response.data);
+      setUploadMode('');
       await loadPrescriptions();
+    } catch (failure) {
+      setError(failure.response?.data?.error || 'Your prescription image could not be submitted. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -66,16 +72,21 @@ export default function NigeriaPatientPrescriptionsPage() {
 
   const handleTextSubmit = async () => {
     if (!prescriptionText.trim()) return;
+    setError(''); setUploadResult(null);
 
     setUploading(true);
     try {
+      if (textAttempt.current?.text !== prescriptionText.trim()) textAttempt.current = { text: prescriptionText.trim(), key: crypto.randomUUID() };
       const response = await api.post('/ng/patient/prescriptions/text', {
         text: prescriptionText,
-      });
+      }, { headers: { 'Idempotency-Key': textAttempt.current.key } });
       setUploadResult(response.data);
       setPrescriptionText('');
+      textAttempt.current = null;
       setUploadMode('');
       await loadPrescriptions();
+    } catch (failure) {
+      setError(failure.response?.data?.error || 'Your prescription text could not be submitted. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -83,25 +94,9 @@ export default function NigeriaPatientPrescriptionsPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] border border-emerald-200/70 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_35%),linear-gradient(145deg,rgba(255,255,255,0.96),rgba(236,253,245,0.92))] px-5 py-6 shadow-sm sm:px-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Prescription Workflow</p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Upload, review, and route prescriptions</h1>
-            <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-              Add prescription images or typed medication instructions, then continue to medication search and pharmacy routing from the patient portal.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/ng/patient/search">
-              <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Open Medication Search</Button>
-            </Link>
-            <Link href="/ng/patient/orders">
-              <Button variant="outline">Review Orders</Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+      <PortalPageHeader title="Prescriptions" description="Review pharmacy updates and submit an existing prescription for professional review."><Link href="/ng/patient/search"><Button variant="outline">Medication search</Button></Link><Link href="/ng/patient/orders"><Button variant="outline">Pharmacy orders</Button></Link></PortalPageHeader>
+
+      {error && <p role="alert" className="portal-error">{error}</p>}
 
       <Card className="border-border/70">
         <CardHeader>
@@ -110,13 +105,13 @@ export default function NigeriaPatientPrescriptionsPage() {
         <CardContent className="space-y-4">
           {!uploadMode ? (
             <div className="grid gap-4 md:grid-cols-2">
-              <button type="button" onClick={() => setUploadMode('image')} className="rounded-2xl border border-dashed border-border px-4 py-8 text-center transition-colors hover:border-emerald-300 hover:bg-emerald-50/60">
-                <UploadCloud className="mx-auto h-8 w-8 text-emerald-600" />
+              <button type="button" onClick={() => setUploadMode('image')} className="rounded-2xl border border-dashed border-border px-4 py-8 text-center transition-colors hover:border-blue-300 hover:bg-blue-50/60">
+                <UploadCloud className="mx-auto h-8 w-8 text-blue-600" />
                 <p className="mt-4 font-semibold text-foreground">Upload image</p>
                 <p className="mt-2 text-sm text-muted-foreground">Take a photo or upload a scan.</p>
               </button>
-              <button type="button" onClick={() => setUploadMode('text')} className="rounded-2xl border border-dashed border-border px-4 py-8 text-center transition-colors hover:border-emerald-300 hover:bg-emerald-50/60">
-                <Pill className="mx-auto h-8 w-8 text-emerald-600" />
+              <button type="button" onClick={() => setUploadMode('text')} className="rounded-2xl border border-dashed border-border px-4 py-8 text-center transition-colors hover:border-blue-300 hover:bg-blue-50/60">
+                <Pill className="mx-auto h-8 w-8 text-blue-600" />
                 <p className="mt-4 font-semibold text-foreground">Type medication details</p>
                 <p className="mt-2 text-sm text-muted-foreground">Enter drug names, dosage, and directions manually.</p>
               </button>
@@ -125,7 +120,8 @@ export default function NigeriaPatientPrescriptionsPage() {
 
           {uploadMode === 'image' ? (
             <div className="space-y-3">
-              <input type="file" accept="image/*" onChange={handleImageUpload} className="block w-full text-sm" />
+              <label htmlFor="prescription-image" className="block font-medium">Prescription photo (JPEG or PNG, up to 5 MB)</label>
+              <input id="prescription-image" type="file" accept="image/jpeg,image/png" onChange={handleImageUpload} disabled={uploading} className="block w-full text-base" />
               <div className="flex justify-end">
                 <Button variant="outline" onClick={() => setUploadMode('')}>Cancel</Button>
               </div>
@@ -135,6 +131,8 @@ export default function NigeriaPatientPrescriptionsPage() {
           {uploadMode === 'text' ? (
             <div className="space-y-3">
               <textarea
+                aria-label="Prescription text"
+                maxLength={10000}
                 value={prescriptionText}
                 onChange={(event) => setPrescriptionText(event.target.value)}
                 rows={6}
@@ -143,7 +141,7 @@ export default function NigeriaPatientPrescriptionsPage() {
               />
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setUploadMode('')}>Cancel</Button>
-                <Button onClick={handleTextSubmit} disabled={uploading || !prescriptionText.trim()} className="bg-emerald-600 text-white hover:bg-emerald-500">
+                <Button onClick={handleTextSubmit} disabled={uploading || !prescriptionText.trim()} className="bg-blue-600 text-white hover:bg-blue-500">
                   {uploading ? 'Submitting...' : 'Submit Prescription'}
                 </Button>
               </div>
@@ -151,12 +149,12 @@ export default function NigeriaPatientPrescriptionsPage() {
           ) : null}
 
           {uploadResult ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
-              <p className="font-semibold">Prescription parsed successfully.</p>
-              <p className="mt-1">Confidence: {Math.round(Number(uploadResult.confidence || 0) * 100)}%</p>
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm text-blue-800">
+              <p role="status" className="font-semibold">Prescription submitted for review.</p>
+              <p className="mt-1">Your care team must review the prescription before it can be routed or dispensed.</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link href="/ng/patient/search">
-                  <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-500">Compare Pharmacies</Button>
+                  <Button size="sm" className="bg-blue-600 text-white hover:bg-blue-500">Compare Pharmacies</Button>
                 </Link>
               </div>
             </div>
@@ -164,11 +162,7 @@ export default function NigeriaPatientPrescriptionsPage() {
         </CardContent>
       </Card>
 
-      {usingDemoData ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
-          {PRESENTATION_DEMO_LABEL}: sample prescriptions are shown for the Abuja pilot demo account.
-        </div>
-      ) : null}
+      {loadError && <div className="portal-error"><p role="alert">{loadError}</p><Button variant="outline" className="mt-3" onClick={loadPrescriptions}>Try again</Button></div>}
 
       <Card className="border-border/70">
         <CardHeader>
@@ -177,9 +171,9 @@ export default function NigeriaPatientPrescriptionsPage() {
         <CardContent className="space-y-3">
           {loading ? (
             <div className="py-8 text-center">
-              <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
             </div>
-          ) : visiblePrescriptions.length === 0 ? (
+          ) : loadError ? null : visiblePrescriptions.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
               No prescriptions uploaded yet.
             </div>
@@ -194,7 +188,7 @@ export default function NigeriaPatientPrescriptionsPage() {
                     ) : null}
                     <p className="mt-1 text-sm text-muted-foreground">{formatDate(prescription.created_at)}</p>
                   </div>
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                  <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
                     {String(prescription.status || '').replace(/_/g, ' ')}
                   </span>
                 </div>

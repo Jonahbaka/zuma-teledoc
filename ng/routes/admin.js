@@ -860,7 +860,8 @@ router.get('/fraud/suspicious', async (req, res) => {
 router.get('/consultations/lifecycle', async (req, res) => {
   try {
     const pool = getPool();
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const limit = Number(req.query.limit ?? 50);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) return res.status(400).json({ error: 'Limit must be an integer from 1 to 200.' });
     const result = await pool.query(`
       SELECT
         a.id                        AS appointment_id,
@@ -880,22 +881,32 @@ router.get('/consultations/lifecycle', async (req, res) => {
         dp.id                       AS prescription_id,
         dp.status                   AS rx_status,
         dp.dispense_status,
-        pu.account_status           AS patient_status
+        CASE WHEN dp.id IS NULL THEN 'unknown'
+             WHEN dp.encounter_id IS NOT NULL THEN 'encounter'
+             ELSE 'appointment' END AS rx_linkage,
+        CASE WHEN pu.is_active IS TRUE THEN 'active'
+             WHEN pu.is_active IS FALSE THEN 'inactive'
+             ELSE 'unknown' END AS patient_status
       FROM ng_appointments a
       LEFT JOIN users pu   ON pu.id = a.patient_user_id
       LEFT JOIN ng_providers np ON np.id = a.provider_id
       LEFT JOIN users prov ON prov.id = np.user_id
       LEFT JOIN ng_conf_rooms     cr ON cr.appointment_id = a.id
       LEFT JOIN ng_clinical_encounters ce ON ce.appointment_id = a.id
+        AND ce.patient_user_id = a.patient_user_id
       LEFT JOIN ng_digital_prescriptions dp ON dp.patient_user_id = a.patient_user_id
-        AND dp.created_at >= a.scheduled_at - INTERVAL '1 hour'
-        AND dp.created_at <= COALESCE(cr.ended_at, NOW()) + INTERVAL '2 hours'
-      ORDER BY a.scheduled_at DESC
+        AND (
+          (dp.appointment_id = a.id AND (dp.encounter_id IS NULL OR dp.encounter_id = ce.id))
+          OR (dp.appointment_id IS NULL AND dp.encounter_id = ce.id)
+        )
+      WHERE pu.role = 'patient' AND pu.market_scope = 'NG'
+      ORDER BY a.scheduled_at DESC, a.id, ce.id, dp.id
       LIMIT $1
     `, [limit]);
+    res.set('Cache-Control', 'private, no-store');
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(503).json({ error: 'Consultation lifecycle could not be loaded.' });
   }
 });
 

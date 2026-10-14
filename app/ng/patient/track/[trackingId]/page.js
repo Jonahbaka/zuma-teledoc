@@ -40,7 +40,7 @@ export default function DeliveryTracking() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full" />
+        <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -50,7 +50,7 @@ export default function DeliveryTracking() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center">
           <p className="text-gray-600">Tracking information not found</p>
-          <Link href="/ng/patient/orders" className="text-green-600 underline mt-2 block">Back to Orders</Link>
+          <Link href="/ng/patient/orders" className="text-blue-600 underline mt-2 block">Back to Orders</Link>
         </div>
       </div>
     );
@@ -86,8 +86,8 @@ export default function DeliveryTracking() {
                 <div key={step.key} className="flex items-start gap-4">
                   <div className="flex flex-col items-center">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      isActive ? 'bg-green-600' : 'bg-gray-200'
-                    } ${isCurrent ? 'ring-4 ring-green-100' : ''}`}>
+                      isActive ? 'bg-blue-600' : 'bg-gray-200'
+                    } ${isCurrent ? 'ring-4 ring-blue-100' : ''}`}>
                       {isActive ? (
                         <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -97,7 +97,7 @@ export default function DeliveryTracking() {
                       )}
                     </div>
                     {i < statusSteps.length - 1 && (
-                      <div className={`w-0.5 h-8 ${i < currentIndex ? 'bg-green-600' : 'bg-gray-200'}`} />
+                      <div className={`w-0.5 h-8 ${i < currentIndex ? 'bg-blue-600' : 'bg-gray-200'}`} />
                     )}
                   </div>
                   <div className="pt-1">
@@ -131,7 +131,7 @@ export default function DeliveryTracking() {
               </div>
               {tracking.rider_phone && (
                 <a href={`tel:${tracking.rider_phone}`}
-                  className="bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-medium">
+                  className="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium">
                   Call Rider
                 </a>
               )}
@@ -141,24 +141,24 @@ export default function DeliveryTracking() {
 
         {/* ETA */}
         {tracking.estimated_delivery_at && tracking.status !== 'delivered' && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
-            <p className="text-sm text-green-700">Estimated Delivery</p>
-            <p className="text-lg font-bold text-green-800">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
+            <p className="text-sm text-blue-700">Estimated Delivery</p>
+            <p className="text-lg font-bold text-blue-800">
               {new Date(tracking.estimated_delivery_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </p>
-            <p className="text-xs text-green-600">{tracking.distance_km}km away</p>
+            <p className="text-xs text-blue-600">{tracking.distance_km}km away</p>
           </div>
         )}
 
         {tracking.status === 'delivered' && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <p className="text-lg font-bold text-green-800">Delivered!</p>
-            <p className="text-sm text-green-600">
+            <p className="text-lg font-bold text-blue-800">Delivered!</p>
+            <p className="text-sm text-blue-600">
               {tracking.actual_delivery_at && new Date(tracking.actual_delivery_at).toLocaleString()}
             </p>
           </div>

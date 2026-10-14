@@ -1,5 +1,4 @@
 import MarketHomepage from '@/components/marketing/MarketHomepage';
-import NigeriaDiscoverySpotlight from '@/components/ng/NigeriaDiscoverySpotlight';
 
 const nigeriaStructuredData = [
   {
@@ -134,12 +133,7 @@ export default function NigeriaLandingPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(nigeriaStructuredData) }}
       />
-      <div className="space-y-10 pb-10">
-        <MarketHomepage market="NG" />
-        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-          <NigeriaDiscoverySpotlight />
-        </div>
-      </div>
+      <MarketHomepage market="NG" />
     </>
   );
 }

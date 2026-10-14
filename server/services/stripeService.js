@@ -10,16 +10,15 @@
  */
 
 const Stripe = require('stripe');
+const crypto = require('node:crypto');
 const db = require('../db');
 const logger = require('../middleware/logger');
-const membershipService = require('./membershipService');
-const emailService = require('./email');
-const notificationService = require('./notifications');
+const consumerMembership = require('./consumerMembershipService');
 
 // Initialize Stripe with secret key
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-11-20.acacia'
-});
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: '2024-11-20.acacia', maxNetworkRetries: 2, timeout: 10000
+}) : null;
 
 // Prefer Stripe "automatic payment methods" for global support (local cards/bank methods),
 // but fall back to card-only if a given account/region doesn't support it.
@@ -27,7 +26,8 @@ const STRIPE_AUTOMATIC_PAYMENT_METHODS_ENABLED = String(
   process.env.STRIPE_AUTOMATIC_PAYMENT_METHODS_ENABLED ?? 'true'
 ).toLowerCase() === 'true';
 
-async function createCheckoutSessionWithFallback(baseParams, { context = {} } = {}) {
+async function createCheckoutSessionWithFallback(baseParams, { context = {}, idempotencyKey } = {}) {
+  const options = idempotencyKey ? { idempotencyKey } : {};
   const base = {
     ...baseParams,
     // Cross-border reliability: collect billing address and allow Stripe to update customer.
@@ -41,8 +41,9 @@ async function createCheckoutSessionWithFallback(baseParams, { context = {} } = 
       // Stripe rejects sessions that set both; keep it exclusive.
       delete apmParams.payment_method_types;
       apmParams.automatic_payment_methods = { enabled: true };
-      return await stripe.checkout.sessions.create(apmParams);
+      return await stripe.checkout.sessions.create(apmParams, options);
     } catch (err) {
+      if (err?.type !== 'StripeInvalidRequestError') throw err;
       logger.warn('Stripe automatic payment methods failed; falling back to card', {
         message: err?.message,
         type: err?.type,
@@ -54,7 +55,7 @@ async function createCheckoutSessionWithFallback(baseParams, { context = {} } = 
 
   const cardParams = { ...base, payment_method_types: ['card'] };
   delete cardParams.automatic_payment_methods;
-  return await stripe.checkout.sessions.create(cardParams);
+  return await stripe.checkout.sessions.create(cardParams, options);
 }
 
 // ============================================================================
@@ -98,7 +99,7 @@ const PRICING = {
   // Patient Subscription Plans
   subscriptions: {
     test: {
-      name: 'Docta Test ($1)',
+      name: 'DoctaRx Test ($1)',
       priceId: null,
       amount: 100, // $1.00 for testing
       currency: 'usd',
@@ -111,7 +112,7 @@ const PRICING = {
       ]
     },
     basic: {
-      name: 'Docta Basic',
+      name: 'DoctaRx Basic',
       priceId: null, // Will be created/retrieved from Stripe
       amount: 1999, // $19.99/month
       currency: 'usd',
@@ -124,7 +125,7 @@ const PRICING = {
       ]
     },
     gold: {
-      name: 'Docta Gold',
+      name: 'DoctaRx Gold',
       priceId: null,
       amount: 3999, // $39.99/month
       currency: 'usd',
@@ -139,7 +140,7 @@ const PRICING = {
       ]
     },
     goldYearly: {
-      name: 'Docta Gold (Annual)',
+      name: 'DoctaRx Gold (Annual)',
       priceId: null,
       amount: 29900, // $299.00/year (save $180)
       currency: 'usd',
@@ -151,7 +152,7 @@ const PRICING = {
       ]
     },
     platinum: {
-      name: 'Docta Platinum',
+      name: 'DoctaRx Platinum',
       priceId: null,
       amount: 7999, // $79.99/month
       currency: 'usd',
@@ -251,10 +252,14 @@ const PRICING = {
 /**
  * Get or create a Stripe customer for a user
  */
-async function getOrCreateCustomer(userId) {
+async function getOrCreateCustomer(userId, { database = db } = {}) {
   try {
+    const current = await consumerMembership.account(database, userId);
+    const config = consumerMembership.configuration();
+    if (current.market_scope !== 'US' || !['patient', 'provider'].includes(current.role)) throw consumerMembership.paymentError(403, 'US_STRIPE_ACCOUNT_REQUIRED', 'This Stripe checkout requires an eligible US account.');
+    if (!config.available || (!config.livemode && !current.is_test_account)) throw consumerMembership.paymentError(503, 'STRIPE_UNAVAILABLE', 'Stripe checkout is unavailable for this account and environment. No payment was collected.');
     // Check if user already has a Stripe customer ID
-    const { rows } = await db.query(
+    const { rows } = await database.query(
       'SELECT stripe_customer_id, email, first_name, last_name, phone FROM users WHERE id = $1',
       [userId]
     );
@@ -271,10 +276,11 @@ async function getOrCreateCustomer(userId) {
       try {
         const customer = await stripe.customers.retrieve(user.stripe_customer_id);
         if (!customer.deleted) {
+          if (customer.metadata?.userId !== userId || customer.livemode !== config.livemode) throw consumerMembership.paymentError(403, 'STRIPE_CUSTOMER_MISMATCH', 'Stripe customer ownership or environment does not match.');
           return customer;
         }
       } catch (e) {
-        // Customer doesn't exist, create new one
+        if (e.code !== 'resource_missing') throw e;
       }
     }
     
@@ -285,12 +291,12 @@ async function getOrCreateCustomer(userId) {
       phone: user.phone || undefined,
       metadata: {
         userId: userId,
-        platform: 'docta'
+        platform: 'doctarx'
       }
-    });
+    }, { idempotencyKey: 'doctarx-customer-' + userId + '-' + (config.livemode ? 'live' : 'test') });
     
     // Save customer ID to database
-    await db.query(
+    await database.query(
       'UPDATE users SET stripe_customer_id = $1 WHERE id = $2',
       [customer.id, userId]
     );
@@ -313,6 +319,7 @@ async function getOrCreateCustomer(userId) {
  */
 async function createConsultationCheckout(userId, consultationType, appointmentId, metadata = {}) {
   try {
+    await assertOwnConsultation(userId, appointmentId);
     const customer = await getOrCreateCustomer(userId);
     const pricing = PRICING.consultations[consultationType];
     
@@ -344,11 +351,11 @@ async function createConsultationCheckout(userId, consultationType, appointmentI
         quantity: 1
       }],
       metadata: {
+        ...metadata,
         userId,
         appointmentId,
         type: 'consultation',
-        consultationType,
-        ...metadata
+        consultationType
       },
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/patient/appointments/${appointmentId}?payment=success`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/patient/appointments/${appointmentId}?payment=cancelled`
@@ -377,17 +384,49 @@ async function createConsultationCheckout(userId, consultationType, appointmentI
  * Create checkout session for subscription
  */
 async function createSubscriptionCheckout(userId, planKey, metadata = {}) {
+  const lock = await db.getPool().connect();
   try {
-    const customer = await getOrCreateCustomer(userId);
+    await lock.query('BEGIN');
+    await consumerMembership.lockFinancialAccount(lock, userId);
+    const eligible = await consumerMembership.assertCheckout(userId, planKey, PRICING, { database: lock, lock: true });
+    const customer = await getOrCreateCustomer(userId, { database: lock });
     const plan = PRICING.subscriptions[planKey];
     
     if (!plan) {
       throw new Error(`Invalid subscription plan: ${planKey}`);
     }
     
+    const recent = await stripe.checkout.sessions.list({ customer: customer.id, limit: 100 });
+    if (!Array.isArray(recent.data) || typeof recent.has_more !== 'boolean' || recent.has_more) throw consumerMembership.paymentError(503, 'CHECKOUT_RECONCILIATION_REQUIRED', 'Existing checkout sessions must be reconciled before another payment attempt.');
+    const memberSessions = recent.data.filter(session => session.mode === 'subscription');
+    const open = memberSessions.filter(session => session.status === 'open');
+    if (open.length) {
+      const session = open[0];
+      const bound = session.metadata || {};
+      let target; try { target = new URL(session.url); } catch { /* Cannot reuse an unverifiable redirect. */ }
+      if (open.length !== 1 || bound.userId !== userId || bound.type !== 'subscription' || bound.planKey !== planKey ||
+        bound.expectedAmount !== String(plan.amount) || bound.currency !== plan.currency || bound.interval !== plan.interval ||
+        session.livemode !== eligible.config.livemode || !Number.isSafeInteger(session.expires_at) || session.expires_at * 1000 <= Date.now() ||
+        !target || target.username || target.password || target.protocol !== 'https:' || target.hostname !== 'checkout.stripe.com')
+        throw consumerMembership.paymentError(409, 'OPEN_CHECKOUT_REQUIRES_RECONCILIATION', 'An existing membership checkout must be completed, expired or reconciled before selecting another plan.');
+      await lock.query('COMMIT');
+      return { sessionId: session.id, url: target.toString(), plan: planKey, amount: plan.amount, currency: plan.currency, interval: plan.interval, reused: true };
+    }
+    const completed = memberSessions.filter(session => session.status === 'complete');
+    if (completed.length > 10) throw consumerMembership.paymentError(503, 'CHECKOUT_RECONCILIATION_REQUIRED', 'Membership checkout history requires reconciliation.');
+    for (const session of completed) {
+      if (!session.subscription) throw consumerMembership.paymentError(409, 'CHECKOUT_RECONCILIATION_REQUIRED', 'A completed membership checkout requires reconciliation.');
+      const previous = await stripe.subscriptions.retrieve(typeof session.subscription === 'string' ? session.subscription : session.subscription.id);
+      if ((typeof previous.customer === 'string' ? previous.customer : previous.customer?.id) !== customer.id || previous.livemode !== eligible.config.livemode)
+        throw consumerMembership.paymentError(409, 'CHECKOUT_RECONCILIATION_REQUIRED', 'Membership checkout ownership or environment requires reconciliation.');
+      if (!['canceled', 'incomplete_expired'].includes(previous.status)) throw consumerMembership.paymentError(409, 'CHECKOUT_RECONCILIATION_REQUIRED', 'A completed membership checkout is awaiting reconciliation. Manage the existing subscription before starting another.');
+    }
     // Create or get the price in Stripe
     const price = await getOrCreatePrice(plan, 'patient_subscription');
+    const bound = { ...metadata, type: 'subscription', userId, planKey, priceId: price.id, market: 'US',
+      expectedAmount: String(plan.amount), currency: plan.currency, interval: plan.interval, environment: eligible.config.livemode ? 'live' : 'test' };
     
+    const idempotencyKey = 'doctarx-membership-' + crypto.createHash('sha256').update(JSON.stringify([userId, planKey, price.id, eligible.config.livemode, memberSessions[0]?.id || 'initial'])).digest('hex');
     const session = await createCheckoutSessionWithFallback({
       customer: customer.id,
       mode: 'subscription',
@@ -396,23 +435,16 @@ async function createSubscriptionCheckout(userId, planKey, metadata = {}) {
         quantity: 1
       }],
       subscription_data: {
-        metadata: {
-          userId,
-          planKey,
-          ...metadata
-        }
+        metadata: bound
       },
-      metadata: {
-        userId,
-        type: 'subscription',
-        planKey,
-        ...metadata
-      },
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/patient/subscription?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/patient/subscription?cancelled=true`,
+      metadata: bound,
+      client_reference_id: userId,
+      success_url: `${eligible.config.origin}/patient/subscription?checkout=returned`,
+      cancel_url: `${eligible.config.origin}/patient/subscription?checkout=cancelled`,
       allow_promotion_codes: true
-    }, { context: { userId, type: 'subscription', planKey } });
+    }, { context: { userId, type: 'subscription', planKey }, idempotencyKey });
     
+    await lock.query('COMMIT');
     logger.info('Subscription checkout created', { 
       userId, 
       planKey, 
@@ -427,113 +459,26 @@ async function createSubscriptionCheckout(userId, planKey, metadata = {}) {
       interval: plan.interval
     };
   } catch (error) {
+    await lock.query('ROLLBACK');
     logger.error('Error creating subscription checkout', { error: error.message, userId });
     throw error;
-  }
+  } finally { lock.release(); }
 }
 
 /**
  * Create checkout for provider credentialing
  */
-async function createCredentialingCheckout(userId, packageType = 'fullCredentialing') {
-  try {
-    const customer = await getOrCreateCustomer(userId);
-    const pricing = PRICING.providerCredentialing[packageType];
-    
-    if (!pricing) {
-      throw new Error(`Invalid credentialing package: ${packageType}`);
-    }
-    
-    const session = await createCheckoutSessionWithFallback({
-      customer: customer.id,
-      mode: 'payment',
-      line_items: [{
-        price_data: {
-          currency: pricing.currency,
-          product_data: {
-            name: pricing.name,
-            description: pricing.description
-          },
-          unit_amount: pricing.amount
-        },
-        quantity: 1
-      }],
-      metadata: {
-        userId,
-        type: 'credentialing',
-        packageType
-      },
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/provider/credentialing?payment=success`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/provider/credentialing?payment=cancelled`
-    }, { context: { userId, type: 'credentialing', packageType } });
-    
-    logger.info('Credentialing checkout created', { 
-      userId, 
-      packageType, 
-      sessionId: session.id,
-      amount: pricing.amount 
-    });
-    
-    return {
-      sessionId: session.id,
-      url: session.url,
-      amount: pricing.amount,
-      currency: pricing.currency,
-      packageType
-    };
-  } catch (error) {
-    logger.error('Error creating credentialing checkout', { error: error.message, userId });
-    throw error;
-  }
+async function createCredentialingCheckout(userId, _packageType = 'fullCredentialing') {
+  await consumerMembership.account(db, userId);
+  throw consumerMembership.paymentError(503, 'CREDENTIALING_BILLING_NOT_ACTIVATED', 'Credentialing payment recording is not activated. No payment was collected.');
 }
 
 /**
  * Create checkout for provider platform subscription
  */
-async function createProviderSubscriptionCheckout(userId, planKey) {
-  try {
-    const customer = await getOrCreateCustomer(userId);
-    const plan = PRICING.providerSubscription[planKey];
-    
-    if (!plan) {
-      throw new Error(`Invalid provider plan: ${planKey}`);
-    }
-    
-    const price = await getOrCreatePrice(plan, 'provider_subscription');
-    
-    const session = await createCheckoutSessionWithFallback({
-      customer: customer.id,
-      mode: 'subscription',
-      line_items: [{
-        price: price.id,
-        quantity: 1
-      }],
-      metadata: {
-        userId,
-        type: 'provider_subscription',
-        planKey
-      },
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/provider/settings?subscription=success`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/provider/settings?subscription=cancelled`
-    }, { context: { userId, type: 'provider_subscription', planKey } });
-    
-    logger.info('Provider subscription checkout created', { 
-      userId, 
-      planKey, 
-      sessionId: session.id 
-    });
-    
-    return {
-      sessionId: session.id,
-      url: session.url,
-      plan: planKey,
-      amount: plan.amount,
-      interval: plan.interval
-    };
-  } catch (error) {
-    logger.error('Error creating provider subscription checkout', { error: error.message, userId });
-    throw error;
-  }
+async function createProviderSubscriptionCheckout(userId, _planKey) {
+  await consumerMembership.account(db, userId);
+  throw consumerMembership.paymentError(503, 'PROVIDER_SUBSCRIPTION_NOT_ACTIVATED', 'Provider subscription entitlement recording is not activated. No payment was collected.');
 }
 
 // ============================================================================
@@ -557,7 +502,7 @@ async function getOrCreatePrice(plan, productType) {
       // Create product
       product = await stripe.products.create({
         name: plan.name,
-        description: plan.features ? plan.features.join(', ') : plan.description,
+        description: 'DoctaRx membership billing plan. Clinical service availability is assessed separately.',
         metadata: {
           type: productType,
           planName: plan.name
@@ -569,11 +514,12 @@ async function getOrCreatePrice(plan, productType) {
     const prices = await stripe.prices.list({
       product: product.id,
       active: true,
-      limit: 1
+      limit: 100
     });
-    
-    if (prices.data.length > 0 && prices.data[0].unit_amount === plan.amount) {
-      return prices.data[0];
+    const matched = prices.data.find(price => price.unit_amount === plan.amount && price.currency === plan.currency &&
+      price.recurring?.interval === plan.interval && (price.recurring?.interval_count || 1) === 1);
+    if (matched) {
+      return matched;
     }
     
     // Create price
@@ -600,26 +546,46 @@ async function getOrCreatePrice(plan, productType) {
 /**
  * Cancel a subscription
  */
-async function cancelSubscription(subscriptionId, cancelImmediately = false) {
+
+async function updateOwnSubscription(userId, { cancelAtPeriodEnd = true, immediately = false } = {}) {
+  if (typeof cancelAtPeriodEnd !== 'boolean' || typeof immediately !== 'boolean')
+    throw consumerMembership.paymentError(400, 'MEMBERSHIP_INPUT_INVALID', 'Choose a valid membership renewal change.');
+  const client = await db.getPool().connect();
   try {
-    const subscription = await stripe.subscriptions.update(subscriptionId, {
-      cancel_at_period_end: !cancelImmediately
-    });
-    
-    if (cancelImmediately) {
-      await stripe.subscriptions.cancel(subscriptionId);
+    await client.query('BEGIN');
+    await consumerMembership.lockFinancialAccount(client, userId);
+    const user = await consumerMembership.account(client, userId, { lock: true });
+    const config = consumerMembership.configuration(); consumerMembership.assertConsumer(user, config);
+    const result = await client.query("SELECT * FROM subscriptions WHERE user_id=$1 AND stripe_subscription_id IS NOT NULL AND status IN ('active','past_due') ORDER BY created_at DESC LIMIT 1 FOR UPDATE", [userId]);
+    const current = result.rows[0];
+    if (!current) throw consumerMembership.paymentError(404, 'SUBSCRIPTION_NOT_FOUND', 'No manageable Stripe subscription was found.');
+    const owns = value => value?.id === current.stripe_subscription_id &&
+      (typeof value.customer === 'string' ? value.customer : value.customer?.id) === user.stripe_customer_id &&
+      value.metadata?.userId === userId && value.livemode === config.livemode;
+    // The same mutex used by reconciliation and checkout is held before the
+    // gateway read/change, so an older paid snapshot cannot outlive this cancel.
+    const live = await stripe.subscriptions.retrieve(current.stripe_subscription_id);
+    if (!owns(live)) throw consumerMembership.paymentError(403, 'STRIPE_CUSTOMER_MISMATCH', 'Stripe subscription ownership does not match.');
+    const confirmed = immediately ? await stripe.subscriptions.cancel(live.id) : await stripe.subscriptions.update(live.id, { cancel_at_period_end: cancelAtPeriodEnd });
+    if (!owns(confirmed) || (immediately && confirmed.status !== 'canceled') || (!immediately && confirmed.cancel_at_period_end !== cancelAtPeriodEnd))
+      throw consumerMembership.paymentError(503, 'STRIPE_CANCELLATION_UNCONFIRMED', 'Stripe did not confirm the requested renewal change.');
+    const saved = await client.query("UPDATE subscriptions SET cancel_at_period_end=$1,status=CASE WHEN $2 THEN 'cancelled'::subscription_status ELSE status END,cancelled_at=CASE WHEN $2 THEN NOW() ELSE cancelled_at END,updated_at=NOW() WHERE id=$3 AND user_id=$4 RETURNING *", [cancelAtPeriodEnd, immediately, current.id, userId]);
+    if (!saved.rows[0]) throw consumerMembership.paymentError(409, 'MEMBERSHIP_WRITE_CONFLICT', 'Stripe accepted the change; local membership reconciliation is required.');
+    if (immediately) {
+      await client.query("UPDATE users SET access_level='read_only',subscription_tier='free' WHERE id=$1 AND access_level IN ('basic_monthly','gold_monthly','gold_yearly','platinum_monthly') AND NOT EXISTS (SELECT 1 FROM subscriptions WHERE user_id=$1 AND id<>$2 AND status='active' AND current_period_end>NOW())", [userId, current.id]);
+      await client.query("UPDATE membership_cards SET status='revoked',revoked_at=NOW(),updated_at=NOW() WHERE user_id=$1 AND stripe_subscription_id=$2", [userId, current.stripe_subscription_id]);
     }
-    
-    logger.info('Subscription cancelled', { 
-      subscriptionId, 
-      immediate: cancelImmediately 
-    });
-    
-    return subscription;
-  } catch (error) {
-    logger.error('Error cancelling subscription', { error: error.message, subscriptionId });
-    throw error;
-  }
+    await client.query("INSERT INTO audit_logs (user_id,action,resource_type,resource_id,description,new_values,phi_accessed,success) VALUES ($1,'update','subscription',$2,'Stripe confirmed membership renewal change',$3::jsonb,FALSE,TRUE)", [userId, current.id, JSON.stringify({ cancelAtPeriodEnd, immediately, source: 'stripe_confirmed' })]);
+    await client.query('COMMIT');
+    return saved.rows[0];
+  } catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
+
+async function cancelSubscription() {
+  // This unused legacy interface has no current owner context. Background or
+  // future callers must use updateOwnSubscription and its shared account lock.
+  throw consumerMembership.paymentError(503, 'OWNER_SCOPED_CANCELLATION_REQUIRED', 'Use the current account membership workflow to change a subscription.');
 }
 
 /**
@@ -641,11 +607,15 @@ async function getSubscription(subscriptionId) {
  */
 async function createBillingPortalSession(userId) {
   try {
-    const customer = await getOrCreateCustomer(userId);
-    
+    const user = await consumerMembership.account(db, userId);
+    const config = consumerMembership.configuration();
+    consumerMembership.assertConsumer(user, config);
+    if (!user.stripe_customer_id) throw consumerMembership.paymentError(404, 'STRIPE_CUSTOMER_NOT_FOUND', 'No Stripe billing customer exists for this account.');
+    const customer = await stripe.customers.retrieve(user.stripe_customer_id);
+    if (customer.deleted || customer.metadata?.userId !== userId || customer.livemode !== config.livemode) throw consumerMembership.paymentError(403, 'STRIPE_CUSTOMER_MISMATCH', 'Stripe billing customer ownership does not match.');
     const session = await stripe.billingPortal.sessions.create({
       customer: customer.id,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/patient/settings`
+      return_url: `${config.origin}/patient/subscription`
     });
     
     return { url: session.url };
@@ -663,6 +633,10 @@ async function createBillingPortalSession(userId) {
  * Handle Stripe webhook events
  */
 async function handleWebhook(event) {
+  if (!stripe) throw consumerMembership.paymentError(503, 'STRIPE_UNAVAILABLE', 'Stripe is unavailable.');
+  if (await consumerMembership.processMembershipEvent(event, stripe, PRICING)) return;
+  if (await consumerMembership.processConsultationEvent(event, stripe, PRICING)) return;
+  if (await consumerMembership.processConsultationAdjustment(event, stripe)) return;
   // Idempotency: Stripe may retry events. We must ensure we never double-process.
   try {
     const { rows } = await db.query(
@@ -678,33 +652,15 @@ async function handleWebhook(event) {
       return;
     }
   } catch (e) {
-    // If idempotency table isn't available, do not hard-fail webhooks in prod.
-    // We still process, but log loudly to fix DB migration ASAP.
     logger.error('Stripe webhook idempotency check failed', { error: e.message, id: event.id, type: event.type });
+    throw e;
   }
 
   logger.info('Processing Stripe webhook', { id: event.id, type: event.type });
   
   switch (event.type) {
     case 'checkout.session.completed':
-      await handleCheckoutComplete(event.data.object);
-      break;
-      
-    case 'customer.subscription.created':
-    case 'customer.subscription.updated':
-      await handleSubscriptionUpdate(event.data.object);
-      break;
-      
-    case 'customer.subscription.deleted':
-      await handleSubscriptionCancelled(event.data.object);
-      break;
-      
-    case 'invoice.paid':
-      await handleInvoicePaid(event.data.object);
-      break;
-      
-    case 'invoice.payment_failed':
-      await handlePaymentFailed(event.data.object);
+      // Unrecognized/legacy checkout types cannot activate a financial record.
       break;
       
     case 'payment_intent.succeeded':
@@ -737,11 +693,6 @@ async function handleWebhook(event) {
       logger.info('Entitlement summary updated', { customerId: event.data.object.customer });
       break;
 
-    case 'subscription_schedule.aborted':
-    case 'subscription_schedule.canceled':
-      await handleSubscriptionScheduleEnded(event.data.object, event.type);
-      break;
-
     case 'subscription_schedule.expiring':
       await handleSubscriptionScheduleExpiring(event.data.object);
       break;
@@ -755,338 +706,6 @@ async function handleWebhook(event) {
 
     default:
       logger.info('Unhandled webhook event', { type: event.type });
-  }
-}
-
-/**
- * Handle completed checkout session
- */
-async function handleCheckoutComplete(session) {
-  const metadata = session.metadata || {};
-  const { userId, type, appointmentId, packageType, planKey } = metadata;
-  
-  if (!userId) {
-    logger.warn('Checkout completed without userId in metadata', { sessionId: session.id });
-    return;
-  }
-
-  try {
-    if (type === 'consultation') {
-      // Mark appointment as paid
-      await db.query(
-        `UPDATE appointments 
-         SET payment_completed = true, 
-             payment_id = $1,
-             payment_amount = $2,
-             updated_at = CURRENT_TIMESTAMP 
-         WHERE id = $3`,
-        [session.payment_intent, session.amount_total, appointmentId]
-      );
-      
-      // Create payment record
-      await db.query(
-        `INSERT INTO payments (user_id, appointment_id, type, status, amount, currency, stripe_payment_id, metadata)
-         VALUES ($1, $2, 'consultation', 'completed', $3, 'usd', $4, $5)`,
-        [userId, appointmentId, session.amount_total / 100, session.payment_intent, JSON.stringify(metadata)]
-      );
-      
-      logger.info('Consultation payment completed', { userId, appointmentId });
-      
-    } else if (type === 'credentialing') {
-      // Update provider credentialing status
-      await db.query(
-        `UPDATE provider_credentialing 
-         SET payment_completed = true,
-             payment_id = $1,
-             payment_amount = $2,
-             status = CASE WHEN status = 'pending_payment' THEN 'documents_required' ELSE status END,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE provider_id = $3`,
-        [session.payment_intent, session.amount_total / 100, userId]
-      );
-      
-      // Create payment record
-      await db.query(
-        `INSERT INTO payments (user_id, type, status, amount, currency, stripe_payment_id, metadata)
-         VALUES ($1, 'credentialing', 'completed', $2, 'usd', $3, $4)`,
-        [userId, session.amount_total / 100, session.payment_intent, JSON.stringify(metadata)]
-      );
-      
-      logger.info('Credentialing payment completed', { userId, packageType });
-
-    } else if (type === 'subscription') {
-      // Subscription checkout completed — Stripe will fire customer.subscription.created next,
-      // but we record the payment here as a safety net
-      await db.query(
-        `INSERT INTO payments (user_id, type, status, amount, currency, stripe_payment_id, metadata)
-         VALUES ($1, 'subscription', 'completed', $2, 'usd', $3, $4)
-         ON CONFLICT DO NOTHING`,
-        [userId, (session.amount_total || 0) / 100, session.payment_intent || session.subscription, JSON.stringify(metadata)]
-      );
-
-      // If Stripe subscription ID is available, link it immediately
-      if (session.subscription) {
-        const mapped = { test: 'gold', basic: 'basic', gold: 'gold', goldYearly: 'gold', platinum: 'platinum' };
-        const tier = mapped[planKey] || 'gold';
-        await db.query(
-          `UPDATE subscriptions 
-           SET stripe_subscription_id = $1, status = 'active', tier = $2, updated_at = CURRENT_TIMESTAMP 
-           WHERE user_id = $3 AND stripe_subscription_id IS NULL`,
-          [session.subscription, tier, userId]
-        );
-      }
-
-      logger.info('Subscription checkout completed', { userId, planKey });
-    }
-  } catch (error) {
-    logger.error('Error handling checkout complete', { error: error.message, sessionId: session.id });
-    throw error;
-  }
-}
-
-/**
- * Handle subscription updates
- */
-async function handleSubscriptionUpdate(subscription) {
-  const userId = subscription.metadata?.userId;
-  if (!userId) {
-    logger.warn('Subscription update missing userId in metadata', { subscriptionId: subscription.id });
-    return;
-  }
-  
-  try {
-    const status = subscription.status;
-    const currentPeriodEnd = new Date(subscription.current_period_end * 1000);
-    const currentPeriodStart = new Date(subscription.current_period_start * 1000);
-
-    const planKey = subscription.metadata?.planKey;
-
-    if (!planKey) {
-      logger.warn('Subscription update missing planKey, inferring from price', { subscriptionId: subscription.id });
-    }
-
-    // Map Stripe planKey -> DB tier + access level
-    const planMap = {
-      test: { tier: 'gold', accessLevel: 'gold_monthly' },
-      basic: { tier: 'basic', accessLevel: 'basic_monthly' },
-      gold: { tier: 'gold', accessLevel: 'gold_monthly' },
-      goldYearly: { tier: 'gold', accessLevel: 'gold_yearly' },
-      platinum: { tier: 'platinum', accessLevel: 'platinum_monthly' }
-    };
-
-    // If planKey missing, try to infer from price amount
-    let effectivePlanKey = planKey;
-    if (!effectivePlanKey) {
-      const priceAmount = subscription.items?.data?.[0]?.price?.unit_amount || 0;
-      if (priceAmount <= 1999) effectivePlanKey = 'basic';
-      else if (priceAmount <= 3999) effectivePlanKey = 'gold';
-      else if (priceAmount >= 29900 && subscription.items?.data?.[0]?.price?.recurring?.interval === 'year') effectivePlanKey = 'goldYearly';
-      else effectivePlanKey = 'platinum';
-    }
-
-    const mapped = planMap[effectivePlanKey] || planMap.basic;
-
-    // Map Stripe subscription status -> DB subscription_status enum
-    const statusMap = {
-      active: 'active',
-      trialing: 'active',
-      past_due: 'past_due',
-      unpaid: 'past_due',
-      canceled: 'cancelled',
-      incomplete: 'past_due',
-      incomplete_expired: 'expired',
-      paused: 'past_due'
-    };
-    const dbStatus = statusMap[status] || 'past_due';
-    
-    // Update or create subscription record
-    await db.query(
-      `INSERT INTO subscriptions (user_id, stripe_subscription_id, status, tier, current_period_start, current_period_end)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (stripe_subscription_id) 
-       DO UPDATE SET status = $3, current_period_start = $5, current_period_end = $6, updated_at = CURRENT_TIMESTAMP`,
-      [userId, subscription.id, dbStatus, mapped.tier, currentPeriodStart, currentPeriodEnd]
-    );
-    
-    // Update user access level based on subscription status
-    if (dbStatus === 'active') {
-      await db.query(
-        'UPDATE users SET access_level = $1, subscription_tier = $2 WHERE id = $3',
-        [mapped.accessLevel, mapped.tier, userId]
-      );
-
-      // Issue membership card for Gold/Platinum
-      await membershipService.upsertActiveCard({
-        userId,
-        tier: mapped.tier,
-        stripeSubscriptionId: subscription.id,
-        currentPeriodEnd
-      });
-    } else if (dbStatus === 'past_due') {
-      await db.query(
-        'UPDATE users SET access_level = $1, subscription_tier = $2 WHERE id = $3',
-        ['read_only', 'free', userId]
-      );
-      await membershipService.suspendCardsForUser({ userId, reason: 'past_due' });
-    } else {
-      await db.query(
-        'UPDATE users SET access_level = $1, subscription_tier = $2 WHERE id = $3',
-        ['read_only', 'free', userId]
-      );
-      await membershipService.revokeCardsForUser({ userId, reason: `status_${dbStatus}` });
-    }
-    
-    logger.info('Subscription updated', { userId, subscriptionId: subscription.id, status: dbStatus, planKey });
-  } catch (error) {
-    logger.error('Error handling subscription update', { error: error.message, subscriptionId: subscription.id });
-    throw error;
-  }
-}
-
-/**
- * Handle subscription cancellation
- */
-async function handleSubscriptionCancelled(subscription) {
-  const userId = subscription.metadata?.userId;
-  if (!userId) return;
-  
-  try {
-    await db.query(
-      `UPDATE subscriptions 
-       SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP 
-       WHERE stripe_subscription_id = $1`,
-      [subscription.id]
-    );
-    
-    await db.query(
-      'UPDATE users SET access_level = $1, subscription_tier = $2 WHERE id = $3',
-      ['read_only', 'free', userId]
-    );
-
-    await membershipService.revokeCardsForUser({ userId, reason: 'subscription_cancelled' });
-    
-    logger.info('Subscription cancelled', { userId, subscriptionId: subscription.id });
-  } catch (error) {
-    logger.error('Error handling subscription cancellation', { error: error.message });
-    throw error;
-  }
-}
-
-/**
- * Handle paid invoice
- */
-async function handleInvoicePaid(invoice) {
-  const subscriptionId = invoice.subscription;
-  if (!subscriptionId) return;
-  
-  try {
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-    const userId = subscription.metadata?.userId;
-    const planKey = subscription.metadata?.planKey || 'gold';
-    const planMap = {
-      test: { tier: 'gold', accessLevel: 'gold_monthly' },
-      basic: { tier: 'basic', accessLevel: 'basic_monthly' },
-      gold: { tier: 'gold', accessLevel: 'gold_monthly' },
-      goldYearly: { tier: 'gold', accessLevel: 'gold_yearly' },
-      platinum: { tier: 'platinum', accessLevel: 'platinum_monthly' }
-    };
-    const mapped = planMap[planKey] || planMap.gold;
-    
-    if (userId) {
-      // Create payment record for recurring payment
-      await db.query(
-        `INSERT INTO payments (user_id, subscription_id, type, status, amount, currency, stripe_payment_id, metadata)
-         VALUES ($1, (SELECT id FROM subscriptions WHERE stripe_subscription_id = $2), 'subscription_renewal', 'completed', $3, 'usd', $4, $5)`,
-        [userId, subscriptionId, invoice.amount_paid / 100, invoice.payment_intent, JSON.stringify({ invoiceId: invoice.id })]
-      );
-
-      // Ensure access stays active on successful recurring payment
-      await db.query(
-        `UPDATE subscriptions
-         SET status = 'active', updated_at = CURRENT_TIMESTAMP
-         WHERE stripe_subscription_id = $1`,
-        [subscriptionId]
-      );
-      await db.query(
-        'UPDATE users SET access_level = $1, subscription_tier = $2 WHERE id = $3',
-        [mapped.accessLevel, mapped.tier, userId]
-      );
-      await membershipService.upsertActiveCard({
-        userId,
-        tier: mapped.tier,
-        stripeSubscriptionId: subscriptionId,
-        currentPeriodEnd: new Date(subscription.current_period_end * 1000)
-      });
-      
-      logger.info('Invoice paid', { userId, invoiceId: invoice.id });
-    }
-  } catch (error) {
-    logger.error('Error handling invoice paid', { error: error.message, invoiceId: invoice.id });
-  }
-}
-
-/**
- * Handle failed payment
- */
-async function handlePaymentFailed(invoice) {
-  const subscriptionId = invoice.subscription;
-  if (!subscriptionId) return;
-  
-  try {
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-    const userId = subscription.metadata?.userId;
-    
-    if (userId) {
-      // Revoke paid access immediately on failed payment (robust enforcement)
-      await db.query(
-        `UPDATE subscriptions
-         SET status = 'past_due', updated_at = CURRENT_TIMESTAMP
-         WHERE stripe_subscription_id = $1`,
-        [subscriptionId]
-      );
-      await db.query(
-        'UPDATE users SET access_level = $1, subscription_tier = $2 WHERE id = $3',
-        ['read_only', 'free', userId]
-      );
-      await membershipService.suspendCardsForUser({ userId, reason: 'invoice_payment_failed' });
-
-      // Notify user about failed payment via in-app + email
-      try {
-        await notificationService.sendBillingNotification(
-          userId,
-          'Payment Failed — Action Required',
-          'Your subscription payment failed and your account has been temporarily downgraded. Please update your payment method to restore full access.',
-          invoice.id
-        );
-      } catch (notifErr) {
-        logger.warn('Failed to send billing notification', { userId, error: notifErr.message });
-      }
-      try {
-        const userResult = await db.query('SELECT email, first_name FROM users WHERE id = $1', [userId]);
-        const user = userResult.rows[0];
-        if (user?.email) {
-          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
-          await emailService.sendEmail({
-            to: user.email,
-            subject: 'Action Required: Your DoctaRx Payment Failed',
-            html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-              <h2 style="color:#7c3aed">Payment Failed</h2>
-              <p>Hi ${user.first_name || 'there'},</p>
-              <p>We were unable to process your subscription payment. Your account has been temporarily downgraded to the free plan and your membership card has been suspended.</p>
-              <p>To restore full access, please update your payment method:</p>
-              <a href="${appUrl}/dashboard/billing" style="display:inline-block;background:#7c3aed;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;margin:16px 0">Update Payment Method</a>
-              <p style="color:#6b7280;font-size:13px">Invoice ID: ${invoice.id}</p>
-              <p style="color:#6b7280;font-size:12px">DoctaRx | info@doctarx.com</p>
-            </div>`
-          });
-        }
-      } catch (emailErr) {
-        logger.warn('Failed to send payment failed email', { userId, error: emailErr.message });
-      }
-      logger.warn('Payment failed — user notified', { userId, invoiceId: invoice.id });
-    }
-  } catch (error) {
-    logger.error('Error handling payment failed', { error: error.message });
   }
 }
 
@@ -1157,19 +776,8 @@ async function handleInvoiceUpcoming(invoice) {
  * Mark any associated subscription as cancelled in the DB
  */
 async function handleSubscriptionScheduleEnded(schedule, eventType) {
-  try {
-    const subscriptionId = schedule.subscription;
-    if (subscriptionId) {
-      await db.query(
-        `UPDATE subscriptions SET status = 'canceled', updated_at = CURRENT_TIMESTAMP
-         WHERE stripe_subscription_id = $1`,
-        [subscriptionId]
-      );
-    }
-    logger.info('Subscription schedule ended', { type: eventType, scheduleId: schedule.id });
-  } catch (error) {
-    logger.error('Error handling subscription schedule end', { error: error.message, scheduleId: schedule.id });
-  }
+  // Financial schedule events are reconciled by processMembershipEvent.
+  logger.info('Subscription schedule observed', { type: eventType, scheduleId: schedule.id });
 }
 
 /**
@@ -1211,19 +819,16 @@ function verifyWebhookSignature(payload, signature, webhookSecret) {
  * Check if user has active subscription
  */
 async function hasActiveSubscription(userId) {
-  try {
-    const { rows } = await db.query(
-      `SELECT * FROM subscriptions 
-       WHERE user_id = $1 
-       AND status = 'active' 
-       AND current_period_end > CURRENT_TIMESTAMP`,
-      [userId]
-    );
-    return rows.length > 0;
-  } catch (error) {
-    logger.error('Error checking subscription status', { error: error.message, userId });
-    return false;
-  }
+  return (await consumerMembership.readState(userId, PRICING)).hasActiveSubscription;
+}
+
+async function assertOwnConsultation(userId, appointmentId) {
+  const user = await consumerMembership.account(db, userId);
+  consumerMembership.assertConsumer(user, consumerMembership.configuration());
+  const result = await db.query(`SELECT a.id FROM appointments a JOIN users p ON p.id=a.provider_id
+    WHERE a.id=$1 AND a.patient_id=$2 AND p.market_scope='US' AND p.role='provider' AND p.is_active=TRUE
+      AND a.status NOT IN ('cancelled','completed','no_show')`, [appointmentId, userId]);
+  if (!result.rows.length) throw consumerMembership.paymentError(404, 'APPOINTMENT_NOT_FOUND', 'An eligible appointment owned by this patient is required.');
 }
 
 /**
@@ -1264,6 +869,7 @@ module.exports = {
   
   // Subscription management
   cancelSubscription,
+  updateOwnSubscription,
   getSubscription,
   createBillingPortalSession,
   
@@ -1274,6 +880,7 @@ module.exports = {
   // Verification
   hasActiveSubscription,
   requiresPayment,
+  assertOwnConsultation,
   
   // Direct Stripe access
   stripe

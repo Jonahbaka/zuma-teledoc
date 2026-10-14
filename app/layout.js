@@ -48,14 +48,14 @@ export const metadata = {
     locale: 'en_US',
     url: 'https://doctarx.com',
     siteName: 'DoctaRx',
-    title: 'DoctaRx | HIPAA-Compliant Telehealth & AI-Powered Healthcare',
-    description: 'HIPAA-compliant telehealth with AI triage, video visits, encrypted messaging, and e-prescribing. Secure healthcare on any device.',
+    title: 'DoctaRx | Connected Virtual Care',
+    description: 'Connect with clinicians, keep your health records within reach, and coordinate prescriptions, secure messages, and pharmacy choices.',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DoctaRx | HIPAA-Compliant Telehealth & AI-Powered Healthcare',
-    description: 'HIPAA-compliant telehealth with AI triage, video visits, encrypted messaging, and e-prescribing.',
+    title: 'DoctaRx | Connected Virtual Care',
+    description: 'Virtual care, health records, secure messaging, and prescription coordination with DoctaRx.',
     images: ['/opengraph-image'],
   },
   icons: {

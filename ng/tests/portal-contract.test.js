@@ -98,14 +98,16 @@ for (const [portal, routes] of Object.entries(REQUIRED_NG_ROUTES)) {
 
 // ── 2. /ng/patient is a PATIENT portal, NOT pharmacy search ────────────────────
 test('/ng/patient renders a patient portal (not pharmacy-search UI)', () => {
-  const src = read('app/ng/patient/page.js');
+  const route = read('app/ng/patient/page.js');
+  assert.match(route, /PatientHome market="NG"/);
+  const src = read('components/patient/PatientHome.jsx');
   // Must NOT be the pharmacy-search experience that was the original bug.
   for (const marker of PHARMACY_SEARCH_MARKERS) {
     assert.ok(!src.includes(marker),
       `/ng/patient must not present pharmacy-search "${marker}" as its primary experience`);
   }
   // Must contain genuine patient-portal functionality.
-  const patientSignals = ['Book Consultation', 'Prescriptions', 'Messages', 'appointmentsAPI'];
+  const patientSignals = ['Get care', 'Prescriptions', 'Messages', 'appointmentsAPI'];
   const present = patientSignals.filter((s) => src.includes(s));
   assert.ok(present.length >= 3,
     `/ng/patient must expose patient functionality; found only: ${present.join(', ')}`);

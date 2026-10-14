@@ -45,7 +45,7 @@ function TrackOrderContent() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full" />
+        <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -55,7 +55,7 @@ function TrackOrderContent() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Order not found</p>
-          <Link href="/ng/patient/orders" className="text-green-600">View all orders</Link>
+          <Link href="/ng/patient/orders" className="text-blue-600">View all orders</Link>
         </div>
       </div>
     );
@@ -85,14 +85,14 @@ function TrackOrderContent() {
               <p className="text-sm text-gray-500">{order.pharmacy_name}</p>
             </div>
             <span className={`text-sm px-3 py-1 rounded-full font-medium ${
-              order.status === 'delivered' ? 'bg-green-100 text-green-700' :
+              order.status === 'delivered' ? 'bg-blue-100 text-blue-700' :
               order.status === 'cancelled' ? 'bg-red-100 text-red-700' :
               'bg-blue-100 text-blue-700'
             }`}>
               {order.status?.replace(/_/g, ' ')}
             </span>
           </div>
-          <p className="text-lg font-bold text-green-600">{formatNaira(order.total_amount)}</p>
+          <p className="text-lg font-bold text-blue-600">{formatNaira(order.total_amount)}</p>
         </div>
 
         {/* Progress Tracker */}
@@ -107,8 +107,8 @@ function TrackOrderContent() {
                   <div key={step.key} className="flex items-start gap-3">
                     <div className="flex flex-col items-center">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center
-                        ${isComplete ? 'bg-green-600' : 'bg-gray-200'}
-                        ${isCurrent ? 'ring-4 ring-green-200' : ''}`}>
+                        ${isComplete ? 'bg-blue-600' : 'bg-gray-200'}
+                        ${isCurrent ? 'ring-4 ring-blue-200' : ''}`}>
                         {isComplete ? (
                           <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -118,7 +118,7 @@ function TrackOrderContent() {
                         )}
                       </div>
                       {i < STATUS_STEPS.length - 1 && (
-                        <div className={`w-0.5 h-8 ${isComplete ? 'bg-green-600' : 'bg-gray-200'}`} />
+                        <div className={`w-0.5 h-8 ${isComplete ? 'bg-blue-600' : 'bg-gray-200'}`} />
                       )}
                     </div>
                     <div>
@@ -126,7 +126,7 @@ function TrackOrderContent() {
                         {step.label}
                       </p>
                       {isCurrent && order.delivery_eta && (
-                        <p className="text-xs text-green-600">
+                        <p className="text-xs text-blue-600">
                           ETA: {new Date(order.delivery_eta).toLocaleTimeString()}
                         </p>
                       )}
@@ -143,15 +143,15 @@ function TrackOrderContent() {
           <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
             <h3 className="font-medium text-gray-900 mb-3">Delivery Rider</h3>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
               <div>
                 <p className="font-medium text-gray-900">{order.rider_name}</p>
                 {order.rider_phone && (
-                  <a href={`tel:${order.rider_phone}`} className="text-sm text-green-600">{order.rider_phone}</a>
+                  <a href={`tel:${order.rider_phone}`} className="text-sm text-blue-600">{order.rider_phone}</a>
                 )}
               </div>
             </div>
@@ -197,7 +197,7 @@ export default function TrackOrder() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full" />
+        <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" />
       </div>
     }>
       <TrackOrderContent />

@@ -118,3 +118,7 @@ artifacts/
 .next.*.incoming/
 .next.*.previous/
 .next.verify-build/
+.next-main-platform-preview/
+.next-admin-platform-preview/
+.next-public-platform-preview/
+.next-membership-platform-preview/

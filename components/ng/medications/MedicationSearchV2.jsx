@@ -23,7 +23,7 @@ const SEVERITY_TONE = {
 };
 
 const MATCHED_VIA_BADGE = {
-  exact:  'bg-emerald-100 text-emerald-800',
+  exact:  'bg-blue-100 text-blue-800',
   prefix: 'bg-blue-100 text-blue-800',
   alias:  'bg-violet-100 text-violet-800',
   fuzzy:  'bg-slate-100 text-slate-700',
@@ -120,7 +120,7 @@ export default function MedicationSearchV2() {
   return (
     <div className="mx-auto max-w-4xl space-y-5 p-6">
       <header className="flex items-center gap-3">
-        <div className="rounded-xl bg-green-600/10 p-2 text-green-700">
+        <div className="rounded-xl bg-blue-600/10 p-2 text-blue-700">
           <Pill className="h-5 w-5" />
         </div>
         <div>
@@ -132,7 +132,7 @@ export default function MedicationSearchV2() {
       </header>
 
       <div className="relative">
-        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm focus-within:border-green-500">
+        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm focus-within:border-blue-500">
           <Search className="h-4 w-4 text-slate-400" />
           <input
             value={q} onChange={e => setQ(e.target.value)}
@@ -143,7 +143,7 @@ export default function MedicationSearchV2() {
           />
           {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
           <button onClick={() => runSearch()} disabled={loading || !q}
-            className="rounded-lg bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
             Search
           </button>
         </div>
@@ -206,7 +206,7 @@ export default function MedicationSearchV2() {
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
                 {m.requires_prescription && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">Rx</span>}
-                {m.otc_candidate && <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">OTC</span>}
+                {m.otc_candidate && <span className="rounded-full bg-blue-100 px-2 py-0.5 font-semibold text-blue-800">OTC</span>}
                 {m.controlled && <span className="rounded-full bg-rose-100 px-2 py-0.5 font-semibold text-rose-800">Controlled</span>}
                 {m.nhia_listed && <span className="rounded-full bg-blue-100 px-2 py-0.5 font-semibold text-blue-800">NHIA</span>}
                 {m.price_ngn != null && <span className="ml-auto font-semibold text-slate-900">₦{Number(m.price_ngn).toLocaleString('en-NG')}</span>}
@@ -252,7 +252,7 @@ export default function MedicationSearchV2() {
                 </span>
               </div>
               {interactions.length === 0 && !checking && (
-                <p className="flex items-center gap-1 text-xs text-emerald-700">
+                <p className="flex items-center gap-1 text-xs text-blue-700">
                   <CheckCircle2 className="h-3.5 w-3.5" />No known interactions.
                 </p>
               )}

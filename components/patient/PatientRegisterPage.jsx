@@ -131,7 +131,7 @@ export default function PatientRegisterPage({
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-purple-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950">
       <header className="px-4 py-5 sm:p-6">
         <Link href={homeHref} className="flex items-center gap-2">
           <span className="rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-800">
@@ -144,24 +144,24 @@ export default function PatientRegisterPage({
         <div className="w-full max-w-md">
           <div className="bg-card border border-border rounded-2xl shadow-xl p-5 sm:p-8">
             <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <Heart className="w-8 h-8 text-white" />
               </div>
               <h1 className="text-2xl font-bold text-foreground">Create Patient Account</h1>
               <p className="text-muted-foreground mt-2">Warm, secure onboarding in two quick steps</p>
             </div>
 
-            <div className="mb-6 rounded-xl border border-purple-500/20 bg-purple-500/5 p-3">
+            <div className="mb-6 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">
               <p className="text-xs text-muted-foreground flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-500" />
+                <Sparkles className="w-4 h-4 text-blue-500" />
                 {activationNotice}
               </p>
             </div>
 
             <div className="flex items-center justify-center gap-2 mb-8">
-              <div className={`w-3 h-3 rounded-full ${step >= 1 ? 'bg-purple-600' : 'bg-muted'}`} />
-              <div className={`w-8 h-0.5 ${step >= 2 ? 'bg-purple-600' : 'bg-muted'}`} />
-              <div className={`w-3 h-3 rounded-full ${step >= 2 ? 'bg-purple-600' : 'bg-muted'}`} />
+              <div className={`w-3 h-3 rounded-full ${step >= 1 ? 'bg-blue-600' : 'bg-muted'}`} />
+              <div className={`w-8 h-0.5 ${step >= 2 ? 'bg-blue-600' : 'bg-muted'}`} />
+              <div className={`w-3 h-3 rounded-full ${step >= 2 ? 'bg-blue-600' : 'bg-muted'}`} />
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -245,7 +245,7 @@ export default function PatientRegisterPage({
                   <Button
                     type="button"
                     onClick={() => setStep(2)}
-                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                    className="w-full bg-gradient-to-r from-blue-600 to-pink-600 hover:from-blue-700 hover:to-pink-700"
                     disabled={!formData.firstName || !formData.lastName || !formData.email}
                   >
                     Continue
@@ -278,11 +278,11 @@ export default function PatientRegisterPage({
                       </button>
                     </div>
                     <div className="space-y-1 text-xs">
-                      <p className={passwordChecks.minLength ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• At least 8 characters</p>
-                      <p className={passwordChecks.hasUppercase ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• Includes one uppercase letter</p>
-                      <p className={passwordChecks.hasLowercase ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• Includes one lowercase letter</p>
-                      <p className={passwordChecks.hasNumber ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• Includes at least one number</p>
-                      <p className={passwordChecks.hasSymbol ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>• Includes at least one symbol</p>
+                      <p className={passwordChecks.minLength ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}>• At least 8 characters</p>
+                      <p className={passwordChecks.hasUppercase ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}>• Includes one uppercase letter</p>
+                      <p className={passwordChecks.hasLowercase ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}>• Includes one lowercase letter</p>
+                      <p className={passwordChecks.hasNumber ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}>• Includes at least one number</p>
+                      <p className={passwordChecks.hasSymbol ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}>• Includes at least one symbol</p>
                     </div>
                   </div>
 
@@ -313,9 +313,9 @@ export default function PatientRegisterPage({
                     />
                     <Label htmlFor="terms" className="text-sm text-muted-foreground cursor-pointer">
                       I agree to the{' '}
-                      <Link href="/terms" className="text-purple-600 hover:underline">Terms of Service</Link>
+                      <Link href="/terms" className="text-blue-600 hover:underline">Terms of Service</Link>
                       {' '}and{' '}
-                      <Link href="/privacy" className="text-purple-600 hover:underline">Privacy Policy</Link>
+                      <Link href="/privacy" className="text-blue-600 hover:underline">Privacy Policy</Link>
                     </Label>
                   </div>
 
@@ -336,7 +336,7 @@ export default function PatientRegisterPage({
                     <Button
                       type="submit"
                       disabled={isLoading || !formData.acceptTerms || !passwordPolicySatisfied}
-                      className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                      className="flex-1 bg-gradient-to-r from-blue-600 to-pink-600 hover:from-blue-700 hover:to-pink-700"
                     >
                       {isLoading ? (
                         <>
@@ -357,7 +357,7 @@ export default function PatientRegisterPage({
 
             <p className="text-center mt-6 text-muted-foreground">
               Already have an account?{' '}
-              <Link href={loginHref} className="text-purple-600 hover:text-purple-700 font-medium">
+              <Link href={loginHref} className="text-blue-600 hover:text-blue-700 font-medium">
                 Sign in
               </Link>
             </p>

@@ -341,7 +341,8 @@ async function joinRoom(roomId, actor, { display_name, role = 'observer', user_a
     throw error;
   }
   const existing = await getActorParticipant(roomId, actor.user_id, pool);
-  if (String(room.host_user_id) === String(actor.user_id)) {
+  const isRoomHost = String(room.host_user_id) === String(actor.user_id);
+  if (isRoomHost) {
     role = coerceConfRole(actor.role, 'host');
   } else if (
     String(room.patient_user_id) === String(actor.user_id) ||
@@ -360,12 +361,17 @@ async function joinRoom(roomId, actor, { display_name, role = 'observer', user_a
     `SELECT COUNT(*)::int AS n FROM ng_conf_participants WHERE room_id=$1 AND status='admitted'`,
     [roomId]
   );
-  if (c.rows[0].n >= room.max_participants) {
+  if (existing?.status !== 'admitted' && c.rows[0].n >= room.max_participants) {
     const e = new Error('Room is full');
     e.code = 'ROOM_FULL'; throw e;
   }
 
-  const status = room.requires_waiting_room && role !== 'host' ? 'waiting' : 'admitted';
+  // The platform provider retains the clinical doctor role. Room ownership,
+  // rather than that role's label, grants host admission. A retry also must not
+  // demote an already admitted member back into the waiting room.
+  const status = isRoomHost || existing?.status === 'admitted' || !room.requires_waiting_room
+    ? 'admitted'
+    : 'waiting';
   const joinedAt = status === 'admitted' ? 'NOW()' : 'NULL';
 
   // Upsert (idempotent for re-joins from the same user)

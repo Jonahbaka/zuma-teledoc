@@ -12,12 +12,13 @@ import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/use-toast';
 import { format } from 'date-fns';
 import { resolveProviderMarket, toProviderPortalPath } from '@/lib/providerPortal';
+import PortalPageHeader from '@/components/branding/PortalPageHeader';
 
 const STATUS_COLORS = {
   draft: 'bg-gray-100 text-gray-800',
   pending_erx: 'bg-yellow-100 text-yellow-800',
   sent_to_erx: 'bg-blue-100 text-blue-800',
-  erx_confirmed: 'bg-green-100 text-green-800',
+  erx_confirmed: 'bg-blue-100 text-blue-800',
   cancelled: 'bg-red-100 text-red-800',
   erx_error: 'bg-orange-100 text-orange-800'
 };
@@ -28,13 +29,23 @@ export default function ProviderPrescriptionsPage() {
   const [loading, setLoading] = useState(true);
   const [intents, setIntents] = useState([]);
   const [search, setSearch] = useState('');
+  const [error, setError] = useState('');
+  const [patientContext, setPatientContext] = useState('');
+
+  useEffect(() => {
+    const patientId = new URLSearchParams(window.location.search).get('patientId') || '';
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(patientId)) setPatientContext(patientId);
+  }, [pathname]);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const res = await clinicalEhrAPI.listPrescriptionIntents();
-      if (res.data?.success) setIntents(res.data.prescriptionIntents || []);
+      if (!res.data?.success || !Array.isArray(res.data.prescriptionIntents)) throw new Error();
+      setIntents(res.data.prescriptionIntents);
     } catch (e) {
+      setError('Prescription activity could not be loaded. Select Refresh to try again.');
       toast({
         title: 'Error',
         description: market === 'NG'
@@ -64,45 +75,25 @@ export default function ProviderPrescriptionsPage() {
   if (loading && intents.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl">
-              <Pill className="w-6 h-6 text-white" />
-            </div>
-            {market === 'NG' ? 'Prescription Activity' : 'External eRx (iPrescribe)'}
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            {market === 'NG'
-              ? 'Track prescription intents and follow through on pharmacy-bound medication orders from one Nigeria provider queue.'
-              : 'This portal stores prescription intents only. Final prescribing happens in an external eRx system.'}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={load} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Link href={toProviderPortalPath('/patients', { pathname })}>
-            <Button className="bg-purple-600 hover:bg-purple-700">
-              {market === 'NG' ? 'Open Patient Charts' : 'Start from Patient Chart'}
-            </Button>
-          </Link>
-        </div>
-      </div>
+      <PortalPageHeader eyebrow="DoctaRx · Clinical workspace" title="Prescriptions" description="Review recorded prescription intents and continue prescribing from the patient encounter.">
+        <Button variant="outline" onClick={load} disabled={loading}><RefreshCw className="mr-2 h-5 w-5" aria-hidden="true" />Refresh</Button>
+        <Link href={toProviderPortalPath(patientContext ? `/patients/${patientContext}/ehr` : '/patients', { pathname })}><Button className="bg-blue-600 hover:bg-blue-700">{patientContext ? 'Continue patient chart' : 'Patient charts'}</Button></Link>
+      </PortalPageHeader>
+      {patientContext && <p className="portal-surface">Continue the consultation in the patient chart. Review medications, allergies, and the encounter before creating an intent. Final external prescribing requires an activated prescribing service.</p>}
+      {error && <p role="alert" className="portal-error">{error}</p>}
 
       <div className="relative min-w-[250px]">
-        <Input placeholder="Search by patient or medication..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Input aria-label="Search prescriptions by patient or medication" placeholder="Search by patient or medication..." value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
-      {filtered.length === 0 ? (
+      {!error && filtered.length === 0 ? (
           <Card>
           <CardContent className="py-12 text-center">
             <Pill className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-60" />
@@ -116,7 +107,7 @@ export default function ProviderPrescriptionsPage() {
             </p>
           </CardContent>
         </Card>
-      ) : (
+      ) : error ? null : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filtered.map((i) => (
             <Card key={i.id} className="hover:shadow-lg transition-shadow">

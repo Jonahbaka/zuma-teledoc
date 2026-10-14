@@ -21,7 +21,7 @@ const TRIAGE_LEVELS = {
   EMERGENT: { color: 'bg-red-500', textColor: 'text-red-600', bgColor: 'bg-red-50' },
   URGENT: { color: 'bg-orange-500', textColor: 'text-orange-600', bgColor: 'bg-orange-50' },
   SEMI_URGENT: { color: 'bg-yellow-500', textColor: 'text-yellow-600', bgColor: 'bg-yellow-50' },
-  ROUTINE: { color: 'bg-green-500', textColor: 'text-green-600', bgColor: 'bg-green-50' },
+  ROUTINE: { color: 'bg-blue-500', textColor: 'text-blue-600', bgColor: 'bg-blue-50' },
   NON_URGENT: { color: 'bg-blue-500', textColor: 'text-blue-600', bgColor: 'bg-blue-50' }
 };
 
@@ -65,7 +65,7 @@ export default function PatientTriageHistoryPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -84,7 +84,7 @@ export default function PatientTriageHistoryPage() {
             </Link>
           </div>
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
               <BrainCircuit className="w-6 h-6 text-white" />
             </div>
             Triage History
@@ -107,7 +107,7 @@ export default function PatientTriageHistoryPage() {
               You haven't used the AI symptom checker yet. Start a triage session to get AI-powered health guidance.
             </p>
             <Link href="/patient/triage">
-              <Button className="mt-6 bg-purple-600 hover:bg-purple-700">
+              <Button className="mt-6 bg-blue-600 hover:bg-blue-700">
                 <BrainCircuit className="w-4 h-4 mr-2" />
                 Start AI Triage
               </Button>
@@ -189,7 +189,7 @@ export default function PatientTriageHistoryPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <BrainCircuit className="w-5 h-5 text-purple-500" />
+              <BrainCircuit className="w-5 h-5 text-blue-500" />
               Triage Session Details
             </DialogTitle>
             <DialogDescription>
@@ -345,8 +345,8 @@ export default function PatientTriageHistoryPage() {
                 <div className="border-t pt-4">
                   <p className="text-xs text-muted-foreground uppercase font-bold mb-2">Provider Review</p>
                   <div className="flex items-center gap-3 p-3 bg-accent rounded-lg">
-                    <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                      <Stethoscope className="w-5 h-5 text-purple-600" />
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Stethoscope className="w-5 h-5 text-blue-600" />
                     </div>
                     <div>
                       <p className="font-medium">

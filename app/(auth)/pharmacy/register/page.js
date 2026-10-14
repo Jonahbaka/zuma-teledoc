@@ -70,7 +70,7 @@ export default function PharmacyRegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950 px-4 py-12">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950 px-4 py-12">
       <main className="w-full max-w-lg">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6">
@@ -78,7 +78,7 @@ export default function PharmacyRegisterPage() {
               <DoctaRxLogo className="h-7 w-auto" />
             </span>
           </Link>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-300 text-xs font-semibold mb-4 border border-purple-500/20">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold mb-4 border border-blue-500/20">
             <Pill size={14} /> Pharmacy Registration
           </div>
           <h1 className="text-3xl font-bold text-foreground">Join the DoctaRx Network</h1>
@@ -87,9 +87,9 @@ export default function PharmacyRegisterPage() {
 
         {/* Step indicator */}
         <div className="flex items-center justify-center gap-3 mb-8">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${step >= 1 ? 'bg-purple-600 text-white' : 'bg-muted text-muted-foreground'}`}>1</div>
-          <div className={`w-12 h-0.5 ${step >= 2 ? 'bg-purple-600' : 'bg-muted'}`} />
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${step >= 2 ? 'bg-purple-600 text-white' : 'bg-muted text-muted-foreground'}`}>2</div>
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground'}`}>1</div>
+          <div className={`w-12 h-0.5 ${step >= 2 ? 'bg-blue-600' : 'bg-muted'}`} />
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${step >= 2 ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground'}`}>2</div>
         </div>
 
         <div className="bg-card rounded-2xl shadow-xl border border-border p-5 sm:p-8">
@@ -130,7 +130,7 @@ export default function PharmacyRegisterPage() {
                     </div>
                   </div>
                 </div>
-                <Button type="button" onClick={() => setStep(2)} className="w-full bg-purple-600 hover:bg-purple-700 text-white">
+                <Button type="button" onClick={() => setStep(2)} className="w-full bg-blue-600 hover:bg-blue-700 text-white">
                   Continue
                 </Button>
               </>
@@ -173,7 +173,7 @@ export default function PharmacyRegisterPage() {
                 <div className="flex items-start gap-2">
                   <input type="checkbox" id="terms" checked={formData.acceptTerms} onChange={(e) => update('acceptTerms', e.target.checked)} className="mt-1" required />
                   <Label htmlFor="terms" className="text-sm text-muted-foreground cursor-pointer">
-                    I agree to the <Link href="/terms" className="text-purple-600 hover:underline">Terms</Link> and <Link href="/privacy" className="text-purple-600 hover:underline">Privacy Policy</Link>
+                    I agree to the <Link href="/terms" className="text-blue-600 hover:underline">Terms</Link> and <Link href="/privacy" className="text-blue-600 hover:underline">Privacy Policy</Link>
                   </Label>
                 </div>
 
@@ -184,7 +184,7 @@ export default function PharmacyRegisterPage() {
 
                 <div className="flex flex-col-reverse gap-3 sm:flex-row">
                   <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1">Back</Button>
-                  <Button type="submit" disabled={isLoading} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white">
+                  <Button type="submit" disabled={isLoading} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">
                     {isLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Registering...</> : 'Register Pharmacy'}
                   </Button>
                 </div>
@@ -194,7 +194,7 @@ export default function PharmacyRegisterPage() {
 
           <p className="text-center mt-6 text-muted-foreground">
             Already registered?{' '}
-            <Link href="/pharmacy/login" className="text-purple-600 hover:text-purple-700 font-medium">Sign in</Link>
+            <Link href="/pharmacy/login" className="text-blue-600 hover:text-blue-700 font-medium">Sign in</Link>
           </p>
         </div>
 

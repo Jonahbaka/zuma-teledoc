@@ -1,5 +1,7 @@
 # DoctaRx Production-Readiness Requirement Ledger
 
+> Historical evidence from July 2026. For the current patient/provider and CareOps work, use [the current scope ledger](DOCTARX_SCOPE_LEDGER.md) and [release-readiness evidence](CAREOPS_RELEASE_READINESS.md). The completion labels below do not establish whole-platform acceptance or cover later changes.
+
 Updated: 2026-07-24
 
 `VERIFIED COMPLETE` means the implementation and its stated validation passed in this clean worktree. `BLOCKED BY EXTERNAL CREDENTIAL` means the code path and credential-aware gate exist, but a real infrastructure or database credential was not available in the environment. `PARTIAL` identifies a requirement for which the available evidence does not justify a production-complete claim.

@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { 
-  BrainCircuit, AlertTriangle, CheckCircle, Clock, User, Sparkles, 
+import {
+  BrainCircuit, AlertTriangle, CheckCircle, Clock, User, Sparkles,
   Pill, Activity, Zap, ArrowRight, ChevronRight, Thermometer,
   TrendingUp, FileText, Eye
 } from 'lucide-react';
@@ -60,14 +60,14 @@ export default function ProviderTriageDashboard() {
       const response = await api.get('/triage/provider/appointments');
       if (response?.data?.success) {
         const cases = response.data.appointments || [];
-        
+
         // Safely set triage cases
         try {
           setTriageCases(cases);
         } catch (setError) {
           // Silently fail - don't break UI
         }
-        
+
         // Calculate stats safely
         try {
           const urgent = cases.filter(c => {
@@ -85,7 +85,7 @@ export default function ProviderTriageDashboard() {
               return sum;
             }
           }, 0);
-          
+
           setStats({
             total: cases.length,
             urgent,
@@ -133,13 +133,13 @@ export default function ProviderTriageDashboard() {
   const getSeverityBgColor = (severity) => {
     if (severity >= 4) return 'bg-red-50 border-red-200';
     if (severity >= 3) return 'bg-yellow-50 border-yellow-200';
-    return 'bg-green-50 border-green-200';
+    return 'bg-blue-50 border-blue-200';
   };
 
   const getSeverityTextColor = (severity) => {
     if (severity >= 4) return 'text-red-800';
     if (severity >= 3) return 'text-yellow-800';
-    return 'text-green-800';
+    return 'text-blue-800';
   };
 
   const handleOpenVisit = (appointmentId) => {
@@ -149,7 +149,7 @@ export default function ProviderTriageDashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
       </div>
     );
   }
@@ -160,14 +160,14 @@ export default function ProviderTriageDashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
               <BrainCircuit className="w-6 h-6 text-white" />
             </div>
             AI Triage Dashboard
           </h1>
           <p className="text-slate-500 mt-1">Review patient triage assessments and prioritize care</p>
         </div>
-        <Button 
+        <Button
           onClick={fetchTriageCases}
           variant="outline"
           className="flex items-center gap-2"
@@ -186,8 +186,8 @@ export default function ProviderTriageDashboard() {
                 <p className="text-sm text-gray-500 font-medium">Total Cases</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total}</p>
               </div>
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <FileText className="w-5 h-5 text-purple-600" />
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <FileText className="w-5 h-5 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -241,8 +241,8 @@ export default function ProviderTriageDashboard() {
         <Card>
           <CardContent className="py-16 text-center">
             <div className="max-w-md mx-auto">
-              <div className="p-4 bg-purple-100 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-                <BrainCircuit className="w-10 h-10 text-purple-600" />
+              <div className="p-4 bg-blue-100 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+                <BrainCircuit className="w-10 h-10 text-blue-600" />
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">No Triage Cases</h3>
               <p className="text-gray-500 mb-4">
@@ -261,15 +261,15 @@ export default function ProviderTriageDashboard() {
             {triageCases.map((triageCase) => {
               const triage = triageCase.triageData || {};
               const severity = triage.severity || 0;
-              
+
               return (
                 <Card
                   key={triageCase.id}
                   className={`cursor-pointer hover:shadow-lg transition-all border-l-4 ${
-                    selectedCase?.id === triageCase.id 
-                      ? 'ring-2 ring-purple-500 border-l-purple-600' 
-                      : severity >= 4 
-                        ? 'border-l-red-500' 
+                    selectedCase?.id === triageCase.id
+                      ? 'ring-2 ring-blue-500 border-l-blue-600'
+                      : severity >= 4
+                        ? 'border-l-red-500'
                         : severity >= 3
                         ? 'border-l-yellow-500'
                         : 'border-l-green-500'
@@ -279,7 +279,7 @@ export default function ProviderTriageDashboard() {
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-4 flex-1">
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-indigo-500 flex items-center justify-center text-white text-lg font-bold shadow-md">
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-500 flex items-center justify-center text-white text-lg font-bold shadow-md">
                           {triageCase.patientFirstName?.[0]}{triageCase.patientLastName?.[0]}
                         </div>
                         <div className="flex-1">
@@ -347,9 +347,9 @@ export default function ProviderTriageDashboard() {
                         </p>
                         <div className="flex flex-wrap gap-2">
                           {triage.suggestedMeds.map((med, idx) => (
-                            <Badge 
-                              key={idx} 
-                              className="bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-800 border border-indigo-200"
+                            <Badge
+                              key={idx}
+                              className="bg-gradient-to-r from-blue-100 to-blue-100 text-blue-800 border border-blue-200"
                             >
                               <Pill className="w-3 h-3 mr-1" />
                               {med}
@@ -375,7 +375,7 @@ export default function ProviderTriageDashboard() {
                           e.stopPropagation();
                           handleOpenVisit(triageCase.id);
                         }}
-                        className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                        className="w-full bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700"
                       >
                         <Eye className="w-4 h-4 mr-2" />
                         Open Visit Note
@@ -394,7 +394,7 @@ export default function ProviderTriageDashboard() {
               <Card className="sticky top-20">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-purple-500" />
+                    <Sparkles className="w-5 h-5 text-blue-500" />
                     Triage Assessment
                   </CardTitle>
                   <CardDescription>
@@ -439,8 +439,8 @@ export default function ProviderTriageDashboard() {
                   {selectedCase.triageData?.soapDraft && (
                     <div>
                       <p className="text-xs text-gray-600 uppercase font-bold mb-2">Full Assessment</p>
-                      <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg border border-purple-200">
-                        <pre className="text-sm text-purple-900 whitespace-pre-wrap font-mono">
+                      <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-50 rounded-lg border border-blue-200">
+                        <pre className="text-sm text-blue-900 whitespace-pre-wrap font-mono">
                           {selectedCase.triageData.soapDraft}
                         </pre>
                       </div>
@@ -470,9 +470,9 @@ export default function ProviderTriageDashboard() {
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {selectedCase.triageData.suggestedMeds.map((med, idx) => (
-                          <Badge 
+                          <Badge
                             key={idx}
-                            className="bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-800"
+                            className="bg-gradient-to-r from-blue-100 to-blue-100 text-blue-800"
                           >
                             <Pill className="w-3 h-3 mr-1" />
                             {med}
@@ -486,7 +486,7 @@ export default function ProviderTriageDashboard() {
                   <div className="space-y-2 pt-4 border-t">
                     <Button
                       onClick={() => handleOpenVisit(selectedCase.id)}
-                      className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                      className="w-full bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700"
                     >
                       <Eye className="w-4 h-4 mr-2" />
                       Open Visit Note
@@ -505,8 +505,8 @@ export default function ProviderTriageDashboard() {
             ) : (
               <Card>
                 <CardContent className="py-12 text-center">
-                  <div className="p-3 bg-purple-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                    <Sparkles className="w-8 h-8 text-purple-600" />
+                  <div className="p-3 bg-blue-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                    <Sparkles className="w-8 h-8 text-blue-600" />
                   </div>
                   <p className="text-sm font-medium text-gray-900 mb-1">Select a Case</p>
                   <p className="text-xs text-gray-500">Click on a triage case to view detailed assessment</p>

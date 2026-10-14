@@ -58,7 +58,7 @@ export default function ConsultationBilling() {
   return <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 text-base">
     <div><p className="font-medium text-blue-700">DoctaRx · Your care</p><h1 className="mt-2 text-3xl font-semibold">Consultation payments</h1><p className="mt-3 text-slate-600">Your consultation invoices, receipts, and payment status in one place.</p></div>
     {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800"><p>{error}</p><Button className="mt-3" variant="outline" onClick={load}>Retry loading</Button></div>}
-    {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">{notice}</p>}
+    {notice && <p role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-blue-900">{notice}</p>}
     {appointments.length > 0 && <form onSubmit={createInvoice} className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
       <label htmlFor="invoice-appointment" className="block font-medium">Request an invoice for your consultation</label>
       <select id="invoice-appointment" className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base" value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)} required>
@@ -67,7 +67,7 @@ export default function ConsultationBilling() {
       <p className="text-slate-600">The server checks whether payment is required and whether an approved tariff is available.</p>
       <Button type="submit" disabled={busy === 'create'}>{busy === 'create' ? 'Checking tariff…' : 'Request invoice'}</Button>
     </form>}
-    {loading ? <p role="status">Loading invoices…</p> : invoices.length === 0 ? <Card><CardContent className="p-6"><p>{error ? 'Invoice data is unavailable.' : 'No consultation invoices are available.'}</p><p className="mt-2 text-slate-600">Sponsored care and insurance arrangements are handled separately. A patient invoice requires an approved tariff and activated checkout.</p><Link href="/ng/patient/appointments" className="mt-4 inline-flex min-h-11 items-center font-medium text-emerald-700">View appointments</Link></CardContent></Card> : invoices.map((invoice) => <Card key={invoice.id}>
+    {loading ? <p role="status">Loading invoices…</p> : invoices.length === 0 ? <Card><CardContent className="p-6"><p>{error ? 'Invoice data is unavailable.' : 'No consultation invoices are available.'}</p><p className="mt-2 text-slate-600">Sponsored care and insurance arrangements are handled separately. A patient invoice requires an approved tariff and activated checkout.</p><Link href="/ng/patient/appointments" className="mt-4 inline-flex min-h-11 items-center font-medium text-blue-700">View appointments</Link></CardContent></Card> : invoices.map((invoice) => <Card key={invoice.id}>
       <CardHeader><CardTitle className="text-xl">{amountText(invoice.amountMinor, invoice.currency)}</CardTitle><p className="text-slate-600">{invoice.fundingSource === 'patient_copay' ? 'Patient contribution' : 'Consultation fee'} · {invoice.status.replaceAll('_', ' ')}</p></CardHeader>
       <CardContent className="space-y-4">
         <p className="text-slate-600">Invoice reference: {invoice.id}</p>

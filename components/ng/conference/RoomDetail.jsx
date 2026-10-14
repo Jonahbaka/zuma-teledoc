@@ -103,7 +103,7 @@ export default function RoomDetail({ roomId }) {
 
   // ── Non-live: control-plane tab view ──────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-green-50/30">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-6xl px-6 py-4">
           <button
@@ -115,7 +115,7 @@ export default function RoomDetail({ roomId }) {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <div className="rounded-xl bg-green-600/10 p-2 text-green-700">
+                <div className="rounded-xl bg-blue-600/10 p-2 text-blue-700">
                   <Video className="h-5 w-5" />
                 </div>
                 <h1 className="truncate text-lg font-black text-slate-900">
@@ -132,7 +132,7 @@ export default function RoomDetail({ roomId }) {
                 >
                   {room.room_code}
                   {copied
-                    ? <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                    ? <CheckCircle2 className="h-3 w-3 text-blue-600" />
                     : <Copy className="h-3 w-3 text-slate-400" />}
                 </button>
                 <span>{room.kind}</span>
@@ -177,7 +177,7 @@ export default function RoomDetail({ roomId }) {
                 <>
                   <button
                     onClick={() => action(() => conf.startRoom(room.id), 'Start')}
-                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                    className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
                   >
                     <Play className="h-3.5 w-3.5" /> Start meeting
                   </button>
@@ -207,7 +207,7 @@ export default function RoomDetail({ roomId }) {
               onClick={() => setPanel(id)}
               className={`flex shrink-0 items-center gap-2 rounded-t-lg border-b-2 px-3 py-2 text-sm font-semibold transition ${
                 panel === id
-                  ? 'border-green-600 text-green-700'
+                  ? 'border-blue-600 text-blue-700'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >

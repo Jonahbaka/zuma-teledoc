@@ -63,12 +63,12 @@ export const STATUS_LABELS = {
 export function statusBadge(s) {
   const map = {
     drafted:             'bg-slate-100 text-slate-700',
-    signed:              'bg-indigo-100 text-indigo-800',
+    signed:              'bg-blue-100 text-blue-800',
     sent_to_pharmacy:    'bg-blue-100 text-blue-800',
     received:            'bg-cyan-100 text-cyan-800',
     partially_dispensed: 'bg-amber-100 text-amber-800',
-    fully_dispensed:     'bg-emerald-100 text-emerald-800',
-    completed:           'bg-green-100 text-green-800',
+    fully_dispensed:     'bg-blue-100 text-blue-800',
+    completed:           'bg-blue-100 text-blue-800',
     cancelled:           'bg-rose-100 text-rose-700',
     expired:             'bg-slate-200 text-slate-600',
   };

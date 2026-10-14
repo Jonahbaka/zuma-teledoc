@@ -110,10 +110,10 @@ export default function EPrescribe({ patientId, visitId, appointmentId, aiSugges
     <div className="space-y-6">
       {/* AI Smart Suggestions */}
       {aiSuggestions.length > 0 && (
-        <Card className="border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50">
+        <Card className="border-blue-200 bg-gradient-to-r from-blue-50 to-blue-50">
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
-              <Zap className="w-4 h-4 text-indigo-600" />
+              <Zap className="w-4 h-4 text-blue-600" />
               AI Smart Suggestions based on Triage
             </CardTitle>
           </CardHeader>
@@ -123,7 +123,7 @@ export default function EPrescribe({ patientId, visitId, appointmentId, aiSugges
                 <button
                   key={med}
                   onClick={() => handleSuggestionClick(med)}
-                  className="bg-white hover:bg-indigo-100 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center shadow-sm"
+                  className="bg-white hover:bg-blue-100 border border-blue-200 text-blue-700 px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center shadow-sm"
                 >
                   <Zap className="w-3 h-3 mr-1 text-amber-500 fill-amber-500" />
                   {med}
@@ -148,7 +148,7 @@ export default function EPrescribe({ patientId, visitId, appointmentId, aiSugges
                 Medication Search
               </label>
               <select
-                className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white transition-colors outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white transition-colors outline-none focus:ring-2 focus:ring-blue-500"
                 onChange={(e) => {
                   setSelectedDrug(e.target.value);
                   setRtbcResult(null);
@@ -190,7 +190,7 @@ export default function EPrescribe({ patientId, visitId, appointmentId, aiSugges
                   <div>
                     <p className="text-xs text-gray-500 uppercase font-bold">Best Price Option</p>
                     <p className="text-2xl font-bold text-gray-900 flex items-center mt-1">
-                      <CreditCard className="w-5 h-5 mr-2 text-purple-500" />
+                      <CreditCard className="w-5 h-5 mr-2 text-blue-500" />
                       {rtbcResult.bestPrice.label}: ${rtbcResult.bestPrice.cost.toFixed(2)}
                     </p>
                   </div>
@@ -211,7 +211,7 @@ export default function EPrescribe({ patientId, visitId, appointmentId, aiSugges
                     key={scenario.id}
                     className={`p-3 rounded-lg border ${
                       scenario.id === rtbcResult.bestPrice.id
-                        ? 'bg-purple-50 border-purple-200'
+                        ? 'bg-blue-50 border-blue-200'
                         : 'bg-white border-gray-200'
                     }`}
                   >
@@ -236,7 +236,7 @@ export default function EPrescribe({ patientId, visitId, appointmentId, aiSugges
                 <div className="p-4 bg-blue-50 border-t border-blue-200">
                   <div className="flex items-center gap-2">
                     {priorAuth.status === 'approved' ? (
-                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <CheckCircle className="w-5 h-5 text-blue-600" />
                     ) : (
                       <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
                     )}
@@ -289,7 +289,7 @@ export default function EPrescribe({ patientId, visitId, appointmentId, aiSugges
                 <Button
                   onClick={handleFinalizeRx}
                   disabled
-                  className="bg-green-600 hover:bg-green-700"
+                  className="bg-blue-600 hover:bg-blue-700"
                 >
                   {prescribing ? (
                     <>

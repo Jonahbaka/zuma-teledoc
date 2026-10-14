@@ -67,7 +67,7 @@ export default function SoapComposer() {
   return (
     <div className="mx-auto max-w-6xl space-y-5 p-6">
       <header className="flex items-center gap-3">
-        <div className="rounded-xl bg-green-600/10 p-2 text-green-700">
+        <div className="rounded-xl bg-blue-600/10 p-2 text-blue-700">
           <NotebookPen className="h-5 w-5" />
         </div>
         <div>
@@ -90,7 +90,7 @@ export default function SoapComposer() {
             {visibleTemplates.map(t => (
               <li key={t.key}>
                 <button onClick={() => applyTemplate(t.key)}
-                  className="block w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-green-400 hover:bg-green-50/30">
+                  className="block w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-400 hover:bg-blue-50/30">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-bold text-slate-900">{t.label}</span>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${t.age_group === 'pediatric' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>
@@ -98,7 +98,7 @@ export default function SoapComposer() {
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-slate-600">{t.chief_complaint}</p>
-                  <div className="mt-2 flex items-center gap-1 text-xs font-semibold text-green-700">
+                  <div className="mt-2 flex items-center gap-1 text-xs font-semibold text-blue-700">
                     <ArrowRight className="h-3 w-3" />Apply template
                   </div>
                 </button>
@@ -108,13 +108,13 @@ export default function SoapComposer() {
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+          <div className="flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 p-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Template applied</p>
-              <p className="text-sm font-bold text-emerald-900">{pickedMeta?.label}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Template applied</p>
+              <p className="text-sm font-bold text-blue-900">{pickedMeta?.label}</p>
             </div>
             <button onClick={() => { setPicked(null); setPickedMeta(null); }}
-              className="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
+              className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100">
               Change template
             </button>
           </div>
@@ -225,7 +225,7 @@ export default function SoapComposer() {
               <ul className="space-y-1 text-sm text-slate-700">
                 {picked.plan.patient_education.map((p, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <span className="mt-1 block h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" />{p}
+                    <span className="mt-1 block h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />{p}
                   </li>
                 ))}
               </ul>
@@ -269,7 +269,7 @@ function Section({ icon: Icon, title, children }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-3 flex items-center gap-2">
-        <Icon className="h-4 w-4 text-green-700" />
+        <Icon className="h-4 w-4 text-blue-700" />
         <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">{title}</h2>
       </div>
       {children}

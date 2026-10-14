@@ -21,7 +21,7 @@ const STEP_STATUS_COLORS = {
   not_started: 'bg-gray-200 dark:bg-gray-700',
   in_progress: 'bg-blue-500',
   pending_review: 'bg-amber-500',
-  approved: 'bg-green-500',
+  approved: 'bg-blue-500',
   rejected: 'bg-red-500',
   requires_resubmission: 'bg-orange-500'
 };
@@ -194,7 +194,7 @@ export default function AdminCredentialingDetailPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -228,18 +228,18 @@ export default function AdminCredentialingDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <Progress value={credentialing.progressPercentage || 0} className="w-32 h-3" />
-          <span className="font-bold text-purple-600">{credentialing.progressPercentage || 0}%</span>
+          <span className="font-bold text-blue-600">{credentialing.progressPercentage || 0}%</span>
         </div>
       </div>
 
       {/* Status Banner */}
       {credentialing.status === 'approved' && (
-        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 flex items-center justify-between">
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-6 h-6 text-green-500" />
+            <CheckCircle2 className="w-6 h-6 text-blue-500" />
             <div>
-              <p className="font-medium text-green-700 dark:text-green-400">Approved</p>
-              <p className="text-sm text-green-600 dark:text-green-300">
+              <p className="font-medium text-blue-700 dark:text-blue-400">Approved</p>
+              <p className="text-sm text-blue-600 dark:text-blue-300">
                 Valid until: {formatDateISO(credentialing.approvalExpiry)}
               </p>
             </div>
@@ -281,7 +281,7 @@ export default function AdminCredentialingDetailPage() {
                   Reject
                 </Button>
                 <Button
-                  className="bg-green-600 hover:bg-green-700"
+                  className="bg-blue-600 hover:bg-blue-700"
                   disabled={saving}
                   onClick={() => makeDecision('approved')}
                 >
@@ -333,7 +333,7 @@ export default function AdminCredentialingDetailPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="text-green-600 hover:text-green-700"
+                        className="text-blue-600 hover:text-blue-700"
                         disabled={saving || step.status === 'approved'}
                         onClick={() => updateStepStatus(step.stepNumber, 'approved')}
                       >
@@ -430,7 +430,7 @@ export default function AdminCredentialingDetailPage() {
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   {credentialing.licenseVerified ? (
-                    <span className="flex items-center gap-1 text-green-600 text-sm">
+                    <span className="flex items-center gap-1 text-blue-600 text-sm">
                       <CheckCircle2 className="w-4 h-4" /> Verified
                     </span>
                   ) : (
@@ -479,7 +479,7 @@ export default function AdminCredentialingDetailPage() {
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   {credentialing.deaVerified ? (
-                    <span className="flex items-center gap-1 text-green-600 text-sm">
+                    <span className="flex items-center gap-1 text-blue-600 text-sm">
                       <CheckCircle2 className="w-4 h-4" /> Verified
                     </span>
                   ) : (
@@ -524,7 +524,7 @@ export default function AdminCredentialingDetailPage() {
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   {credentialing.npiVerified ? (
-                    <span className="flex items-center gap-1 text-green-600 text-sm">
+                    <span className="flex items-center gap-1 text-blue-600 text-sm">
                       <CheckCircle2 className="w-4 h-4" /> Verified
                     </span>
                   ) : (
@@ -553,7 +553,7 @@ export default function AdminCredentialingDetailPage() {
                   href={`https://npiregistry.cms.hhs.gov/provider-view/${credentialing.npiNumber}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-purple-600 hover:underline mt-2"
+                  className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline mt-2"
                 >
                   Verify on NPI Registry <ExternalLink className="w-3 h-3" />
                 </a>
@@ -571,7 +571,7 @@ export default function AdminCredentialingDetailPage() {
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   {credentialing.educationVerified ? (
-                    <span className="flex items-center gap-1 text-green-600 text-sm">
+                    <span className="flex items-center gap-1 text-blue-600 text-sm">
                       <CheckCircle2 className="w-4 h-4" /> Verified
                     </span>
                   ) : (
@@ -626,7 +626,7 @@ export default function AdminCredentialingDetailPage() {
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   {credentialing.malpracticeVerified ? (
-                    <span className="flex items-center gap-1 text-green-600 text-sm">
+                    <span className="flex items-center gap-1 text-blue-600 text-sm">
                       <CheckCircle2 className="w-4 h-4" /> Verified
                     </span>
                   ) : (
@@ -695,7 +695,7 @@ export default function AdminCredentialingDetailPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className={`text-xs px-2 py-1 rounded ${
-                          doc.status === 'approved' ? 'bg-green-100 text-green-700' :
+                          doc.status === 'approved' ? 'bg-blue-100 text-blue-700' :
                           doc.status === 'rejected' ? 'bg-red-100 text-red-700' :
                           'bg-amber-100 text-amber-700'
                         }`}>
@@ -731,14 +731,14 @@ export default function AdminCredentialingDetailPage() {
               {credentialing.workHistory?.length > 0 ? (
                 <div className="space-y-4">
                   {credentialing.workHistory.map((work, index) => (
-                    <div key={index} className="border-l-2 border-purple-500 pl-4 pb-4">
+                    <div key={index} className="border-l-2 border-blue-500 pl-4 pb-4">
                       <p className="font-medium text-foreground">{work.employerName}</p>
                       <p className="text-sm text-muted-foreground">{work.positionTitle}</p>
                       <p className="text-sm text-muted-foreground">
                         {formatDateISO(work.startDate)} - {work.isCurrent ? 'Present' : formatDateISO(work.endDate)}
                       </p>
                       {work.verified && (
-                        <span className="inline-flex items-center gap-1 text-xs text-green-600 mt-1">
+                        <span className="inline-flex items-center gap-1 text-xs text-blue-600 mt-1">
                           <CheckCircle2 className="w-3 h-3" /> Verified
                         </span>
                       )}
@@ -775,7 +775,7 @@ export default function AdminCredentialingDetailPage() {
                           <p className="text-sm text-muted-foreground">{ref.referenceEmail}</p>
                         </div>
                         <span className={`text-xs px-2 py-1 rounded ${
-                          ref.verificationStatus === 'approved' ? 'bg-green-100 text-green-700' :
+                          ref.verificationStatus === 'approved' ? 'bg-blue-100 text-blue-700' :
                           ref.verificationStatus === 'rejected' ? 'bg-red-100 text-red-700' :
                           'bg-amber-100 text-amber-700'
                         }`}>
@@ -804,8 +804,8 @@ export default function AdminCredentialingDetailPage() {
                 <div className="space-y-3">
                   {credentialing.auditLog.map((log, index) => (
                     <div key={index} className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-                      <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
-                        <Calendar className="w-4 h-4 text-purple-600" />
+                      <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                        <Calendar className="w-4 h-4 text-blue-600" />
                       </div>
                       <div className="flex-1">
                         <p className="text-sm font-medium text-foreground">

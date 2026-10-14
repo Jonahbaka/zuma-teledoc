@@ -22,7 +22,7 @@ const TRIAGE_COLORS = {
   EMERGENT: 'bg-red-100 text-red-800 border-red-300',
   URGENT: 'bg-orange-100 text-orange-800 border-orange-300',
   SEMI_URGENT: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  ROUTINE: 'bg-green-100 text-green-800 border-green-300',
+  ROUTINE: 'bg-blue-100 text-blue-800 border-blue-300',
   NON_URGENT: 'bg-blue-100 text-blue-800 border-blue-300'
 };
 
@@ -256,7 +256,7 @@ export default function EnhancedTriagePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
               <BrainCircuit className="w-6 h-6 text-white" />
             </div>
             AI Symptom Checker
@@ -271,9 +271,9 @@ export default function EnhancedTriagePage() {
               key={s}
               className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
                 step === s
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-blue-600 text-white'
                   : step > s
-                  ? 'bg-green-500 text-white'
+                  ? 'bg-blue-500 text-white'
                   : 'bg-muted text-muted-foreground'
               }`}
             >
@@ -288,7 +288,7 @@ export default function EnhancedTriagePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-purple-500" />
+              <FileText className="w-5 h-5 text-blue-500" />
               Describe Your Symptoms
             </CardTitle>
             <CardDescription>
@@ -365,7 +365,7 @@ export default function EnhancedTriagePage() {
               <Button
                 onClick={handleAnalyze}
                 disabled={!chiefComplaint.trim() || !symptoms.trim() || isProcessing}
-                className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                className="bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700"
               >
                 {isProcessing ? (
                   <>
@@ -493,7 +493,7 @@ export default function EnhancedTriagePage() {
               <Button
                 onClick={handleAnalyze}
                 disabled={isProcessing}
-                className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                className="bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700"
               >
                 {isProcessing ? (
                   <>
@@ -543,7 +543,7 @@ export default function EnhancedTriagePage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-purple-500" />
+                <Sparkles className="w-5 h-5 text-blue-500" />
                 AI Assessment Results
               </CardTitle>
             </CardHeader>
@@ -611,7 +611,7 @@ export default function EnhancedTriagePage() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {analysis.suggestedMedications.map((med, idx) => (
-                      <Badge key={idx} className="bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-800 border-indigo-200">
+                      <Badge key={idx} className="bg-gradient-to-r from-blue-100 to-blue-100 text-blue-800 border-blue-200">
                         {med}
                       </Badge>
                     ))}
@@ -641,7 +641,7 @@ export default function EnhancedTriagePage() {
                   <p className="text-sm font-bold text-muted-foreground uppercase mb-2">
                     Assessment Summary
                   </p>
-                  <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-950 dark:to-indigo-950 rounded-lg">
+                  <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-50 dark:from-blue-950 dark:to-blue-950 rounded-lg">
                     <pre className="text-sm whitespace-pre-wrap font-mono">
                       {analysis.soapDraft}
                     </pre>
@@ -652,7 +652,7 @@ export default function EnhancedTriagePage() {
               <div className="flex justify-end">
                 <Button
                   onClick={() => setStep(4)}
-                  className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                  className="bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700"
                 >
                   Continue to Pharmacy Selection
                   <ChevronRight className="w-4 h-4 ml-2" />
@@ -668,7 +668,7 @@ export default function EnhancedTriagePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-green-500" />
+              <MapPin className="w-5 h-5 text-blue-500" />
               Select Your Pharmacy
             </CardTitle>
             <CardDescription>
@@ -699,9 +699,9 @@ export default function EnhancedTriagePage() {
             
             {/* Selected Pharmacy */}
             {selectedPharmacy && (
-              <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg border-2 border-green-500">
+              <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border-2 border-blue-500">
                 <div className="flex items-center gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
+                  <CheckCircle className="w-5 h-5 text-blue-600" />
                   <div className="flex-1">
                     <p className="font-semibold">{selectedPharmacy.name || selectedPharmacy.pharmacyName}</p>
                     <p className="text-sm text-muted-foreground">
@@ -722,7 +722,7 @@ export default function EnhancedTriagePage() {
             {/* Pharmacy List */}
             {loadingPharmacies ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
               </div>
             ) : pharmacies.length > 0 ? (
               <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -732,14 +732,14 @@ export default function EnhancedTriagePage() {
                     onClick={() => setSelectedPharmacy(pharmacy)}
                     className={`w-full p-4 rounded-lg border text-left transition-colors ${
                       selectedPharmacy?.id === pharmacy.id
-                        ? 'border-green-500 bg-green-50 dark:bg-green-950'
-                        : 'border-border hover:border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-950'
+                        : 'border-border hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950'
                     }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3">
                         <div className="p-2 bg-muted rounded-lg">
-                          <Building className="w-5 h-5 text-purple-600" />
+                          <Building className="w-5 h-5 text-blue-600" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
@@ -762,7 +762,7 @@ export default function EnhancedTriagePage() {
                           <p className="text-sm font-medium">{pharmacy.distanceMiles} mi</p>
                         )}
                         {pharmacy.isOpen !== false && (
-                          <Badge variant="outline" className="text-xs text-green-600 border-green-300">
+                          <Badge variant="outline" className="text-xs text-blue-600 border-blue-300">
                             Open
                           </Badge>
                         )}
@@ -810,7 +810,7 @@ export default function EnhancedTriagePage() {
                 <Button
                   onClick={savePharmacyPreference}
                   disabled={!selectedPharmacy}
-                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                  className="bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700"
                 >
                   <CheckCircle className="w-4 h-4 mr-2" />
                   Save & Continue

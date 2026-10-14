@@ -10,14 +10,15 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
 
 const navigation = [
-  { name: 'Dashboard', href: '/patient/dashboard', icon: LayoutDashboard },
-  { name: 'Appointments', href: '/patient/appointments', icon: Calendar },
+  { name: 'Home', href: '/patient/dashboard', icon: LayoutDashboard },
+  { name: 'Get care', href: '/patient/appointments/book', icon: Heart },
+  { name: 'Visits', href: '/patient/appointments', icon: Calendar },
   { name: 'Video Visits', href: '/patient/call', icon: Video },
-  { name: 'AI Triage', href: '/patient/triage', icon: BrainCircuit },
-  { name: 'Prescription Activity', href: '/patient/prescriptions', icon: Pill },
-  { name: 'Insurance Wallet', href: '/patient/wallet', icon: Shield },
-  { name: 'My Pharmacies', href: '/patient/pharmacy', icon: MapPin },
-  { name: 'Health Records', href: '/patient/records', icon: FileText },
+  { name: 'Symptom guidance', href: '/patient/triage', icon: BrainCircuit },
+  { name: 'Prescriptions', href: '/patient/prescriptions', icon: Pill },
+  { name: 'Insurance', href: '/patient/wallet', icon: Shield },
+  { name: 'Pharmacies', href: '/patient/pharmacy', icon: MapPin },
+  { name: 'Health records', href: '/patient/records', icon: FileText },
   { name: 'Messages', href: '/patient/messages', icon: MessageSquare },
   { name: 'Notifications', href: '/patient/notifications', icon: Bell },
   { name: 'Billing', href: '/patient/billing', icon: CreditCard },
@@ -41,7 +42,7 @@ export default function PatientLayout({ children }) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
       </div>
     );
   }
@@ -54,7 +55,7 @@ export default function PatientLayout({ children }) {
     <DashboardLayout 
       navigation={navigation}
       portalName="Patient"
-      portalColor="from-purple-600 to-purple-800"
+      portalColor="from-blue-600 to-blue-700"
       portalHomeHref="/patient"
     >
       {children}

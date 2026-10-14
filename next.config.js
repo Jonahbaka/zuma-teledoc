@@ -1,11 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  devIndicators: false,
   poweredByHeader: false,
   compress: true,
   distDir: process.env.NEXT_DIST_DIR || '.next',
   productionBrowserSourceMaps: false,
   outputFileTracingRoot: __dirname,
+  // Permit reproducible validation on hosts with limited cache disk space.
+  // Build artifacts and compiler checks are still produced normally.
+  webpack(config) {
+    if (process.env.DOCTARX_DISABLE_BUILD_CACHE === 'true') config.cache = false;
+    return config;
+  },
   
   // Security headers
   async headers() {

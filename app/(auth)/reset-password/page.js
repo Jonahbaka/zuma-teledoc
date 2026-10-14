@@ -92,7 +92,7 @@ function ResetPasswordContent() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950 px-4 relative">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-blue-50/30 to-background dark:from-slate-950 dark:via-blue-950/20 dark:to-slate-950 px-4 relative">
         <div className="absolute top-4 right-4">
           <ThemeToggle />
         </div>
@@ -106,7 +106,7 @@ function ResetPasswordContent() {
               Your password has been reset successfully. Redirecting to login...
             </p>
             <Link href="/login">
-              <Button className="w-full bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white">
+              <Button className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white">
                 Go to Login
               </Button>
             </Link>
@@ -118,7 +118,7 @@ function ResetPasswordContent() {
 
   if (error && !token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950 px-4 relative">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-blue-50/30 to-background dark:from-slate-950 dark:via-blue-950/20 dark:to-slate-950 px-4 relative">
         <div className="absolute top-4 right-4">
           <ThemeToggle />
         </div>
@@ -132,7 +132,7 @@ function ResetPasswordContent() {
               The password reset link is invalid or has expired. Please request a new one.
             </p>
             <Link href="/forgot-password">
-              <Button className="w-full bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white">
+              <Button className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white">
                 Request New Reset Link
               </Button>
             </Link>
@@ -143,7 +143,7 @@ function ResetPasswordContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950 px-4 relative">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-blue-50/30 to-background dark:from-slate-950 dark:via-blue-950/20 dark:to-slate-950 px-4 relative">
       <div className="absolute top-4 right-4">
         <ThemeToggle />
       </div>
@@ -212,7 +212,7 @@ function ResetPasswordContent() {
 
           <Button
             type="submit"
-            className="w-full bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white shadow-lg shadow-purple-500/25"
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-500/25"
             disabled={loading || !token}
           >
             {loading ? (
@@ -241,9 +241,9 @@ function ResetPasswordContent() {
 
 function ResetPasswordFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-blue-50/30 to-background dark:from-slate-950 dark:via-blue-950/20 dark:to-slate-950 p-4">
       <div className="flex items-center gap-2">
-        <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
+        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
         <span className="text-muted-foreground">Loading...</span>
       </div>
     </div>

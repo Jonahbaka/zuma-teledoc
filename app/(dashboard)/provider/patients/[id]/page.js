@@ -105,7 +105,7 @@ export default function PatientDetailPage() {
           <Card>
             <CardContent className="p-6">
               <div className="text-center">
-                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4">
                   {patient.firstName?.[0]}{patient.lastName?.[0]}
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900">
@@ -122,7 +122,7 @@ export default function PatientDetailPage() {
           <Card className="mt-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Heart className="w-5 h-5 text-purple-600" />
+                <Heart className="w-5 h-5 text-blue-600" />
                 Clinical Chart
               </CardTitle>
             </CardHeader>
@@ -131,11 +131,11 @@ export default function PatientDetailPage() {
                 Patient clinical profile, encounters, clinical notes (append‑only), consent history, and external eRx intents.
               </p>
               {ehrSummary?.profile?.identityVerified && (
-                <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Identity Verified</Badge>
+                <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Identity Verified</Badge>
               )}
               <div className="flex gap-2">
                 <Link href={toProviderPortalPath(`/patients/${patientId}/ehr`, { pathname })}>
-                  <Button className="bg-purple-600 hover:bg-purple-700 w-full">Open Chart</Button>
+                  <Button className="bg-blue-600 hover:bg-blue-700 w-full">Open Chart</Button>
                 </Link>
               </div>
             </CardContent>
@@ -193,7 +193,7 @@ export default function PatientDetailPage() {
                         <div>
                           <p className="font-medium">{formatDateTime(visit.createdAt)}</p>
                           {visit.isSigned && (
-                            <span className="text-xs text-purple-700">Signed</span>
+                            <span className="text-xs text-blue-700">Signed</span>
                           )}
                         </div>
                       </div>

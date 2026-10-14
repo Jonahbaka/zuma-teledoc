@@ -67,7 +67,7 @@ export default function LiveMediaPanel({ roomId, displayName = 'Participant', ac
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
         <p className="text-sm font-semibold text-slate-700">You left the media session.</p>
-        <button onClick={() => setLeft(false)} className="mt-3 rounded-lg bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700">
+        <button onClick={() => setLeft(false)} className="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">
           Rejoin media
         </button>
       </div>
@@ -80,12 +80,12 @@ export default function LiveMediaPanel({ roomId, displayName = 'Participant', ac
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <Users className="h-4 w-4 text-green-600" />
+          <Users className="h-4 w-4 text-blue-600" />
           Live media · {remotePeers.length + (self ? 1 : 0)} participant{remotePeers.length === 0 ? '' : 's'}
         </div>
         <div className="flex items-center gap-2 text-xs">
           {phase === 'connecting' && <span className="inline-flex items-center gap-1 text-amber-600"><Loader2 className="h-3.5 w-3.5 animate-spin" /> connecting…</span>}
-          {phase === 'joined' && <span className="inline-flex items-center gap-1 text-emerald-600">● connected</span>}
+          {phase === 'joined' && <span className="inline-flex items-center gap-1 text-blue-600">● connected</span>}
           {phase === 'error' && <span className="inline-flex items-center gap-1 text-rose-600"><AlertCircle className="h-3.5 w-3.5" /> {error}</span>}
         </div>
       </div>

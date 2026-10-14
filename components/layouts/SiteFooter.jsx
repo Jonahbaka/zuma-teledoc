@@ -2,126 +2,16 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronRight, Mail } from 'lucide-react';
+import { ArrowUpRight, Mail } from 'lucide-react';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
-import { MARKET_HOME_DATA } from '@/components/marketing/marketHomeData';
-
-const FOOTER_THEMES = {
-  US: {
-    border: 'via-cyan-500/50',
-    badgeBorder: 'border-cyan-500/20',
-  },
-  NG: {
-    border: 'via-emerald-500/50',
-    badgeBorder: 'border-emerald-500/20',
-  },
-};
-
-const FooterLink = ({ href, children }) => (
-  <Link href={href} className="text-sm text-slate-300/90 transition-colors duration-200 hover:text-white">
-    {children}
-  </Link>
-);
 
 export default function SiteFooter() {
-  const pathname = usePathname() || '/';
-  const marketKey = pathname.startsWith('/ng') ? 'NG' : 'US';
-  const footer = MARKET_HOME_DATA[marketKey].footer;
-  const theme = FOOTER_THEMES[marketKey];
-  const year = new Date().getFullYear();
-
-  return (
-    <footer className="relative overflow-hidden bg-slate-950 text-slate-200">
-      <div className={`h-px w-full bg-gradient-to-r from-transparent ${theme.border} to-transparent`} />
-      <div className="absolute inset-0 pointer-events-none opacity-[0.08]">
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage:
-              marketKey === 'US'
-                ? 'radial-gradient(circle at 2px 2px, rgba(34,211,238,0.35) 1px, transparent 0)'
-                : 'radial-gradient(circle at 2px 2px, rgba(16,185,129,0.35) 1px, transparent 0)',
-            backgroundSize: '44px 44px',
-          }}
-        />
-      </div>
-
-      <div className="relative mx-auto max-w-7xl px-6 pb-10 pt-16 lg:px-8">
-        <div className="mb-12 grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-12 lg:gap-10">
-          <div className="space-y-5 lg:col-span-4">
-            <Link href={footer.homeHref} className="flex items-center space-x-3 group">
-              <DoctaRxLogo className="h-9 w-auto" />
-            </Link>
-
-            <p className="max-w-sm text-sm leading-relaxed text-slate-400">{footer.description}</p>
-
-            <a href={`mailto:${footer.email}`} className="inline-flex items-center gap-2 text-sm text-slate-200 transition-colors hover:text-white">
-              <Mail className="h-4 w-4" />
-              {footer.email}
-            </a>
-
-            <div className="flex gap-3 overflow-x-auto pb-1 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible sm:pb-0">
-              {footer.badges.map((badge) => {
-                const Icon = badge.icon;
-                return (
-                  <div
-                    key={badge.label}
-                    className={`inline-flex items-center gap-2 rounded-full border bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-100 ${theme.badgeBorder}`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {badge.label}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="hidden lg:block lg:col-span-1" />
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:hidden">
-            {footer.columns.map((column) => (
-              <details key={column.title} className="group rounded-[1.25rem] border border-white/10 bg-white/[0.04] p-4">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-white">
-                  {column.title}
-                  <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-90" />
-                </summary>
-                <ul className="mt-4 space-y-3">
-                  {column.links.map((link) => (
-                    <li key={link.href}>
-                      <FooterLink href={link.href}>{link.label}</FooterLink>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            ))}
-          </div>
-
-          <div className="hidden grid-cols-2 gap-8 sm:grid-cols-4 lg:col-span-7 lg:grid">
-            {footer.columns.map((column) => (
-              <div key={column.title}>
-                <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-white">{column.title}</h3>
-                <ul className="space-y-3">
-                  {column.links.map((link) => (
-                    <li key={link.href}>
-                      <FooterLink href={link.href}>{link.label}</FooterLink>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-8 md:flex-row">
-          <p className="order-2 text-xs text-slate-400 md:order-1">
-            &copy; {year} {footer.copyright}. All rights reserved.
-          </p>
-
-          <p className="order-1 text-center text-xs text-slate-400 md:order-2 md:text-right">
-            Secure access across patient, provider, and pharmacy workflows.
-          </p>
-        </div>
-      </div>
-    </footer>
-  );
+  const nigeria=(usePathname()||'/').startsWith('/ng');
+  const patient=nigeria?'/ng/patient':'/patient', provider=nigeria?'/ng/provider':'/provider', pharmacy=nigeria?'/ng/pharmacy':'/pharmacy';
+  const columns=[
+    ['Your care',[['Find care',nigeria?'/ng/find-care':patient+'/appointments/book'],['Patient sign in',patient+'/login'],['Find pharmacies',nigeria?'/ng/pharmacies':'/pharmacies'],['Frequently asked questions','/faq']]],
+    ['Professionals',[['Provider sign in',provider+'/login'],['Join as a provider',provider+'/register'],['Pharmacy sign in',pharmacy+'/login'],['DoctaRx CareOps','/careops/login']]],
+    ['About DoctaRx',[['Contact us','/contact'],['Privacy policy','/privacy'],['Terms of use','/terms'],['Accessibility','/accessibility']]],
+  ];
+  return <footer className="bg-[#101d36] text-white"><div className="mx-auto max-w-[1440px] px-5 py-14 sm:px-8 lg:py-16"><div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]"><div><Link href={nigeria?'/ng':'/'} aria-label="DoctaRx home"><DoctaRxLogo glow={false} className="h-11 w-auto max-w-[190px]" /></Link><p className="mt-6 max-w-sm text-xl leading-8 text-white">Your care.<br />Connected.</p><p className="mt-4 max-w-sm leading-7 text-slate-300">Clear choices and connected care, from the first conversation to the next step.</p><a href="mailto:info@doctarx.com" className="mt-5 inline-flex min-h-12 items-center gap-3 font-medium text-white hover:text-blue-200"><Mail className="h-5 w-5" aria-hidden="true" />info@doctarx.com</a></div>{columns.map(([title,links])=><nav key={title} aria-label={title}><h2 className="text-lg font-semibold text-white">{title}</h2><ul className="mt-5 space-y-2">{links.map(([label,href])=><li key={href}><Link href={href} className="inline-flex min-h-12 items-center leading-7 text-slate-300 hover:text-white">{label}</Link></li>)}</ul></nav>)}</div><div className="mt-12 flex flex-wrap items-center justify-between gap-6 border-t border-white/20 pt-7"><p className="leading-7 text-slate-300">© {new Date().getFullYear()} DoctaRx. All rights reserved.</p><div className="flex flex-wrap gap-5"><Link href="/" className="inline-flex min-h-12 items-center gap-2 text-slate-300 hover:text-white" aria-current={!nigeria?'page':undefined}>United States<ArrowUpRight className="h-4 w-4" aria-hidden="true" /></Link><Link href="/ng" className="inline-flex min-h-12 items-center gap-2 text-slate-300 hover:text-white" aria-current={nigeria?'page':undefined}>Nigeria<ArrowUpRight className="h-4 w-4" aria-hidden="true" /></Link></div></div></div></footer>;
 }

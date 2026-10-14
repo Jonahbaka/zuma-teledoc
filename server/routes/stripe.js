@@ -11,6 +11,7 @@ const { validate } = require('../../lib/validation');
 const z = require('zod');
 const logger = require('../middleware/logger');
 const opsAlerts = require('../services/opsAlerts');
+function safeFailure(res, error, fallback) { return res.status(error.statusCode || 503).json({ success: false, code: error.code || 'STRIPE_UNAVAILABLE', error: error.statusCode ? error.message : fallback }); }
 
 // ============================================================================
 // PRICING ENDPOINTS (Public)
@@ -31,13 +32,13 @@ router.get('/pricing', (req, res) => {
         description: val.description,
         isFree: val.amount === 0
       })),
-      subscriptions: Object.entries(stripeService.PRICING.subscriptions).map(([key, val]) => ({
+      subscriptions: Object.entries(stripeService.PRICING.subscriptions).filter(([key]) => key !== 'test').map(([key, val]) => ({
         id: key,
         name: val.name,
         price: val.amount / 100,
         currency: val.currency,
         interval: val.interval,
-        features: val.features
+        features: []
       })),
       credentialing: Object.entries(stripeService.PRICING.providerCredentialing).map(([key, val]) => ({
         id: key,
@@ -72,6 +73,7 @@ router.post('/checkout/consultation', authenticate, async (req, res) => {
     const data = validate(consultationCheckoutSchema, req.body);
     
     // Check if payment is required
+    await stripeService.assertOwnConsultation(req.user.id, data.appointmentId);
     const requiresPayment = await stripeService.requiresPayment(req.user.id, data.consultationType);
     
     if (!requiresPayment) {
@@ -107,7 +109,7 @@ router.post('/checkout/consultation', authenticate, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Validation failed', errors: error.errors });
     }
     logger.error('Consultation checkout error', { error: error.message, userId: req.user.id });
-    res.status(500).json({ success: false, error: 'Failed to create checkout session' });
+    return safeFailure(res, error, 'Consultation checkout could not be created.');
   }
 });
 
@@ -122,7 +124,7 @@ const subscriptionCheckoutSchema = z.object({
 /**
  * Create checkout session for subscription
  */
-router.post('/checkout/subscription', authenticate, async (req, res) => {
+router.post('/checkout/subscription', authenticate, requireRole(['patient']), async (req, res) => {
   try {
     const data = validate(subscriptionCheckoutSchema, req.body);
     
@@ -140,7 +142,7 @@ router.post('/checkout/subscription', authenticate, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Validation failed', errors: error.errors });
     }
     logger.error('Subscription checkout error', { error: error.message, userId: req.user.id });
-    res.status(500).json({ success: false, error: 'Failed to create subscription checkout' });
+    return safeFailure(res, error, 'Membership checkout could not be created. No membership activation is confirmed.');
   }
 });
 
@@ -174,7 +176,7 @@ router.post('/billing-portal', authenticate, async (req, res) => {
     });
   } catch (error) {
     logger.error('Billing portal error', { error: error.message, userId: req.user.id });
-    res.status(500).json({ success: false, error: 'Failed to create billing portal session' });
+    return safeFailure(res, error, 'Stripe billing portal could not be opened.');
   }
 });
 
@@ -182,34 +184,11 @@ router.post('/billing-portal', authenticate, async (req, res) => {
  * Cancel subscription
  */
 router.post('/subscription/cancel', authenticate, async (req, res) => {
+  if (req.body.immediately !== undefined && typeof req.body.immediately !== 'boolean') return res.status(400).json({ success: false, error: 'immediately must be a boolean.' });
   try {
-    const { immediately } = req.body;
-    
-    // Get user's subscription
-    const db = require('../db');
-    const { rows } = await db.query(
-      `SELECT stripe_subscription_id FROM subscriptions 
-       WHERE user_id = $1 AND status = 'active'
-       ORDER BY created_at DESC LIMIT 1`,
-      [req.user.id]
-    );
-    
-    if (rows.length === 0 || !rows[0].stripe_subscription_id) {
-      return res.status(404).json({ success: false, error: 'No active subscription found' });
-    }
-    
-    await stripeService.cancelSubscription(rows[0].stripe_subscription_id, immediately === true);
-    
-    res.json({
-      success: true,
-      message: immediately 
-        ? 'Subscription cancelled immediately' 
-        : 'Subscription will be cancelled at end of billing period'
-    });
-  } catch (error) {
-    logger.error('Cancel subscription error', { error: error.message, userId: req.user.id });
-    res.status(500).json({ success: false, error: 'Failed to cancel subscription' });
-  }
+    const subscription = await stripeService.updateOwnSubscription(req.user.id, { immediately: req.body.immediately === true, cancelAtPeriodEnd: true });
+    return res.json({ success: true, subscription, message: req.body.immediately ? 'Stripe confirmed immediate cancellation.' : 'Stripe confirmed cancellation at period end.' });
+  } catch (error) { return safeFailure(res, error, 'Subscription cancellation could not be confirmed.'); }
 });
 
 // ============================================================================
@@ -241,7 +220,7 @@ router.post('/checkout/credentialing', authenticate, requireRole(['provider']), 
       return res.status(400).json({ success: false, error: 'Validation failed', errors: error.errors });
     }
     logger.error('Credentialing checkout error', { error: error.message, userId: req.user.id });
-    res.status(500).json({ success: false, error: 'Failed to create credentialing checkout' });
+    return safeFailure(res, error, 'Credentialing checkout is unavailable.');
   }
 });
 
@@ -274,7 +253,7 @@ router.post('/checkout/provider-subscription', authenticate, requireRole(['provi
       return res.status(400).json({ success: false, error: 'Validation failed', errors: error.errors });
     }
     logger.error('Provider subscription checkout error', { error: error.message, userId: req.user.id });
-    res.status(500).json({ success: false, error: 'Failed to create provider subscription checkout' });
+    return safeFailure(res, error, 'Provider subscription checkout is unavailable.');
   }
 });
 
@@ -282,73 +261,11 @@ router.post('/checkout/provider-subscription', authenticate, requireRole(['provi
 // TEST CHECKOUT ENDPOINTS ($1 test plans for development)
 // ============================================================================
 
-router.post('/test-checkout/patient', async (req, res) => {
-  try {
-    const stripe = stripeService.stripe;
-    const plan = stripeService.PRICING.subscriptions.test;
-    if (!plan) {
-      return res.status(500).json({ success: false, error: 'Test plan not configured' });
-    }
-
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      payment_method_types: ['card'],
-      line_items: [{
-        price_data: {
-          currency: plan.currency,
-          product_data: { name: plan.name, description: 'Patient test subscription — $1/month' },
-          unit_amount: plan.amount,
-          recurring: { interval: plan.interval }
-        },
-        quantity: 1
-      }],
-      metadata: { type: 'subscription', planKey: 'test', role: 'patient' },
-      success_url: `${appUrl}/test-payment?success=true&role=patient`,
-      cancel_url: `${appUrl}/test-payment?cancelled=true`
-    });
-
-    res.json({ success: true, url: session.url, sessionId: session.id });
-  } catch (error) {
-    logger.error('Test patient checkout error', { error: error.message });
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-router.post('/test-checkout/provider', async (req, res) => {
-  try {
-    const stripe = stripeService.stripe;
-    const plan = stripeService.PRICING.providerSubscription.test;
-    if (!plan) {
-      return res.status(500).json({ success: false, error: 'Provider test plan not configured' });
-    }
-
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      payment_method_types: ['card'],
-      line_items: [{
-        price_data: {
-          currency: plan.currency,
-          product_data: { name: plan.name, description: 'Provider test subscription — $1/month' },
-          unit_amount: plan.amount,
-          recurring: { interval: plan.interval }
-        },
-        quantity: 1
-      }],
-      metadata: { type: 'provider_subscription', planKey: 'test', role: 'provider' },
-      success_url: `${appUrl}/test-payment?success=true&role=provider`,
-      cancel_url: `${appUrl}/test-payment?cancelled=true`
-    });
-
-    res.json({ success: true, url: session.url, sessionId: session.id });
-  } catch (error) {
-    logger.error('Test provider checkout error', { error: error.message });
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+// Test accounts use the normal authenticated hosted checkout with a test key.
+// Public test routes must never create collectible sessions or entitlement.
+for (const role of ['patient', 'provider']) router.post('/test-checkout/' + role, authenticate, (_req, res) => res.status(503).json({
+  success: false, code: 'PUBLIC_TEST_CHECKOUT_DISABLED', error: 'Use an authorized test account and the configured authenticated checkout. No payment was collected.'
+}));
 
 // ============================================================================
 // WEBHOOK ENDPOINT
@@ -397,7 +314,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
     } catch (alertErr) {
       logger.error('Failed to send webhook failure alert', { error: alertErr.message });
     }
-    res.status(400).json({ error: `Webhook Error: ${error.message}` });
+    res.status(error.type === 'StripeSignatureVerificationError' ? 400 : error.statusCode >= 500 || !error.statusCode ? 503 : 400).json({ error: 'Stripe event could not be verified or recorded. Retry or contact billing support.' });
   }
 });
 

@@ -58,7 +58,7 @@ export default function AdminProfilePage() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -66,16 +66,16 @@ export default function AdminProfilePage() {
   return (
     <div className="space-y-6">
       <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-purple-700">US Admin Profile</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">US Admin Profile</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Admin profile</h1>
       </section>
 
-      {message ? <div className="rounded-2xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800">{message}</div> : null}
+      {message ? <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{message}</div> : null}
 
       <Card className="border-border/70">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <User className="h-5 w-5 text-purple-600" />
+            <User className="h-5 w-5 text-blue-600" />
             Account details
           </CardTitle>
         </CardHeader>
@@ -97,7 +97,7 @@ export default function AdminProfilePage() {
             <Input id="phone" value={formData.phone} onChange={(event) => setFormData((current) => ({ ...current, phone: event.target.value }))} />
           </div>
           <div className="md:col-span-2 flex justify-end">
-            <Button onClick={handleSave} disabled={saving} className="bg-purple-600 text-white hover:bg-purple-500">
+            <Button onClick={handleSave} disabled={saving} className="bg-blue-600 text-white hover:bg-blue-500">
               <Save className="mr-2 h-4 w-4" />
               {saving ? 'Saving...' : 'Save Profile'}
             </Button>

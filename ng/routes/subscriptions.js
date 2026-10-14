@@ -7,7 +7,10 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../../server/db');
 const { authenticate, requireRole } = require('../../server/middleware/auth');
-const { v4: uuidv4 } = require('uuid');
+const manualActivation = require('../services/manualSubscriptionActivationService');
+const adminDecisions = require('../services/adminVerificationService');
+const { cancelSubscription } = require('../services/subscriptionCancellationService');
+const subscriptionCheckout = require('../services/subscriptionCheckoutGateService');
 
 // --- PLANS ---
 
@@ -48,89 +51,30 @@ router.get('/me', authenticate, async (req, res) => {
 });
 
 router.post('/subscribe', authenticate, async (req, res) => {
-  const pool = getPool();
-  const client = await pool.connect();
   try {
-    const { plan_key, billing_cycle = 'monthly', org_id } = req.body;
-    if (!plan_key) return res.status(400).json({ error: 'plan_key required' });
+    await subscriptionCheckout.assertCheckoutUnavailable(getPool(), { actorId: req.user.id });
+  } catch (error) { subscriptionCheckout.sendCheckoutError(res, error); }
+});
 
-    const planResult = await client.query(
-      'SELECT * FROM ng_subscription_plans WHERE plan_key = $1 AND is_active = true',
-      [plan_key]
-    );
-    if (!planResult.rows.length) return res.status(404).json({ error: 'Plan not found' });
-    const plan = planResult.rows[0];
-
-    const price = billing_cycle === 'annual' && plan.price_annual
-      ? plan.price_annual / 12
-      : plan.price_monthly;
-
-    await client.query('BEGIN');
-
-    // Cancel any existing active subscription
-    await client.query(`
-      UPDATE ng_subscriptions SET status = 'canceled', canceled_at = NOW()
-      WHERE subscriber_user_id = $1 AND status IN ('trial','active','past_due')
-    `, [req.user.id]);
-
-    const periodEnd = new Date();
-    periodEnd.setMonth(periodEnd.getMonth() + (billing_cycle === 'annual' ? 12 : 1));
-
-    const result = await client.query(`
-      INSERT INTO ng_subscriptions (
-        subscriber_user_id, subscriber_org_id, plan_id, plan_key,
-        status, billing_cycle, amount_per_period, max_members,
-        current_period_start, current_period_end,
-        trial_ends_at
-      ) VALUES ($1,$2,$3,$4,'trial',$5,$6,$7,NOW(),$8,
-        NOW() + INTERVAL '7 days'
-      )
-      RETURNING id, status, trial_ends_at, current_period_end
-    `, [
-      req.user.id, org_id || null, plan.id, plan_key,
-      billing_cycle, price || 0, plan.max_members || null,
-      periodEnd,
-    ]);
-
-    // Create billing record
-    if (price) {
-      const invoiceNum = 'NG-INV-' + Date.now();
-      await client.query(`
-        INSERT INTO ng_billing_records
-          (subscription_id, subscriber_user_id, subscriber_org_id, billing_type,
-           description, amount, status, invoice_number, due_at, period_start, period_end)
-        VALUES ($1,$2,$3,'subscription',$4,$5,'pending',$6, NOW() + INTERVAL '7 days', NOW(),$7)
-      `, [
-        result.rows[0].id, req.user.id, org_id || null,
-        `${plan.name} — ${billing_cycle} subscription`,
-        price, invoiceNum, periodEnd,
-      ]);
-    }
-
-    await client.query('COMMIT');
-    res.status(201).json({
-      subscription: result.rows[0],
-      message: 'Subscription started. Payment required to activate.',
+router.post('/admin/:subscriptionId/cancel', authenticate, requireRole(['admin']), async (req, res) => {
+  try {
+    const subscription = await cancelSubscription(getPool(), {
+      actorId: req.user.id, subscriptionId: req.params.subscriptionId, admin: true, reason: req.body?.reason,
     });
+    res.json({ success: true, subscription, message: 'DoctaRx subscription access canceled. This records the local access decision; it does not confirm a refund or stop an external recurring payment.' });
   } catch (err) {
-    await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
+    adminDecisions.sendActionError(res, err);
   }
 });
 
 router.post('/:subscriptionId/cancel', authenticate, async (req, res) => {
-  const pool = getPool();
   try {
-    await pool.query(`
-      UPDATE ng_subscriptions SET
-        status = 'canceled', canceled_at = NOW(), updated_at = NOW()
-      WHERE id = $1 AND subscriber_user_id = $2
-    `, [req.params.subscriptionId, req.user.id]);
-    res.json({ success: true, message: 'Subscription canceled. Access continues until period end.' });
+    const subscription = await cancelSubscription(getPool(), {
+      actorId: req.user.id, subscriptionId: req.params.subscriptionId, reason: req.body?.reason,
+    });
+    res.json({ success: true, subscription, message: 'DoctaRx subscription access canceled. This records the local access decision; it does not confirm a refund or stop an external recurring payment.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    adminDecisions.sendActionError(res, err);
   }
 });
 
@@ -153,187 +97,28 @@ router.get('/billing-history', authenticate, async (req, res) => {
 // --- PAYSTACK PAYMENT INITIATION ---
 
 router.post('/:subscriptionId/initiate-payment', authenticate, async (req, res) => {
-  const pool = getPool();
   try {
-    const sub = await pool.query(
-      'SELECT * FROM ng_subscriptions WHERE id = $1 AND subscriber_user_id = $2',
-      [req.params.subscriptionId, req.user.id]
-    );
-    if (!sub.rows.length) return res.status(404).json({ error: 'Subscription not found' });
-
-    const subscription = sub.rows[0];
-    const reference = 'NG-SUB-' + uuidv4().replace(/-/g, '').slice(0, 20).toUpperCase();
-
-    // Store reference for webhook verification
-    await pool.query(
-      'UPDATE ng_subscriptions SET last_payment_reference = $1 WHERE id = $2',
-      [reference, req.params.subscriptionId]
-    );
-
-    res.json({
-      reference,
-      amount_kobo: Math.round(subscription.amount_per_period * 100),
-      currency: 'NGN',
-      email: req.user.email,
-      metadata: {
-        subscription_id: subscription.id,
-        plan_key: subscription.plan_key,
-        user_id: req.user.id,
-      },
-      callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/ng/patient/subscription?payment=complete`,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    await subscriptionCheckout.assertCheckoutUnavailable(getPool(), { actorId: req.user.id, subscriptionId: req.params.subscriptionId });
+  } catch (error) { subscriptionCheckout.sendCheckoutError(res, error); }
 });
 
-// --- WEBHOOK: activate after payment ---
-
+// Customer activation stays closed until independent subscription receipts exist.
 router.post('/activate', authenticate, async (req, res) => {
-  const pool = getPool();
   try {
-    const { subscription_id, payment_reference, payment_provider } = req.body;
-    if (!subscription_id || !payment_reference) {
-      return res.status(400).json({ error: 'subscription_id and payment_reference required' });
-    }
-
-    await pool.query(`
-      UPDATE ng_subscriptions SET
-        status = 'active',
-        last_payment_reference = $1,
-        payment_provider = $2,
-        last_payment_at = NOW(),
-        failed_payment_attempts = 0,
-        updated_at = NOW()
-      WHERE id = $3
-    `, [payment_reference, payment_provider || 'paystack', subscription_id]);
-
-    await pool.query(`
-      UPDATE ng_billing_records SET
-        status = 'paid', payment_reference = $1, paid_at = NOW()
-      WHERE subscription_id = $2 AND status = 'pending'
-    `, [payment_reference, subscription_id]);
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    if (!req.body?.subscription_id) throw adminDecisions.actionError(400, 'A valid subscription ID is required.');
+    await subscriptionCheckout.assertCheckoutUnavailable(getPool(), {
+      actorId: req.user.id, subscriptionId: req.body.subscription_id, activation: req.body,
+    });
+  } catch (error) { subscriptionCheckout.sendCheckoutError(res, error); }
 });
 
 // --- ADMIN: manual payment/subscription activation ---
 
 router.post('/admin/manual-activation', authenticate, requireRole(['admin']), async (req, res) => {
-  const pool = getPool();
-  const client = await pool.connect();
   try {
-    const {
-      subjectType,
-      userId,
-      organizationId,
-      planKey,
-      amountNgn,
-      paymentMethod = 'bank_transfer',
-      paymentReference,
-      periodStart,
-      periodEnd,
-      notes,
-    } = req.body;
-
-    if (!subjectType || !planKey || (!userId && !organizationId)) {
-      return res.status(400).json({ error: 'subjectType, planKey, and user or organization are required.' });
-    }
-
-    await client.query('BEGIN');
-
-    const planResult = await client.query(
-      'SELECT * FROM ng_subscription_plans WHERE plan_key = $1 LIMIT 1',
-      [planKey]
-    );
-    if (!planResult.rows.length) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Plan not found.' });
-    }
-
-    const plan = planResult.rows[0];
-    const start = periodStart ? new Date(periodStart) : new Date();
-    const end = periodEnd ? new Date(periodEnd) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-    const subscription = await client.query(
-      `INSERT INTO ng_subscriptions (
-         subscriber_user_id, subscriber_org_id, plan_id, plan_key,
-         status, billing_cycle, amount_per_period,
-         current_period_start, current_period_end,
-         payment_provider, last_payment_reference, last_payment_at,
-         admin_notes, admin_overridden_by, created_at, updated_at
-       ) VALUES ($1,$2,$3,$4,'active','monthly',$5,$6,$7,'manual_admin',$8,NOW(),$9,$10,NOW(),NOW())
-       RETURNING *`,
-      [
-        userId || null,
-        organizationId || null,
-        plan.id,
-        planKey,
-        amountNgn ?? plan.price_monthly ?? 0,
-        start,
-        end,
-        paymentReference || `MANUAL-${Date.now()}`,
-        notes || null,
-        req.user.id,
-      ]
-    );
-
-    await client.query(
-      `INSERT INTO ng_manual_payment_confirmations (
-         subject_type, subject_user_id, organization_id, plan_key, amount_ngn,
-         payment_method, payment_reference, status, period_start, period_end,
-         notes, confirmed_by, confirmed_at, created_at, updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,'confirmed',$8,$9,$10,$11,NOW(),NOW(),NOW())`,
-      [
-        subjectType,
-        userId || null,
-        organizationId || null,
-        planKey,
-        amountNgn ?? plan.price_monthly ?? 0,
-        paymentMethod,
-        paymentReference || subscription.rows[0].last_payment_reference,
-        start,
-        end,
-        notes || null,
-        req.user.id,
-      ]
-    );
-
-    if (subjectType === 'provider' && userId) {
-      await client.query(
-        `UPDATE ng_providers
-            SET subscription_status = 'active',
-                subscription_start_at = $2,
-                subscription_end_at = $3,
-                access_status = 'subscribed',
-                updated_at = NOW()
-          WHERE user_id = $1`,
-        [userId, start, end]
-      );
-    }
-
-    if (subjectType === 'organization' && organizationId) {
-      await client.query(
-        `UPDATE ng_organizations
-            SET subscription_id = $1,
-                status = CASE WHEN status = 'pending_review' THEN 'active' ELSE status END,
-                updated_at = NOW()
-          WHERE id = $2`,
-        [subscription.rows[0].id, organizationId]
-      );
-    }
-
-    await client.query('COMMIT');
-    res.status(201).json({ subscription: subscription.rows[0] });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
-  }
+    const subscription = await manualActivation.activateManualSubscription(getPool(), req.user.id, req.body);
+    res.status(201).json({ success: true, subscription, paymentEvidence: 'manual_admin_confirmation' });
+  } catch (error) { adminDecisions.sendActionError(res, error); }
 });
 
 // --- ADMIN: all subscriptions ---

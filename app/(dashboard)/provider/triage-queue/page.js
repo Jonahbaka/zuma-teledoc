@@ -22,7 +22,7 @@ const TRIAGE_LEVELS = {
   EMERGENT: { color: 'bg-red-500', bgColor: 'bg-red-50 border-red-200', textColor: 'text-red-800', icon: AlertTriangle },
   URGENT: { color: 'bg-orange-500', bgColor: 'bg-orange-50 border-orange-200', textColor: 'text-orange-800', icon: AlertCircle },
   SEMI_URGENT: { color: 'bg-yellow-500', bgColor: 'bg-yellow-50 border-yellow-200', textColor: 'text-yellow-800', icon: Clock },
-  ROUTINE: { color: 'bg-green-500', bgColor: 'bg-green-50 border-green-200', textColor: 'text-green-800', icon: CheckCircle },
+  ROUTINE: { color: 'bg-blue-500', bgColor: 'bg-blue-50 border-blue-200', textColor: 'text-blue-800', icon: CheckCircle },
   NON_URGENT: { color: 'bg-blue-500', bgColor: 'bg-blue-50 border-blue-200', textColor: 'text-blue-800', icon: Activity }
 };
 
@@ -181,7 +181,7 @@ export default function TriageQueuePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -192,7 +192,7 @@ export default function TriageQueuePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
               <BrainCircuit className="w-6 h-6 text-white" />
             </div>
             Triage Queue
@@ -205,7 +205,7 @@ export default function TriageQueuePage() {
             variant={autoRefresh ? 'default' : 'outline'}
             size="sm"
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={autoRefresh ? 'bg-green-600 hover:bg-green-700' : ''}
+            className={autoRefresh ? 'bg-blue-600 hover:bg-blue-700' : ''}
           >
             {autoRefresh ? <Play className="w-4 h-4 mr-1" /> : <Pause className="w-4 h-4 mr-1" />}
             Auto-refresh
@@ -279,9 +279,9 @@ export default function TriageQueuePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-muted-foreground font-medium uppercase">In Progress</p>
-                <p className="text-2xl font-bold text-purple-600">{stats.inProgress}</p>
+                <p className="text-2xl font-bold text-blue-600">{stats.inProgress}</p>
               </div>
-              <Activity className="w-8 h-8 text-purple-500 opacity-50" />
+              <Activity className="w-8 h-8 text-blue-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -291,9 +291,9 @@ export default function TriageQueuePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-muted-foreground font-medium uppercase">Completed</p>
-                <p className="text-2xl font-bold text-green-600">{stats.completedToday}</p>
+                <p className="text-2xl font-bold text-blue-600">{stats.completedToday}</p>
               </div>
-              <CheckCircle className="w-8 h-8 text-green-500 opacity-50" />
+              <CheckCircle className="w-8 h-8 text-blue-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -366,7 +366,7 @@ export default function TriageQueuePage() {
                   key={item.id}
                   className={`cursor-pointer transition-all hover:shadow-lg border-l-4 ${
                     selectedCase?.id === item.id
-                      ? 'ring-2 ring-purple-500 border-l-purple-600'
+                      ? 'ring-2 ring-blue-500 border-l-purple-600'
                       : item.isEmergency
                       ? 'border-l-red-500'
                       : `border-l-${levelInfo.color.replace('bg-', '')}`
@@ -440,7 +440,7 @@ export default function TriageQueuePage() {
                           <Button
                             size="sm"
                             onClick={(e) => { e.stopPropagation(); handleClaimCase(item.id); }}
-                            className="bg-purple-600 hover:bg-purple-700"
+                            className="bg-blue-600 hover:bg-blue-700"
                           >
                             Claim
                           </Button>
@@ -450,7 +450,7 @@ export default function TriageQueuePage() {
                           <Button
                             size="sm"
                             onClick={(e) => { e.stopPropagation(); handleStartConsultation(item.id); }}
-                            className="bg-green-600 hover:bg-green-700"
+                            className="bg-blue-600 hover:bg-blue-700"
                           >
                             <Play className="w-3 h-3 mr-1" />
                             Start
@@ -458,7 +458,7 @@ export default function TriageQueuePage() {
                         )}
                         
                         {item.status === 'in_progress' && (
-                          <Badge className="bg-purple-100 text-purple-800">
+                          <Badge className="bg-blue-100 text-blue-800">
                             In Progress
                           </Badge>
                         )}
@@ -477,7 +477,7 @@ export default function TriageQueuePage() {
             <Card className="sticky top-20">
               <CardHeader className="border-b">
                 <CardTitle className="flex items-center gap-2">
-                  <Stethoscope className="w-5 h-5 text-purple-500" />
+                  <Stethoscope className="w-5 h-5 text-blue-500" />
                   Case Details
                 </CardTitle>
                 <CardDescription>
@@ -586,7 +586,7 @@ export default function TriageQueuePage() {
                   {selectedCase.status === 'waiting' && !selectedCase.assignedProviderId && (
                     <Button
                       onClick={() => handleClaimCase(selectedCase.id)}
-                      className="w-full bg-purple-600 hover:bg-purple-700"
+                      className="w-full bg-blue-600 hover:bg-blue-700"
                     >
                       Claim This Case
                     </Button>
@@ -595,7 +595,7 @@ export default function TriageQueuePage() {
                   {selectedCase.status === 'called' && (
                     <Button
                       onClick={() => handleStartConsultation(selectedCase.id)}
-                      className="w-full bg-green-600 hover:bg-green-700"
+                      className="w-full bg-blue-600 hover:bg-blue-700"
                     >
                       <Play className="w-4 h-4 mr-2" />
                       Start Consultation
@@ -606,7 +606,7 @@ export default function TriageQueuePage() {
                     <>
                       <Button
                         onClick={() => handleCompleteConsultation(selectedCase.id, 'completed')}
-                        className="w-full bg-green-600 hover:bg-green-700"
+                        className="w-full bg-blue-600 hover:bg-blue-700"
                       >
                         <CheckCircle className="w-4 h-4 mr-2" />
                         Complete

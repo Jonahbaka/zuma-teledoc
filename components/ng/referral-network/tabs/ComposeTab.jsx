@@ -121,7 +121,7 @@ export default function ComposeTab() {
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900">AI specialist matching</h3>
           <button onClick={runMatch} disabled={busy}
-            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
             <Sparkles className="h-4 w-4" />
             {busy ? 'Matching…' : 'Find matches'}
           </button>
@@ -136,14 +136,14 @@ export default function ComposeTab() {
           <ul className="mt-4 space-y-2">
             {matches.slice(0, 8).map(m => (
               <li key={m.id} onClick={() => setChosen(m)}
-                className={`cursor-pointer rounded-xl border p-3 transition ${chosen?.id === m.id ? 'border-green-500 bg-green-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                className={`cursor-pointer rounded-xl border p-3 transition ${chosen?.id === m.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}>
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-bold text-slate-900">{m.title} <span className="text-xs font-normal text-slate-500">· {m.org_name}</span></p>
                     <p className="mt-1 text-xs text-slate-600">{m.reasons.join(' · ')}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xl font-black text-green-700">{m.score}</p>
+                    <p className="text-xl font-black text-blue-700">{m.score}</p>
                     <p className="text-[10px] text-slate-400">match</p>
                   </div>
                 </div>
@@ -163,7 +163,7 @@ export default function ComposeTab() {
       {!created && (
         <div className="flex items-center justify-end">
           <button onClick={submit} disabled={busy || !form.reason || !form.specialty}
-            className="flex items-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-green-700 disabled:opacity-50">
+            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
             <Send className="h-4 w-4" />
             {busy ? 'Sending…' : 'Send referral'}
           </button>
@@ -171,17 +171,17 @@ export default function ComposeTab() {
       )}
 
       {created && (
-        <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-5">
-          <div className="flex items-center gap-2 text-emerald-800">
+        <section className="rounded-2xl border border-blue-300 bg-blue-50 p-5">
+          <div className="flex items-center gap-2 text-blue-800">
             <CheckCircle2 className="h-5 w-5" />
             <h3 className="text-sm font-bold">Referral sent — {created.ref_code}</h3>
           </div>
-          <p className="mt-1 text-xs text-emerald-700">
+          <p className="mt-1 text-xs text-blue-700">
             The receiving facility has been notified. You can mint a QR slip for the patient to present on arrival.
           </p>
           {!qr ? (
             <button onClick={mintQr} disabled={busy}
-              className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50">
+              className="mt-3 flex items-center gap-2 rounded-lg bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
               <QrCode className="h-4 w-4" />Mint patient QR slip
             </button>
           ) : (

@@ -14,21 +14,21 @@ export default function ProviderMarketWorkspaceNotice({
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-medium text-emerald-600">{eyebrow}</p>
+        <p className="text-sm font-medium text-blue-600">{eyebrow}</p>
         <h1 className="mt-2 text-3xl font-bold text-foreground">{title}</h1>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">{description}</p>
       </div>
 
-      <Card className="border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/20">
+      <Card className="border-blue-200 bg-blue-50/70 dark:border-blue-900 dark:bg-blue-950/20">
         <CardContent className="flex items-start gap-4 p-5">
-          <div className="rounded-2xl bg-emerald-600 p-3 text-white">
+          <div className="rounded-2xl bg-blue-600 p-3 text-white">
             <Icon className="h-5 w-5" />
           </div>
           <div className="space-y-2">
-            <p className="font-medium text-emerald-950 dark:text-emerald-100">
+            <p className="font-medium text-blue-950 dark:text-blue-100">
               Nigeria providers see only market-ready workflows.
             </p>
-            <p className="text-sm text-emerald-900/80 dark:text-emerald-100/80">
+            <p className="text-sm text-blue-900/80 dark:text-blue-100/80">
               US-specific operational modules stay hidden here so clinicians, hospital teams, and pharmacies only work with the live Nigeria care flow.
             </p>
           </div>
@@ -44,7 +44,7 @@ export default function ProviderMarketWorkspaceNotice({
             </CardHeader>
             <CardContent>
               <Link href={primaryAction.href}>
-                <Button className="w-full bg-emerald-600 hover:bg-emerald-700">
+                <Button className="w-full bg-blue-600 hover:bg-blue-700">
                   {primaryAction.label}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>

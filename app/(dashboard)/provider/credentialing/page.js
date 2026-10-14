@@ -327,13 +327,13 @@ function CredentialingContent() {
     const StepIcon = STEPS.find(s => s.number === stepNumber)?.icon || Circle;
     
     if (status === 'approved') {
-      return <CheckCircle2 className="w-5 h-5 text-green-500" />;
+      return <CheckCircle2 className="w-5 h-5 text-blue-500" />;
     } else if (status === 'pending_review') {
       return <Clock className="w-5 h-5 text-amber-500" />;
     } else if (status === 'rejected' || status === 'requires_resubmission') {
       return <AlertCircle className="w-5 h-5 text-red-500" />;
     } else if (stepNumber === currentStep) {
-      return <StepIcon className="w-5 h-5 text-purple-600" />;
+      return <StepIcon className="w-5 h-5 text-blue-600" />;
     }
     return <Circle className="w-5 h-5 text-muted-foreground" />;
   };
@@ -341,7 +341,7 @@ function CredentialingContent() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -358,7 +358,7 @@ function CredentialingContent() {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Progress:</span>
-          <span className="text-2xl font-bold text-purple-600">
+          <span className="text-2xl font-bold text-blue-600">
             {credentialing?.progressPercentage || 0}%
           </span>
         </div>
@@ -378,12 +378,12 @@ function CredentialingContent() {
 
       {/* Status Banner */}
       {credentialing?.status === 'approved' && (
-        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
           <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-6 h-6 text-green-500" />
+            <CheckCircle2 className="w-6 h-6 text-blue-500" />
             <div>
-              <p className="font-medium text-green-700 dark:text-green-400">Credentialing Approved!</p>
-              <p className="text-sm text-green-600 dark:text-green-300">
+              <p className="font-medium text-blue-700 dark:text-blue-400">Credentialing Approved!</p>
+              <p className="text-sm text-blue-600 dark:text-blue-300">
                 Your credentials have been verified. You can now see patients.
               </p>
             </div>
@@ -419,7 +419,7 @@ function CredentialingContent() {
                 disabled={!credentialing?.paymentCompleted && step.number !== 1}
                 className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors text-left ${
                   currentStep === step.number
-                    ? 'bg-purple-100 dark:bg-purple-900/30'
+                    ? 'bg-blue-100 dark:bg-blue-900/30'
                     : 'hover:bg-muted'
                 } ${!credentialing?.paymentCompleted && step.number !== 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
@@ -444,37 +444,37 @@ function CredentialingContent() {
             {/* Step 1: Payment */}
             {currentStep === 1 && (
               <div className="space-y-6">
-                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-6">
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6">
                   <h3 className="text-lg font-medium text-foreground mb-2">
                     Credentialing Application Fee
                   </h3>
                   <p className="text-muted-foreground mb-4">
-                    A one-time fee of <span className="font-bold text-2xl text-purple-600">$199</span> is required to process your credentialing application.
+                    A one-time fee of <span className="font-bold text-2xl text-blue-600">$199</span> is required to process your credentialing application.
                   </p>
                   <ul className="space-y-2 text-sm text-muted-foreground">
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      <CheckCircle2 className="w-4 h-4 text-blue-500" />
                       Complete background verification
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      <CheckCircle2 className="w-4 h-4 text-blue-500" />
                       License verification with state boards
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      <CheckCircle2 className="w-4 h-4 text-blue-500" />
                       DEA & NPI verification
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      <CheckCircle2 className="w-4 h-4 text-blue-500" />
                       Priority processing (5-7 business days)
                     </li>
                   </ul>
                 </div>
 
                 {credentialing?.paymentCompleted ? (
-                  <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 flex items-center gap-3">
-                    <CheckCircle2 className="w-6 h-6 text-green-500" />
-                    <span className="text-green-700 dark:text-green-400 font-medium">
+                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 flex items-center gap-3">
+                    <CheckCircle2 className="w-6 h-6 text-blue-500" />
+                    <span className="text-blue-700 dark:text-blue-400 font-medium">
                       Payment completed on {new Date(credentialing.paymentDate).toLocaleDateString()}
                     </span>
                   </div>
@@ -482,7 +482,7 @@ function CredentialingContent() {
                   <Button
                     onClick={handlePayment}
                     disabled={saving}
-                    className="bg-purple-600 hover:bg-purple-700"
+                    className="bg-blue-600 hover:bg-blue-700"
                   >
                     {saving ? (
                       <>
@@ -960,7 +960,7 @@ function CredentialingContent() {
                 </div>
 
                 {credentialing?.backgroundCheckConsent ? (
-                  <div className="flex items-center gap-3 text-green-600">
+                  <div className="flex items-center gap-3 text-blue-600">
                     <CheckCircle2 className="w-5 h-5" />
                     <span>Background check consent provided on {new Date(credentialing.backgroundCheckSubmittedAt).toLocaleDateString()}</span>
                   </div>
@@ -992,11 +992,11 @@ function CredentialingContent() {
                   ].map(docType => {
                     const uploaded = credentialing?.documents?.find(d => d.documentType === docType.type);
                     return (
-                      <div key={docType.type} className={`p-4 border rounded-lg ${uploaded ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : ''}`}>
+                      <div key={docType.type} className={`p-4 border rounded-lg ${uploaded ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''}`}>
                         <div className="flex items-center justify-between">
                           <span className="font-medium">{docType.label}</span>
                           {uploaded ? (
-                            <CheckCircle2 className="w-5 h-5 text-green-500" />
+                            <CheckCircle2 className="w-5 h-5 text-blue-500" />
                           ) : (
                             <Upload className="w-5 h-5 text-muted-foreground" />
                           )}
@@ -1035,8 +1035,8 @@ function CredentialingContent() {
               <div className="space-y-4">
                 {credentialing?.status === 'approved' ? (
                   <div className="text-center py-8">
-                    <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                    <h3 className="text-2xl font-bold text-green-600">Congratulations!</h3>
+                    <CheckCircle2 className="w-16 h-16 text-blue-500 mx-auto mb-4" />
+                    <h3 className="text-2xl font-bold text-blue-600">Congratulations!</h3>
                     <p className="text-muted-foreground mt-2">
                       Your credentialing has been approved. You can now start seeing patients.
                     </p>
@@ -1099,7 +1099,7 @@ function CredentialingFallback() {
   return (
     <div className="flex items-center justify-center min-h-[400px]">
       <div className="flex items-center gap-2">
-        <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
+        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
         <span className="text-muted-foreground">Loading...</span>
       </div>
     </div>

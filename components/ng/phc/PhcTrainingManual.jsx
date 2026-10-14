@@ -60,19 +60,19 @@ const CHECKS = [
 function RolePath({ role }) {
   const copy = ROLE_COPY[role] || ROLE_COPY.remote_clinician;
   return (
-    <Card className="border-emerald-200 bg-emerald-50/70">
+    <Card className="border-blue-200 bg-blue-50/70">
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Stethoscope className="h-5 w-5 text-emerald-700" aria-hidden="true" />
+          <Stethoscope className="h-5 w-5 text-blue-700" aria-hidden="true" />
           <CardTitle className="text-lg">Your supervised pathway: {copy.label}</CardTitle>
         </div>
-        <CardDescription className="text-emerald-950/80">{copy.summary}</CardDescription>
+        <CardDescription className="text-blue-950/80">{copy.summary}</CardDescription>
       </CardHeader>
       <CardContent>
         <ol className="grid gap-3 md:grid-cols-3">
           {copy.steps.map((step, index) => (
-            <li key={step} className="flex gap-3 rounded-xl border border-emerald-200 bg-white p-3 text-sm text-slate-800">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-sm font-bold text-white">{index + 1}</span>
+            <li key={step} className="flex gap-3 rounded-xl border border-blue-200 bg-white p-3 text-sm text-slate-800">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-700 text-sm font-bold text-white">{index + 1}</span>
               <span>{step}</span>
             </li>
           ))}
@@ -100,15 +100,15 @@ export default function PhcTrainingManual({ programmeRole, standalone = false })
   return (
     <main className={standalone ? 'min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:px-6 lg:px-8' : ''}>
       <div className="mx-auto max-w-[1480px] space-y-6">
-        <section className="overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-950 via-teal-900 to-slate-900 p-6 text-white shadow-lg sm:p-8">
+        <section className="overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-950 via-blue-900 to-slate-900 p-6 text-white shadow-lg sm:p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
-              <Badge className="border-emerald-300/30 bg-emerald-400/15 text-emerald-100">Training & assessment</Badge>
+              <Badge className="border-blue-300/30 bg-blue-400/15 text-blue-100">Training & assessment</Badge>
               <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">PHC field guide for nurses and doctors</h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-emerald-50/85 sm:text-base">
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-blue-50/85 sm:text-base">
                 A practical, teach-back friendly guide for the DoctaRx Nigeria PHC workspace. Use it during orientation, supervised practice, and refresher training. It supports local clinical SOPs; it never replaces them.
               </p>
-              <div className="mt-5 flex flex-wrap gap-2 text-xs text-emerald-100/90">
+              <div className="mt-5 flex flex-wrap gap-2 text-xs text-blue-100/90">
                 <span className="rounded-full border border-white/15 px-3 py-1">Current role: {roleCopy.label}</span>
                 <span className="rounded-full border border-white/15 px-3 py-1">No real patient data in training</span>
               </div>
@@ -165,7 +165,7 @@ export default function PhcTrainingManual({ programmeRole, standalone = false })
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><UserRound className="h-5 w-5 text-emerald-700" aria-hidden="true" /> The five-minute safe start</CardTitle>
+                <CardTitle className="flex items-center gap-2"><UserRound className="h-5 w-5 text-blue-700" aria-hidden="true" /> The five-minute safe start</CardTitle>
                 <CardDescription>Use this sequence at the beginning of every supervised practice case.</CardDescription>
               </CardHeader>
               <CardContent>
@@ -192,7 +192,7 @@ export default function PhcTrainingManual({ programmeRole, standalone = false })
             <CardHeader>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <CardTitle className="flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-emerald-700" aria-hidden="true" /> Teach-back checklist</CardTitle>
+                  <CardTitle className="flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-blue-700" aria-hidden="true" /> Teach-back checklist</CardTitle>
                   <CardDescription>Complete with a qualified assessor. This checklist is local to this browser and contains no PHI.</CardDescription>
                 </div>
                 <Badge variant={progress === 100 ? 'success' : 'secondary'}>{progress}%</Badge>
@@ -205,7 +205,7 @@ export default function PhcTrainingManual({ programmeRole, standalone = false })
                   <span className={checked.has(index) ? 'text-slate-500 line-through' : 'text-slate-800'}>{label}</span>
                 </label>
               ))}
-              <div className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-950">
+              <div className="rounded-xl bg-blue-50 p-4 text-sm text-blue-950">
                 <p className="font-semibold">Assessor handoff</p>
                 <p className="mt-1 leading-5">When the learner can explain each item, the supervisor or facility training lead records the outcome in the approved local training register. Never type a patient name or identifier into this checklist.</p>
               </div>
@@ -214,7 +214,7 @@ export default function PhcTrainingManual({ programmeRole, standalone = false })
         </section>
 
         <section className="grid gap-4 md:grid-cols-3">
-          <Card><CardContent className="pt-6"><ShieldCheck className="h-6 w-6 text-emerald-700" aria-hidden="true" /><h3 className="mt-3 font-semibold">Privacy first</h3><p className="mt-1 text-sm leading-5 text-slate-600">Use your own login, stay inside your assigned scope, and use break-glass only for a documented emergency.</p></CardContent></Card>
+          <Card><CardContent className="pt-6"><ShieldCheck className="h-6 w-6 text-blue-700" aria-hidden="true" /><h3 className="mt-3 font-semibold">Privacy first</h3><p className="mt-1 text-sm leading-5 text-slate-600">Use your own login, stay inside your assigned scope, and use break-glass only for a documented emergency.</p></CardContent></Card>
           <Card><CardContent className="pt-6"><Video className="h-6 w-6 text-blue-700" aria-hidden="true" /><h3 className="mt-3 font-semibold">Human sign-off</h3><p className="mt-1 text-sm leading-5 text-slate-600">AI suggestions are optional and review-only. A qualified clinician owns the final assessment, note, and plan.</p></CardContent></Card>
           <Card><CardContent className="pt-6"><WifiOff className="h-6 w-6 text-amber-700" aria-hidden="true" /><h3 className="mt-3 font-semibold">Offline means queued</h3><p className="mt-1 text-sm leading-5 text-slate-600">If offline, keep the device secure, finish the minimum necessary record, and sync when the correct facility context returns.</p></CardContent></Card>
         </section>

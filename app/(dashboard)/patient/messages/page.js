@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  MessageSquare, Send, Loader2, User, Search, 
+import {
+  MessageSquare, Send, Loader2, User, Search,
   Clock, Paperclip, Image as ImageIcon, FileText, Plus, X,
   Circle, CheckCheck, Wifi, WifiOff
 } from 'lucide-react';
@@ -29,7 +29,7 @@ export default function PatientMessagesPage() {
   const [newMessageContent, setNewMessageContent] = useState('');
   const [sendingNewMessage, setSendingNewMessage] = useState(false);
   const messagesEndRef = useRef(null);
-  
+
   // Real-time socket connection
   const {
     isConnected,
@@ -43,7 +43,7 @@ export default function PatientMessagesPage() {
     isUserOnline,
     getTypingUser
   } = useSocket();
-  
+
   const [typingIndicator, setTypingIndicator] = useState(null);
 
   // Load draft from localStorage when conversation changes
@@ -92,18 +92,18 @@ export default function PatientMessagesPage() {
             sentByMe: false
           }];
         });
-        
+
         // Send read receipt
         if (message.senderId && selectedConversation?.conversationId) {
           sendReadReceipt(message.id, selectedConversation.conversationId, message.senderId);
         }
-        
+
         scrollToBottom();
       }
-      
+
       // Update conversation list
       fetchConversations();
-      
+
       // Show notification toast if not in the same conversation
       if (!selectedConversation || selectedConversation.recipientId !== message.senderId) {
         toast({
@@ -112,7 +112,7 @@ export default function PatientMessagesPage() {
         });
       }
     });
-    
+
     return cleanup;
   }, [onNewMessage, selectedConversation, sendReadReceipt]);
 
@@ -120,7 +120,7 @@ export default function PatientMessagesPage() {
   useEffect(() => {
     if (selectedConversation?.conversationId && isConnected) {
       joinConversation(selectedConversation.conversationId, selectedConversation.recipientId);
-      
+
       return () => {
         leaveConversation(selectedConversation.conversationId);
       };
@@ -243,7 +243,7 @@ export default function PatientMessagesPage() {
 
     setSending(true);
     const messageContent = newMessage;
-    
+
     // Optimistically add message to UI
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage = {
@@ -256,7 +256,7 @@ export default function PatientMessagesPage() {
     setMessages(prev => [...prev, optimisticMessage]);
     setNewMessage('');
     scrollToBottom();
-    
+
     try {
       const response = await api.post('/messages', {
         recipientId: selectedConversation.recipientId,
@@ -269,21 +269,21 @@ export default function PatientMessagesPage() {
         const draftKey = `message_draft_${selectedConversation.recipientId}`;
         localStorage.removeItem(draftKey);
         setHasDraft(false);
-        
+
         // Replace optimistic message with real one
-        setMessages(prev => prev.map(msg => 
-          msg.id === tempId 
+        setMessages(prev => prev.map(msg =>
+          msg.id === tempId
             ? { ...msg, id: response.data.data.id, status: 'sent' }
             : msg
         ));
-        
+
         fetchConversations();
       }
     } catch (error) {
       // Remove optimistic message on error
       setMessages(prev => prev.filter(msg => msg.id !== tempId));
       setNewMessage(messageContent); // Restore message
-      
+
       toast({
         title: 'Send Failed',
         description: error.response?.data?.error || 'Failed to send message',
@@ -304,7 +304,7 @@ export default function PatientMessagesPage() {
   // Handle typing indicator
   const handleTyping = (e) => {
     setNewMessage(e.target.value);
-    
+
     // Emit typing event
     if (selectedConversation?.conversationId && selectedConversation?.recipientId && isConnected) {
       if (e.target.value.trim()) {
@@ -359,7 +359,7 @@ export default function PatientMessagesPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -369,12 +369,12 @@ export default function PatientMessagesPage() {
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <MessageSquare className="w-6 h-6 text-purple-500" />
+            <MessageSquare className="w-6 h-6 text-blue-500" />
             Messages
             {/* Real-time connection indicator */}
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-              isConnected 
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' 
+              isConnected
+                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                 : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
             }`}>
               {isConnected ? (
@@ -394,7 +394,7 @@ export default function PatientMessagesPage() {
         </div>
         <Button
           onClick={() => setShowNewMessageModal(true)}
-          className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white"
+          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
         >
           <Plus className="w-4 h-4 mr-2" />
           New Message
@@ -418,10 +418,10 @@ export default function PatientMessagesPage() {
                 {conversations.map((conv) => {
                   const recipientId = conv.recipientId || conv.otherUser?.id;
                   const recipientName = conv.recipientName || (conv.otherUser ? `${conv.otherUser.firstName} ${conv.otherUser.lastName}` : 'Provider');
-                  const lastMessageText = typeof conv.lastMessage === 'string' 
-                    ? conv.lastMessage 
+                  const lastMessageText = typeof conv.lastMessage === 'string'
+                    ? conv.lastMessage
                     : conv.lastMessage?.preview || 'No messages yet';
-                  
+
                   return (
                     <button
                       key={recipientId || conv.conversationId}
@@ -431,17 +431,17 @@ export default function PatientMessagesPage() {
                         conversationId: conv.conversationId
                       })}
                       className={`w-full p-4 text-left hover:bg-slate-50 transition-colors ${
-                        selectedConversation?.recipientId === recipientId ? 'bg-purple-50 border-l-4 border-purple-600' : ''
+                        selectedConversation?.recipientId === recipientId ? 'bg-blue-50 border-l-4 border-blue-600' : ''
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         <div className="relative">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white font-bold">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-500 flex items-center justify-center text-white font-bold">
                             {recipientName?.[0] || 'P'}
                           </div>
                           {/* Online indicator */}
                           {isUserOnline(recipientId) && (
-                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full" />
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-blue-500 border-2 border-white dark:border-slate-800 rounded-full" />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -453,7 +453,7 @@ export default function PatientMessagesPage() {
                           </p>
                         </div>
                         {(conv.unreadCount || 0) > 0 && (
-                          <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded-full">
+                          <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
                             {conv.unreadCount}
                           </span>
                         )}
@@ -473,19 +473,19 @@ export default function PatientMessagesPage() {
               <CardHeader className="border-b">
                 <CardTitle className="text-base flex items-center gap-2">
                   <div className="relative">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-sm font-bold">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-500 flex items-center justify-center text-white text-sm font-bold">
                       {selectedConversation.recipientName?.[0] || 'P'}
                     </div>
                     {/* Online status indicator */}
                     {isUserOnline(selectedConversation.recipientId) && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full" />
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-blue-500 border-2 border-white dark:border-slate-800 rounded-full" />
                     )}
                   </div>
                   <div className="flex flex-col">
                     <span>{selectedConversation.recipientName || 'Provider'}</span>
                     <span className={`text-xs font-normal ${
-                      isUserOnline(selectedConversation.recipientId) 
-                        ? 'text-emerald-600 dark:text-emerald-400' 
+                      isUserOnline(selectedConversation.recipientId)
+                        ? 'text-blue-600 dark:text-blue-400'
                         : 'text-slate-400'
                     }`}>
                       {isUserOnline(selectedConversation.recipientId) ? 'Online' : 'Offline'}
@@ -493,7 +493,7 @@ export default function PatientMessagesPage() {
                   </div>
                 </CardTitle>
               </CardHeader>
-              
+
               <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
                 {messages.length === 0 ? (
                   <div className="text-center py-12 text-slate-500">
@@ -507,13 +507,13 @@ export default function PatientMessagesPage() {
                       className={`flex ${msg.sentByMe ? 'justify-end' : 'justify-start'}`}
                     >
                       <div className={`max-w-[70%] rounded-lg p-3 ${
-                        msg.sentByMe 
-                          ? 'bg-purple-600 text-white' 
+                        msg.sentByMe
+                          ? 'bg-blue-600 text-white'
                           : 'bg-slate-100 text-slate-900'
                       }`}>
                         <p className="text-sm whitespace-pre-wrap">{msg.content || 'Message could not be loaded'}</p>
                         <p className={`text-xs mt-1 ${
-                          msg.sentByMe ? 'text-purple-50' : 'text-slate-500'
+                          msg.sentByMe ? 'text-blue-50' : 'text-slate-500'
                         }`}>
                           {formatRelativeTime(msg.createdAt)}
                         </p>
@@ -530,18 +530,18 @@ export default function PatientMessagesPage() {
                   <div className="mb-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                     <div className="flex items-center gap-1">
                       <span className="flex gap-1">
-                        <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                       </span>
                     </div>
                     <span>{typingIndicator.userName} is typing...</span>
                   </div>
                 )}
-                
+
                 {/* Draft indicator */}
                 {hasDraft && newMessage && !typingIndicator && (
-                  <div className="mb-2 flex items-center gap-2 text-xs text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 px-2 py-1 rounded border border-purple-200 dark:border-purple-800">
+                  <div className="mb-2 flex items-center gap-2 text-xs text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded border border-blue-200 dark:border-blue-800">
                     <FileText className="w-3 h-3" />
                     <span>Draft saved automatically</span>
                   </div>
@@ -552,12 +552,12 @@ export default function PatientMessagesPage() {
                     onChange={handleTyping}
                     onKeyPress={handleKeyPress}
                     placeholder="Type your message..."
-                    className="flex-1 min-h-[60px] max-h-[120px] p-3 border border-slate-300 dark:border-slate-600 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    className="flex-1 min-h-[60px] max-h-[120px] p-3 border border-slate-300 dark:border-slate-600 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                   />
                   <Button
                     onClick={sendMessage}
                     disabled={!newMessage.trim() || sending}
-                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     {sending ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -602,13 +602,13 @@ export default function PatientMessagesPage() {
                 <label className="text-sm font-medium">Select Provider</label>
                 {loadingProviders ? (
                   <div className="flex items-center justify-center py-4">
-                    <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
+                    <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
                   </div>
                 ) : (
                   <select
                     value={selectedProviderId}
                     onChange={(e) => setSelectedProviderId(e.target.value)}
-                    className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">Choose a provider...</option>
                     {providers.map((provider) => (
@@ -630,7 +630,7 @@ export default function PatientMessagesPage() {
                   value={newMessageContent}
                   onChange={(e) => setNewMessageContent(e.target.value)}
                   placeholder="Type your message..."
-                  className="w-full min-h-[100px] p-3 border border-slate-300 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  className="w-full min-h-[100px] p-3 border border-slate-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
               <div className="flex justify-end gap-2">
@@ -647,7 +647,7 @@ export default function PatientMessagesPage() {
                 <Button
                   onClick={handleCreateNewMessage}
                   disabled={!selectedProviderId || !newMessageContent.trim() || sendingNewMessage}
-                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   {sendingNewMessage ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

@@ -23,7 +23,7 @@ const quickActions = [
   { title: 'Compose Email', description: 'Write or triage inbox messages', href: '/admin/command-center/inbox', icon: Mail, bg: 'bg-blue-600' },
   { title: 'New Campaign', description: 'Build and launch email campaign', href: '/admin/command-center/campaigns', icon: Megaphone, bg: 'bg-violet-600' },
   { title: 'Social Manager', description: 'Plan and publish social content', href: '/admin/agent-social', icon: Share2, bg: 'bg-pink-600' },
-  { title: 'Ask HealthBot', description: 'Generate messaging and insights', href: '/admin/command-center/healthbot', icon: Sparkles, bg: 'bg-emerald-600' }
+  { title: 'Ask HealthBot', description: 'Generate messaging and insights', href: '/admin/command-center/healthbot', icon: Sparkles, bg: 'bg-blue-600' }
 ];
 
 export default function CommandCenterDashboard() {
@@ -52,7 +52,7 @@ export default function CommandCenterDashboard() {
 
   const stats = [
     { label: 'Unread Messages', value: `${unreadCount}`, delta: unreadCount > 0 ? 'needs review' : 'clear', icon: Mail, color: 'text-blue-400' },
-    { label: 'Active Agents (24h)', value: `${summary?.activeAgents?.length || 0}`, delta: 'live', icon: Bot, color: 'text-emerald-400' },
+    { label: 'Active Agents (24h)', value: `${summary?.activeAgents?.length || 0}`, delta: 'live', icon: Bot, color: 'text-blue-400' },
     { label: 'Pending Proposals', value: `${summary?.pendingProposals?.length || 0}`, delta: 'approval queue', icon: Megaphone, color: 'text-violet-400' },
     { label: 'Tracked Event Types', value: `${summary?.recentEvents?.length || 0}`, delta: 'last 24h', icon: Share2, color: 'text-pink-400' }
   ];
@@ -124,7 +124,7 @@ export default function CommandCenterDashboard() {
                   {activity.type === 'email' && <Mail className="w-5 h-5 text-blue-400" />}
                   {activity.type === 'campaign' && <Megaphone className="w-5 h-5 text-violet-400" />}
                   {activity.type === 'social' && <Share2 className="w-5 h-5 text-pink-400" />}
-                  {activity.type === 'ai' && <Bot className="w-5 h-5 text-emerald-400" />}
+                  {activity.type === 'ai' && <Bot className="w-5 h-5 text-blue-400" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -148,7 +148,7 @@ export default function CommandCenterDashboard() {
         <h2 className="text-sm font-semibold text-gray-300 mb-4">Campaign Performance Snapshot</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <MetricMini icon={Send} value={`${summary?.messageStats?.find((s) => s.message_type === 'accomplishment')?.count || 0}`} label="Accomplishments (24h)" color="text-blue-400" />
-          <MetricMini icon={CheckCircle} value={`${summary?.messageStats?.find((s) => s.message_type === 'briefing')?.count || 0}`} label="Briefings (24h)" color="text-emerald-400" />
+          <MetricMini icon={CheckCircle} value={`${summary?.messageStats?.find((s) => s.message_type === 'briefing')?.count || 0}`} label="Briefings (24h)" color="text-blue-400" />
           <MetricMini icon={Eye} value={`${summary?.messageStats?.find((s) => s.message_type === 'alert')?.count || 0}`} label="Alerts (24h)" color="text-violet-400" />
           <MetricMini icon={MousePointer} value={`${summary?.messageStats?.reduce((sum, item) => sum + Number(item.unread || 0), 0) || 0}`} label="Unread Total" color="text-pink-400" />
         </div>

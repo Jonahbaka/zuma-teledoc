@@ -115,7 +115,7 @@ export default function SmartReferralsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-12 w-12 animate-spin text-purple-500" />
+        <Loader2 className="h-12 w-12 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -124,7 +124,7 @@ export default function SmartReferralsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-          <Share2 className="h-7 w-7 text-purple-500" />
+          <Share2 className="h-7 w-7 text-blue-500" />
           Smart Referrals
         </h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -177,8 +177,8 @@ export default function SmartReferralsPage() {
                     onClick={() => setSelectedPatientId(patient.id)}
                     className={`w-full rounded-xl border p-4 text-left transition-colors ${
                       selectedPatientId === patient.id
-                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/20'
-                        : 'hover:border-purple-300'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
+                        : 'hover:border-blue-300'
                     }`}
                   >
                     <p className="font-medium text-foreground">{patient.firstName} {patient.lastName}</p>
@@ -193,7 +193,7 @@ export default function SmartReferralsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-emerald-500" />
+              <Building2 className="h-5 w-5 text-blue-500" />
               Dispatch Referral
             </CardTitle>
             <CardDescription>Only live connected organizations can receive a referral bundle.</CardDescription>

@@ -41,7 +41,7 @@ export default function AgentsTab() {
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />Refresh
           </button>
           <button onClick={() => setShowNew(v => !v)}
-            className="flex items-center gap-2 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700">
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">
             <UserPlus className="h-3.5 w-3.5" />{showNew ? 'Cancel' : 'Register agent'}
           </button>
         </div>
@@ -60,7 +60,7 @@ export default function AgentsTab() {
           </div>
           <div className="mt-3 flex justify-end">
             <button onClick={create} disabled={creating || !draft.full_name || !draft.phone}
-              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
               {creating ? 'Saving…' : 'Save'}
             </button>
           </div>

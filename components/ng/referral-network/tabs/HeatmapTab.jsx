@@ -41,7 +41,7 @@ export default function HeatmapTab() {
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
         </div>
         <button onClick={load} disabled={loading}
-          className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
           <Map className="h-4 w-4" />{loading ? 'Loading…' : 'Load'}
         </button>
         <button onClick={refresh} disabled={loading}
@@ -83,7 +83,7 @@ export default function HeatmapTab() {
                     <span className="ml-2 text-slate-400">{c.period_start?.slice(0, 10)}</span>
                   </td>
                   <td className="px-3 py-2 text-right font-semibold">{c.referral_count}</td>
-                  <td className="px-3 py-2 text-right text-emerald-700">{c.completed_count}</td>
+                  <td className="px-3 py-2 text-right text-blue-700">{c.completed_count}</td>
                   <td className="px-3 py-2 text-right text-rose-700">{c.cancelled_count}</td>
                   <td className="px-3 py-2 text-right">{c.median_match_score ?? '—'}</td>
                   <td className="px-3 py-2 text-right">

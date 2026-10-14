@@ -18,29 +18,29 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 /* ─── existing CRM constants ────────────────────────────── */
 const CONTACT_TYPES = [
   { id: 'provider', label: 'Providers', icon: Stethoscope, color: 'text-blue-400', bg: 'bg-blue-900/30' },
-  { id: 'investor', label: 'Investors', icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-900/30' },
+  { id: 'investor', label: 'Investors', icon: DollarSign, color: 'text-blue-400', bg: 'bg-blue-900/30' },
   { id: 'nurse', label: 'Nurses', icon: UserPlus, color: 'text-pink-400', bg: 'bg-pink-900/30' },
   { id: 'partner', label: 'Partners', icon: Building2, color: 'text-amber-400', bg: 'bg-amber-900/30' },
-  { id: 'lead', label: 'Leads', icon: Target, color: 'text-purple-400', bg: 'bg-purple-900/30' },
+  { id: 'lead', label: 'Leads', icon: Target, color: 'text-blue-400', bg: 'bg-blue-900/30' },
   { id: 'influencer', label: 'Influencers', icon: Globe, color: 'text-cyan-400', bg: 'bg-cyan-900/30' },
 ];
 
 const PIPELINE_STAGES = [
   { id: 'new', label: 'New', color: 'bg-gray-600' },
   { id: 'researching', label: 'Researching', color: 'bg-blue-600' },
-  { id: 'outreach_queued', label: 'Queued', color: 'bg-indigo-600' },
-  { id: 'contacted', label: 'Contacted', color: 'bg-purple-600' },
+  { id: 'outreach_queued', label: 'Queued', color: 'bg-blue-600' },
+  { id: 'contacted', label: 'Contacted', color: 'bg-blue-600' },
   { id: 'responded', label: 'Responded', color: 'bg-amber-600' },
-  { id: 'interested', label: 'Interested', color: 'bg-emerald-600' },
+  { id: 'interested', label: 'Interested', color: 'bg-blue-600' },
   { id: 'negotiating', label: 'Negotiating', color: 'bg-cyan-600' },
-  { id: 'converted', label: 'Converted', color: 'bg-green-600' },
+  { id: 'converted', label: 'Converted', color: 'bg-blue-600' },
   { id: 'lost', label: 'Lost', color: 'bg-red-600' },
   { id: 'nurturing', label: 'Nurturing', color: 'bg-rose-600' },
 ];
 
 /* ─── Inbox tab constants ────────────────────────────────── */
 const SENTIMENT_STYLE = {
-  positive: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', label: 'Positive' },
+  positive: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400', label: 'Positive' },
   neutral:  { bg: 'bg-gray-500/10',    border: 'border-gray-500/20',    text: 'text-gray-400',    label: 'Neutral'  },
   negative: { bg: 'bg-red-500/10',     border: 'border-red-500/20',     text: 'text-red-400',     label: 'Negative' },
   urgent:   { bg: 'bg-amber-500/10',   border: 'border-amber-500/20',   text: 'text-amber-400',   label: 'Urgent'   },
@@ -54,13 +54,13 @@ const MOCK_MESSAGES = {};
 const AGENT_MAP = {
   ceo:          { name: 'The Conductor', icon: Crown,      color: 'text-yellow-400', bg: 'bg-yellow-900/40', border: 'border-yellow-500/20' },
   operations:   { name: 'The Weaver',    icon: Activity,   color: 'text-blue-400',   bg: 'bg-blue-900/40',   border: 'border-blue-500/20'   },
-  growth:       { name: 'The Scout',     icon: Radar,      color: 'text-emerald-400',bg: 'bg-emerald-900/40',border: 'border-emerald-500/20'},
+  growth:       { name: 'The Scout',     icon: Radar,      color: 'text-blue-400',bg: 'bg-blue-900/40',border: 'border-blue-500/20'},
   revenue:      { name: 'The Alchemist', icon: Zap,        color: 'text-amber-400',  bg: 'bg-amber-900/40',  border: 'border-amber-500/20'  },
   compliance:   { name: 'The Guardian',  icon: Shield,     color: 'text-red-400',    bg: 'bg-red-900/40',    border: 'border-red-500/20'    },
-  governance:   { name: 'The Sage',      icon: Eye,        color: 'text-purple-400', bg: 'bg-purple-900/40', border: 'border-purple-500/20' },
+  governance:   { name: 'The Sage',      icon: Eye,        color: 'text-blue-400', bg: 'bg-blue-900/40', border: 'border-blue-500/20' },
   researcher:   { name: 'The Oracle',    icon: Search,     color: 'text-cyan-400',   bg: 'bg-cyan-900/40',   border: 'border-cyan-500/20'   },
-  economics:    { name: 'The Economist', icon: BarChart3,  color: 'text-green-400',  bg: 'bg-green-900/40',  border: 'border-green-500/20'  },
-  physicist:    { name: 'The Architect', icon: Atom,       color: 'text-indigo-400', bg: 'bg-indigo-900/40', border: 'border-indigo-500/20' },
+  economics:    { name: 'The Economist', icon: BarChart3,  color: 'text-blue-400',  bg: 'bg-blue-900/40',  border: 'border-blue-500/20'  },
+  physicist:    { name: 'The Architect', icon: Atom,       color: 'text-blue-400', bg: 'bg-blue-900/40', border: 'border-blue-500/20' },
   mathematician:{ name: 'The Calculator',icon: Calculator, color: 'text-pink-400',   bg: 'bg-pink-900/40',   border: 'border-pink-500/20'   },
   vortex_math:  { name: 'The Tesseract', icon: Hexagon,   color: 'text-violet-400', bg: 'bg-violet-900/40', border: 'border-violet-500/20' },
   devops:       { name: 'The Debugger',  icon: Bug,        color: 'text-lime-400',   bg: 'bg-lime-900/40',   border: 'border-lime-500/20'   },
@@ -71,9 +71,9 @@ const TYPE_LABELS = {
   alert:    { label: 'Alert',    icon: AlertTriangle, color: 'text-red-400',     bg: 'bg-red-500/10',     border: 'border-red-500/30'     },
   report:   { label: 'Report',   icon: BarChart3,     color: 'text-blue-400',    bg: 'bg-blue-500/10',    border: 'border-blue-500/30'    },
   text:     { label: 'Message',  icon: Mail,          color: 'text-gray-400',    bg: 'bg-gray-500/10',    border: 'border-gray-500/30'    },
-  result:   { label: 'Result',   icon: Check,         color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
+  result:   { label: 'Result',   icon: Check,         color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' },
   request:  { label: 'Request',  icon: Bell,          color: 'text-amber-400',   bg: 'bg-amber-500/10',   border: 'border-amber-500/30'   },
-  approval: { label: 'Approval', icon: FileText,      color: 'text-purple-400',  bg: 'bg-purple-500/10',  border: 'border-purple-500/30'  },
+  approval: { label: 'Approval', icon: FileText,      color: 'text-blue-400',  bg: 'bg-blue-500/10',  border: 'border-blue-500/30'  },
 };
 
 const timeAgo = (date) => {
@@ -319,7 +319,7 @@ export default function CRMPage() {
     return (
       <div className="min-h-screen contrast-dark bg-gray-950 flex items-center justify-center">
         <div className="text-center">
-          <Users className="w-16 h-16 text-purple-400 animate-pulse mx-auto mb-4" />
+          <Users className="w-16 h-16 text-blue-400 animate-pulse mx-auto mb-4" />
           <p className="text-gray-400 text-lg">Initializing CRM...</p>
         </div>
       </div>
@@ -333,15 +333,15 @@ export default function CRMPage() {
       <div className="bg-gray-900 border-b border-gray-800 px-6 py-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-emerald-600 to-cyan-700 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-cyan-700 rounded-xl flex items-center justify-center">
               <Users className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-300 bg-clip-text text-transparent">AI AGENT CRM</h1>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">AI AGENT CRM</h1>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><Bot className="w-2.5 h-2.5" /> AI-Powered</span>
+                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20"><Bot className="w-2.5 h-2.5" /> AI-Powered</span>
                 <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20"><Mail className="w-2.5 h-2.5" /> Zoho Mail</span>
-                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20"><Globe className="w-2.5 h-2.5" /> Web Scraping</span>
+                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20"><Globe className="w-2.5 h-2.5" /> Web Scraping</span>
                 <span className="text-[10px] text-gray-500">{dashboard?.totalContacts || 0} contacts</span>
               </div>
             </div>
@@ -360,13 +360,13 @@ export default function CRMPage() {
             ].map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 className={`px-3 py-2 text-sm font-medium rounded-lg flex items-center gap-1.5 relative ${
-                  activeTab === tab.id ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
+                  activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
                 <tab.icon className="w-4 h-4" />
                 {tab.label}
                 {tab.badge > 0 && (
                   <span className={`ml-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
                     activeTab === tab.id ? 'bg-white/20 text-white' :
-                    tab.id === 'inbox' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-purple-500/20 text-purple-400'}`}>
+                    tab.id === 'inbox' ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-500/20 text-blue-400'}`}>
                     {tab.badge}
                   </span>
                 )}
@@ -392,7 +392,7 @@ export default function CRMPage() {
             })}
           </div>
 
-          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-emerald-400" /> Pipeline</h3>
+          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-blue-400" /> Pipeline</h3>
           <div className="grid grid-cols-5 md:grid-cols-10 gap-2 mb-6">
             {PIPELINE_STAGES.map(stage => {
               const count = dashboard.pipeline?.find(p => p.pipeline_stage === stage.id)?.count || 0;
@@ -414,8 +414,8 @@ export default function CRMPage() {
               <p className="text-xs text-gray-500 mt-1">Daily limit: {dashboard.emailStats?.dailyRemaining || 100} remaining</p>
             </div>
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <div className="flex items-center gap-2 mb-2"><Send className="w-4 h-4 text-emerald-400" /><span className="text-sm text-gray-400">Active Campaigns</span></div>
-              <p className="text-2xl font-bold text-emerald-400">{campaigns.filter(c => c.status === 'running' || c.status === 'approved').length}</p>
+              <div className="flex items-center gap-2 mb-2"><Send className="w-4 h-4 text-blue-400" /><span className="text-sm text-gray-400">Active Campaigns</span></div>
+              <p className="text-2xl font-bold text-blue-400">{campaigns.filter(c => c.status === 'running' || c.status === 'approved').length}</p>
             </div>
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
               <div className="flex items-center gap-2 mb-2"><Globe className="w-4 h-4 text-cyan-400" /><span className="text-sm text-gray-400">Scrape Sources</span></div>
@@ -427,8 +427,8 @@ export default function CRMPage() {
           <div className="space-y-2">
             {(dashboard.recentInteractions || []).slice(0, 10).map((i, idx) => (
               <div key={i.id || idx} className="bg-gray-900 rounded-lg p-3 border border-gray-800 flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${i.interaction_type?.includes('email') ? 'bg-blue-900/40' : 'bg-purple-900/40'}`}>
-                  {i.interaction_type?.includes('email') ? <Mail className="w-4 h-4 text-blue-400" /> : <MessageSquare className="w-4 h-4 text-purple-400" />}
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${i.interaction_type?.includes('email') ? 'bg-blue-900/40' : 'bg-blue-900/40'}`}>
+                  {i.interaction_type?.includes('email') ? <Mail className="w-4 h-4 text-blue-400" /> : <MessageSquare className="w-4 h-4 text-blue-400" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{i.first_name} {i.last_name} — {i.organization || 'N/A'}</p>
@@ -455,28 +455,28 @@ export default function CRMPage() {
               <div className="relative">
                 <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input type="text" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })}
-                  placeholder="Search contacts..." className="bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm w-64 focus:outline-none focus:border-emerald-500" />
+                  placeholder="Search contacts..." className="bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm w-64 focus:outline-none focus:border-blue-500" />
               </div>
               <select value={filter.type} onChange={e => setFilter({ ...filter, type: e.target.value })}
-                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
                 <option value="">All Types</option>
                 {CONTACT_TYPES.map(ct => <option key={ct.id} value={ct.id}>{ct.label}</option>)}
               </select>
               <select value={filter.stage} onChange={e => setFilter({ ...filter, stage: e.target.value })}
-                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
                 <option value="">All Stages</option>
                 {PIPELINE_STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
               <button onClick={loadAll} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700"><RefreshCw className="w-4 h-4 text-gray-400" /></button>
             </div>
-            <button onClick={() => setShowAddContact(true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium flex items-center gap-2">
+            <button onClick={() => setShowAddContact(true)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium flex items-center gap-2">
               <Plus className="w-4 h-4" /> Add Contact
             </button>
           </div>
 
           {showAddContact && (
-            <div className="bg-gray-900 border border-emerald-800/30 rounded-xl p-6 mb-6">
-              <h3 className="font-medium text-lg mb-4 flex items-center gap-2"><UserPlus className="w-5 h-5 text-emerald-400" /> Add Contact</h3>
+            <div className="bg-gray-900 border border-blue-800/30 rounded-xl p-6 mb-6">
+              <h3 className="font-medium text-lg mb-4 flex items-center gap-2"><UserPlus className="w-5 h-5 text-blue-400" /> Add Contact</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 {[
                   { k: 'firstName', l: 'First Name', p: 'John' },
@@ -492,7 +492,7 @@ export default function CRMPage() {
                   <div key={f.k}>
                     <label className="text-xs text-gray-400 block mb-1">{f.l}</label>
                     <input type="text" value={contactForm[f.k]} onChange={e => setContactForm(prev => ({ ...prev, [f.k]: e.target.value }))}
-                      placeholder={f.p} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500" />
+                      placeholder={f.p} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                   </div>
                 ))}
               </div>
@@ -500,18 +500,18 @@ export default function CRMPage() {
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Type</label>
                   <select value={contactForm.contactType} onChange={e => setContactForm(prev => ({ ...prev, contactType: e.target.value }))}
-                    className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                    className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
                     {CONTACT_TYPES.map(ct => <option key={ct.id} value={ct.id}>{ct.label}</option>)}
                   </select>
                 </div>
                 <div className="flex-1">
                   <label className="text-xs text-gray-400 block mb-1">Notes</label>
                   <input type="text" value={contactForm.notes} onChange={e => setContactForm(prev => ({ ...prev, notes: e.target.value }))}
-                    placeholder="Any notes..." className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500" />
+                    placeholder="Any notes..." className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                 </div>
               </div>
               <div className="flex gap-3">
-                <button onClick={addContact} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium">Save Contact</button>
+                <button onClick={addContact} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium">Save Contact</button>
                 <button onClick={() => setShowAddContact(false)} className="px-5 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">Cancel</button>
               </div>
             </div>
@@ -553,7 +553,7 @@ export default function CRMPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <div className="w-12 bg-gray-800 rounded-full h-1.5">
-                            <div className={`rounded-full h-1.5 ${c.lead_score > 70 ? 'bg-emerald-500' : c.lead_score > 40 ? 'bg-amber-500' : 'bg-gray-600'}`} style={{ width: `${c.lead_score}%` }} />
+                            <div className={`rounded-full h-1.5 ${c.lead_score > 70 ? 'bg-blue-500' : c.lead_score > 40 ? 'bg-amber-500' : 'bg-gray-600'}`} style={{ width: `${c.lead_score}%` }} />
                           </div>
                           <span className="text-xs text-gray-500">{c.lead_score}</span>
                         </div>
@@ -625,25 +625,25 @@ export default function CRMPage() {
       {activeTab === 'campaigns' && (
         <div className="p-6 max-w-[1400px] mx-auto">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold flex items-center gap-2"><Send className="w-6 h-6 text-emerald-400" /> Email Campaigns</h2>
-            <button onClick={() => setShowAddCampaign(true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium flex items-center gap-2">
+            <h2 className="text-xl font-bold flex items-center gap-2"><Send className="w-6 h-6 text-blue-400" /> Email Campaigns</h2>
+            <button onClick={() => setShowAddCampaign(true)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium flex items-center gap-2">
               <Plus className="w-4 h-4" /> New Campaign
             </button>
           </div>
 
           {showAddCampaign && (
-            <div className="bg-gray-900 border border-emerald-800/30 rounded-xl p-6 mb-6">
+            <div className="bg-gray-900 border border-blue-800/30 rounded-xl p-6 mb-6">
               <h3 className="font-medium text-lg mb-4">Create Campaign</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Campaign Name *</label>
                   <input type="text" value={campaignForm.name} onChange={e => setCampaignForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder="Q1 Provider Outreach" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500" />
+                    placeholder="Q1 Provider Outreach" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Type</label>
                   <select value={campaignForm.campaignType} onChange={e => setCampaignForm(f => ({ ...f, campaignType: e.target.value }))}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
                     <option value="cold_email">Cold Email</option>
                     <option value="follow_up">Follow Up</option>
                     <option value="investor_pitch">Investor Pitch</option>
@@ -654,39 +654,39 @@ export default function CRMPage() {
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Target Type</label>
                   <select value={campaignForm.targetContactType} onChange={e => setCampaignForm(f => ({ ...f, targetContactType: e.target.value }))}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
                     {CONTACT_TYPES.map(ct => <option key={ct.id} value={ct.id}>{ct.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Daily Limit</label>
                   <input type="number" value={campaignForm.dailyLimit} onChange={e => setCampaignForm(f => ({ ...f, dailyLimit: parseInt(e.target.value) || 30 }))}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500" />
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                 </div>
               </div>
               <div className="space-y-3 mb-4">
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Subject Line *</label>
                   <input type="text" value={campaignForm.subjectLine} onChange={e => setCampaignForm(f => ({ ...f, subjectLine: e.target.value }))}
-                    placeholder="Earn More, See More Patients — DoctaRx" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500" />
+                    placeholder="Earn More, See More Patients — DoctaRx" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Email Body *</label>
                   <textarea value={campaignForm.emailTemplate} onChange={e => setCampaignForm(f => ({ ...f, emailTemplate: e.target.value }))}
-                    placeholder="Hi {{first_name}},..." rows={6} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500" />
+                    placeholder="Hi {{first_name}},..." rows={6} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                   {templates.length > 0 && (
                     <div className="flex gap-1 mt-1">
                       <span className="text-xs text-gray-500">Templates:</span>
                       {templates.map(t => (
                         <button key={t.id} onClick={() => setCampaignForm(f => ({ ...f, subjectLine: t.subject, emailTemplate: t.body }))}
-                          className="text-xs px-2 py-0.5 bg-gray-800 rounded hover:bg-gray-700 text-emerald-400">{t.name}</button>
+                          className="text-xs px-2 py-0.5 bg-gray-800 rounded hover:bg-gray-700 text-blue-400">{t.name}</button>
                       ))}
                     </div>
                   )}
                 </div>
               </div>
               <div className="flex gap-3">
-                <button onClick={createCampaign} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium">Create Campaign</button>
+                <button onClick={createCampaign} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium">Create Campaign</button>
                 <button onClick={() => setShowAddCampaign(false)} className="px-5 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">Cancel</button>
               </div>
             </div>
@@ -702,14 +702,14 @@ export default function CRMPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      c.status === 'running' ? 'bg-emerald-900/40 text-emerald-300' :
+                      c.status === 'running' ? 'bg-blue-900/40 text-blue-300' :
                       c.status === 'approved' ? 'bg-blue-900/40 text-blue-300' :
                       c.status === 'completed' ? 'bg-gray-800 text-gray-300' :
                       c.status === 'draft' ? 'bg-amber-900/40 text-amber-300' : 'ui-dark-chip'}`}>
                       {c.status?.toUpperCase()}
                     </span>
                     {c.status === 'draft' && (
-                      <button onClick={() => approveCampaign(c.id)} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 rounded text-xs font-medium flex items-center gap-1">
+                      <button onClick={() => approveCampaign(c.id)} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs font-medium flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" /> Approve
                       </button>
                     )}
@@ -723,9 +723,9 @@ export default function CRMPage() {
                 <div className="flex gap-6 text-xs text-gray-500">
                   <span>Sent: <span className="text-blue-400 font-medium">{c.emails_sent || 0}</span></span>
                   <span>Opened: <span className="text-amber-400 font-medium">{c.emails_opened || 0}</span></span>
-                  <span>Replied: <span className="text-emerald-400 font-medium">{c.emails_replied || 0}</span></span>
+                  <span>Replied: <span className="text-blue-400 font-medium">{c.emails_replied || 0}</span></span>
                   <span>Bounced: <span className="text-red-400 font-medium">{c.emails_bounced || 0}</span></span>
-                  <span>Converted: <span className="text-green-400 font-medium">{c.conversions || 0}</span></span>
+                  <span>Converted: <span className="text-blue-400 font-medium">{c.conversions || 0}</span></span>
                 </div>
               </div>
             ))}
@@ -743,13 +743,13 @@ export default function CRMPage() {
       {/* ══ TEMPLATES TAB ══ */}
       {activeTab === 'templates' && (
         <div className="p-6 max-w-[1400px] mx-auto">
-          <h2 className="text-xl font-bold flex items-center gap-2 mb-6"><FileText className="w-6 h-6 text-purple-400" /> Email Templates</h2>
+          <h2 className="text-xl font-bold flex items-center gap-2 mb-6"><FileText className="w-6 h-6 text-blue-400" /> Email Templates</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {templates.map(t => (
               <div key={t.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-medium text-sm">{t.name}</h3>
-                  <span className="text-xs px-2 py-0.5 rounded bg-purple-900/30 text-purple-400">{t.category?.replace(/_/g, ' ')}</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-blue-900/30 text-blue-400">{t.category?.replace(/_/g, ' ')}</span>
                 </div>
                 <p className="text-xs text-gray-500 mb-1">Subject: {t.subject}</p>
                 <pre className="text-xs text-gray-400 whitespace-pre-wrap bg-gray-800 rounded-lg p-3 max-h-32 overflow-y-auto font-sans">{t.body?.substring(0, 300)}{t.body?.length > 300 ? '...' : ''}</pre>
@@ -785,7 +785,7 @@ export default function CRMPage() {
                   <ExternalLink className="w-3 h-3" /> {s.url.replace('https://', '').substring(0, 40)}
                 </a>
                 <div className="flex gap-4 text-xs text-gray-500">
-                  <span>Found: <span className="text-emerald-400 font-medium">{s.contacts_found}</span></span>
+                  <span>Found: <span className="text-blue-400 font-medium">{s.contacts_found}</span></span>
                   <span>Frequency: {s.scrape_frequency}</span>
                   <span>{s.last_scraped_at ? `Last: ${new Date(s.last_scraped_at).toLocaleDateString()}` : 'Never scraped'}</span>
                 </div>
@@ -834,7 +834,7 @@ export default function CRMPage() {
                       selectedThread?.id === thread.id ? 'bg-gray-800 border-l-2 border-l-blue-500' : ''
                     }`}>
                     <div className="flex items-start gap-3">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center flex-shrink-0 text-sm font-bold">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0 text-sm font-bold">
                         {(thread.contact_name || '?').charAt(0)}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -897,8 +897,8 @@ export default function CRMPage() {
 
                 {/* AI Suggestion */}
                 {showAISuggest && (
-                  <div className="mx-6 mb-3 p-4 bg-purple-900/20 border border-purple-500/30 rounded-xl">
-                    <p className="text-xs font-medium text-purple-400 mb-2 flex items-center gap-1"><Sparkles className="w-3 h-3" /> AI Suggested Reply</p>
+                  <div className="mx-6 mb-3 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl">
+                    <p className="text-xs font-medium text-blue-400 mb-2 flex items-center gap-1"><Sparkles className="w-3 h-3" /> AI Suggested Reply</p>
                     {aiLoading ? (
                       <div className="flex items-center gap-2 text-gray-400 text-sm"><RefreshCw className="w-4 h-4 animate-spin" /> Generating...</div>
                     ) : (
@@ -906,7 +906,7 @@ export default function CRMPage() {
                         <p className="text-sm text-gray-300 whitespace-pre-wrap">{aiSuggestion}</p>
                         <div className="flex gap-2 mt-3">
                           <button onClick={() => setReplyContent(aiSuggestion)}
-                            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded-lg text-xs font-medium">Use This</button>
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs font-medium">Use This</button>
                           <button onClick={() => { setShowAISuggest(false); setAiSuggestion(''); }}
                             className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs">Dismiss</button>
                         </div>
@@ -926,7 +926,7 @@ export default function CRMPage() {
                       <Send className="w-4 h-4" /> Send
                     </button>
                     <button onClick={handleGetAISuggestion}
-                      className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/30 rounded-lg text-sm text-purple-400 flex items-center gap-2">
+                      className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 rounded-lg text-sm text-blue-400 flex items-center gap-2">
                       <Sparkles className="w-4 h-4" /> AI Suggest
                     </button>
                   </div>
@@ -975,7 +975,7 @@ export default function CRMPage() {
           {/* Header row */}
           <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-indigo-700 rounded-xl flex items-center justify-center">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
                 <Inbox className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -985,12 +985,12 @@ export default function CRMPage() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <button onClick={wakeUpAgents} disabled={waking}
-                className="px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
+                className="px-3 py-2 bg-gradient-to-r from-blue-600 to-pink-600 hover:from-blue-500 hover:to-pink-500 rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
                 <Zap className={`w-3.5 h-3.5 ${waking ? 'animate-spin' : ''}`} />
                 {waking ? 'Waking...' : 'Wake Up Agents'}
               </button>
               <button onClick={runMissions} disabled={missionRunning}
-                className="px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
+                className="px-3 py-2 bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-500 hover:to-blue-500 rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
                 <Globe className={`w-3.5 h-3.5 ${missionRunning ? 'animate-spin' : ''}`} />
                 {missionRunning ? 'Running...' : 'Web Missions'}
               </button>
@@ -1001,7 +1001,7 @@ export default function CRMPage() {
                 </button>
               )}
               <button onClick={handleReportRefresh} disabled={reportRefreshing}
-                className="px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-xs font-medium flex items-center gap-1.5 disabled:opacity-50">
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs font-medium flex items-center gap-1.5 disabled:opacity-50">
                 <RefreshCw className={`w-3.5 h-3.5 ${reportRefreshing ? 'animate-spin' : ''}`} /> Refresh
               </button>
             </div>
@@ -1011,8 +1011,8 @@ export default function CRMPage() {
           {reportSummary && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                <div className="flex items-center gap-2 mb-2"><Mail className="w-4 h-4 text-purple-400" /><span className="text-xs text-gray-400">Unread</span></div>
-                <p className="text-3xl font-bold text-purple-400">{reportUnread}</p>
+                <div className="flex items-center gap-2 mb-2"><Mail className="w-4 h-4 text-blue-400" /><span className="text-xs text-gray-400">Unread</span></div>
+                <p className="text-3xl font-bold text-blue-400">{reportUnread}</p>
               </div>
               <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
                 <div className="flex items-center gap-2 mb-2"><AlertTriangle className="w-4 h-4 text-red-400" /><span className="text-xs text-gray-400">Alerts (24h)</span></div>
@@ -1023,8 +1023,8 @@ export default function CRMPage() {
                 <p className="text-3xl font-bold text-blue-400">{reportSummary.messageStats?.find(s => s.message_type === 'report')?.count || 0}</p>
               </div>
               <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                <div className="flex items-center gap-2 mb-2"><Bot className="w-4 h-4 text-emerald-400" /><span className="text-xs text-gray-400">Active Agents</span></div>
-                <p className="text-3xl font-bold text-emerald-400">{reportSummary.activeAgents?.length || 0}</p>
+                <div className="flex items-center gap-2 mb-2"><Bot className="w-4 h-4 text-blue-400" /><span className="text-xs text-gray-400">Active Agents</span></div>
+                <p className="text-3xl font-bold text-blue-400">{reportSummary.activeAgents?.length || 0}</p>
               </div>
             </div>
           )}
@@ -1050,7 +1050,7 @@ export default function CRMPage() {
             {['all', 'unread', 'alert', 'report'].map(f => (
               <button key={f} onClick={() => setReportFilter(f)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  reportFilter === f ? 'bg-purple-600 text-white' : 'ui-dark-chip-action'}`}>
+                  reportFilter === f ? 'bg-blue-600 text-white' : 'ui-dark-chip-action'}`}>
                 {f === 'all' ? 'All' : f === 'unread' ? `Unread (${reportUnread})` : f.charAt(0).toUpperCase() + f.slice(1) + 's'}
               </button>
             ))}
@@ -1083,7 +1083,7 @@ export default function CRMPage() {
               return (
                 <div key={item.id} className={`rounded-xl border transition-all group ${
                   isUnread ? `bg-gray-900/90 ${agent.border} border-l-4 shadow-lg` : 'bg-gray-900/50 border-gray-800 hover:border-gray-700'
-                } ${isExpanded ? 'ring-1 ring-purple-500/30' : ''}`}>
+                } ${isExpanded ? 'ring-1 ring-blue-500/30' : ''}`}>
                   <div onClick={() => toggleReportExpand(item.id)} className="flex items-center gap-3 px-5 py-4 cursor-pointer">
                     <div className={`w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center ${agent.bg}`}>
                       <AgentIcon className={`w-5 h-5 ${agent.color}`} />
@@ -1094,13 +1094,13 @@ export default function CRMPage() {
                         <span className={`text-[10px] px-2 py-0.5 rounded-full ${typeInfo.bg} ${typeInfo.color} border ${typeInfo.border} font-medium`}>{typeInfo.label}</span>
                         {meta.severity === 'critical' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-bold animate-pulse">CRITICAL</span>}
                         {meta.severity === 'high' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 font-medium">HIGH</span>}
-                        {meta.aiGenerated && <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30">AI</span>}
+                        {meta.aiGenerated && <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">AI</span>}
                       </div>
                       <p className={`text-sm truncate ${isUnread ? 'text-gray-200' : 'text-gray-500'}`}>{preview}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="text-xs text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3" /> {timeAgo(item.created_at)}</span>
-                      {isUnread && <span className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse" />}
+                      {isUnread && <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />}
                       <button onClick={(e) => deleteReport(item.id, e)}
                         className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-900/30 rounded-lg transition-all">
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1117,7 +1117,7 @@ export default function CRMPage() {
                             {Object.entries(meta.metrics).map(([key, val]) => (
                               <span key={key} className="text-xs bg-gray-800 px-3 py-1.5 rounded-lg">
                                 {key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}:
-                                <span className="font-medium text-emerald-300 ml-1">{typeof val === 'number' ? val.toLocaleString() : val}</span>
+                                <span className="font-medium text-blue-300 ml-1">{typeof val === 'number' ? val.toLocaleString() : val}</span>
                               </span>
                             ))}
                           </div>

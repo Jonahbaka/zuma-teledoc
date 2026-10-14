@@ -106,8 +106,8 @@ export default function RevenuePage() {
                 </p>
                 <p className="text-xs text-gray-500 mt-1">All time</p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-purple-600" />
+              <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -140,8 +140,8 @@ export default function RevenuePage() {
                 </p>
                 <p className="text-xs text-gray-500 mt-1">This year</p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
-                <BarChart3 className="w-6 h-6 text-green-600" />
+              <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                <BarChart3 className="w-6 h-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -152,14 +152,14 @@ export default function RevenuePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Growth</p>
-                <p className={`text-3xl font-bold mt-1 ${(data.growth || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <p className={`text-3xl font-bold mt-1 ${(data.growth || 0) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
                   {(data.growth || 0) >= 0 ? '+' : ''}{(data.growth || 0).toFixed(1)}%
                 </p>
                 <p className="text-xs text-gray-500 mt-1">vs last period</p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center">
                 {(data.growth || 0) >= 0 ? (
-                  <TrendingUp className="w-6 h-6 text-green-600" />
+                  <TrendingUp className="w-6 h-6 text-blue-600" />
                 ) : (
                   <TrendingDown className="w-6 h-6 text-red-600" />
                 )}
@@ -192,7 +192,7 @@ export default function RevenuePage() {
                       </div>
                       <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div 
-                          className="h-full bg-gradient-to-r from-purple-500 to-purple-600 rounded-full"
+                          className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full"
                           style={{ width: `${percent}%` }}
                         />
                       </div>
@@ -222,7 +222,7 @@ export default function RevenuePage() {
                   return (
                     <div key={index} className="flex-1 flex flex-col items-center">
                       <div 
-                        className="w-full bg-gradient-to-t from-green-600 to-green-400 rounded-t-lg"
+                        className="w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-lg"
                         style={{ height: `${height}%`, minHeight: height > 0 ? '4px' : '0' }}
                         title={`${month.month}: ${formatCurrency((month.revenue || 0) * 100)}`}
                       />

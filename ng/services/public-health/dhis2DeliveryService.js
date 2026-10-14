@@ -82,9 +82,13 @@ async function deliverOrReconcile(pool, job, { baseUrl, username, apiToken, fetc
   const base = new URL(baseUrl);
   if (base.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1'].includes(base.hostname))) throw deliveryError('DHIS2 requires an approved HTTPS endpoint.', 'DHIS2_ENDPOINT_INVALID');
   if (base.username || base.password || base.search || base.hash) throw deliveryError('DHIS2 endpoint must not contain embedded credentials or query parameters.');
-  const identity = destinationIdentity(baseUrl, username, job.payload_json);
-  if (identity !== job.destination_hash) throw deliveryError('The delivery destination changed. Reconciliation must use the approved destination.');
-  if (['confirmed', 'rejected', 'failed'].includes(job.status)) return { ok: job.status === 'confirmed', delivery: publicJob(job) };
+  // Callers may retain the original queued object across a network failure or
+  // another worker's attempt. Only its ID locates the authoritative job.
+  const stored = (await pool.query('SELECT * FROM ng_dhis2_delivery_jobs WHERE id = $1', [job.id])).rows[0];
+  if (!stored) throw deliveryError('The retained delivery job is unavailable.', 'DHIS2_DELIVERY_NOT_FOUND');
+  assertAggregatePayload(stored.payload_json);
+  if (destinationIdentity(baseUrl, username, stored.payload_json) !== stored.destination_hash) throw deliveryError('The delivery destination changed. Reconciliation must use the approved destination.');
+  if (['confirmed', 'rejected', 'failed'].includes(stored.status)) return { ok: stored.status === 'confirmed', delivery: publicJob(stored) };
 
   const token = crypto.randomUUID();
   const leased = await pool.query(
@@ -92,12 +96,18 @@ async function deliverOrReconcile(pool, job, { baseUrl, username, apiToken, fetc
        status = CASE WHEN status = 'queued' THEN 'submitting' ELSE 'reconciliation' END,
        attempts = attempts + 1, updated_at = NOW()
      WHERE id = $1 AND (lease_until IS NULL OR lease_until < NOW())
-       AND status IN ('queued','submitting','reconciliation','failed') RETURNING *`, [job.id, token]
+       AND status IN ('queued','submitting','reconciliation')
+       AND payload_hash = $3 AND destination_hash = $4 RETURNING *`, [stored.id, token, stored.payload_hash, stored.destination_hash]
   );
-  if (!leased.rows[0]) return { ok: false, delivery: publicJob(job), pending: true };
+  if (!leased.rows[0]) {
+    const latest = (await pool.query('SELECT * FROM ng_dhis2_delivery_jobs WHERE id = $1', [stored.id])).rows[0];
+    if (!latest) throw deliveryError('The retained delivery job is unavailable.', 'DHIS2_DELIVERY_NOT_FOUND');
+    return { ok: latest.status === 'confirmed', delivery: publicJob(latest), pending: !['confirmed', 'rejected', 'failed'].includes(latest.status) };
+  }
   const current = leased.rows[0];
   const payload = current.payload_json;
   assertAggregatePayload(payload);
+  if (destinationIdentity(baseUrl, username, payload) !== current.destination_hash) throw deliveryError('The delivery destination changed. Reconciliation must use the approved destination.');
   let outcome = { state: 'reconciliation', code: 'DELIVERY_AMBIGUOUS' };
   const endpoint = `${baseUrl.replace(/\/+$/, '')}/api/dataValueSets`;
   const headers = { Authorization: username ? `Basic ${Buffer.from(`${username}:${apiToken}`).toString('base64')}` : `ApiToken ${apiToken}` };
@@ -105,7 +115,7 @@ async function deliverOrReconcile(pool, job, { baseUrl, username, apiToken, fetc
   try {
     // Only a never-attempted queued job is POSTed. A stale lease or network
     // timeout is reconciled by reading absolute remote values, never re-POSTed.
-    if (job.status === 'queued') {
+    if (current.status === 'submitting' && current.attempts === 1) {
       const response = await fetchImpl(endpoint, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(20000), redirect: 'error' });
       httpStatus = response.status;
       let body;
@@ -132,17 +142,17 @@ async function deliverOrReconcile(pool, job, { baseUrl, username, apiToken, fetc
       `UPDATE ng_dhis2_delivery_jobs SET status = $3, result_summary_json = $4::jsonb,
          last_error_code = $5, remote_job_id = COALESCE($6,remote_job_id), lease_token = NULL, lease_until = NULL, updated_at = NOW()
        WHERE id = $1 AND lease_token = $2 RETURNING *`,
-      [job.id, token, outcome.state, JSON.stringify({ code: outcome.code, counts: outcome.counts || null, httpStatus }), outcome.state === 'confirmed' ? null : outcome.code, outcome.remoteJobId || null]
+      [current.id, token, outcome.state, JSON.stringify({ code: outcome.code, counts: outcome.counts || null, httpStatus }), outcome.state === 'confirmed' ? null : outcome.code, outcome.remoteJobId || null]
     );
     if (!updated.rows[0]) throw deliveryError('The delivery lease changed. Reconcile the retained job.');
     await client.query(
       'UPDATE public_health_reports SET status = $2, updated_at = NOW() WHERE id = $1',
-      [job.report_id, outcome.state === 'confirmed' ? 'synced' : ['rejected', 'failed'].includes(outcome.state) ? 'sync_failed' : 'sync_pending']
+      [current.report_id, outcome.state === 'confirmed' ? 'synced' : ['rejected', 'failed'].includes(outcome.state) ? 'sync_failed' : 'sync_pending']
     );
     await client.query(
       `INSERT INTO dhis2_sync_logs (report_id,status,request_payload_hash,response_status,response_body_summary,attempted_by)
        VALUES ($1,$2,$3,$4,$5,$6)`,
-      [job.report_id, outcome.state, job.payload_hash, String(httpStatus || 'reconciliation'), outcome.code, job.created_by]
+      [current.report_id, outcome.state, current.payload_hash, String(httpStatus || 'reconciliation'), outcome.code, current.created_by]
     );
     await client.query('COMMIT');
     return { ok: outcome.state === 'confirmed', status: httpStatus, delivery: publicJob(updated.rows[0]), pending: outcome.state === 'reconciliation' };

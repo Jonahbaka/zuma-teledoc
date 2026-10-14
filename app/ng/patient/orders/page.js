@@ -1,17 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, Package, RefreshCw, Truck } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/components/providers/AuthProvider';
-import {
-  PRESENTATION_DEMO_LABEL,
-  buildPatientPortalDemoData,
-  shouldShowPresentationDemoData,
-} from '@/lib/ngPresentationDemoData';
+import PortalPageHeader from '@/components/branding/PortalPageHeader';
 
 function formatNaira(amount) {
   return `NGN ${Number(amount || 0).toLocaleString()}`;
@@ -20,7 +15,7 @@ function formatNaira(amount) {
 function getStatusTone(status) {
   const normalized = String(status || '').toLowerCase();
 
-  if (['delivered'].includes(normalized)) return 'bg-emerald-100 text-emerald-700';
+  if (['delivered'].includes(normalized)) return 'bg-blue-100 text-blue-700';
   if (['confirmed', 'preparing', 'ready_for_pickup'].includes(normalized)) return 'bg-sky-100 text-sky-700';
   if (['pending'].includes(normalized)) return 'bg-amber-100 text-amber-700';
   if (['cancelled'].includes(normalized)) return 'bg-rose-100 text-rose-700';
@@ -28,20 +23,25 @@ function getStatusTone(status) {
 }
 
 export default function NigeriaPatientOrdersPage() {
-  const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [notice, setNotice] = useState('');
-  const presentationDemoData = useMemo(() => buildPatientPortalDemoData(), []);
+  const [loadError, setLoadError] = useState('');
+  const requestId = useRef(0);
 
   const loadOrders = useCallback(async () => {
+    const current = ++requestId.current;
+    setLoading(true); setLoadError(''); setOrders([]);
     try {
       const params = filter === 'all' ? undefined : { status: filter };
       const response = await api.get('/ng/patient/orders', { params });
-      setOrders(Array.isArray(response.data) ? response.data : []);
+      if (!Array.isArray(response.data)) throw new Error();
+      if (current === requestId.current) setOrders(response.data);
+    } catch {
+      if (current === requestId.current) setLoadError('Orders could not be loaded. Please try again.');
     } finally {
-      setLoading(false);
+      if (current === requestId.current) setLoading(false);
     }
   }, [filter]);
 
@@ -49,12 +49,7 @@ export default function NigeriaPatientOrdersPage() {
     loadOrders();
   }, [loadOrders]);
 
-  const showDemoData = shouldShowPresentationDemoData(user);
-  const filteredDemoOrders = filter === 'all'
-    ? presentationDemoData.orders
-    : presentationDemoData.orders.filter((order) => String(order.status || '').toLowerCase() === filter);
-  const visibleOrders = showDemoData && orders.length === 0 ? filteredDemoOrders : orders;
-  const usingDemoData = showDemoData && orders.length === 0 && filteredDemoOrders.length > 0;
+  const visibleOrders = orders;
 
   const payForOrder = async (orderId) => {
     setNotice('');
@@ -86,35 +81,13 @@ export default function NigeriaPatientOrdersPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] border border-emerald-200/70 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_35%),linear-gradient(145deg,rgba(255,255,255,0.96),rgba(236,253,245,0.92))] px-5 py-6 shadow-sm sm:px-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Pharmacy Orders</p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Track medication fulfillment and payment</h1>
-            <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-              Review routed pharmacy orders, open delivery tracking, and complete payment using the actual Nigeria order APIs already connected in the platform.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/ng/patient/search">
-              <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Search Medication</Button>
-            </Link>
-            <Link href="/ng/patient/prescriptions">
-              <Button variant="outline">Open Prescriptions</Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+      <PortalPageHeader title="Pharmacy orders" description="Check your order status, delivery progress, and payment details."><Link href="/ng/patient/prescriptions"><Button variant="outline">Prescriptions</Button></Link></PortalPageHeader>
 
       {notice ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div>
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{notice}</div>
       ) : null}
 
-      {usingDemoData ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
-          {PRESENTATION_DEMO_LABEL}: sample pharmacy orders and tracking records are shown for this demo account.
-        </div>
-      ) : null}
+      {loadError && <div className="portal-error"><p role="alert">{loadError}</p><Button variant="outline" className="mt-3" onClick={loadOrders}>Try again</Button></div>}
 
       <section className="flex flex-wrap gap-2">
         {['all', 'pending', 'confirmed', 'preparing', 'dispatched', 'delivered', 'cancelled'].map((value) => (
@@ -123,7 +96,7 @@ export default function NigeriaPatientOrdersPage() {
             type="button"
             onClick={() => setFilter(value)}
             className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-              filter === value ? 'bg-emerald-600 text-white' : 'border border-border bg-card text-muted-foreground hover:text-foreground'
+              filter === value ? 'bg-blue-600 text-white' : 'border border-border bg-card text-muted-foreground hover:text-foreground'
             }`}
           >
             {value === 'all' ? 'All' : value.replace(/_/g, ' ')}
@@ -138,11 +111,11 @@ export default function NigeriaPatientOrdersPage() {
         <CardContent className="space-y-3">
           {loading ? (
             <div className="py-8 text-center">
-              <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
             </div>
           ) : visibleOrders.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center">
-              <Package className="mx-auto h-10 w-10 text-emerald-500/60" />
+              <Package className="mx-auto h-10 w-10 text-blue-500/60" />
               <p className="mt-4 font-semibold text-foreground">No orders found.</p>
               <p className="mt-2 text-sm text-muted-foreground">Once a pharmacy order has been created, it will appear here with payment and tracking status.</p>
             </div>
@@ -178,7 +151,7 @@ export default function NigeriaPatientOrdersPage() {
                       </div>
                       <div className="flex flex-wrap gap-2 lg:justify-end">
                         {order.payment_status !== 'completed' && order.status === 'pending' ? (
-                          <Button onClick={() => payForOrder(order.id)} className="bg-emerald-600 text-white hover:bg-emerald-500">
+                          <Button onClick={() => payForOrder(order.id)} className="bg-blue-600 text-white hover:bg-blue-500">
                             Pay Now
                           </Button>
                         ) : null}

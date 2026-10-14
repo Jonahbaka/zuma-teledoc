@@ -101,7 +101,7 @@ export default function AdminLoginPage() {
           <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-5 sm:p-8">
             {/* Icon & Title */}
             <div className="text-center mb-8">
-              <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+              <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
                 <ShieldCheck className="w-7 h-7 text-white" />
               </div>
               <h1 className="text-xl font-bold text-white">Administrative Access</h1>
@@ -121,7 +121,7 @@ export default function AdminLoginPage() {
                     type="email"
                     placeholder="admin@doctarx.com"
                     autoComplete="email"
-                    className="pl-10 bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 focus:border-emerald-500 focus:ring-emerald-500/20"
+                    className="pl-10 bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 focus:border-blue-500 focus:ring-blue-500/20"
                     required
                   />
                 </div>
@@ -138,7 +138,7 @@ export default function AdminLoginPage() {
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     autoComplete="current-password"
-                    className="pl-10 pr-10 bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 focus:border-emerald-500 focus:ring-emerald-500/20"
+                    className="pl-10 pr-10 bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 focus:border-blue-500 focus:ring-blue-500/20"
                     required
                   />
                   <button
@@ -163,7 +163,7 @@ export default function AdminLoginPage() {
                     placeholder="123456"
                     value={mfaCode}
                     onChange={(e) => setMfaCode(e.target.value)}
-                    className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 focus:border-emerald-500 focus:ring-emerald-500/20"
+                    className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 focus:border-blue-500 focus:ring-blue-500/20"
                     required
                   />
                 </div>
@@ -172,7 +172,7 @@ export default function AdminLoginPage() {
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white"
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700 text-white"
               >
                 {isLoading ? (
                   <>

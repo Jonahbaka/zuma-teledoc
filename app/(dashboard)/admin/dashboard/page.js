@@ -1,626 +1,181 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { 
-  Users, UserCheck, Calendar, DollarSign, TrendingUp, 
-  AlertCircle, ChevronRight, Activity, Shield, BarChart3,
-  LineChart, PieChart, Database, Server, Wifi, Video,
-  CheckCircle2, XCircle, Clock, AlertTriangle, CreditCard,
-  FileWarning, UserX, Zap, RefreshCw, ExternalLink
-} from 'lucide-react';
-import { adminAPI } from '@/lib/api';
+import { Users, UserCheck, Calendar, Activity, Shield, BarChart3, Database, Server, Video, RefreshCw, AlertCircle, Mail, Bot } from 'lucide-react';
+import api, { adminAPI } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
+import PortalPageHeader from '@/components/branding/PortalPageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
-import HiveOverwatch from '@/components/hive/HiveOverwatch';
 
-// Mock data for System Health
-const MOCK_SYSTEM_HEALTH = {
-  api: { status: 'online', uptime: '99.9%', latency: '45ms' },
-  database: { status: 'connected', latency: '12ms', connections: '15/100' },
-  videoServer: { status: 'active', activeCalls: 0, capacity: '100%' },
-  emailService: { status: 'online', queueSize: 0 }
-};
+// Missing or failed aggregates must remain unknown. An explicit availability
+// flag comes from the server query result, rather than a substituted zero.
+function nullableCount(value) {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+$/.test(value))) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
 
-// Mock data for Pending Tasks (Action Required)
-const MOCK_PENDING_TASKS = [
-  {
-    id: 1,
-    type: 'credentialing',
-    title: '2 Providers Awaiting Verification',
-    description: 'New provider applications need credentialing review',
-    severity: 'warning',
-    count: 2,
-    action: '/admin/credentialing',
-    actionLabel: 'Review Now'
-  },
-  {
-    id: 2,
-    type: 'payment',
-    title: '5 Failed Payment Transactions',
-    description: 'Payment failures from the last 24 hours',
-    severity: 'critical',
-    count: 5,
-    action: '/admin/revenue?filter=failed',
-    actionLabel: 'Resolve'
-  },
-  {
-    id: 3,
-    type: 'approval',
-    title: '3 Provider Approvals Pending',
-    description: 'Providers waiting for account activation',
-    severity: 'info',
-    count: 3,
-    action: '/admin/providers',
-    actionLabel: 'Approve'
+function dashboardCount(dashboard, section, field) {
+  if (dashboard?.availability?.[section] !== true) return null;
+  return nullableCount(dashboard?.[section]?.[field]);
+}
+
+function weeklyRows(dashboard) {
+  if (dashboard?.availability?.weeklyActivity !== true || !Array.isArray(dashboard.weeklyActivity)) return null;
+  const rows = [];
+  for (const day of dashboard.weeklyActivity) {
+    const date = typeof day?.date === 'string' ? day.date.slice(0, 10) : '';
+    const parsed = new Date(date);
+    const count = nullableCount(day?.appointments);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date || count === null) return null;
+    rows.push({ date, count });
   }
-];
+  return rows;
+}
+
+const displayCount = value => value === null ? '—' : value.toLocaleString('en-US');
+
+function Metric({ title, value, detail, icon: Icon }) {
+  return <Card><CardContent className="flex items-start justify-between gap-4 p-6">
+    <div><p className="text-slate-600">{title}</p><p className="mt-3 text-3xl font-semibold text-slate-950">{displayCount(value)}</p><p className="mt-2 leading-6 text-slate-600">{value === null ? 'Data unavailable' : detail}</p></div>
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><Icon className="h-6 w-6" aria-hidden="true" /></div>
+  </CardContent></Card>;
+}
+
+function ServiceStatus({ title, status, detail, icon: Icon }) {
+  return <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+    <div className="flex items-center gap-2 font-medium text-slate-800"><Icon className="h-5 w-5 text-blue-700" aria-hidden="true" />{title}</div>
+    <p className="mt-3 font-semibold text-slate-950">{status}</p><p className="mt-2 leading-6 text-slate-600">{detail}</p>
+  </div>;
+}
 
 export default function AdminDashboard() {
   const { user } = useAuth();
-  const [dashboard, setDashboard] = useState(null);
+  const [sources, setSources] = useState({ dashboard: null, health: null, approvals: null });
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(true);
-  const [systemHealth] = useState(MOCK_SYSTEM_HEALTH);
-  const [pendingTasks] = useState(MOCK_PENDING_TASKS);
-
-  // Calculate total pending tasks for notification sync
-  const totalPendingCount = pendingTasks.reduce((sum, task) => sum + task.count, 0);
+  const [reload, setReload] = useState(0);
+  const [checkedAt, setCheckedAt] = useState(null);
 
   useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        const response = await adminAPI.getDashboard();
-        if (response?.data?.success && response?.data?.dashboard) {
-          setDashboard(response.data.dashboard);
-        } else {
-          setDashboard({
-            users: { total: 0, patients: 0, providers: 0, admins: 0, superAdmins: 0 },
-            providers: { pendingApproval: 0 },
-            appointments: { today: 0, completed: 0, scheduled: 0, cancelled: 0 },
-            subscriptions: { estimatedMRR: 0, free: 0, gold: 0, platinum: 0 },
-            weeklyActivity: []
-          });
-        }
-      } catch (error) {
-        setDashboard({
-          users: { total: 0, patients: 0, providers: 0, admins: 0, superAdmins: 0 },
-          providers: { pendingApproval: 0 },
-          appointments: { today: 0, completed: 0, scheduled: 0, cancelled: 0 },
-          subscriptions: { estimatedMRR: 0, free: 0, gold: 0, platinum: 0 },
-          weeklyActivity: []
-        });
-      } finally {
-        setLoading(false);
-      }
+    let active = true;
+    setLoading(true); setErrors({}); setCheckedAt(null);
+    setSources({ dashboard: null, health: null, approvals: null });
+    const loaders = {
+      dashboard: async () => {
+        const { data } = await adminAPI.getDashboard();
+        if (!data?.success || !data.dashboard || typeof data.dashboard !== 'object') throw new Error();
+        return { ...data.dashboard, credentialing: { underReview: data.dashboard.credentialing?.underReview ?? data.metrics?.pendingcredentialing } };
+      },
+      health: async () => {
+        const { data } = await api.get('/health', { validateStatus: status => status === 200 || status === 503 });
+        if (!data || typeof data.status !== 'string') throw new Error();
+        return data;
+      },
+      approvals: async () => {
+        const { data } = await adminAPI.getPendingProviders();
+        if (!data?.success || !Array.isArray(data.providers)) throw new Error();
+        return data.providers.length;
+      },
     };
+    const keys = Object.keys(loaders);
+    Promise.allSettled(keys.map(key => loaders[key]())).then(results => {
+      if (!active) return;
+      const values = {}; const failures = {};
+      results.forEach((result, index) => {
+        const key = keys[index];
+        values[key] = result.status === 'fulfilled' ? result.value : null;
+        if (result.status === 'rejected') failures[key] = true;
+      });
+      setSources(values); setErrors(failures); setCheckedAt(new Date()); setLoading(false);
+    });
+    return () => { active = false; };
+  }, [reload, user?.id]);
 
-    fetchDashboard();
-  }, []);
+  const dashboard = sources.dashboard;
+  const totalUsers = dashboardCount(dashboard, 'users', 'total');
+  const totalProviders = dashboardCount(dashboard, 'users', 'providers');
+  const pendingApproval = nullableCount(sources.approvals);
+  const underReview = dashboardCount(dashboard, 'credentialing', 'underReview');
+  const health = sources.health;
+  const databaseHealthy = health?.database?.primary?.healthy;
+  const databaseStatus = databaseHealthy === true ? 'Connected' : databaseHealthy === false ? 'Unreachable' : 'Status unavailable';
+  const healthLabels = { healthy: 'Ready', degraded: 'Degraded', warming_up: 'Warming up', initializing: 'Initializing' };
+  const uptime = nullableCount(health?.uptime);
+  const activity = weeklyRows(dashboard);
+  const maxActivity = activity?.length ? Math.max(...activity.map(day => day.count)) : 0;
+  const distribution = ['patients', 'providers', 'admins'].map(key => ({
+    key, label: { patients: 'Patients', providers: 'Providers', admins: 'Administrators' }[key],
+    count: dashboardCount(dashboard, 'users', key),
+  }));
+  const quickLinks = [
+    { title: 'User management', detail: 'Manage accounts and access', href: '/admin/users', icon: Users },
+    { title: 'Credentialing', detail: 'Review clinical credentials', href: '/admin/credentialing', icon: UserCheck },
+    { title: 'Audit logs', detail: 'Review recorded access and actions', href: '/admin/audit-logs', icon: Shield },
+    { title: 'Analytics', detail: 'Explore platform activity', href: '/admin/analytics', icon: BarChart3 },
+    { title: 'Revenue', detail: 'Review financial reporting', href: '/admin/revenue', icon: Activity },
+    { title: 'Agent operations', detail: 'Monitoring and operational controls', href: '/admin/agent-ops', icon: Bot },
+  ];
 
-  // Helper function to format growth text - FIX FOR GROWTH MATH BUG
-  const formatGrowthText = (value, growthPercent, label) => {
-    if (value === 0) {
-      return <span className="text-muted-foreground">No data yet</span>;
-    }
-    if (growthPercent > 0) {
-      return (
-        <span className="text-emerald-600 dark:text-emerald-400">
-          <TrendingUp className="w-3 h-3 inline mr-1" />
-          +{growthPercent}% {label}
-        </span>
-      );
-    }
-    return <span className="text-muted-foreground">{label}</span>;
-  };
-
-  if (loading || !dashboard) {
-    return (
-      <div className="space-y-8">
-        <div className="h-8 w-64 bg-muted rounded animate-pulse"></div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-32 bg-muted rounded-xl animate-pulse"></div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold font-serif text-foreground">Admin Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            {totalPendingCount > 0 ? (
-              <span className="text-amber-600 dark:text-amber-400">
-                {totalPendingCount} action{totalPendingCount > 1 ? 's' : ''} require your attention
-              </span>
-            ) : (
-              "Platform overview and management"
-            )}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {dashboard?.providers?.pendingApproval > 0 && (
-            <Link href="/admin/providers">
-              <Button className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700">
-                <AlertCircle className="w-4 h-4 mr-2" />
-                {dashboard.providers.pendingApproval} Pending Approvals
-              </Button>
-            </Link>
-          )}
-          <Link href="/admin/analytics">
-            <Button variant="outline" className="border-purple-500 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              View Analytics
-            </Button>
-          </Link>
-        </div>
-      </div>
-
-      {/* System Health Widget - TOP PRIORITY */}
-      <Card className="border-2 border-emerald-500/30 dark:border-emerald-500/20">
-        <CardHeader className="pb-3 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 dark:from-emerald-500/5 dark:to-teal-500/5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                <Server className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  System Health
-                  <span className="flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                </CardTitle>
-                <CardDescription>Real-time infrastructure status</CardDescription>
-              </div>
-            </div>
-            <Button variant="ghost" size="sm" className="text-muted-foreground">
-              <RefreshCw className="w-4 h-4 mr-1" />
-              Refresh
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* API Status */}
-            <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
-              <div className="flex items-center gap-2 mb-2">
-                <Wifi className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span className="text-sm font-medium text-foreground">API Status</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                <span className="font-semibold text-emerald-700 dark:text-emerald-300">Online</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">{systemHealth.api.uptime} Uptime</p>
-            </div>
-
-            {/* Database */}
-            <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-              <div className="flex items-center gap-2 mb-2">
-                <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <span className="text-sm font-medium text-foreground">Database</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                <span className="font-semibold text-emerald-700 dark:text-emerald-300">Connected</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">Latency: {systemHealth.database.latency}</p>
-            </div>
-
-            {/* Video Server */}
-            <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800">
-              <div className="flex items-center gap-2 mb-2">
-                <Video className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                <span className="text-sm font-medium text-foreground">Video Server</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                <span className="font-semibold text-emerald-700 dark:text-emerald-300">Active</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">{systemHealth.videoServer.activeCalls} active calls</p>
-            </div>
-
-            {/* Email Service */}
-            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-              <div className="flex items-center gap-2 mb-2">
-                <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                <span className="text-sm font-medium text-foreground">Email Service</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                <span className="font-semibold text-emerald-700 dark:text-emerald-300">Online</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">Queue: {systemHealth.emailService.queueSize}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Key Metrics - WITH FIXED GROWTH MATH */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Users</p>
-                <p className="text-3xl font-bold mt-1 text-foreground">{dashboard?.users?.total || 0}</p>
-                <p className="text-xs mt-1">
-                  {formatGrowthText(dashboard?.users?.total || 0, 12, 'from last month')}
-                </p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                <Users className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Providers</p>
-                <p className="text-3xl font-bold mt-1 text-foreground">{dashboard?.users?.providers || 0}</p>
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                  {(dashboard?.providers?.pendingApproval || 0) > 0 
-                    ? `${dashboard.providers.pendingApproval} pending`
-                    : 'All approved'
-                  }
-                </p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                <UserCheck className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Active Sessions</p>
-                <p className="text-3xl font-bold mt-1 text-foreground">{systemHealth.videoServer.activeCalls}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Live video calls
-                </p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                <Video className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Est. MRR</p>
-                <p className="text-3xl font-bold mt-1 text-foreground">${dashboard?.subscriptions?.estimatedMRR || 0}</p>
-                <p className="text-xs mt-1">
-                  {formatGrowthText(dashboard?.subscriptions?.estimatedMRR || 0, 8, 'growth')}
-                </p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-amber-600 dark:text-amber-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Grid */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        
-        {/* Pending Tasks / Action Required - REPLACES APPOINTMENTS TODAY */}
-        <Card className="border-2 border-amber-500/30 dark:border-amber-500/20">
-          <CardHeader className="pb-3 bg-gradient-to-r from-amber-500/10 to-orange-500/10 dark:from-amber-500/5 dark:to-orange-500/5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
-                  <AlertTriangle className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    Action Required
-                    <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-                      {totalPendingCount}
-                    </span>
-                  </CardTitle>
-                  <CardDescription>Tasks needing your attention</CardDescription>
-                </div>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-4">
-            {pendingTasks.length === 0 ? (
-              <div className="text-center py-8">
-                <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
-                <p className="text-muted-foreground">All caught up! No pending tasks.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {pendingTasks.map((task) => (
-                  <div 
-                    key={task.id}
-                    className={cn(
-                      "p-4 rounded-xl border transition-all",
-                      task.severity === 'critical' && "border-red-300 bg-red-50/50 dark:bg-red-950/20 dark:border-red-800",
-                      task.severity === 'warning' && "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800",
-                      task.severity === 'info' && "border-blue-300 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800"
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-start gap-3">
-                        <div className={cn(
-                          "w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0",
-                          task.severity === 'critical' && "bg-red-100 dark:bg-red-900",
-                          task.severity === 'warning' && "bg-amber-100 dark:bg-amber-900",
-                          task.severity === 'info' && "bg-blue-100 dark:bg-blue-900"
-                        )}>
-                          {task.type === 'credentialing' && <FileWarning className={cn("w-5 h-5", task.severity === 'warning' ? "text-amber-600" : "text-blue-600")} />}
-                          {task.type === 'payment' && <CreditCard className="w-5 h-5 text-red-600" />}
-                          {task.type === 'approval' && <UserCheck className="w-5 h-5 text-blue-600" />}
-                        </div>
-                        <div>
-                          <p className={cn(
-                            "font-semibold text-sm",
-                            task.severity === 'critical' && "text-red-700 dark:text-red-400",
-                            task.severity === 'warning' && "text-amber-700 dark:text-amber-400",
-                            task.severity === 'info' && "text-foreground"
-                          )}>
-                            {task.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{task.description}</p>
-                        </div>
-                      </div>
-                      <Link href={task.action}>
-                        <Button 
-                          size="sm" 
-                          className={cn(
-                            task.severity === 'critical' && "bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700",
-                            task.severity === 'warning' && "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700",
-                            task.severity === 'info' && "bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
-                          )}
-                        >
-                          {task.actionLabel}
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* User Distribution */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center">
-                <PieChart className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <CardTitle className="text-lg">User Distribution</CardTitle>
-                <CardDescription>Breakdown by role</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[
-                { 
-                  label: 'Patients', 
-                  count: dashboard?.users?.patients || 0, 
-                  barClass: 'bg-purple-500', 
-                  percent: dashboard?.users?.total > 0 ? Math.round((dashboard?.users?.patients || 0) / dashboard?.users?.total * 100) : 0 
-                },
-                { 
-                  label: 'Providers', 
-                  count: dashboard?.users?.providers || 0, 
-                  barClass: 'bg-blue-500', 
-                  percent: dashboard?.users?.total > 0 ? Math.round((dashboard?.users?.providers || 0) / dashboard?.users?.total * 100) : 0 
-                },
-                { 
-                  label: 'Admins', 
-                  count: (dashboard?.users?.admins || 0) + (dashboard?.users?.superAdmins || 0), 
-                  barClass: 'bg-amber-500', 
-                  percent: dashboard?.users?.total > 0 ? Math.round(((dashboard?.users?.admins || 0) + (dashboard?.users?.superAdmins || 0)) / dashboard?.users?.total * 100) : 0 
-                }
-              ].map((item) => (
-                <div key={item.label}>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-sm font-medium text-foreground">{item.label}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {item.count} ({item.percent || 0}%)
-                    </span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full ${item.barClass} rounded-full transition-all duration-500`}
-                      style={{ width: `${item.percent || 0}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Subscription Tiers */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
-                <DollarSign className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <CardTitle className="text-lg">Subscription Tiers</CardTitle>
-                <CardDescription>Active subscriptions by plan</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {[
-                { label: 'Free', count: dashboard?.subscriptions?.free || 0, bgColor: 'bg-slate-100 dark:bg-slate-800', dotColor: 'bg-slate-500' },
-                { label: 'Docta Gold', count: dashboard?.subscriptions?.gold || 0, bgColor: 'bg-amber-50 dark:bg-amber-900/20', dotColor: 'bg-amber-500' },
-                { label: 'Platinum', count: dashboard?.subscriptions?.platinum || 0, bgColor: 'bg-purple-50 dark:bg-purple-900/20', dotColor: 'bg-purple-500' }
-              ].map((item) => (
-                <div key={item.label} className={`flex items-center justify-between p-3 rounded-xl ${item.bgColor}`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${item.dotColor}`}></div>
-                    <span className="font-medium text-foreground">{item.label}</span>
-                  </div>
-                  <span className="text-lg font-bold text-foreground">{item.count}</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Weekly Activity Chart */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
-                <Activity className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <CardTitle className="text-lg">Weekly Activity</CardTitle>
-                <CardDescription>Appointment trends (last 7 days)</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {dashboard?.weeklyActivity && Array.isArray(dashboard.weeklyActivity) && dashboard.weeklyActivity.length > 0 ? (
-              <div className="h-48 flex items-end justify-between gap-2">
-                {dashboard.weeklyActivity.map((day, index) => {
-                  if (!day || !day.date) return null;
-                  const appointments = dashboard.weeklyActivity.map(d => parseInt(d?.appointments || 0));
-                  const maxAppointments = appointments.length > 0 ? Math.max(...appointments) : 0;
-                  const height = maxAppointments > 0 ? (parseInt(day.appointments || 0) / maxAppointments) * 100 : 0;
-                  return (
-                    <div key={index} className="flex-1 flex flex-col items-center">
-                      <div 
-                        className="w-full bg-gradient-to-t from-purple-600 to-purple-400 rounded-t-lg transition-all hover:from-purple-700 hover:to-purple-500 cursor-pointer"
-                        style={{ height: `${height}%`, minHeight: height > 0 ? '4px' : '0' }}
-                        title={`${day.date}: ${day.appointments || 0} appointments`}
-                      />
-                      <span className="text-xs text-muted-foreground mt-2">
-                        {day.date ? new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' }) : 'N/A'}
-                      </span>
-                      <span className="text-xs font-semibold text-foreground">{day.appointments || 0}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="h-48 flex items-center justify-center">
-                <div className="text-center">
-                  <Activity className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-                  <p className="text-muted-foreground">No activity data available</p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Links */}
-      <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-4">
-        <Link href="/admin/users">
-          <Card className="hover:shadow-lg hover:border-purple-500/30 transition-all cursor-pointer">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                  <Users className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-foreground">User Management</h3>
-                  <p className="text-sm text-muted-foreground">View and manage users</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/admin/credentialing">
-          <Card className="hover:shadow-lg hover:border-amber-500/30 transition-all cursor-pointer">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                  <UserCheck className="w-6 h-6 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-foreground">Credentialing</h3>
-                  <p className="text-sm text-muted-foreground">Provider verification</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/admin/audit-logs">
-          <Card className="hover:shadow-lg hover:border-purple-500/30 transition-all cursor-pointer">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                  <Shield className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-foreground">Audit Logs</h3>
-                  <p className="text-sm text-muted-foreground">HIPAA compliance</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/admin/analytics">
-          <Card className="hover:shadow-lg hover:border-blue-500/30 transition-all cursor-pointer">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                  <BarChart3 className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-foreground">Analytics</h3>
-                  <p className="text-sm text-muted-foreground">Platform statistics</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
-
-      {/* Hive Overwatch — Live Agent Monitoring & Control */}
-      <Card className="border-amber-500/20 bg-gradient-to-br from-background to-amber-950/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="w-5 h-5 text-amber-500" />
-            Hive Command Center
-          </CardTitle>
-          <CardDescription>Real-time agent monitoring, intervention queue, and kill switch</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <HiveOverwatch />
-        </CardContent>
-      </Card>
+  return <div className="space-y-6">
+    <PortalPageHeader eyebrow="DoctaRx · Administration" title="Platform overview" description="Review account activity, provider applications, and the latest operational status.">
+      <Button onClick={() => setReload(value => value + 1)} disabled={loading} variant="outline"><RefreshCw className="mr-2 h-5 w-5" aria-hidden="true" />{loading ? 'Refreshing…' : 'Refresh overview'}</Button>
+      <Link href="/admin/analytics"><Button className="bg-blue-700 hover:bg-blue-800">View analytics</Button></Link>
+    </PortalPageHeader>
+    {loading && <p role="status" className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-900">Loading the latest platform data…</p>}
+    {!loading && (Object.keys(errors).length > 0 || dashboard?.unavailableSections?.length > 0) && <p role="alert" className="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><AlertCircle className="mt-1 h-5 w-5 shrink-0" aria-hidden="true" />Some sections could not be loaded. Their values are unavailable; refresh to try again.</p>}
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <Metric title="Active users" value={totalUsers} detail="Active accounts in the platform" icon={Users} />
+      <Metric title="Providers" value={totalProviders} detail="Active provider accounts" icon={UserCheck} />
+      <Metric title="Appointments today" value={dashboardCount(dashboard, 'appointments', 'today')} detail="Scheduled for the server reporting date" icon={Calendar} />
+      <Metric title="Provider approvals" value={pendingApproval} detail="Accounts awaiting approval" icon={UserCheck} />
     </div>
-  );
+
+    <Card><CardHeader><CardTitle>System status</CardTitle><CardDescription>{health && checkedAt ? 'Snapshot retrieved at ' + checkedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : loading ? 'Waiting for the latest operational snapshot' : 'Operational snapshot unavailable'}</CardDescription></CardHeader>
+      <CardContent><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <ServiceStatus title="Application" status={healthLabels[health?.status] || 'Status unavailable'} detail={uptime === null ? 'No process uptime was reported.' : 'Process uptime: ' + Math.floor(uptime / 60).toLocaleString('en-US') + ' minutes.'} icon={Server} />
+        <ServiceStatus title="Database" status={databaseStatus} detail="Primary database health reported by the application." icon={Database} />
+        <ServiceStatus title="Video service" status="Monitoring unavailable" detail="Live call and media health metrics are not connected to this overview." icon={Video} />
+        <ServiceStatus title="Email service" status="Monitoring unavailable" detail="Delivery and queue health metrics are not connected to this overview." icon={Mail} />
+      </div></CardContent>
+    </Card>
+
+    <div className="grid items-start gap-6 xl:grid-cols-2">
+      <Card><CardHeader><CardTitle>Provider review queues</CardTitle><CardDescription>Current account approvals and credential reviews</CardDescription></CardHeader><CardContent className="space-y-4">
+        {[{ title: 'Account approvals', count: pendingApproval, href: '/admin/providers', action: 'Review accounts' }, { title: 'Credentials under review', count: underReview, href: '/admin/credentialing', action: 'Review credentials' }].map(queue => <div key={queue.title} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 p-5">
+          <div><p className="font-medium text-slate-950">{queue.title}</p><p className="mt-2 text-slate-600">{queue.count === null ? 'Queue summary unavailable' : displayCount(queue.count) + (queue.count === 1 ? ' application' : ' applications')}</p></div>
+          <Link href={queue.href}><Button variant="outline">{queue.action}</Button></Link>
+        </div>)}
+      </CardContent></Card>
+
+      <Card><CardHeader><CardTitle>User distribution</CardTitle><CardDescription>Active accounts by role</CardDescription></CardHeader><CardContent className="space-y-5">
+        {distribution.map(item => {
+          const percent = item.count !== null && totalUsers !== null && totalUsers > 0 ? Math.min(100, item.count / totalUsers * 100) : null;
+          return <div key={item.key}><div className="flex justify-between gap-4"><span className="font-medium text-slate-900">{item.label}</span><span className="text-slate-600">{displayCount(item.count)}</span></div>
+            {percent !== null && <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-100" aria-hidden="true"><div className="h-full rounded-full bg-blue-600" style={{ width: percent + '%' }} /></div>}
+          </div>;
+        })}
+      </CardContent></Card>
+
+      <Card><CardHeader><CardTitle>Subscription plans</CardTitle><CardDescription>Active subscription counts reported by the platform</CardDescription></CardHeader><CardContent className="space-y-3">
+        {[['free', 'Free'], ['gold', 'DoctaRx Gold'], ['platinum', 'Platinum']].map(([key, label]) => <div key={key} className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4"><span className="font-medium text-slate-900">{label}</span><span className="text-lg font-semibold text-slate-950">{displayCount(dashboardCount(dashboard, 'subscriptions', key))}</span></div>)}
+      </CardContent></Card>
+
+      <Card><CardHeader><CardTitle>Weekly appointment activity</CardTitle><CardDescription>Appointments created during the last seven days</CardDescription></CardHeader><CardContent>
+        {activity === null ? <p className="rounded-xl bg-slate-50 p-5 text-slate-600">Activity data unavailable.</p> : activity.length === 0 ? <p className="rounded-xl bg-slate-50 p-5 text-slate-600">No appointments were created in this reporting period.</p> : <div className="flex min-h-52 items-end justify-between gap-3">
+          {activity.map(day => <div key={day.date} className="flex min-w-0 flex-1 flex-col items-center gap-2"><div className="flex h-32 w-full items-end justify-center"><div className="w-full max-w-12 rounded-t-lg bg-blue-600" style={{ height: maxActivity > 0 ? day.count / maxActivity * 120 : 0 }} aria-hidden="true" /></div>
+            <span className="text-slate-600">{new Date(day.date).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })}</span><span className="font-semibold text-slate-950">{displayCount(day.count)}</span>
+          </div>)}
+        </div>}
+      </CardContent></Card>
+    </div>
+
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      {quickLinks.map(({ title, detail, href, icon: Icon }) => <Link key={href} href={href} className="rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-blue-400 hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700">
+        <div className="flex items-start gap-4"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><Icon className="h-6 w-6" aria-hidden="true" /></div><div><h2 className="font-semibold text-slate-950">{title}</h2><p className="mt-2 leading-6 text-slate-600">{detail}</p></div></div>
+      </Link>)}
+    </div>
+  </div>;
 }

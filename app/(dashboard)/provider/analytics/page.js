@@ -8,7 +8,7 @@ export default function OutcomesAnalyticsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-          <BarChart3 className="h-7 w-7 text-purple-500" />
+          <BarChart3 className="h-7 w-7 text-blue-500" />
           Outcomes Analytics
         </h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">

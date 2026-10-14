@@ -548,13 +548,14 @@ describe('Step 9 — Navigation: Return-to-dashboard contract', () => {
   it('NGVideoCall ended screen has Return to Dashboard button', () => {
     const src = readFile('components/ng/conference/NGVideoCall.jsx');
     assert.match(src, /Return to Dashboard/, 'ended screen must have Return to Dashboard');
-    assert.match(src, /\/ng\/provider\/dashboard/, 'must link to provider dashboard');
+    assert.match(src, /\$\{providerBase\}\/dashboard/, 'must return to the current market provider dashboard');
+    assert.match(src, /const providerBase =.*\/ng\/provider.*\/provider/, 'the dashboard base must distinguish both markets');
   });
 
   it('NGVideoCall ended screen has Open Visit Notes when appointment context is present', () => {
     const src = readFile('components/ng/conference/NGVideoCall.jsx');
     assert.match(src, /Open Visit Notes/, 'ended screen must offer EMR link');
-    assert.match(src, /\/ng\/provider\/appointments\//, 'must link to appointment visit page');
+    assert.match(src, /\$\{providerBase\}\/appointments\/\$\{appointmentId\}\/visit/, 'must retain the current market and appointment in the visit link');
   });
 
   it('NGProviderDashboard appointment rows have Start Call action links', () => {

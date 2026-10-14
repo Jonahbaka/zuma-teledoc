@@ -109,7 +109,7 @@ export default function PatientAppointments() {
           <p className="text-gray-600">Manage your healthcare visits</p>
         </div>
         <Link href="/patient/appointments/book">
-          <Button className="bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white">
+          <Button className="bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900 text-white">
             <Plus className="w-4 h-4 mr-2" />
             Book Appointment
           </Button>
@@ -151,7 +151,7 @@ export default function PatientAppointments() {
                       // Silently fail if state update fails
                     }
                   }}
-                  className={filter === f.value ? 'bg-purple-500' : ''}
+                  className={filter === f.value ? 'bg-blue-500' : ''}
                 >
                   {f.label}
                 </Button>
@@ -218,7 +218,7 @@ export default function PatientAppointments() {
                         <div className="flex flex-col md:flex-row md:items-center gap-4">
                           {/* Provider Info */}
                           <div className="flex items-center gap-4 flex-1">
-                            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white text-lg font-medium">
+                            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-lg font-medium">
                               {firstName?.[0] || ''}{lastName?.[0] || ''}
                             </div>
                             <div>
@@ -247,7 +247,7 @@ export default function PatientAppointments() {
                                 </>
                               ) : apt.type === 'phone' ? (
                                 <>
-                                  <Phone className="w-4 h-4 text-green-500" />
+                                  <Phone className="w-4 h-4 text-blue-500" />
                                   <span>Phone</span>
                                 </>
                               ) : (

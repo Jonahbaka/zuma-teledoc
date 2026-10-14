@@ -61,7 +61,7 @@ test('provider dashboard exposes clinical telehealth entry that opens the Meet-s
 
   // The dashboard sidebar must lead directly into the supplied Meet-style room
   // using clinical language, never internal implementation route-copy.
-  assert.match(dashboard, /Telehealth Center/);
+  assert.match(dashboard, /Video consultations/);
   assert.match(dashboard, /\$\{base\}\/call/);
   assert.doesNotMatch(dashboard, /Start LiveKit Room/);
   assert.doesNotMatch(dashboard, /Module Viewer/);

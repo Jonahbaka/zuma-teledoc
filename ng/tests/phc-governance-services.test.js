@@ -98,6 +98,24 @@ test('device gateway exposes manual capture and labels unimplemented vendor tran
   assert.notEqual(one.encrypted, 'SYNTHETIC-SERIAL-1');
 });
 
+test('fixture device writes are denied in production and outside isolated test databases', async () => {
+  const previous = { NODE_ENV: process.env.NODE_ENV, DATABASE_URL: process.env.DATABASE_URL };
+  let queries = 0;
+  const pool = { query() { queries++; throw new Error('Denied fixture must not query the database'); } };
+  const context = { demo_only: true };
+  try {
+    for (const [environment, target] of [['production', 'postgresql://test@127.0.0.1:5432/device_test'], ['test', 'postgresql://test@remote.example/device_test'], ['development', 'postgresql://test@127.0.0.1:5432/live_database']]) {
+      process.env.NODE_ENV = environment;
+      process.env.DATABASE_URL = target;
+      await assert.rejects(devices.registerDevice(pool, {}, context, { adapterKey: 'mock_device_v1', deviceType: 'blood_pressure' }), { code: 'MOCK_DEVICE_TEST_ONLY' });
+      await assert.rejects(devices.captureMockFixture(pool, {}, context, { fixtureName: 'blood_pressure' }), { code: 'MOCK_DEVICE_TEST_ONLY' });
+    }
+    assert.equal(queries, 0);
+  } finally {
+    for (const [name, value] of Object.entries(previous)) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
+  }
+});
+
 test('canonical chart note writes require assigned provider and queue completion requires sign-off', () => {
   const clinicalService = fs.readFileSync(
     path.join(__dirname, '../../server/services/clinicalEncounterService.js'),

@@ -76,12 +76,12 @@ export default function NigeriaAdminPharmaciesPage() {
   return (
     <div className="space-y-6">
       <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Pharmacy Administration</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">Nigeria Pharmacy Administration</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Pharmacy approvals and marketplace status</h1>
         <p className="mt-2 text-sm text-muted-foreground">Verify, reject, or suspend Nigeria pharmacy operators, including onboarding details, WhatsApp receiving preferences, and fulfillment readiness.</p>
       </section>
 
-      {notice ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div> : null}
+      {notice ? <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{notice}</div> : null}
 
       {loading ? (
         <Card className="border-border/70">
@@ -96,7 +96,7 @@ export default function NigeriaAdminPharmaciesPage() {
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-lg font-semibold text-foreground">{pharmacy.name}</h2>
-                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                      <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
                         {formatStatus(pharmacy.status)}
                       </span>
                       <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-700">
@@ -123,7 +123,7 @@ export default function NigeriaAdminPharmaciesPage() {
                     <p className="text-sm text-muted-foreground">Orders: {pharmacy.order_count || 0}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button onClick={() => updatePharmacy(pharmacy.id, 'verify', true)} className="bg-emerald-600 text-white hover:bg-emerald-500">Approve</Button>
+                    <Button onClick={() => updatePharmacy(pharmacy.id, 'verify', true)} className="bg-blue-600 text-white hover:bg-blue-500">Approve</Button>
                     <Button variant="outline" onClick={() => updatePharmacy(pharmacy.id, 'verify', false)}>Reject</Button>
                     <Button variant="outline" onClick={() => updatePharmacy(pharmacy.id, 'suspend')} className="text-rose-600">Suspend</Button>
                   </div>

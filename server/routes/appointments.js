@@ -260,7 +260,7 @@ router.post('/',
 router.get('/', authenticate, async (req, res) => {
   try {
     const filters = validate(searchAppointmentsSchema, req.query);
-    const { page, limit, sortBy, sortOrder } = parseQueryParams(filters);
+    const { page, limit, sortOrder } = parseQueryParams(filters);
     
     // 1. BUILD QUERY ONCE
     // We build the WHERE clause and values array a single time to avoid index mismatch errors
@@ -270,6 +270,10 @@ router.get('/', authenticate, async (req, res) => {
     
     const userRole = String(req.user.role || '').toLowerCase().trim();
     const userId = req.user.id;
+    const marketScope = getAuthenticatedMarketScope(req.user);
+    if (!['patient', 'provider', 'admin', 'super_admin'].includes(userRole)) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
     
     // Role-based filtering
     if (userRole === 'patient') {
@@ -286,7 +290,8 @@ router.get('/', authenticate, async (req, res) => {
         values.push(filters.patientId);
       }
     } else if (userRole === 'admin' || userRole === 'super_admin') {
-      // Admins can see all, or filter by specific user if provided in query
+      // Administrators remain in their authenticated market. Request filters
+      // may narrow their view but cannot grant another market's care records.
       if (filters.patientId) {
         whereConditions.push(`a.patient_id = $${paramIndex++}`);
         values.push(filters.patientId);
@@ -295,16 +300,17 @@ router.get('/', authenticate, async (req, res) => {
         whereConditions.push(`a.provider_id = $${paramIndex++}`);
         values.push(filters.providerId);
       }
-    } else {
-      // Unknown role - log warning but try to get appointments by patient_id as fallback
-      logger.warn('Unknown user role in appointments query', {
-        userId: req.user.id,
-        role: req.user.role,
-        roleNormalized: userRole
-      });
-      whereConditions.push(`a.patient_id = $${paramIndex++}`);
-      values.push(userId);
     }
+
+    // Scope both sides of the relationship before counts and pagination. The
+    // market comes from authenticate's current database user, never a query,
+    // header, or a stale JWT market claim. Historical inactive clinicians may
+    // remain visible; admission independently checks current clinical access.
+    whereConditions.push(`${userMarketScopeSql('p')} = $${paramIndex++}`);
+    values.push(marketScope);
+    whereConditions.push(`${userMarketScopeSql('pr')} = $${paramIndex++}`);
+    values.push(marketScope);
+    whereConditions.push("p.role = 'patient' AND pr.role = 'provider'");
     
     // Status Filter
     if (filters.status) {
@@ -331,6 +337,8 @@ router.get('/', authenticate, async (req, res) => {
     const countQuery = `
       SELECT COUNT(*) as count 
       FROM appointments a 
+      JOIN users p ON p.id = a.patient_id
+      JOIN users pr ON pr.id = a.provider_id
       ${whereClause}
     `;
     
@@ -351,8 +359,8 @@ router.get('/', authenticate, async (req, res) => {
              pr.first_name as provider_first_name, pr.last_name as provider_last_name,
              pr.specialty as provider_specialty
       FROM appointments a
-      LEFT JOIN users p ON p.id = a.patient_id
-      LEFT JOIN users pr ON pr.id = a.provider_id
+      JOIN users p ON p.id = a.patient_id
+      JOIN users pr ON pr.id = a.provider_id
       ${whereClause}
       ORDER BY a.scheduled_at ${sortOrder}
       LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}
@@ -371,12 +379,13 @@ router.get('/', authenticate, async (req, res) => {
       return apt;
     });
     
-    res.json({
+    res.set('Cache-Control', 'private, no-store').json({
       success: true,
       appointments,
       pagination: getPaginationMeta(total, page, limit)
     });
   } catch (error) {
+    if (error.status === 400) return res.status(400).json({ success: false, error: 'Invalid appointment filters', errors: error.errors });
     logger.error('Get appointments error', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,

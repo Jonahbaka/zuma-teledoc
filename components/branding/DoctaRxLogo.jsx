@@ -3,9 +3,8 @@
 import React, { useId } from 'react';
 import { cn } from '@/lib/utils';
 
-// DoctaRx primary wordmark (inline SVG) — "White Glow" variant.
-// Designed for dark headers; for light pages, wrap it in a dark pill background.
-export default function DoctaRxLogo({ className, title = 'DoctaRx', glow = true }) {
+// Keep the same DoctaRx mark readable on both light and dark surfaces.
+export default function DoctaRxLogo({ className, title = 'DoctaRx', glow = true, tone = 'light' }) {
   const uid = useId();
   const glowId = `doctarx_glow_${uid.replace(/:/g, '_')}`;
   return (
@@ -52,11 +51,11 @@ export default function DoctaRxLogo({ className, title = 'DoctaRx', glow = true 
         fontFamily="Arial, Helvetica, sans-serif"
         fontWeight="800"
         fontSize="52"
-        fill="#FFFFFF"
+        fill={tone === 'dark' ? '#0F172A' : '#FFFFFF'}
         letterSpacing="-1"
         filter={glow ? `url(#${glowId})` : undefined}
       >
-        Docta<tspan fill="#22D3EE">Rx</tspan>
+        Docta<tspan fill={tone === 'dark' ? '#0369A1' : '#22D3EE'}>Rx</tspan>
       </text>
     </svg>
   );

@@ -91,7 +91,7 @@ export default function AuditLogs() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold font-serif flex items-center gap-2">
-            <Shield className="w-6 h-6 text-purple-700" />
+            <Shield className="w-6 h-6 text-blue-700" />
             HIPAA Audit Logs
           </h1>
           <p className="text-gray-600">Track all system activity and PHI access</p>
@@ -163,7 +163,7 @@ export default function AuditLogs() {
             <select
               value={filters.action}
               onChange={(e) => setFilters({ ...filters, action: e.target.value })}
-              className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Actions</option>
               <option value="create">Create</option>
@@ -179,7 +179,7 @@ export default function AuditLogs() {
             <select
               value={filters.resourceType}
               onChange={(e) => setFilters({ ...filters, resourceType: e.target.value })}
-              className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Resources</option>
               <option value="user">Users</option>
@@ -195,7 +195,7 @@ export default function AuditLogs() {
                 type="checkbox"
                 checked={filters.phiOnly}
                 onChange={(e) => setFilters({ ...filters, phiOnly: e.target.checked })}
-                className="w-4 h-4 text-purple-600"
+                className="w-4 h-4 text-blue-600"
               />
               <span className="text-sm font-medium">PHI Access Only</span>
             </label>
@@ -310,7 +310,7 @@ export default function AuditLogs() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {log.success ? (
-                          <span className="text-green-600">✓ Success</span>
+                          <span className="text-blue-600">✓ Success</span>
                         ) : (
                           <span className="text-red-600">✗ Failed</span>
                         )}

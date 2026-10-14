@@ -6,9 +6,22 @@ const { getPool } = require('../../server/db');
 const { requireProgrammeScope } = require('../middleware/programmeScope');
 const { recordProgrammeAudit } = require('../services/phc/programmeScopeService');
 const service = require('../services/interop/clinicalFhirService');
+const capability = require('../services/interop/phcFhirCapabilityService');
 
 const router = express.Router();
+router.use((_req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
 router.use(requireProgrammeScope({ allowedRoles: ['phc_nurse', 'remote_clinician', 'clinical_supervisor', 'on_call_clinician'] }));
+
+router.get('/metadata', (req, res) => {
+  res.vary('Accept');
+  res.set('Content-Type', 'application/fhir+json');
+  if (!capability.supportsMetadataJson(req.query._format, req.get('Accept'))) {
+    return res.status(406).json({ resourceType: 'OperationOutcome', issue: [{ severity: 'error', code: 'not-supported', diagnostics: 'This interface provides FHIR R4 JSON only.' }] });
+  }
+  const statement = capability.getCapabilityStatement();
+  res.set('ETag', capability.metadataETag(statement));
+  return res.json(statement);
+});
 
 function read(handler) {
   return async (req, res) => {
@@ -27,9 +40,9 @@ function read(handler) {
   };
 }
 
-router.get('/Patient/:id', read((req, id) => service.patient(getPool(), req.programmeContext, id)));
-router.get('/Encounter/:id', read((req, id) => service.encounter(getPool(), req.programmeContext, id)));
-router.get('/Observation', read(async (req, id) => {
+router.get(capability.RESOURCE_PATHS.Patient, read((req, id) => service.patient(getPool(), req.programmeContext, id)));
+router.get(capability.RESOURCE_PATHS.Encounter, read((req, id) => service.encounter(getPool(), req.programmeContext, id)));
+router.get(capability.RESOURCE_PATHS.Observation, read(async (req, id) => {
   const resources = await service.observations(getPool(), req.programmeContext, id);
   const count = Math.min(Math.max(Number.parseInt(req.query._count, 10) || 50, 1), 200);
   const offset = Math.max(Number.parseInt(req.query._offset, 10) || 0, 0);

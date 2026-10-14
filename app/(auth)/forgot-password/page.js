@@ -68,7 +68,7 @@ export default function ForgotPasswordPage() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950 px-4 relative">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-blue-50/30 to-background dark:from-slate-950 dark:via-blue-950/20 dark:to-slate-950 px-4 relative">
         <div className="absolute top-4 right-4">
           <ThemeToggle />
         </div>
@@ -84,7 +84,7 @@ export default function ForgotPasswordPage() {
             </p>
             <div className="space-y-3">
               <Link href="/login">
-                <Button className="w-full bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white">
+                <Button className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white">
                   Back to Login
                 </Button>
               </Link>
@@ -103,7 +103,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950 px-4 relative">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-blue-50/30 to-background dark:from-slate-950 dark:via-blue-950/20 dark:to-slate-950 px-4 relative">
       <div className="absolute top-4 right-4">
         <ThemeToggle />
       </div>
@@ -169,7 +169,7 @@ export default function ForgotPasswordPage() {
 
           <Button
             type="submit"
-            className="w-full bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white shadow-lg shadow-purple-500/25"
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-500/25"
             disabled={loading}
           >
             {loading ? (

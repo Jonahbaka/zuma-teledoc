@@ -1,323 +1,141 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import {
-  ArrowRight,
-  Building2,
-  CheckCircle,
-  Clock,
-  MapPin,
-  Navigation,
-  Package,
-  Phone,
-  Pill,
-  Search,
-  ShieldCheck,
-  Star,
-  Trash2,
-  Truck,
-} from 'lucide-react';
-import { pharmacyAPI, prescriptionAPI } from '@/lib/api';
+import { ArrowRight, Loader2, MapPin, Pill } from 'lucide-react';
+import api from '@/lib/api';
+import { useAuth } from '@/components/providers/AuthProvider';
+import PharmacyLocator from '@/components/PharmacyLocator';
+import PortalPageHeader from '@/components/branding/PortalPageHeader';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { toast } from '@/components/ui/use-toast';
-import { formatDateTime } from '@/lib/utils';
 
-const STATUS_CONFIG = {
-  draft: { label: 'Draft', tone: 'bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300' },
-  sent: { label: 'Sent', tone: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
-  ready: { label: 'Ready', tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300' },
-  picked_up: { label: 'Picked Up', tone: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300' },
-  delivered: { label: 'Delivered', tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300' },
-  cancelled: { label: 'Cancelled', tone: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' },
-};
-
-function formatPrescriptionDate(value) {
-  if (!value) return 'Date unavailable';
-  return formatDateTime(value);
-}
-
-function formatPharmacyDistance(pharmacy) {
-  if (pharmacy?.distanceMiles) return `${pharmacy.distanceMiles} mi`;
-  if (pharmacy?.distanceKm) return `${pharmacy.distanceKm} km`;
-  return 'Distance unavailable';
-}
-
-function getPreferenceKey(pharmacy) {
-  return pharmacy?.pharmacyNpi || pharmacy?.npi || `${pharmacy?.pharmacyName || pharmacy?.name}-${pharmacy?.pharmacyAddress || pharmacy?.address}`;
-}
+const empty = { owner: null, loading: true, rows: [], error: '' };
+const emptyEntry = { selection: null, pending: false, notice: null };
+const displayStatus = value => typeof value === 'string' && value.trim() ? value.replace(/_/g, ' ') : 'Status unavailable';
+const uuid = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
+const ownedRecord = (record, patientId) => uuid.test(String(record?.id || ''))
+  && String(record.patientId || record.patient_id) === String(patientId);
 
 export default function PatientPharmacyPage() {
-  const [tab, setTab] = useState('prescriptions');
-  const [loading, setLoading] = useState(true);
-  const [searching, setSearching] = useState(false);
-  const [geoLoading, setGeoLoading] = useState(false);
-  const [savingKey, setSavingKey] = useState(null);
-  const [search, setSearch] = useState('');
-  const [prescriptions, setPrescriptions] = useState([]);
-  const [preferences, setPreferences] = useState([]);
-  const [results, setResults] = useState([]);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [prescriptionsRes, preferencesRes] = await Promise.all([
-        prescriptionAPI.getAll().catch(() => ({ data: { success: false, prescriptions: [] } })),
-        pharmacyAPI.getPreferences().catch(() => ({ data: { success: false, pharmacies: [] } })),
-      ]);
-
-      setPrescriptions(prescriptionsRes.data?.success ? prescriptionsRes.data.prescriptions || [] : []);
-      setPreferences(preferencesRes.data?.success ? preferencesRes.data.pharmacies || [] : []);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { user, loading: authLoading } = useAuth();
+  const owner = user?.id ? JSON.stringify([user.id, user.role, user.marketScope || user.region || user.country]) : null;
+  const ready = Boolean(user?.id && user.role === 'patient' && !authLoading);
+  const [tab, setTab] = useState('find');
+  const [prescriptions, setPrescriptions] = useState(empty);
+  const [preferences, setPreferences] = useState(empty);
+  const [revision, setRevision] = useState(0);
+  const [entry, setEntry] = useState({ owner: null, ...emptyEntry });
+  const mutation = useRef(null);
+  const mounted = useRef(false);
+  const reads = useRef(0);
+  const account = useRef({ owner, ready, generation: 0 });
+  if (account.current.owner !== owner || account.current.ready !== ready) {
+    account.current = { owner, ready, generation: account.current.generation + 1 };
+  }
+  const generation = account.current.generation;
 
   useEffect(() => {
-    loadData();
+    mounted.current = true;
+    return () => { mounted.current = false; mutation.current?.controller.abort(); };
   }, []);
-
-  const savedPreferenceKeys = useMemo(() => new Set(preferences.map(getPreferenceKey)), [preferences]);
-
-  const handleSearch = async () => {
-    const query = search.trim();
-    if (query.length < 2) {
-      setResults([]);
-      toast({ title: 'Search too short', description: 'Enter at least 2 characters to search pharmacies.', variant: 'destructive' });
-      return;
+  useEffect(() => {
+    mutation.current?.controller.abort(); mutation.current = null;
+    setEntry({ owner, generation, ...emptyEntry });
+    return () => { mutation.current?.controller.abort(); mutation.current = null; };
+    // Account context changes clear local choices; readiness is generation-gated.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const sequence = ++reads.current;
+    const current = () => !controller.signal.aborted && reads.current === sequence && account.current.owner === owner
+      && account.current.ready && account.current.generation === generation;
+    setPrescriptions({ ...empty, owner, generation }); setPreferences({ ...empty, owner, generation });
+    if (!ready) {
+      mutation.current?.controller.abort(); mutation.current = null;
+      setEntry(previous => ({ ...previous, pending: false }));
+      const unavailable = { owner, generation, rows: [], loading: Boolean(authLoading), error: authLoading ? '' : 'Sign in to your patient account to view these records.' };
+      setPrescriptions(unavailable); setPreferences(unavailable);
+      return () => controller.abort();
     }
-
-    setSearching(true);
-    try {
-      const response = await pharmacyAPI.search(query);
-      setResults(response.data?.pharmacies || []);
-      setTab('find');
-    } catch (error) {
-      toast({ title: 'Search failed', description: error.response?.data?.error || 'Could not search pharmacies right now.', variant: 'destructive' });
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleUseLocation = async () => {
-    if (!navigator.geolocation) {
-      toast({ title: 'Location unavailable', description: 'This browser does not support location-based pharmacy search.', variant: 'destructive' });
-      return;
-    }
-
-    setGeoLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const response = await pharmacyAPI.findNearby(position.coords.latitude, position.coords.longitude, 10000);
-          setResults(response.data?.pharmacies || []);
-          setTab('find');
-        } catch (error) {
-          toast({ title: 'Location search failed', description: error.response?.data?.error || 'Could not load nearby pharmacies.', variant: 'destructive' });
-        } finally {
-          setGeoLoading(false);
-        }
-      },
-      () => {
-        setGeoLoading(false);
-        toast({ title: 'Location permission denied', description: 'Enable location access to find nearby pharmacies.', variant: 'destructive' });
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
-
-  const handleSavePreference = async (pharmacy) => {
-    const key = getPreferenceKey(pharmacy);
-    setSavingKey(key);
-    try {
-      await pharmacyAPI.addPreference({
-        pharmacyName: pharmacy.name,
-        pharmacyAddress: pharmacy.address,
-        pharmacyPhone: pharmacy.phone || undefined,
-        pharmacyNpi: pharmacy.npi || undefined,
-        latitude: pharmacy.latitude || undefined,
-        longitude: pharmacy.longitude || undefined,
-        distanceMiles: pharmacy.distanceMiles || undefined,
-        isPreferred: preferences.length === 0,
-        source: 'patient_selected',
+    for (const [url, key, update] of [['/prescriptions', 'prescriptions', setPrescriptions], ['/pharmacy/preferences', 'pharmacies', setPreferences]]) {
+      api.get(url, { signal: controller.signal }).then(({ data }) => {
+        if (!data?.success || !Array.isArray(data[key]) || data[key].some(record => !ownedRecord(record, user.id))) throw new Error('These records could not be confirmed.');
+        if (current()) update({ owner, generation, rows: data[key], loading: false, error: '' });
+      }).catch(error => {
+        if (current()) update({ owner, generation, rows: [], loading: false, error: error.response?.status === 403 ? 'Your account cannot access these records.' : 'These records could not be loaded. Please try again.' });
       });
-      toast({ title: 'Pharmacy saved', description: `${pharmacy.name} is now in your pharmacy preferences.` });
-      await loadData();
-    } catch (error) {
-      toast({ title: 'Could not save pharmacy', description: error.response?.data?.error || 'Try again in a moment.', variant: 'destructive' });
-    } finally {
-      setSavingKey(null);
     }
-  };
+    return () => controller.abort();
+    // owner includes ID, role and market; generation rejects readiness changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner, ready, authLoading, revision]);
 
-  const handleSetPreferred = async (id) => {
-    setSavingKey(id);
+  const view = state => ready && state.owner === owner && state.generation === generation ? state : {
+    rows: [], loading: Boolean(authLoading || ready), error: authLoading || ready ? '' : 'Sign in to your patient account to view these records.',
+  };
+  const rx = view(prescriptions), saved = view(preferences);
+  const { selection: chosen, pending, notice } = ready && entry.owner === owner && entry.generation === generation ? entry : emptyEntry;
+  function updateEntry(change) {
+    if (account.current.owner !== owner || !account.current.ready || account.current.generation !== generation) return;
+    setEntry(previous => ({ ...(previous.owner === owner && previous.generation === generation ? previous : emptyEntry), owner, generation, ...change }));
+  }
+
+  async function changePreference(kind, id) {
+    if (mutation.current || !ready || account.current.owner !== owner || account.current.generation !== generation) return;
+    if (!['save', 'preferred', 'remove'].includes(kind) || kind !== 'save' && !uuid.test(String(id || ''))) return;
+    if (kind === 'remove' && !window.confirm('Remove this pharmacy from your saved choices?')) return;
+    const controller = new AbortController();
+    const active = { controller, owner, generation }; mutation.current = active;
+    const current = () => !controller.signal.aborted && mounted.current && account.current.owner === owner
+      && account.current.ready && account.current.generation === generation;
+    updateEntry({ pending: true, notice: null });
     try {
-      await pharmacyAPI.setPreferred(id);
-      toast({ title: 'Preferred pharmacy updated', description: 'Your preferred pharmacy has been saved.' });
-      await loadData();
+      let response;
+      if (kind === 'save') {
+        if (!chosen?.pharmacy) throw new Error('Choose a pharmacy first.');
+        const pharmacy = chosen.pharmacy;
+        response = await api.post('/pharmacy/preferences', {
+          pharmacyName: pharmacy.name,
+          pharmacyAddress: pharmacy.address,
+          ...(pharmacy.phone ? { pharmacyPhone: pharmacy.phone } : {}),
+          ...(pharmacy.npi ? { pharmacyNpi: pharmacy.npi } : {}),
+          ...(typeof pharmacy.latitude === 'number' ? { latitude: pharmacy.latitude } : {}),
+          ...(typeof pharmacy.longitude === 'number' ? { longitude: pharmacy.longitude } : {}),
+          isPreferred: false, source: 'patient_selected',
+        }, { signal: controller.signal });
+      } else if (kind === 'preferred') response = await api.put('/pharmacy/preferences/' + id + '/preferred', {}, { signal: controller.signal });
+      else response = await api.delete('/pharmacy/preferences/' + id, { signal: controller.signal });
+      const { data } = response;
+      if (!data?.success || (kind !== 'remove' && (!ownedRecord(data.pharmacy, user.id) || kind === 'preferred' && data.pharmacy.id !== id))) throw new Error('The server did not confirm the change. Refresh your saved pharmacies before retrying.');
+      if (current()) {
+        reads.current += 1;
+        updateEntry({ notice: { error: false, message: kind === 'save' ? 'Pharmacy details saved. No prescription has been sent.' : kind === 'preferred' ? 'Your preferred pharmacy was updated.' : 'The pharmacy was removed from your saved choices.' }, selection: null });
+        setRevision(value => value + 1);
+      }
     } catch (error) {
-      toast({ title: 'Could not update preference', description: error.response?.data?.error || 'Try again in a moment.', variant: 'destructive' });
+      if (current()) updateEntry({ notice: { error: true, message: error.response?.data?.error || error.message || 'The change could not be saved.' } });
     } finally {
-      setSavingKey(null);
+      if (current()) updateEntry({ pending: false });
+      if (mutation.current === active) mutation.current = null;
     }
-  };
+  }
 
-  const handleRemovePreference = async (id) => {
-    setSavingKey(id);
-    try {
-      await pharmacyAPI.removePreference(id);
-      toast({ title: 'Pharmacy removed', description: 'The pharmacy was removed from your saved list.' });
-      await loadData();
-    } catch (error) {
-      toast({ title: 'Could not remove pharmacy', description: error.response?.data?.error || 'Try again in a moment.', variant: 'destructive' });
-    } finally {
-      setSavingKey(null);
-    }
-  };
+  function recordsState(resource, emptyMessage, children) {
+    if (resource.loading) return <p role="status" className="flex items-center gap-3 rounded-2xl bg-blue-50 p-5 text-blue-900"><Loader2 size={20} className="animate-spin" /> Loading your records…</p>;
+    if (resource.error) return <div role="alert" className="portal-error rounded-2xl border border-red-200 bg-red-50 p-5 text-red-900"><p>{resource.error}</p><Button onClick={() => setRevision(value => value + 1)} variant="outline" className="mt-4">Try again</Button></div>;
+    if (resource.rows.length === 0) return <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 leading-7 text-slate-600">{emptyMessage}</p>;
+    return children;
+  }
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground">Pharmacy &amp; Medications</h1>
-        <p className="text-muted-foreground mt-1">Search pharmacies, save your preferences, and review live prescription routing without seeded records.</p>
-      </div>
-
-      <div className="flex gap-2 border-b border-border pb-0 overflow-x-auto">
-        {[
-          { key: 'prescriptions', label: 'Prescriptions', icon: Pill },
-          { key: 'preferences', label: 'Saved Pharmacies', icon: Building2 },
-          { key: 'find', label: 'Find Pharmacy', icon: MapPin },
-        ].map((item) => (
-          <button
-            key={item.key}
-            onClick={() => setTab(item.key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${tab === item.key ? 'border-purple-600 text-purple-600' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            <item.icon size={16} /> {item.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by pharmacy name or address..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleSearch();
-              }
-            }}
-            className="pl-9"
-          />
-        </div>
-        <Button variant="outline" onClick={handleUseLocation} disabled={geoLoading}>
-          <Navigation className="w-4 h-4 mr-2" />
-          {geoLoading ? 'Locating...' : 'Use My Location'}
-        </Button>
-        <Button className="bg-purple-600 hover:bg-purple-500 text-white" onClick={handleSearch} disabled={searching}>
-          {searching ? 'Searching...' : 'Search'}
-        </Button>
-      </div>
-
-      {tab === 'prescriptions' && (
-        <div className="space-y-4">
-          {loading ? (
-            <div className="space-y-3">{[1, 2].map((item) => <div key={item} className="h-28 rounded-xl bg-muted animate-pulse" />)}</div>
-          ) : prescriptions.length === 0 ? (
-            <Card><CardContent className="p-8 text-center"><Pill className="w-14 h-14 mx-auto mb-4 text-muted-foreground/50" /><p className="font-semibold text-foreground">No live prescriptions found.</p><p className="mt-2 text-sm text-muted-foreground">When a provider creates or routes prescriptions for your account, they will appear here.</p></CardContent></Card>
-          ) : (
-            prescriptions.map((prescription) => {
-              const status = STATUS_CONFIG[prescription.status] || STATUS_CONFIG.draft;
-              return (
-                <Card key={prescription.id} className="hover:border-purple-500/20 transition-colors">
-                  <CardContent className="p-5">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center shrink-0"><Pill size={18} className="text-purple-500" /></div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap"><span className="text-sm font-bold text-foreground">{prescription.medicationName || 'Medication pending'}</span><span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${status.tone}`}>{status.label}</span></div>
-                          <div className="text-xs text-muted-foreground mt-0.5">{prescription.providerFirstName ? `Dr. ${prescription.providerFirstName} ${prescription.providerLastName || ''}`.trim() : 'Provider pending'} | {formatPrescriptionDate(prescription.createdAt || prescription.created_at)}</div>
-                          <div className="text-xs text-muted-foreground mt-1">{prescription.dosageStrength || 'Dose pending'} {prescription.dosageForm || ''}{prescription.pharmacyName ? ` | Routed to ${prescription.pharmacyName}` : ' | Pharmacy selection pending'}</div>
-                        </div>
-                      </div>
-                      <Link href="/patient/prescriptions"><Button variant="outline" size="sm">Open Activity <ArrowRight className="w-4 h-4 ml-2" /></Button></Link>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {tab === 'preferences' && (
-        <div className="space-y-4">
-          {loading ? (
-            <div className="space-y-3">{[1, 2].map((item) => <div key={item} className="h-24 rounded-xl bg-muted animate-pulse" />)}</div>
-          ) : preferences.length === 0 ? (
-            <Card><CardContent className="p-8 text-center"><Building2 className="w-14 h-14 mx-auto mb-4 text-muted-foreground/50" /><p className="font-semibold text-foreground">No saved pharmacy preferences yet.</p><p className="mt-2 text-sm text-muted-foreground">Search pharmacies above to save a preferred location for future routing.</p></CardContent></Card>
-          ) : (
-            preferences.map((pharmacy) => (
-              <Card key={pharmacy.id} className="hover:border-purple-500/20 transition-colors">
-                <CardContent className="p-5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center shrink-0"><Building2 size={22} className="text-purple-500" /></div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 flex-wrap"><div className="text-sm font-bold text-foreground">{pharmacy.pharmacyName || pharmacy.pharmacy_name}</div>{(pharmacy.isPreferred || pharmacy.is_preferred) && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"><CheckCircle size={10} /> Preferred</span>}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><MapPin size={10} /> {pharmacy.pharmacyAddress || pharmacy.pharmacy_address}</div>
-                        {(pharmacy.pharmacyPhone || pharmacy.pharmacy_phone) && <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Phone size={10} /> {pharmacy.pharmacyPhone || pharmacy.pharmacy_phone}</div>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {!(pharmacy.isPreferred || pharmacy.is_preferred) && <Button variant="outline" size="sm" onClick={() => handleSetPreferred(pharmacy.id)} disabled={savingKey === pharmacy.id}>Make Preferred</Button>}
-                      <Button variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => handleRemovePreference(pharmacy.id)} disabled={savingKey === pharmacy.id}><Trash2 className="w-4 h-4 mr-2" /> Remove</Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
-      )}
-
-      {tab === 'find' && (
-        <div className="space-y-4">
-          {results.length === 0 ? (
-            <Card><CardContent className="p-8 text-center"><MapPin className="w-14 h-14 mx-auto mb-4 text-muted-foreground/50" /><p className="font-semibold text-foreground">No pharmacy search results yet.</p><p className="mt-2 text-sm text-muted-foreground">Search by pharmacy name, address, or use your current location to find options.</p></CardContent></Card>
-          ) : (
-            results.map((pharmacy) => {
-              const key = getPreferenceKey(pharmacy);
-              const alreadySaved = savedPreferenceKeys.has(key);
-              return (
-                <Card key={key} className="hover:border-purple-500/30 transition-all">
-                  <CardContent className="p-5">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center shrink-0"><Building2 size={22} className="text-purple-500" /></div>
-                        <div className="flex-1">
-                          <div className="text-sm font-bold text-foreground">{pharmacy.name}</div>
-                          <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><MapPin size={10} /> {pharmacy.address}</div>
-                          <div className="flex flex-wrap items-center gap-3 mt-2"><span className="text-xs text-muted-foreground flex items-center gap-1"><Navigation size={10} /> {formatPharmacyDistance(pharmacy)}</span><span className="text-xs text-muted-foreground flex items-center gap-1"><Clock size={10} /> {pharmacy.hours?.monday || 'Hours unavailable'}</span>{pharmacy.phone && <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone size={10} /> {pharmacy.phone}</span>}</div>
-                          <div className="flex gap-2 mt-2 flex-wrap"><span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600"><Package size={10} /> eRx Ready</span>{pharmacy.capabilities?.hasDelivery && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/10 text-purple-600"><Truck size={10} /> Delivery</span>}{pharmacy.isPreferred && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600"><Star size={10} /> Network Preferred</span>}</div>
-                        </div>
-                      </div>
-                      <div className="shrink-0">{alreadySaved ? <Button variant="outline" disabled><ShieldCheck className="w-4 h-4 mr-2" /> Saved</Button> : <Button className="bg-purple-600 hover:bg-purple-500 text-white" onClick={() => handleSavePreference(pharmacy)} disabled={savingKey === key}><ShieldCheck className="w-4 h-4 mr-2" /> {savingKey === key ? 'Saving...' : 'Save Pharmacy'}</Button>}</div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
-          )}
-        </div>
-      )}
-    </div>
-  );
+  return <div className="clinical-readable space-y-6">
+    <PortalPageHeader title="Your pharmacies" description="Find a pharmacy near your device or choose an area near home or work. Save the details you want your care team to use, and review recorded prescription status.">
+      <Link href="/patient/prescriptions" className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-900">Prescription details <ArrowRight size={20} /></Link>
+    </PortalPageHeader>
+    {notice && <p role={notice.error ? 'alert' : 'status'} className={'rounded-2xl border p-5 leading-7 ' + (notice.error ? 'border-red-200 bg-red-50 text-red-900' : 'border-blue-200 bg-blue-50 text-blue-950')}>{notice.message}</p>}
+    <div className="flex flex-wrap gap-3" aria-label="Pharmacy workspace tabs">{[['find', 'Find a pharmacy'], ['saved', 'Saved pharmacies'], ['prescriptions', 'Prescriptions']].map(([value, label]) => <Button key={value} aria-pressed={tab === value} onClick={() => setTab(value)} variant={tab === value ? 'default' : 'outline'} className={tab === value ? 'bg-blue-700 hover:bg-blue-800' : ''}>{label}</Button>)}</div>
+    {tab === 'find' && <div className="space-y-5">{chosen && <section className="rounded-2xl border border-blue-200 bg-blue-50 p-6"><h2 className="text-xl font-semibold text-slate-950">{chosen.pharmacy.name}</h2><p className="mt-2 break-words leading-7 text-slate-700">{chosen.pharmacy.address}</p><p className="mt-3 leading-7 text-slate-600">Confirm the pharmacy's details, availability, and pricing directly. Saving this choice does not verify coverage or send a prescription.</p><Button disabled={pending} onClick={() => changePreference('save')} className="mt-5 bg-blue-700 hover:bg-blue-800">{pending ? 'Saving choice…' : 'Save to your pharmacies'}</Button></section>}<PharmacyLocator includePrescriptionContacts={false} onSelect={choice => { if (!mutation.current && ready) updateEntry({ selection: choice, notice: null }); }} /></div>}
+    {tab === 'saved' && <section className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8"><h2 className="mb-6 text-2xl font-semibold text-slate-950">Saved pharmacies</h2>{recordsState(saved, 'No pharmacy choices are saved in your account.', <div className="grid items-start gap-5 lg:grid-cols-2">{saved.rows.map(record => <article key={record.id} className="rounded-2xl border border-slate-200 p-5"><div className="flex items-start gap-3"><MapPin size={24} className="mt-1 shrink-0 text-blue-700" /><h3 className="break-words text-xl font-semibold text-slate-950">{record.pharmacyName || 'Pharmacy name unavailable'}</h3></div><p className="mt-4 break-words leading-7 text-slate-600">{record.pharmacyAddress || 'Address unavailable'}</p>{record.pharmacyPhone && <p className="mt-3 break-words text-slate-600">{record.pharmacyPhone}</p>}<p className="mt-4 font-medium text-slate-800">{record.isPreferred ? 'Your preferred choice' : 'Saved choice'} · Details not independently verified</p><div className="mt-5 flex flex-wrap gap-3">{!record.isPreferred && <Button disabled={pending} variant="outline" onClick={() => changePreference('preferred', record.id)}>Set as preferred</Button>}<Button disabled={pending} variant="outline" onClick={() => changePreference('remove', record.id)} className="text-red-800">Remove</Button></div></article>)}</div>)}</section>}
+    {tab === 'prescriptions' && <section className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8"><h2 className="mb-6 text-2xl font-semibold text-slate-950">Recorded prescriptions</h2>{recordsState(rx, 'No prescriptions are recorded for your account.', <div className="space-y-5">{rx.rows.map(record => <article key={record.id} className="rounded-2xl border border-slate-200 p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-start gap-3"><Pill size={24} className="shrink-0 text-blue-700" /><h3 className="text-xl font-semibold text-slate-950">{record.medicationName || record.medication_name || 'Medication name unavailable'}</h3></div><span className="rounded-full bg-slate-100 px-4 py-2 font-medium capitalize text-slate-800">{displayStatus(record.status)}</span></div><p className="mt-4 leading-7 text-slate-600">{record.pharmacyName || record.pharmacy_name || 'Pharmacy is not recorded'}</p><Link href="/patient/prescriptions" className="mt-4 inline-flex min-h-12 items-center gap-2 font-semibold text-blue-700">View prescription <ArrowRight size={20} /></Link></article>)}</div>)}</section>}
+  </div>;
 }

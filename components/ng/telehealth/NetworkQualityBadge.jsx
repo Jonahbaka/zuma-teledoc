@@ -20,7 +20,7 @@ import {
 } from '@/lib/ng/connectionResilience';
 
 const TONE = {
-  [SEVERITY.INFO]: 'bg-emerald-100 text-emerald-800',
+  [SEVERITY.INFO]: 'bg-blue-100 text-blue-800',
   [SEVERITY.WARNING]: 'bg-amber-100 text-amber-900',
   [SEVERITY.CRITICAL]: 'bg-rose-100 text-rose-900',
 };

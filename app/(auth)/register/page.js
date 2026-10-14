@@ -120,7 +120,7 @@ export default function PatientRegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-purple-50/30 to-background dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950 p-4 py-12 relative">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-blue-50/30 to-background dark:from-slate-950 dark:via-blue-950/20 dark:to-slate-950 p-4 py-12 relative">
       {/* Dot pattern overlay */}
       <div className="absolute inset-0 opacity-30 dark:opacity-10 pointer-events-none" style={{
         backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(139, 92, 246, 0.15) 1px, transparent 0)',
@@ -145,10 +145,10 @@ export default function PatientRegisterPage() {
         <Card className="shadow-2xl border border-border bg-card">
           <CardHeader className="space-y-1 pb-4">
             <div className="flex items-center gap-2 mb-2">
-              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
-                <Heart className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                <Heart className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
-              <span className="text-sm font-medium text-purple-600 dark:text-purple-400">Patient Registration</span>
+              <span className="text-sm font-medium text-blue-600 dark:text-blue-400">Patient Registration</span>
             </div>
             <CardTitle className="text-2xl font-serif text-foreground">Create your account</CardTitle>
             <CardDescription className="text-muted-foreground">
@@ -321,7 +321,7 @@ export default function PatientRegisterPage() {
             <CardFooter className="flex flex-col gap-4">
               <Button 
                 type="submit" 
-                className="w-full bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white shadow-lg shadow-purple-500/25"
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-500/25"
                 disabled={isLoading}
               >
                 {isLoading ? (

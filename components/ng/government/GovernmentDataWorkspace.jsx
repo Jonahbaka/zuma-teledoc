@@ -234,7 +234,7 @@ export default function GovernmentDataWorkspace({ readOnly = false, heading = 'P
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {error && <div role="alert" className="mb-4 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" /><div>{error}<div className="mt-2"><Link className="font-bold underline" href="/login">Open secure sign-in</Link></div></div></div>}
-        {notice && <div role="status" className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900"><CheckCircle2 className="h-5 w-5" />{notice}</div>}
+        {notice && <div role="status" className="mb-4 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-900"><CheckCircle2 className="h-5 w-5" />{notice}</div>}
         <div className="mb-6 flex gap-2" role="tablist" aria-label="Government data tools">
           {(readOnly ? [['search', FileSearch, 'Approved records']] : [['search', FileSearch, 'Approved records'], ['import', Upload, 'Data management']]).map(([key, Icon, label]) => <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={`inline-flex min-h-12 items-center gap-2 rounded-xl px-4 text-base font-semibold ${tab === key ? 'bg-blue-600 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}><Icon className="h-5 w-5" />{label}</button>)}
         </div>
@@ -271,7 +271,7 @@ export default function GovernmentDataWorkspace({ readOnly = false, heading = 'P
                     <td className="px-4 py-4">{row.facility_name || 'All facilities'}<div className="text-sm text-slate-500">{row.area_council}</div></td>
                     <td className="px-4 py-4">{row.programme_area?.replaceAll('_', ' ')}<div className="text-sm text-slate-500">{row.indicator_name || 'No indicator'}</div></td>
                     <td className="px-4 py-4">{row.reporting_period}</td><td className="px-4 py-4 font-semibold">{formatValue(row.observed_value)} {row.unit || ''}</td>
-                    <td className="px-4 py-4"><span className="rounded-full bg-emerald-100 px-2 py-1 text-sm font-semibold text-emerald-800">{row.data_quality_status}</span></td>
+                    <td className="px-4 py-4"><span className="rounded-full bg-blue-100 px-2 py-1 text-sm font-semibold text-blue-800">{row.data_quality_status}</span></td>
                   </tr>)}{!searchResult.records.length && <tr><td colSpan="6" className="px-5 py-12 text-center text-slate-500">{Number.isFinite(searchResult.total) ? 'No approved records match these filters.' : 'Run a search to see approved records. Missing observations will be labelled, never shown as zero.'}</td></tr>}</tbody>
                 </table>
               </div>
