@@ -5,6 +5,10 @@
 
 // Load environment variables first so PORT and all secrets are available immediately
 require('dotenv').config();
+// Preserve existing cookie defaults; reject an unknown explicit deployment mode
+// before listening instead of failing individual authentication requests.
+require('./utils/authCookiePolicy').authCookieDomain();
+if (require('../lib/deploymentProfile.cjs').resolveDeploymentProfile().careops) throw new Error('CareOps is a frontend-only profile. Use careops:start and the existing shared backend.');
 
 // STEP 1: Minimal imports that cannot crash
 const express = require('express');

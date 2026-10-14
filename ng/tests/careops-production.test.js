@@ -45,11 +45,28 @@ test('successful HTTP responses do not prove a complete DHIS2 import', () => {
 });
 
 test('remote DHIS2 reconciliation preserves zero, rejects missing and ambiguous cells', () => {
-  const expected = { dataValues: [{ dataElement: 'element', categoryOptionCombo: 'combo', value: 0 }] };
-  assert.equal(valuesMatch(expected, { dataValues: [{ dataElement: 'element', categoryOptionCombo: 'combo', value: '0' }] }), true);
-  assert.equal(valuesMatch(expected, { dataValues: [] }), false);
-  assert.equal(valuesMatch(expected, { dataValues: [{ dataElement: 'element', categoryOptionCombo: 'combo', value: '1' }] }), false);
-  assert.equal(valuesMatch(expected, { dataValues: [{ dataElement: 'element', categoryOptionCombo: 'other', value: '0' }] }), false);
+  const scope = { dataSet: 'a1234567890', orgUnit: 'b1234567890', period: '202609' };
+  const expected = { ...scope, dataValues: [{ dataElement: 'element', categoryOptionCombo: 'combo', value: 0 }] };
+  const cell = { orgUnit: scope.orgUnit, period: scope.period, dataElement: 'element', categoryOptionCombo: 'combo', value: '0' };
+  const remote = { ...scope, dataValues: [cell] };
+  assert.equal(valuesMatch(expected, remote), true);
+  assert.equal(valuesMatch(expected, { ...remote, dataValues: [] }), false);
+  for (const change of [{ value: '1' }, { categoryOptionCombo: 'other' }, { deleted: true }]) {
+    assert.equal(valuesMatch(expected, { ...remote, dataValues: [{ ...cell, ...change }] }), false);
+  }
+  assert.equal(valuesMatch(expected, { ...remote, dataValues: [cell, cell] }), false);
+  for (const field of ['dataSet', 'orgUnit', 'period']) {
+    assert.equal(valuesMatch(expected, { ...remote, [field]: 'wrong' }), false, `Wrong outer ${field} cannot confirm a report`);
+    const missing = { ...remote }; delete missing[field];
+    assert.equal(valuesMatch(expected, missing), false, `Missing outer ${field} cannot confirm a report`);
+  }
+  for (const field of ['orgUnit', 'period']) {
+    assert.equal(valuesMatch(expected, { ...remote, dataValues: [{ ...cell, [field]: 'wrong' }] }), false, `Wrong cell ${field} cannot confirm a report`);
+    const missing = { ...cell }; delete missing[field];
+    assert.equal(valuesMatch(expected, { ...remote, dataValues: [missing] }), false, `Missing cell ${field} cannot confirm a report`);
+  }
+  assert.equal(valuesMatch(expected, { ...remote, dataValues: [{ ...cell, dataSet: 'wrong' }] }), false);
+  assert.equal(valuesMatch({ ...expected, attributeOptionCombo: 'attribute' }, { ...remote, dataValues: [{ ...cell, attributeOptionCombo: 'other' }] }), false);
 });
 
 test('DHIS2 wire payload allows numeric aggregate cells only', () => {

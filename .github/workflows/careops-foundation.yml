@@ -76,6 +76,19 @@ jobs:
         run: npm run e2e:membership-platform
         env:
           MEMBERSHIP_PLATFORM_UI_OUTPUT_DIR: artifacts/careops/membership-platform
+      - name: Build standalone CareOps release profile
+        run: npm run careops:build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          NEXT_PUBLIC_APP_URL: http://127.0.0.1:3002
+          NEXT_PUBLIC_API_URL: /api
+          DOCTARX_API_PROXY_TARGET: http://127.0.0.1:18080/api
+          AUTH_COOKIE_DOMAIN_MODE: host-only
+      - name: Standalone CareOps production profile and account isolation
+        run: npm run e2e:careops-profile
+        env:
+          CAREOPS_PROFILE_PRODUCTION_E2E: 'true'
+          CAREOPS_UI_OUTPUT_DIR: artifacts/careops/standalone-profile
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4

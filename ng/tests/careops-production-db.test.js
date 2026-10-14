@@ -227,7 +227,8 @@ test('durable delivery recovers ambiguous POST by GET reconciliation without dup
   const uncertain = await delivery.deliverOrReconcile(pool, job, { baseUrl, apiToken: 'synthetic-token', fetchImpl: async (_url, options) => { if (options.method === 'POST') postCount++; throw new Error('synthetic interrupted transport'); } });
   assert.equal(uncertain.delivery.status, 'reconciliation');
   const saved = (await pool.query('SELECT * FROM ng_dhis2_delivery_jobs WHERE id=$1', [job.id])).rows[0];
-  const recovered = await delivery.deliverOrReconcile(pool, saved, { baseUrl, apiToken: 'synthetic-token', fetchImpl: async (_url, options) => { assert.notEqual(options.method, 'POST'); return { ok: true, json: async () => ({ dataValues: [{ dataElement: 'c1234567890', value: '0' }] }) }; } });
+  await pool.query('UPDATE ng_dhis2_delivery_jobs SET next_attempt_at=NOW() WHERE id=$1', [job.id]);
+  const recovered = await delivery.deliverOrReconcile(pool, saved, { baseUrl, apiToken: 'synthetic-token', fetchImpl: async (_url, options) => { assert.notEqual(options.method, 'POST'); return { ok: true, json: async () => ({ ...payload, dataValues: [{ dataElement: 'c1234567890', orgUnit: payload.orgUnit, period: payload.period, value: '0' }] }) }; } });
   assert.equal(recovered.delivery.status, 'confirmed'); assert.equal(postCount, 1);
   assert.equal((await pool.query('SELECT status FROM public_health_reports WHERE id=$1', [ids.report])).rows[0].status, 'synced');
   await assert.rejects(delivery.enqueueDelivery(pool, { ...args, payloadHash: 'a'.repeat(64) }), { code: 'REPORT_REVISION_REQUIRED' });

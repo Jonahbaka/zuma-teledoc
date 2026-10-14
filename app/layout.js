@@ -5,9 +5,12 @@ import { I18nProvider } from '@/components/providers/I18nProvider';
 import ClientRuntime from '@/components/providers/ClientRuntime';
 import ConditionalSiteFooter from '@/components/layouts/ConditionalSiteFooter';
 import { THEME_STORAGE_KEY } from '@/lib/theme';
+import { resolveDeploymentProfile } from '@/lib/deploymentProfile.cjs';
+
+const deployment = resolveDeploymentProfile();
 
 export const metadata = {
-  metadataBase: new URL('https://doctarx.com'),
+  metadataBase: new URL(deployment.appOrigin || 'https://doctarx.com'),
   title: {
     default: 'DoctaRx | Virtual Care, Prescriptions, and Pharmacy Coordination',
     template: '%s | DoctaRx'
@@ -81,6 +84,15 @@ export const metadata = {
     // google: 'your-google-verification-code',
     // yandex: 'your-yandex-verification-code',
   },
+  ...(deployment.careops ? {
+    title: { default: 'DoctaRx CareOps', template: '%s | DoctaRx CareOps' },
+    description: 'Clinical collaboration and scoped institutional reporting.',
+    applicationName: 'DoctaRx CareOps', manifest: '/careops/manifest.webmanifest',
+    robots: { index: false, follow: false }, alternates: { canonical: '/careops' },
+    openGraph: { title: 'DoctaRx CareOps', description: 'Clinical collaboration and scoped institutional reporting.', siteName: 'DoctaRx CareOps', url: '/careops', type: 'website' },
+    twitter: { card: 'summary', title: 'DoctaRx CareOps', description: 'Clinical collaboration and scoped institutional reporting.' },
+    appleWebApp: { capable: true, statusBarStyle: 'default', title: 'DoctaRx CareOps' },
+  } : {}),
 };
 
 export const viewport = {
@@ -148,11 +160,11 @@ export default function RootLayout({ children }) {
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
-        <meta name="application-name" content="DoctaRx" />
+        <meta name="application-name" content={deployment.applicationName} />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="DoctaRx" />
+        <meta name="apple-mobile-web-app-title" content={deployment.applicationName} />
         <meta name="msapplication-TileColor" content="#0f172a" />
         
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -162,6 +174,7 @@ export default function RootLayout({ children }) {
           rel="stylesheet" 
         />
         {/* JSON-LD Structured Data */}
+        {!deployment.careops && <>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdApp) }}
@@ -174,6 +187,7 @@ export default function RootLayout({ children }) {
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdWebsite) }}
         />
+        </>}
         {/* Prevent theme flash: set `.dark` before React hydrates */}
         <script
           dangerouslySetInnerHTML={{

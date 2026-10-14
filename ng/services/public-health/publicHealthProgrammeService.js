@@ -312,6 +312,9 @@ function publicSettings(row) {
     hasUsername: Boolean(row.username_encrypted),
     hasApiToken: Boolean(row.api_token_encrypted),
     updatedAt: row.updated_at || null,
+    apiVersion: row.api_version || null,
+    profileApprovalReference: row.profile_approval_reference || null,
+    asyncImportEnabled: row.async_import_enabled === true,
   };
 }
 
@@ -1841,13 +1844,16 @@ async function syncDhis2(reportId, actorUserId) {
   }
 
   const delivery = require('./dhis2DeliveryService');
+  const operations = require('./dhis2DeliveryOperationsService');
+  const profile = operations.assertProfile({ settings, baseUrl, username, apiToken });
+  await operations.assertReportAuthority(pool, { report_id: reportId, approved_by: reportBundle.report.approved_by }, actorUserId);
   const job = await delivery.enqueueDelivery(pool, {
     report: reportBundle.report, payload: preview.payload, payloadHash: preview.payloadHash,
-    destinationHash: delivery.destinationIdentity(baseUrl, username, preview.payload), actorUserId,
+    destinationHash: delivery.destinationIdentity(baseUrl, username, preview.payload), actorUserId, transportProfile: profile,
   });
-  const result = await delivery.deliverOrReconcile(pool, job, { baseUrl, username, apiToken });
-  await logAudit('public_health.dhis2.sync_attempt', actorUserId, 'public_health_report', reportId, { deliveryId: job.id, outcome: result.delivery.status });
-  return { ...result, preview };
+  await logAudit('public_health.dhis2.delivery_queued', actorUserId, 'public_health_report', reportId, { deliveryId: job.id, outcome: job.status });
+  return { ok: job.status === 'confirmed', pending: job.operator_retry_budget > 0 || !['confirmed','failed','rejected'].includes(job.status), delivery: delivery.publicJob(job),
+    workerEnabled: process.env.DHIS2_DELIVERY_WORKER_ENABLED === 'true', preview };
 }
 
 async function getSyncLogs({ limit = 50 } = {}) {
@@ -1868,6 +1874,10 @@ async function getSyncLogs({ limit = 50 } = {}) {
 async function updateSettings(input = {}, actorUserId) {
   const pool = getPool();
   const current = await getSettingsRaw();
+  if (input.apiVersion !== undefined && input.apiVersion !== null && input.apiVersion !== '2.43') throw Object.assign(new Error('Only the explicitly approved DHIS2 2.43 profile is supported.'), { status: 400 });
+  if (input.profileApprovalReference !== undefined && input.profileApprovalReference !== null &&
+    (typeof input.profileApprovalReference !== 'string' || !input.profileApprovalReference.trim() || input.profileApprovalReference.length > 200)) throw Object.assign(new Error('Provide a bounded integration profile approval reference.'), { status: 400 });
+  if (input.asyncImportEnabled !== undefined && typeof input.asyncImportEnabled !== 'boolean') throw Object.assign(new Error('Choose a valid asynchronous import setting.'), { status: 400 });
   const encrypted = {};
   for (const [inputKey, columnPrefix] of [
     ['baseUrl', 'base_url'],
@@ -1900,6 +1910,9 @@ async function updateSettings(input = {}, actorUserId) {
     api_credentials_status: input.apiCredentialsStatus || input.api_credentials_status || current.api_credentials_status || 'pending',
     data_sharing_agreement_status: input.dataSharingAgreementStatus || input.data_sharing_agreement_status || current.data_sharing_agreement_status || 'pending',
     ndpr_review_status: input.ndprReviewStatus || input.ndpr_review_status || current.ndpr_review_status || 'pending',
+    api_version: input.apiVersion !== undefined ? input.apiVersion : current.api_version || null,
+    profile_approval_reference: input.profileApprovalReference !== undefined ? input.profileApprovalReference?.trim() || null : current.profile_approval_reference || null,
+    async_import_enabled: input.asyncImportEnabled !== undefined ? input.asyncImportEnabled : current.async_import_enabled === true,
     ...encrypted,
   };
 
@@ -2117,6 +2130,10 @@ async function testConnection() {
 }
 
 module.exports = {
+  getDeliveryConfiguration: async () => {
+    const row = await getSettingsRaw();
+    return { settings: publicSettings(row), baseUrl: decryptSettingValue(row, 'base_url'), username: decryptSettingValue(row, 'username'), apiToken: decryptSettingValue(row, 'api_token') };
+  },
   PROGRAMME_AREAS,
   METRIC_LABELS,
   parsePeriod,

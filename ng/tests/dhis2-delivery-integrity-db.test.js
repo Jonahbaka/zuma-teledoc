@@ -3,13 +3,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const { Pool } = require('pg');
 const delivery = require('../services/public-health/dhis2DeliveryService');
 
 const target = process.env.SIMULATION_DATABASE_URL;
 const baseUrl = 'https://dhis2-rollback-control.example.invalid';
 const payload = { dataSet: 'a1234567890', orgUnit: 'b1234567890', period: '202609', dataValues: [{ dataElement: 'c1234567890', value: 0 }] };
-const remoteValues = () => ({ ok: true, json: async () => ({ dataValues: [{ dataElement: 'c1234567890', value: '0' }] }) });
+const remoteValues = () => ({ ok: true, json: async () => ({ ...payload, dataValues: [{ dataElement: 'c1234567890', orgUnit: payload.orgUnit, period: payload.period, value: '0' }] }) });
 const imported = () => ({ status: 200, json: async () => ({ status: 'SUCCESS', importCount: { imported: 1, updated: 0, ignored: 0 } }) });
 
 async function withRetainedJob(run) {
@@ -33,6 +35,7 @@ async function withRetainedJob(run) {
   };
   try {
     await client.query('BEGIN');
+    await client.query(fs.readFileSync(path.join(__dirname, '../migrations/028_ng_dhis2_delivery_operations.sql'), 'utf8'));
     const author = (await client.query("SELECT id FROM users WHERE email='doctor@demo.doctarx.com' AND role='provider' AND is_active=TRUE")).rows[0];
     const approver = (await client.query("SELECT id FROM users WHERE email='admin@demo.doctarx.com' AND role='super_admin' AND is_active=TRUE")).rows[0];
     assert.ok(author && approver && author.id !== approver.id, 'Reuse existing provisioned accounts without seeding or password changes');
@@ -58,6 +61,7 @@ test('stale queued objects cannot resubmit an ambiguous import or forge destinat
       assert.equal(options.method, 'POST'); posts++; throw new Error('Isolated transport ambiguity');
     } });
     assert.equal(interrupted.delivery.status, 'reconciliation');
+    await client.query('UPDATE ng_dhis2_delivery_jobs SET next_attempt_at=NOW() WHERE id=$1', [job.id]);
     const wrongBase = 'https://unapproved-destination.example.invalid';
     const stale = { ...job, report_id: foreignReportId, payload_hash: 'f'.repeat(64), created_by: author.id,
       payload_json: { ...payload, orgUnit: 'd1234567890' }, destination_hash: delivery.destinationIdentity(wrongBase, null, { ...payload, orgUnit: 'd1234567890' }) };
@@ -109,5 +113,22 @@ test('a reclaimed expired lease reconciles without another POST and rejects the 
       assert.deepEqual(retained, { status: 'confirmed', attempts: 2, lease_token: null });
       assert.equal((await client.query('SELECT COUNT(*)::int AS count FROM dhis2_sync_logs WHERE report_id=$1', [job.report_id])).rows[0].count, 1);
     } finally { clearTimeout(timer); releasePost(); await Promise.allSettled([first]); }
+  });
+});
+
+test('lease replacement or operator closure during authority checks prevents every stale external request', { skip: !target }, async () => {
+  for (const action of ['replaced','closed']) await withRetainedJob(async ({ isolated, client, job }) => {
+    let requests = 0;
+    await assert.rejects(delivery.deliverOrReconcile(isolated, job, { baseUrl, apiToken: 'isolated-no-live-token',
+      authorizeAttempt: async () => {
+        if (action === 'closed') await client.query("UPDATE ng_dhis2_delivery_jobs SET status='failed',resolution_code='closed_unresolved',lease_token=NULL,lease_until=NULL WHERE id=$1", [job.id]);
+        else await client.query("UPDATE ng_dhis2_delivery_jobs SET status='reconciliation',lease_token=$2,lease_until=NOW()+interval '90 seconds' WHERE id=$1", [job.id,crypto.randomUUID()]);
+      }, fetchImpl: async () => { requests++; return remoteValues(); },
+    }), { code: 'DHIS2_DELIVERY_CONFLICT' });
+    assert.equal(requests,0,'A stale lease cannot make a POST or GET even though its authority check completed');
+    const retained=(await client.query('SELECT status,resolution_code FROM ng_dhis2_delivery_jobs WHERE id=$1',[job.id])).rows[0];
+    assert.equal(retained.status,action==='closed'?'failed':'reconciliation');
+    assert.equal(retained.resolution_code,action==='closed'?'closed_unresolved':null);
+    assert.equal((await client.query('SELECT COUNT(*)::int AS count FROM dhis2_sync_logs WHERE report_id=$1',[job.report_id])).rows[0].count,0);
   });
 });

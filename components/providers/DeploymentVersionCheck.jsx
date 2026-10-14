@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { CAREOPS_PROFILE } from '@/lib/careopsProfile';
 
 // Backend deployment and service-worker updates must not discard account
 // sessions, clinical drafts, saved locations, or interrupt an active visit.
@@ -13,7 +14,7 @@ export function DeploymentVersionCheck() {
     let stopped = false;
     let checking = false;
     let request;
-    const endpoint = (process.env.NEXT_PUBLIC_API_URL || '/api').replace(/\/$/, '') + '/health';
+    const endpoint = CAREOPS_PROFILE ? '/careops/release' : (process.env.NEXT_PUBLIC_API_URL || '/api').replace(/\/$/, '') + '/health';
     const announce = () => { if (!stopped) setAvailable(true); };
     const checkDeployment = async () => {
       if (checking || stopped || document.visibilityState !== 'visible') return;

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { isCareOpsSurface } from '@/lib/careopsProfile';
 
 const PWA_ASSET_VERSION = '2026-07-24-pwa-v11';
 const DISMISS_KEY = 'doctarx-install-dismissed-v2';
@@ -138,9 +139,10 @@ function syncInstallMetadata(pathname = '') {
   if (typeof document === 'undefined') return;
 
   const isNigeriaPath = pathname.startsWith('/ng');
+  const careops = isCareOpsSurface(pathname);
   const runtimeVersion = window.__doctarxPwaAssetVersion || PWA_ASSET_VERSION;
-  const manifestHref = `${isNigeriaPath ? '/ng/manifest.webmanifest' : '/manifest.webmanifest'}?v=${runtimeVersion}`;
-  const appTitle = isNigeriaPath ? 'DoctaRx Nigeria' : 'DoctaRx';
+  const manifestHref = `${careops ? '/careops/manifest.webmanifest' : isNigeriaPath ? '/ng/manifest.webmanifest' : '/manifest.webmanifest'}?v=${runtimeVersion}`;
+  const appTitle = careops ? 'DoctaRx CareOps' : isNigeriaPath ? 'DoctaRx Nigeria' : 'DoctaRx';
   const themeColor = '#0f172a';
   const manifestLinks = Array.from(document.querySelectorAll('link[rel="manifest"]'));
   const primaryManifest = manifestLinks[0] || document.createElement('link');

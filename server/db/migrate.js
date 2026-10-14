@@ -3023,6 +3023,14 @@ const SQL_FILE_MIGRATIONS = [
     file: '038_crm_recorded_workspace.sql'
   },
   {
+    name: '039_medical_record_revisions',
+    file: '039_medical_record_revisions.sql'
+  },
+  {
+    name: '040_clinical_encrypted_history',
+    file: '040_clinical_encrypted_history.sql'
+  },
+  {
     name: '400_agent_orchestrator_schema',
     file: '400_agent_orchestrator_schema.sql'
   }

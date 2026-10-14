@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { authenticate, requireRole, canAccessPatient } = require('../middleware/auth');
+const { authenticate, requireRole } = require('../middleware/auth');
 const { auditMiddleware } = require('../middleware/audit');
 const insuranceWalletService = require('../services/insuranceWalletService');
 const manualInsuranceService = require('../services/manualInsuranceService');
@@ -55,7 +55,6 @@ const upload = multer({
 router.get('/patient/:patientId/wallet',
   authenticate,
   requireRole('provider', 'admin', 'super_admin'),
-  canAccessPatient,
   patientScope,
   async (req, res) => {
     try {
@@ -72,7 +71,6 @@ router.get('/patient/:patientId/wallet',
 router.get('/patient/:patientId/:id',
   authenticate,
   requireRole('provider', 'admin', 'super_admin'),
-  canAccessPatient,
   patientScope,
   insuranceScope,
   async (req, res) => {

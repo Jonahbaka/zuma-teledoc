@@ -6,6 +6,9 @@ node_modules/
 # Build outputs
 .next/
 .next-careops-preview/
+.next-careops/
+.next-careops-*/
+.env.careops
 work/careops-ui/
 out/
 build/

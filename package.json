@@ -1,7 +1,7 @@
 {
   "name": "zuma-teledoc",
   "version": "1.0.0",
-  "description": "DoctaRx - Production HIPAA-compliant Telehealth Platform",
+  "description": "DoctaRx connected virtual care and clinical operations platform",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:next\"",
@@ -20,8 +20,8 @@
     "verify:admin-test-access": "node scripts/verify-admin-test-access-flow.cjs",
     "verify:testing-link-lifecycle": "node scripts/verify-testing-link-lifecycle.cjs",
     "test": "node --test server/tests/message-authorization.test.js ng/tests/auditLineage.test.js ng/tests/clinical-access-authorization.test.js ng/tests/conference-authorization.test.js ng/tests/conferencing.test.js ng/tests/dhis2.test.js ng/tests/governance.test.js ng/tests/livekit-provider-conference-contract.test.js ng/tests/nigeria-imaging-authorization.test.js ng/tests/phc-governance-services.test.js ng/tests/phc-workflow-service.test.js ng/tests/programme-scope-authorization.test.js ng/tests/provider-workflow-discovery.test.js ng/tests/public-health-missing-data.test.js ng/tests/rbac.test.js ng/tests/telehealth-lifecycle-integration.test.js ng/tests/telehealth-lifecycle-db.test.js ng/tests/clinical-record-integrity.test.js ng/tests/patient-safety.test.js ng/tests/video-connection-resilience.test.js ng/tests/dhis2-export-architecture.test.js ng/tests/message-idempotency.test.js ng/tests/clinical-documentation-assistant.test.js ng/tests/clinical-list-safety.test.js ng/tests/ui-accessibility-contract.test.js && node ng/tests/regression.test.js && node ng/tests/portal-contract.test.js",
-    "pretest": "node --test ng/tests/careops-production.test.js ng/tests/provider-portal-contract.test.js ng/tests/private-prescription-upload.test.js ng/tests/private-prescription-endpoints.test.js ng/tests/prescription-submission-navigation.test.js ng/tests/provider-prescription-authorization.test.js ng/tests/care-location-policy.test.js ng/tests/client-integration-truthfulness.test.js ng/tests/insurance-integration-truthfulness.test.js ng/tests/admin-workspace-resilience.test.js ng/tests/admin-decisions.test.js ng/tests/discovery-truthfulness.test.js server/tests/public-directory.test.js server/tests/admin-dashboard-truthfulness.test.js server/tests/credentialing-route-discovery.test.js ng/tests/patient-caller-state.test.js ng/tests/pwa-navigation-update.test.js ng/tests/pharmacy-preference-authorization.test.js server/tests/admin-recorded-actions.test.js ng/tests/patient-pharmacy-state.test.js ng/tests/phc-fhir-capability.test.js server/tests/legacy-prescription-access.test.js server/tests/erx-intent-integrity.test.js server/tests/consumer-membership-safety.test.js ng/tests/consumer-membership-state.test.js",
-    "test:platform:db": "node --test --test-concurrency=1 ng/tests/appointment-list-scope-db.test.js ng/tests/private-prescription-endpoints.test.js ng/tests/provider-prescription-authorization.test.js ng/tests/pharmacy-workspace-queries-db.test.js ng/tests/manual-insurance-integrity.test.js ng/tests/admin-consultation-lineage.test.js ng/tests/admin-decisions-db.test.js ng/tests/discovery-truthfulness-db.test.js ng/tests/pharmacy-preference-authorization.test.js server/tests/admin-recorded-actions-db.test.js server/tests/crm-schema-upgrade-db.test.js ng/tests/phc-fhir-capability-db.test.js server/tests/legacy-prescription-access.test.js server/tests/erx-intent-integrity.test.js server/tests/consumer-membership-safety.test.js ng/tests/dhis2-delivery-integrity-db.test.js",
+    "pretest": "node --test ng/tests/careops-production.test.js ng/tests/provider-portal-contract.test.js ng/tests/private-prescription-upload.test.js ng/tests/private-prescription-endpoints.test.js ng/tests/prescription-submission-navigation.test.js ng/tests/provider-prescription-authorization.test.js ng/tests/care-location-policy.test.js ng/tests/client-integration-truthfulness.test.js ng/tests/insurance-integration-truthfulness.test.js ng/tests/admin-workspace-resilience.test.js ng/tests/admin-decisions.test.js ng/tests/discovery-truthfulness.test.js server/tests/public-directory.test.js server/tests/admin-dashboard-truthfulness.test.js server/tests/credentialing-route-discovery.test.js ng/tests/patient-caller-state.test.js ng/tests/pwa-navigation-update.test.js ng/tests/pharmacy-preference-authorization.test.js server/tests/admin-recorded-actions.test.js ng/tests/patient-pharmacy-state.test.js ng/tests/phc-fhir-capability.test.js server/tests/legacy-prescription-access.test.js server/tests/erx-intent-integrity.test.js server/tests/consumer-membership-safety.test.js ng/tests/consumer-membership-state.test.js server/tests/medical-record-integrity.test.js server/tests/careops-deployment-profile.test.js ng/tests/dhis2-delivery-worker.test.js ng/tests/dhis2-delivery-ui-state.test.js server/tests/clinical-encounter-integrity.test.js server/tests/auth-session-races.test.js server/tests/patient-clinical-profile-integrity.test.js",
+    "test:platform:db": "node --test --test-concurrency=1 ng/tests/appointment-list-scope-db.test.js ng/tests/private-prescription-endpoints.test.js ng/tests/provider-prescription-authorization.test.js ng/tests/pharmacy-workspace-queries-db.test.js ng/tests/manual-insurance-integrity.test.js ng/tests/admin-consultation-lineage.test.js ng/tests/admin-decisions-db.test.js ng/tests/discovery-truthfulness-db.test.js ng/tests/pharmacy-preference-authorization.test.js server/tests/admin-recorded-actions-db.test.js server/tests/crm-schema-upgrade-db.test.js ng/tests/phc-fhir-capability-db.test.js server/tests/legacy-prescription-access.test.js server/tests/erx-intent-integrity.test.js server/tests/consumer-membership-safety.test.js ng/tests/dhis2-delivery-integrity-db.test.js server/tests/medical-record-integrity.test.js ng/tests/dhis2-delivery-operations-db.test.js server/tests/clinical-encounter-integrity.test.js server/tests/patient-clinical-profile-integrity.test.js",
     "test:careops:db": "node --test ng/tests/careops-production-db.test.js",
     "e2e:careops": "node scripts/e2e-careops-ui.cjs",
     "e2e:main-platform": "node scripts/e2e-main-platform.cjs",
@@ -59,7 +59,13 @@
     "lint": "eslint .",
     "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\"",
     "validate:db": "node scripts/validate-db.js",
-    "migrations:verify": "node scripts/verify-migration-safety.cjs"
+    "migrations:verify": "node scripts/verify-migration-safety.cjs",
+    "careops:validate": "node scripts/careops-profile.cjs validate",
+    "careops:build": "node scripts/careops-profile.cjs build",
+    "careops:start": "node scripts/careops-profile.cjs start",
+    "e2e:careops-profile": "node scripts/e2e-careops-profile.cjs",
+    "reconcile:ng:dhis2": "node scripts/process-ng-dhis2-deliveries.cjs",
+    "worker:ng:dhis2": "node scripts/process-ng-dhis2-deliveries.cjs --watch"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",

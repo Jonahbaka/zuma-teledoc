@@ -27,6 +27,16 @@ const telehealthConsentService = require('../services/telehealthConsentService')
 const privatePrescriptionUploads = require('../../ng/services/rx-engine/privatePrescriptionUploadService');
 const db = require('../db');
 const validSubmissionPatient = (req,res,next) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.patientId || '') ? next() : res.status(400).json({ error:'Invalid patient reference.' });
+function clinicalFailure(res, error) {
+  const status = [400,403,404,409,503].includes(error.statusCode || error.status) ? error.statusCode || error.status : 503;
+  return res.status(status).json({ success: false,
+    error: status === 400 ? 'Valid clinical references and record details are required.'
+      : status === 403 ? error.code === 'CLINICAL_NOTE_RELEASE_NOT_CONFIGURED' ? 'Clinical notes are not available through a configured patient-release workflow.' : 'This clinical record is not available in your current authorized context.'
+      : status === 404 ? 'Clinical record not found.'
+      : status === 409 ? 'The clinical record no longer accepts this change. Refresh the current record; signed notes require an amendment.'
+      : 'Clinical records are temporarily unavailable. No record change has been confirmed.',
+    code: /^(?:CLINICAL_[A-Z_]+|CONSENT_REQUIRED)$/.test(error.code || '') ? error.code : status === 400 ? 'CLINICAL_INPUT_INVALID' : 'CLINICAL_REQUEST_UNAVAILABLE' });
+}
 
 // Private patient-submitted documents use the same current care-relationship
 // boundary as the chart. Access does not verify or prescribe medication.
@@ -175,7 +185,7 @@ const captureConsentSchema = z.object({
  */
 router.post('/',
   authenticate,
-  requireRole('provider', 'admin'),
+  requireRole('provider'),
   auditMiddleware('create', 'clinical_encounter', { phiAccessed: true }),
   async (req, res) => {
     try {
@@ -184,10 +194,11 @@ router.post('/',
       // Validate telehealth consent for telehealth encounters
       if (data.encounterType.startsWith('telehealth')) {
         try {
-          await telehealthConsentService.validateConsentForEncounter(
+          const consent = await telehealthConsentService.validateConsentForEncounter(
             data.patientId,
             data.patientState
           );
+          data.telehealthConsentId = consent.id;
         } catch (consentError) {
           if (consentError.code === 'CONSENT_REQUIRED') {
             return res.status(400).json({
@@ -210,10 +221,7 @@ router.post('/',
       });
     } catch (error) {
       logger.error('Create encounter error:', error);
-      res.status(error.message?.includes('not found') ? 404 : 500).json({
-        success: false,
-        error: error.message || 'Failed to create encounter'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -227,6 +235,7 @@ router.post('/',
  */
 router.get('/:id([0-9a-fA-F-]{36})',
   authenticate,
+  requireRole('patient', 'provider'),
   auditPhiAccess('clinical_encounter'),
   async (req, res) => {
     try {
@@ -249,10 +258,7 @@ router.get('/:id([0-9a-fA-F-]{36})',
       });
     } catch (error) {
       logger.error('Get encounter error:', error);
-      res.status(error.message?.includes('denied') ? 403 : 500).json({
-        success: false,
-        error: error.message || 'Failed to get encounter'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -279,10 +285,7 @@ router.post('/:id([0-9a-fA-F-]{36})/complete',
       });
     } catch (error) {
       logger.error('Complete encounter error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to complete encounter'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -293,6 +296,7 @@ router.post('/:id([0-9a-fA-F-]{36})/complete',
  */
 router.get('/patient/:patientId',
   authenticate,
+  requireRole('patient', 'provider'),
   canAccessPatient,
   auditPhiAccess('clinical_encounter'),
   async (req, res) => {
@@ -301,7 +305,7 @@ router.get('/patient/:patientId',
       
       const encounters = await clinicalEncounterService.getPatientEncounters(
         req.params.patientId,
-        { status, limit: parseInt(limit) || 50, offset: parseInt(offset) || 0 }
+        { status, limit: limit === undefined ? 50 : Number(limit), offset: offset === undefined ? 0 : Number(offset), userId: req.user.id, userRole: req.user.role }
       );
       
       res.json({
@@ -310,10 +314,7 @@ router.get('/patient/:patientId',
       });
     } catch (error) {
       logger.error('Get patient encounters error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get encounters'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -347,10 +348,7 @@ router.post('/:encounterId/notes',
       });
     } catch (error) {
       logger.error('Create note error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to create note'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -361,6 +359,7 @@ router.post('/:encounterId/notes',
  */
 router.get('/:encounterId/notes',
   authenticate,
+  requireRole('patient', 'provider'),
   auditPhiAccess('clinical_note'),
   async (req, res) => {
     try {
@@ -376,10 +375,7 @@ router.get('/:encounterId/notes',
       });
     } catch (error) {
       logger.error('Get notes error:', error);
-      res.status(error.message?.includes('denied') ? 403 : 500).json({
-        success: false,
-        error: error.message || 'Failed to get notes'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -391,7 +387,7 @@ router.get('/:encounterId/notes',
 router.put('/notes/:noteId',
   authenticate,
   requireRole('provider'),
-  auditMiddleware('update', 'clinical_note', { phiAccessed: true, logChanges: true }),
+  auditMiddleware('update', 'clinical_note', { phiAccessed: true }),
   async (req, res) => {
     try {
       const data = validate(createNoteSchema.partial(), req.body);
@@ -409,10 +405,7 @@ router.put('/notes/:noteId',
       });
     } catch (error) {
       logger.error('Update note error:', error);
-      res.status(error.message?.includes('signed') ? 400 : 500).json({
-        success: false,
-        error: error.message || 'Failed to update note'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -439,10 +432,7 @@ router.post('/notes/:noteId/sign',
       });
     } catch (error) {
       logger.error('Sign note error:', error);
-      res.status(400).json({
-        success: false,
-        error: error.message || 'Failed to sign note'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -472,10 +462,7 @@ router.post('/notes/:noteId/amend',
       });
     } catch (error) {
       logger.error('Create amendment error:', error);
-      res.status(400).json({
-        success: false,
-        error: error.message || 'Failed to create amendment'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -486,6 +473,7 @@ router.post('/notes/:noteId/amend',
  */
 router.get('/notes/:noteId/history',
   authenticate,
+  requireRole('patient', 'provider'),
   auditPhiAccess('clinical_note'),
   async (req, res) => {
     try {
@@ -501,10 +489,7 @@ router.get('/notes/:noteId/history',
       });
     } catch (error) {
       logger.error('Get note history error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get note history'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -523,7 +508,7 @@ router.get('/patient/:patientId/profile',
   auditPhiAccess('patient_clinical_profile'),
   async (req, res) => {
     try {
-      const profile = await patientClinicalProfileService.getOrCreateProfile(req.params.patientId);
+      const profile = await patientClinicalProfileService.getOrCreateProfile(req.params.patientId, req.user);
       
       res.json({
         success: true,
@@ -531,10 +516,7 @@ router.get('/patient/:patientId/profile',
       });
     } catch (error) {
       logger.error('Get profile error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get profile'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -552,7 +534,8 @@ router.put('/patient/:patientId/profile',
       const profile = await patientClinicalProfileService.updateProfile(
         req.params.patientId,
         req.body,
-        req.user.id
+        req.user.id,
+        req.user
       );
       
       res.json({
@@ -561,10 +544,7 @@ router.put('/patient/:patientId/profile',
       });
     } catch (error) {
       logger.error('Update profile error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to update profile'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -575,11 +555,11 @@ router.put('/patient/:patientId/profile',
  */
 router.post('/patient/:patientId/verify-identity',
   authenticate,
-  requireRole('provider', 'admin'),
+  requireRole('provider'),
   auditMiddleware('update', 'patient_clinical_profile', { description: 'Verify identity' }),
   async (req, res) => {
     try {
-      const { method } = req.body;
+      const { method } = req.body || {};
       
       if (!method) {
         return res.status(400).json({
@@ -591,7 +571,8 @@ router.post('/patient/:patientId/verify-identity',
       const profile = await patientClinicalProfileService.verifyIdentity(
         req.params.patientId,
         method,
-        req.user.id
+        req.user.id,
+        req.user
       );
       
       res.json({
@@ -601,10 +582,7 @@ router.post('/patient/:patientId/verify-identity',
       });
     } catch (error) {
       logger.error('Verify identity error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to verify identity'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -622,7 +600,8 @@ router.get('/patient/:patientId/summary',
       const summary = await patientClinicalProfileService.getClinicalSummary(
         req.params.patientId,
         req.user.id,
-        req.user.role
+        req.user.role,
+        req.user
       );
       
       res.json({
@@ -631,10 +610,7 @@ router.get('/patient/:patientId/summary',
       });
     } catch (error) {
       logger.error('Get clinical summary error:', error);
-      res.status(error.message?.includes('denied') ? 403 : 500).json({
-        success: false,
-        error: error.message || 'Failed to get clinical summary'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -658,7 +634,8 @@ router.post('/patient/:patientId/allergies',
       const allergy = await patientClinicalProfileService.addAllergy(
         req.params.patientId,
         data,
-        req.user.id
+        req.user.id,
+        req.user
       );
       
       res.status(201).json({
@@ -667,10 +644,7 @@ router.post('/patient/:patientId/allergies',
       });
     } catch (error) {
       logger.error('Add allergy error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to add allergy'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -687,7 +661,8 @@ router.get('/patient/:patientId/allergies',
     try {
       const allergies = await patientClinicalProfileService.getAllergies(
         req.params.patientId,
-        req.query.includeInactive === 'true'
+        req.query.includeInactive === 'true',
+        req.user
       );
       
       res.json({
@@ -696,10 +671,7 @@ router.get('/patient/:patientId/allergies',
       });
     } catch (error) {
       logger.error('Get allergies error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get allergies'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -716,7 +688,8 @@ router.post('/allergies/:id/verify',
     try {
       const allergy = await patientClinicalProfileService.verifyAllergy(
         req.params.id,
-        req.user.id
+        req.user.id,
+        req.user
       );
       
       res.json({
@@ -725,10 +698,7 @@ router.post('/allergies/:id/verify',
       });
     } catch (error) {
       logger.error('Verify allergy error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to verify allergy'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -739,16 +709,17 @@ router.post('/allergies/:id/verify',
  */
 router.delete('/allergies/:id',
   authenticate,
-  requireRole('provider', 'admin'),
+  requireRole('provider'),
   auditMiddleware('update', 'patient_allergy', { description: 'Inactivate allergy' }),
   async (req, res) => {
     try {
-      const { reason } = req.body;
+      const { reason } = req.body || {};
       
       const allergy = await patientClinicalProfileService.inactivateAllergy(
         req.params.id,
         req.user.id,
-        reason || 'Inactivated by provider'
+        reason,
+        req.user
       );
       
       res.json({
@@ -757,10 +728,7 @@ router.delete('/allergies/:id',
       });
     } catch (error) {
       logger.error('Inactivate allergy error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to inactivate allergy'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -784,7 +752,8 @@ router.post('/patient/:patientId/problems',
       const problem = await patientClinicalProfileService.addProblem(
         req.params.patientId,
         data,
-        req.user.id
+        req.user.id,
+        req.user
       );
       
       res.status(201).json({
@@ -793,10 +762,7 @@ router.post('/patient/:patientId/problems',
       });
     } catch (error) {
       logger.error('Add problem error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to add problem'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -816,7 +782,8 @@ router.get('/patient/:patientId/problems',
         {
           includeInactive: req.query.includeInactive === 'true',
           problemType: req.query.problemType
-        }
+        },
+        req.user
       );
       
       res.json({
@@ -825,10 +792,7 @@ router.get('/patient/:patientId/problems',
       });
     } catch (error) {
       logger.error('Get problems error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get problems'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -846,7 +810,8 @@ router.put('/problems/:id',
       const problem = await patientClinicalProfileService.updateProblem(
         req.params.id,
         req.body,
-        req.user.id
+        req.user.id,
+        req.user
       );
       
       res.json({
@@ -855,10 +820,7 @@ router.put('/problems/:id',
       });
     } catch (error) {
       logger.error('Update problem error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to update problem'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -882,7 +844,8 @@ router.post('/patient/:patientId/medications',
       const medication = await patientClinicalProfileService.addMedication(
         req.params.patientId,
         data,
-        req.user.id
+        req.user.id,
+        req.user
       );
       
       res.status(201).json({
@@ -891,10 +854,7 @@ router.post('/patient/:patientId/medications',
       });
     } catch (error) {
       logger.error('Add medication error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to add medication'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -911,7 +871,8 @@ router.get('/patient/:patientId/medications',
     try {
       const medications = await patientClinicalProfileService.getMedications(
         req.params.patientId,
-        req.query.includeInactive === 'true'
+        req.query.includeInactive === 'true',
+        req.user
       );
       
       res.json({
@@ -920,10 +881,7 @@ router.get('/patient/:patientId/medications',
       });
     } catch (error) {
       logger.error('Get medications error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get medications'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -934,16 +892,17 @@ router.get('/patient/:patientId/medications',
  */
 router.delete('/medications/:id',
   authenticate,
-  requireRole('provider', 'admin'),
+  requireRole('provider'),
   auditMiddleware('update', 'patient_medication', { description: 'Discontinue medication' }),
   async (req, res) => {
     try {
-      const { reason } = req.body;
+      const { reason } = req.body || {};
       
       const medication = await patientClinicalProfileService.discontinueMedication(
         req.params.id,
         req.user.id,
-        reason || 'Discontinued by provider'
+        reason,
+        req.user
       );
       
       res.json({
@@ -952,10 +911,7 @@ router.delete('/medications/:id',
       });
     } catch (error) {
       logger.error('Discontinue medication error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to discontinue medication'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );

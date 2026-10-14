@@ -9,9 +9,20 @@
  * - Pharmacy preferences
  */
 
-const db = require('../db');
+const database = require('../db');
+const { AsyncLocalStorage } = require('node:async_hooks');
+const { assertClinicalPatientAccess, references, denied } = require('./clinicalPatientAccessService');
+// Every public operation below establishes a private, patient-bound transaction.
+// Internal summary/profile calls inherit that exact context, never global storage.
+const clinicalContext = new AsyncLocalStorage();
+const db = { query(...args) {
+  const context = clinicalContext.getStore();
+  if (!context) throw denied(403, 'CLINICAL_ACCESS_DENIED', 'A current clinical session is required.');
+  return context.client.query(...args);
+} };
 const logger = require('../middleware/logger');
-const { encrypt, decrypt } = require('../../lib/encryption');
+const { encrypt } = require('../../lib/encryption');
+const { readClinicalField } = require('./clinicalContentService');
 const { keysToCamel } = require('../../lib/utils');
 
 class PatientClinicalProfileService {
@@ -32,10 +43,11 @@ class PatientClinicalProfileService {
     if (rows.length === 0) {
       // Create new profile
       const { rows: newRows } = await db.query(
-        `INSERT INTO patient_clinical_profiles (patient_id) VALUES ($1) RETURNING *`,
+        `INSERT INTO patient_clinical_profiles (patient_id) VALUES ($1) ON CONFLICT(patient_id) DO NOTHING RETURNING *`,
         [patientId]
       );
-      rows = newRows;
+      rows = newRows.length ? newRows : (await db.query('SELECT * FROM patient_clinical_profiles WHERE patient_id=$1', [patientId])).rows;
+      if (newRows.length) await auditChange(clinicalContext.getStore(), 'getOrCreateProfile', rows[0], { created: true });
     }
     
     return keysToCamel(rows[0]);
@@ -65,7 +77,7 @@ class PatientClinicalProfileService {
     }
     
     if (updates.length === 0) {
-      throw new Error('No valid fields to update');
+      throw denied(400, 'CLINICAL_UPDATE_INVALID', 'No valid profile fields were supplied.');
     }
     
     values.push(patientId);
@@ -109,7 +121,7 @@ class PatientClinicalProfileService {
       return this.verifyIdentity(patientId, verificationMethod, verifiedBy);
     }
     
-    logger.info('Patient identity verified', { patientId, method: verificationMethod, verifiedBy });
+    logger.info('Patient identity verified', { patientId, verifiedBy });
     
     return keysToCamel(rows[0]);
   }
@@ -156,7 +168,7 @@ class PatientClinicalProfileService {
       ]
     );
     
-    logger.info('Allergy added', { patientId, allergenType, createdBy });
+    logger.info('Allergy added', { patientId, createdBy });
     
     return this._formatAllergy(rows[0], true);
   }
@@ -227,7 +239,7 @@ class PatientClinicalProfileService {
       throw new Error('Allergy not found');
     }
     
-    logger.info('Allergy inactivated', { allergyId, userId, reason });
+    logger.info('Allergy inactivated', { allergyId, userId });
     
     return this._formatAllergy(rows[0], true);
   }
@@ -275,7 +287,7 @@ class PatientClinicalProfileService {
       ]
     );
     
-    logger.info('Problem added', { patientId, icd10Code, documentedBy });
+    logger.info('Problem added', { patientId, documentedBy });
     
     return this._formatProblem(rows[0], true);
   }
@@ -330,7 +342,7 @@ class PatientClinicalProfileService {
     }
     
     if (updateClauses.length === 0) {
-      throw new Error('No valid fields to update');
+      throw denied(400, 'CLINICAL_UPDATE_INVALID', 'No valid problem fields were supplied.');
     }
     
     values.push(problemId);
@@ -401,7 +413,7 @@ class PatientClinicalProfileService {
       ]
     );
     
-    logger.info('Medication added', { patientId, medicationType, createdBy });
+    logger.info('Medication added', { patientId, createdBy });
     
     return this._formatMedication(rows[0], true);
   }
@@ -449,7 +461,7 @@ class PatientClinicalProfileService {
       throw new Error('Medication not found');
     }
     
-    logger.info('Medication discontinued', { medicationId, userId, reason });
+    logger.info('Medication discontinued', { medicationId, userId });
     
     return this._formatMedication(rows[0], true);
   }
@@ -483,13 +495,11 @@ class PatientClinicalProfileService {
       }
     }
     
-    // Fetch all clinical data in parallel
-    const [profile, allergies, problems, medications] = await Promise.all([
-      this.getOrCreateProfile(patientId),
-      this.getAllergies(patientId),
-      this.getProblems(patientId),
-      this.getMedications(patientId)
-    ]);
+    // These reads share the same patient-bound transaction and connection.
+    const profile = await this.getOrCreateProfile(patientId);
+    const allergies = await this.getAllergies(patientId);
+    const problems = await this.getProblems(patientId);
+    const medications = await this.getMedications(patientId);
     
     return {
       profile,
@@ -533,8 +543,8 @@ class PatientClinicalProfileService {
     }
     
     if (includeDecrypted) {
-      formatted.allergen = decrypt(allergy.allergen_encrypted, allergy.allergen_iv, allergy.allergen_tag);
-      formatted.reaction = decrypt(allergy.reaction_encrypted, allergy.reaction_iv, allergy.reaction_tag);
+      formatted.allergen = readClinicalField(allergy, 'allergen', allergy.allergy_name || null);
+      formatted.reaction = readClinicalField(allergy, 'reaction', allergy.reaction || null);
     }
     
     return formatted;
@@ -564,13 +574,7 @@ class PatientClinicalProfileService {
       };
     }
     
-    if (includeDecrypted && problem.problem_description_encrypted) {
-      formatted.problemDescription = decrypt(
-        problem.problem_description_encrypted,
-        problem.problem_description_iv,
-        problem.problem_description_tag
-      );
-    }
+    if (includeDecrypted) formatted.problemDescription = readClinicalField(problem, 'problem_description', problem.problem_name || null);
     
     return formatted;
   }
@@ -602,20 +606,86 @@ class PatientClinicalProfileService {
     }
     
     if (includeDecrypted) {
-      formatted.medicationName = decrypt(
-        medication.medication_name_encrypted,
-        medication.medication_name_iv,
-        medication.medication_name_tag
-      );
-      formatted.dosage = decrypt(
-        medication.dosage_encrypted,
-        medication.dosage_iv,
-        medication.dosage_tag
-      );
+      formatted.medicationName = readClinicalField(medication, 'medication_name', medication.medication_name || null);
+      formatted.dosage = readClinicalField(medication, 'dosage', medication.dosage || null);
     }
     
     return formatted;
   }
+}
+
+const operations = {
+  getOrCreateProfile: {}, updateProfile: { write: true, actorIndex: 2 }, verifyIdentity: { write: true, providerOnly: true, actorIndex: 2 },
+  addAllergy: { write: true, actorIndex: 2 }, getAllergies: {}, verifyAllergy: { write: true, providerOnly: true, actorIndex: 1, table: 'patient_allergies' },
+  inactivateAllergy: { write: true, providerOnly: true, actorIndex: 1, table: 'patient_allergies', reasonIndex: 2 },
+  addProblem: { write: true, providerOnly: true, actorIndex: 2 }, getProblems: {}, updateProblem: { write: true, providerOnly: true, actorIndex: 2, table: 'patient_problems' },
+  addMedication: { write: true, actorIndex: 2 }, getMedications: {}, discontinueMedication: { write: true, providerOnly: true, actorIndex: 1, table: 'patient_medications', reasonIndex: 2 },
+  getClinicalSummary: { actorIndex: 1, roleIndex: 2 },
+};
+async function auditChange(context, method, row, extra = {}) {
+  if (!row) throw denied(503, 'CLINICAL_RECORDING_UNAVAILABLE', 'Clinical recording could not be confirmed.');
+  await context.client.query(`INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,description,new_values,phi_accessed,success)
+    VALUES($1,$2,'patient_clinical_record',$3,$4,'Current authorized clinical profile operation',$5::jsonb,TRUE,TRUE)`,
+  [context.actor.id, method.startsWith('add') || extra.created ? 'create' : 'update', row.id || context.patientId, context.patientId, JSON.stringify({ operation: method, ...extra })]);
+}
+async function auditRead(context, method, result) {
+  try {
+    await context.client.query(`INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,description,new_values,phi_accessed,success)
+      VALUES($1,'read','patient_clinical_record',$2,$3,'Current authorized clinical profile read',$4::jsonb,TRUE,TRUE)`,
+    [context.actor.id, result?.id || context.patientId, context.patientId, JSON.stringify({ operation: method, ...(Array.isArray(result) ? { recordCount: result.length } : {}) })]);
+  } catch (_error) {
+    throw denied(503, 'CLINICAL_AUDIT_UNAVAILABLE', 'Clinical access could not be recorded.');
+  }
+}
+function validateOperation(method, args, context, policy) {
+  if (policy.providerOnly && context.actor.role !== 'provider' || policy.actorIndex !== undefined && args[policy.actorIndex] !== context.actor.id ||
+    policy.roleIndex !== undefined && args[policy.roleIndex] !== context.actor.role) throw denied(403, 'CLINICAL_ACCESS_DENIED', 'The current clinical actor does not match this operation.');
+  if (policy.reasonIndex !== undefined && (typeof args[policy.reasonIndex] !== 'string' || args[policy.reasonIndex].trim().length < 3 || args[policy.reasonIndex].trim().length > 2000)) throw denied(400, 'CLINICAL_REASON_REQUIRED', 'A reason of 3–2000 characters is required.');
+  if (method === 'verifyIdentity' && (typeof args[1] !== 'string' || !args[1].trim() || args[1].length > 100)) throw denied(400, 'CLINICAL_VERIFICATION_INVALID', 'A valid identity verification method is required.');
+  if (['addAllergy', 'addMedication'].includes(method)) {
+    const name = method === 'addAllergy' ? args[1]?.allergen : args[1]?.medicationName;
+    if (typeof name !== 'string' || !name.trim()) throw denied(400, 'CLINICAL_HISTORY_INVALID', 'A recorded history item is required.');
+    if (['imported', 'erx_import'].includes(args[1]?.source)) throw denied(400, 'CLINICAL_SOURCE_UNVERIFIED', 'Imported history requires a verified integration.');
+    args[1] = { ...args[1], source: context.actor.role === 'patient' ? 'patient_reported' : args[1]?.source || 'provider_documented' };
+  }
+  if (method === 'addProblem' && !['problemDescription', 'icd10Code', 'icd10Description'].some(field => typeof args[1]?.[field] === 'string' && args[1][field].trim())) throw denied(400, 'CLINICAL_HISTORY_INVALID', 'A documented clinical problem or diagnosis is required.');
+}
+for (const [method, policy] of Object.entries(operations)) {
+  const original = PatientClinicalProfileService.prototype[method];
+  PatientClinicalProfileService.prototype[method] = async function scopedClinicalOperation(...args) {
+    const supplied = args[args.length - 1];
+    const session = supplied && typeof supplied === 'object' && typeof supplied.id === 'string' && typeof supplied.role === 'string' ? args.pop() : null;
+    const inherited = clinicalContext.getStore();
+    if (inherited) {
+      if (session && (session.id !== inherited.actor.id || session.role !== inherited.actor.role || session.marketScope !== inherited.actor.market_scope) || !policy.table && args[0] !== inherited.patientId) throw denied(403, 'CLINICAL_ACCESS_DENIED', 'Clinical context changed.');
+      if (policy.table) {
+        references(args[0]);
+        const record = (await inherited.client.query(`SELECT id,patient_id${policy.table === 'patient_problems' ? ',encounter_id' : ''} FROM ${policy.table} WHERE id=$1 AND patient_id=$2 FOR UPDATE`, [args[0], inherited.patientId])).rows[0];
+        if (!record) throw denied(403, 'CLINICAL_ACCESS_DENIED', 'The record does not belong to the current clinical context.');
+        if (record.encounter_id) await assertClinicalPatientAccess(inherited.client, inherited.patientId, { id: inherited.actor.id, role: inherited.actor.role, marketScope: inherited.actor.market_scope }, { providerOnly: true, lock: true, encounterId: record.encounter_id });
+      }
+      validateOperation(method, args, inherited, policy);
+      return original.apply(this, args);
+    }
+    references(args[0], session?.id);
+    if (!['patient', 'provider'].includes(session.role) || policy.providerOnly && session.role !== 'provider') throw denied(403, 'CLINICAL_ACCESS_DENIED', 'Current clinical authority is required.');
+    const client = await database.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const hint = policy.table ? (await client.query(`SELECT id,patient_id${policy.table === 'patient_problems' ? ',encounter_id' : ''} FROM ${policy.table} WHERE id=$1 FOR UPDATE`, [args[0]])).rows[0] : null;
+      if (policy.table && !hint) throw denied(404, 'CLINICAL_RECORD_NOT_FOUND', 'Clinical record not found.');
+      const patientId = policy.table ? hint.patient_id : args[0];
+      const actor = await assertClinicalPatientAccess(client, patientId, session, { providerOnly: policy.providerOnly, lock: true,
+        encounterId: method === 'addProblem' ? args[1]?.encounterId : hint?.encounter_id });
+      const context = { client, actor, patientId };
+      validateOperation(method, args, context, policy);
+      const result = await clinicalContext.run(context, () => original.apply(this, args));
+      if (policy.write) await auditChange(context, method, result, { ...(policy.reasonIndex !== undefined ? { reasonEncrypted: encrypt(args[policy.reasonIndex].trim()) } : {}) });
+      else await auditRead(context, method, result);
+      await client.query('COMMIT'); return result;
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
+  };
 }
 
 module.exports = new PatientClinicalProfileService();

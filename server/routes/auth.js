@@ -4,6 +4,7 @@
  */
 
 const express = require('express');
+const { authCookieDomain, legacyAuthCookieDomain } = require('../utils/authCookiePolicy');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const speakeasy = require('speakeasy');
@@ -109,7 +110,7 @@ const generateTokens = (userId, role) => {
  */
 const setAuthCookies = (res, accessToken, refreshToken) => {
   const isProd = process.env.NODE_ENV === 'production';
-  const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.doctarx.com' : undefined);
+  const cookieDomain = authCookieDomain();
   const cookieOptions = {
     httpOnly: true,
     secure: isProd,
@@ -119,6 +120,8 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
     path: '/',
     ...(cookieDomain ? { domain: cookieDomain } : {})
   };
+  const legacyDomain = legacyAuthCookieDomain();
+  if (legacyDomain) for (const name of ['accessToken', 'refreshToken', 'mfaVerified']) res.clearCookie(name, { ...cookieOptions, domain: legacyDomain });
   
   res.cookie('accessToken', accessToken, {
     ...cookieOptions,
@@ -136,7 +139,7 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
  */
 const clearAuthCookies = (res) => {
   const isProd = process.env.NODE_ENV === 'production';
-  const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.doctarx.com' : undefined);
+  const cookieDomain = authCookieDomain();
   const cookieOptions = {
     httpOnly: true,
     secure: isProd,
@@ -148,6 +151,8 @@ const clearAuthCookies = (res) => {
   res.clearCookie('accessToken', cookieOptions);
   res.clearCookie('refreshToken', cookieOptions);
   res.clearCookie('mfaVerified', cookieOptions);
+  const legacyDomain = legacyAuthCookieDomain();
+  if (legacyDomain) for (const name of ['accessToken', 'refreshToken', 'mfaVerified']) res.clearCookie(name, { ...cookieOptions, domain: legacyDomain });
 };
 
 /**
@@ -155,6 +160,7 @@ const clearAuthCookies = (res) => {
  * Register a new user
  */
 router.post('/register', async (req, res) => {
+  clearAuthCookies(res);
   try {
     const data = validate(registerSchema, req.body);
     if (!['patient','provider','pharmacy'].includes(data.role)) return res.status(403).json({ success: false,
@@ -361,6 +367,9 @@ router.post('/register', async (req, res) => {
  * endpoints that still submit credentials to DoctaRx.
  */
 const loginHandler = async (req, res) => {
+  // A replacement sign-in must retire the prior browser session even when the
+  // new credentials are denied or require a second factor.
+  clearAuthCookies(res);
   try {
     const data = validate(loginSchema, req.body);
     
@@ -525,7 +534,7 @@ const loginHandler = async (req, res) => {
     // Set MFA verified cookie if MFA was passed
     if (user.mfa_enabled) {
       const isProd = process.env.NODE_ENV === 'production';
-      const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.doctarx.com' : undefined);
+  const cookieDomain = authCookieDomain();
       res.cookie('mfaVerified', issueMfaAttestation(user.id, accessToken), {
         httpOnly: true,
         secure: isProd,
@@ -590,8 +599,10 @@ router.post('/login', loginHandler);
  */
 router.post('/refresh', async (req, res) => {
   try {
-    // Get refresh token from cookie or body
-    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+    // An explicit session token must never be replaced by another account's
+    // shared-domain cookie. Cookie-only clients retain the existing fallback.
+    const explicit = Object.prototype.hasOwnProperty.call(req.body || {}, 'refreshToken');
+    const refreshToken = explicit ? req.body.refreshToken : req.cookies.refreshToken;
     
     if (!refreshToken) {
       return res.status(401).json({
@@ -602,6 +613,12 @@ router.post('/refresh', async (req, res) => {
     
     // Verify token
     const decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
+    const authorization = req.headers.authorization;
+    if (authorization) {
+      if (!authorization.startsWith('Bearer ')) return res.status(401).json({success:false,error:'Account session could not be confirmed'});
+      const intended = jwt.verify(authorization.slice(7), ACCESS_TOKEN_SECRET, {ignoreExpiration:true});
+      if (intended.userId !== decoded.userId) return res.status(401).json({success:false,error:'Account session could not be confirmed'});
+    }
     
     if (decoded.type !== 'refresh') {
       return res.status(401).json({
@@ -618,7 +635,7 @@ router.post('/refresh', async (req, res) => {
       [tokenHash]
     );
     
-    if (tokens.length === 0) {
+    if (tokens.length === 0 || tokens[0].user_id !== decoded.userId) {
       return res.status(401).json({
         success: false,
         error: 'Invalid or expired refresh token'
@@ -663,7 +680,7 @@ router.post('/refresh', async (req, res) => {
     const rotatedMfa = user.mfa_enabled ? rotateMfaAttestation(req, user.id, accessToken) : null;
     if (rotatedMfa) {
       const isProd = process.env.NODE_ENV === 'production';
-      const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.doctarx.com' : undefined);
+  const cookieDomain = authCookieDomain();
       res.cookie('mfaVerified', rotatedMfa.value, { httpOnly: true, secure: isProd, sameSite: isProd ? 'lax' : 'strict', ...(cookieDomain ? { domain: cookieDomain } : {}), maxAge: rotatedMfa.maxAge });
     }
     
@@ -694,15 +711,15 @@ router.post('/refresh', async (req, res) => {
  */
 router.post('/logout', authenticate, async (req, res) => {
   try {
-    // Get refresh token
-    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+    const explicit = Object.prototype.hasOwnProperty.call(req.body || {}, 'refreshToken');
+    const refreshToken = explicit ? req.body.refreshToken : req.cookies.refreshToken;
     
     if (refreshToken) {
       // Revoke refresh token
       const tokenHash = hash(refreshToken);
       await db.query(
-        'UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1',
-        [tokenHash]
+        'UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1 AND user_id = $2',
+        [tokenHash, req.user.id]
       );
     }
     

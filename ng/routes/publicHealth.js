@@ -165,6 +165,7 @@ router.get(
   rbac.auditRequest('view', 'dhis2_delivery'),
   wrap(async (req, res) => {
     const { getPool } = require('../../server/db');
+    res.set('Cache-Control', 'private, no-store');
     const { publicJob } = require('../services/public-health/dhis2DeliveryService');
     const { rows } = await getPool().query('SELECT * FROM ng_dhis2_delivery_jobs WHERE report_id=$1 ORDER BY created_at DESC', [req.params.id]);
     res.json({ deliveries: rows.map(publicJob) });

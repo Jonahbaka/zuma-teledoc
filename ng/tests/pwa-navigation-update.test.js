@@ -7,6 +7,15 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { transformSync } = require('next/dist/build/swc');
 
+function profileHelpers(profile = 'main') {
+  const sourceModule = { exports: {} };
+  const source = fs.readFileSync(path.resolve(__dirname, '../../lib/careopsProfile.js'), 'utf8').replace(/export /g, '');
+  vm.runInNewContext(source + '\nmodule.exports={CAREOPS_PROFILE,isCareOpsSurface};', {
+    module: sourceModule, process: { env: { NEXT_PUBLIC_DOCTARX_PRODUCT_PROFILE: profile } }, URL, URLSearchParams,
+  });
+  return sourceModule.exports;
+}
+
 function metadataDocument() {
   const nodes = [];
   const head = { appendChild(node) { nodes.push(node); node.parentNode = head; } };
@@ -34,7 +43,7 @@ test('PWA market navigation preserves Next-owned metadata nodes and uses the Doc
   const source = fs.readFileSync(path.resolve(__dirname, '../../components/pwa/PwaBootstrap.jsx'), 'utf8');
   const start = source.indexOf('function syncInstallMetadata(');
   const end = source.indexOf('function isIOSLikeDevice()', start);
-  const context = { document, window: { __doctarxPwaAssetVersion: 'checked-version' }, PWA_ASSET_VERSION: 'fallback' };
+  const context = { document, window: { __doctarxPwaAssetVersion: 'checked-version' }, PWA_ASSET_VERSION: 'fallback', ...profileHelpers() };
   vm.runInNewContext(source.slice(start, end) + '; globalThis.sync = syncInstallMetadata;', context);
   for (const route of ['/ng/pharmacies', '/ng', '/', '/pharmacies', '/ng/pharmacies', '/ng']) context.sync(route);
   assert.deepEqual(document.querySelectorAll(), originalLinks, 'React retains ownership of both temporary route links');
@@ -42,9 +51,12 @@ test('PWA market navigation preserves Next-owned metadata nodes and uses the Doc
   assert.equal(nodes.find(node => node.attributes.name === 'theme-color').attributes.content, '#0f172a');
   assert.equal(nodes.find(node => node.attributes.name === 'application-name').attributes.content, 'DoctaRx Nigeria');
   assert.equal(nodes.filter(node => node.attributes.name === 'theme-color').length, 1);
+  context.sync('/careops/delivery');
+  for (const link of originalLinks) assert.equal(link.attributes.href, '/careops/manifest.webmanifest?v=checked-version');
+  assert.equal(nodes.find(node => node.attributes.name === 'application-name').attributes.content, 'DoctaRx CareOps');
 });
 
-function updateView(responses, waiting) {
+function updateView(responses, waiting, profile = 'main') {
   const slots = [], effects = [], requests = [], timers = new Map(), intervals = [];
   const windowEvents = new Map(), workerEvents = new Map();
   let cursor = 0, dirty = false, tree, reloads = 0, storageCalls = 0;
@@ -65,7 +77,7 @@ function updateView(responses, waiting) {
   const filename = path.resolve(__dirname, '../../components/providers/DeploymentVersionCheck.jsx');
   const compiled = transformSync(fs.readFileSync(filename, 'utf8'), { filename, jsc: { parser: { syntax: 'ecmascript', jsx: true }, transform: { react: { runtime: 'automatic' } } }, module: { type: 'commonjs' } }).code;
   vm.runInNewContext(compiled, {
-    module: compiledModule, exports: compiledModule.exports, require(name) { if (name === 'react') return react; if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx }; throw new Error(name); },
+    module: compiledModule, exports: compiledModule.exports, require(name) { if (name === 'react') return react; if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx }; if (name === '@/lib/careopsProfile') return profileHelpers(profile); throw new Error(name); },
     window, navigator: { serviceWorker }, document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} },
     process: { env: { NEXT_PUBLIC_API_URL: 'http://api.example.invalid/api' } }, AbortController,
     async fetch(url, options) { requests.push({ url, options }); const next = responses.shift(); if (next instanceof Error) throw next; return { ok: next?.ok !== false, async json() { return next?.data || {}; } }; },
@@ -113,5 +125,14 @@ test('service-worker activation is announced and waits for explicit refresh and 
   assert.equal(messages[0].type, 'SKIP_WAITING'); assert.equal(view.reloads, 0);
   view.workerEvents.get('controllerchange')();
   assert.equal(view.reloads, 1); assert.equal(view.storageCalls, 0);
+  view.unmount();
+});
+
+test('standalone CareOps deployment updates use the actual frontend release instead of the shared backend build', async () => {
+  const view = updateView([{ data: { buildId: 'careops-a' } }, { data: { buildId: 'careops-b' } }], null, 'careops');
+  view.render(); await view.flush();
+  assert.equal(view.requests[0].url, '/careops/release');
+  await view.poll(); await view.flush();
+  assert.ok(view.button()); assert.equal(view.storageCalls, 0); assert.equal(view.reloads, 0);
   view.unmount();
 });

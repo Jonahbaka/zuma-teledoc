@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Image from 'next/image';
 import { ArrowRight, ShieldCheck, Video } from 'lucide-react';
+import { careOpsReturnPath, careOpsPasswordPath } from '@/lib/careopsProfile';
 
 export default function CareOpsLogin() {
   const router = useRouter();
@@ -17,11 +18,16 @@ export default function CareOpsLogin() {
   const [mfaCode, setMfaCode] = useState('');
   const [mfaRequired, setMfaRequired] = useState(false);
   const [workspace, setWorkspace] = useState('/careops');
+  const [returnTarget, setReturnTarget] = useState('/careops');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   // Prevent a pre-hydration native selection from being replaced by React's
   // default workspace on a cold load. Auth loading settles after hydration.
   const formDisabled = busy || loading;
+  useEffect(() => {
+    const target = careOpsReturnPath(new URLSearchParams(window.location.search).get('returnTo'));
+    setWorkspace(target.split('?')[0]); setReturnTarget(target);
+  }, []);
 
   async function submit(event) {
     event.preventDefault();
@@ -31,7 +37,8 @@ export default function CareOpsLogin() {
       if (result.mfaRequired) { setMfaRequired(true); return; }
       if (!result.success) { setError(result.error || 'Sign-in failed.'); return; }
       // Required password rotation continues through the existing protected flow.
-      router.replace(result.redirectPath?.includes('create-password') ? result.redirectPath : workspace);
+      const target = careOpsReturnPath(returnTarget, workspace);
+      router.replace(result.redirectPath?.includes('create-password') ? careOpsPasswordPath(target) : target);
     } finally { setBusy(false); }
   }
 
@@ -47,8 +54,8 @@ export default function CareOpsLogin() {
     </section>
     <form onSubmit={submit} className="space-y-6 rounded-[1.5rem] border border-slate-200/80 bg-white p-7 shadow-[0_12px_48px_rgba(15,35,70,0.06)] sm:p-9">
       <div><p className="font-medium text-blue-700">Welcome to DoctaRx</p><h2 className="mt-2 text-3xl font-semibold">Sign in to CareOps</h2><p className="mt-3 text-slate-600">Your care team’s workspace, ready when you are.</p></div>
-      <div className="space-y-2"><Label htmlFor="careops-workspace">Workspace</Label><select id="careops-workspace" className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3" value={workspace} onChange={(event) => setWorkspace(event.target.value)} disabled={formDisabled}>
-        <option value="/careops">Clinical care</option><option value="/careops/government">Public health</option>
+      <div className="space-y-2"><Label htmlFor="careops-workspace">Workspace</Label><select id="careops-workspace" className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3" value={workspace} onChange={(event) => { setWorkspace(event.target.value); setReturnTarget(event.target.value); }} disabled={formDisabled}>
+        <option value="/careops">Clinical care</option><option value="/careops/government">Public health</option><option value="/careops/delivery">Reports</option><option value="/careops/insurance">Insurance</option>
       </select></div>
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
       <div className="space-y-2"><Label htmlFor="careops-email">Email</Label><Input id="careops-email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={formDisabled} /></div>

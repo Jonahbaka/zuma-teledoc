@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
+import { isCareOpsSurface } from '@/lib/careopsProfile';
 
 const GoogleAnalytics = dynamic(() => import('@/components/analytics/GoogleAnalytics'), {
   ssr: false,
@@ -16,7 +17,7 @@ const PwaBootstrap = dynamic(() => import('@/components/pwa/PwaBootstrap'), {
 
 export default function ClientRuntime() {
   const pathname = usePathname() || '';
-  const isCareOps = pathname.startsWith('/careops') || pathname.startsWith('/ng/phc') || pathname.startsWith('/ng/government-data');
+  const isCareOps = isCareOpsSurface(pathname) || pathname.startsWith('/ng/phc') || pathname.startsWith('/ng/government-data');
   return (
     <>
       {!isCareOps && <GoogleAnalytics />}

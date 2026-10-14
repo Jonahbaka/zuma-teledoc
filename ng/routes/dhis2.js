@@ -14,6 +14,7 @@ function asyncHandler(handler) {
       const status = error.status || error.statusCode || 500;
       res.status(status).json({
         error: status === 500 ? 'DHIS2 readiness request failed.' : error.message,
+        code: error.code || (status >= 500 ? 'DHIS2_UNAVAILABLE' : undefined),
         details: status === 500 ? undefined : error.blockers,
         preview: error.preview,
       });
@@ -90,6 +91,13 @@ router.post('/sync/:reportId', rbac.requireApprovalAuthority(), requireReportApp
     });
     throw error;
   }
+}));
+
+router.post('/deliveries/:jobId/commands', rbac.requireApprovalAuthority(), asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  const { getPool } = require('../../server/db');
+  const operations = require('../services/public-health/dhis2DeliveryOperationsService');
+  res.json(await operations.applyCommand(getPool(), req.user, req.params.jobId, req.get('Idempotency-Key'), req.body));
 }));
 
 router.get('/sync-logs', rbac.requireReviewer, rbac.auditRequest('view', 'dhis2_sync_logs'), asyncHandler(async (req, res) => {
