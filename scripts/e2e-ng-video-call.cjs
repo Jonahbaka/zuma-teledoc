@@ -10,6 +10,8 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 const WebSocket = require('ws');
 const crypto = require('crypto');
+const assert = require('node:assert/strict');
+const jwt = require('jsonwebtoken');
 
 const ROOT = path.resolve(__dirname, '..');
 const API_PORT = Number(process.env.E2E_API_PORT || 8080);
@@ -49,9 +51,22 @@ const patientUser = {
   accountStatus: 'active'
 };
 
+// The real client confirms /auth/me against the JWT userId before rendering a
+// protected workspace. Fixture credentials must obey that same contract; an
+// opaque string correctly fails the current account ownership check.
+const fixtureSecret = crypto.randomBytes(32).toString('hex');
+const fixtureTokenOptions = { algorithm: 'HS256', issuer: 'doctarx-local-video-contract', audience: 'video-e2e', expiresIn: '15m' };
+function fixtureTokens(user) {
+  return {
+    accessToken: jwt.sign({ userId: user.id, role: user.role, marketScope: user.marketScope }, fixtureSecret, fixtureTokenOptions),
+    refreshToken: jwt.sign({ userId: user.id, tokenUse: 'refresh' }, fixtureSecret, fixtureTokenOptions),
+  };
+}
+const providerSession = fixtureTokens(providerUser);
+const patientSession = fixtureTokens(patientUser);
 const tokenUsers = new Map([
-  ['provider-token', providerUser],
-  ['patient-token', patientUser]
+  [providerSession.accessToken, providerUser],
+  [patientSession.accessToken, patientUser]
 ]);
 
 const appointment = {
@@ -204,9 +219,18 @@ async function waitForHttp(url, timeoutMs = 60000) {
   throw lastError || new Error(`${url} did not become ready`);
 }
 
+function fixtureUser(token) {
+  const user = tokenUsers.get(token);
+  if (!user) return null;
+  try {
+    const claims = jwt.verify(token, fixtureSecret, { algorithms: ['HS256'], issuer: fixtureTokenOptions.issuer, audience: fixtureTokenOptions.audience });
+    return claims.userId === user.id && claims.role === user.role && claims.marketScope === user.marketScope ? user : null;
+  } catch { return null; }
+}
+
 function getBearerUser(req) {
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-  return tokenUsers.get(token) || null;
+  return fixtureUser(token);
 }
 
 function startFixtureServer() {
@@ -318,7 +342,7 @@ function startFixtureServer() {
 
   io.use((socket, next) => {
     const token = String(socket.handshake.auth?.token || '').trim();
-    const user = tokenUsers.get(token);
+    const user = fixtureUser(token);
     if (!user) {
       next(new Error('Unauthorized'));
       return;
@@ -704,7 +728,7 @@ class CdpClient {
   }
 }
 
-async function launchBrowserAgent({ role, token, user, debugPort, width = 1280, height = 900 }) {
+async function launchBrowserAgent({ role, session, debugPort, width = 1280, height = 900 }) {
   const chromePath = findChromePath();
   const sharedFakeMedia = ensureFakeMediaFiles();
   const roleMediaDir = path.join(
@@ -785,9 +809,8 @@ async function launchBrowserAgent({ role, token, user, debugPort, width = 1280, 
   await client.enable();
   await client.send('Page.addScriptToEvaluateOnNewDocument', {
     source: `
-      localStorage.setItem('accessToken', ${JSON.stringify(token)});
-      localStorage.setItem('refreshToken', ${JSON.stringify(`${token}-refresh`)});
-      localStorage.setItem('user', ${JSON.stringify(JSON.stringify(user))});
+      localStorage.setItem('accessToken', ${JSON.stringify(session.accessToken)});
+      localStorage.setItem('refreshToken', ${JSON.stringify(session.refreshToken)});
     `
   });
 
@@ -811,16 +834,14 @@ async function runE2E() {
   const nextProc = startNextServer();
   const providerAgent = await launchBrowserAgent({
     role: 'provider',
-    token: 'provider-token',
-    user: providerUser,
+    session: providerSession,
     debugPort: 9223,
     width: 1440,
     height: 960
   });
   const patientAgent = await launchBrowserAgent({
     role: 'patient',
-    token: 'patient-token',
-    user: patientUser,
+    session: patientSession,
     debugPort: 9224,
     width: 1280,
     height: 900
@@ -828,6 +849,21 @@ async function runE2E() {
 
   try {
     await waitForHttp(`http://localhost:${API_PORT}/api/health`, 30000);
+    // Keep rejection assertions alongside the positive browser journey. Neither
+    // missing credentials, opaque tokens, nor refresh tokens authenticate here.
+    for (const token of [null, 'provider-token', providerSession.refreshToken]) {
+      const rejected = await fetch(`http://localhost:${API_PORT}/api/auth/me`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      assert.equal(rejected.status, 401);
+    }
+    for (const [session, user] of [[providerSession, providerUser], [patientSession, patientUser]]) {
+      const claims = jwt.decode(session.accessToken);
+      const response = await fetch(`http://localhost:${API_PORT}/api/auth/me`, { headers: { Authorization: `Bearer ${session.accessToken}` } });
+      assert.equal(response.status, 200);
+      const verified = (await response.json()).user;
+      assert.equal(claims.userId, verified.id);
+      assert.equal(verified.id, user.id); assert.equal(verified.role, user.role); assert.equal(verified.marketScope, user.marketScope);
+    }
+    evidence.authentication = { jwtOwnersMatchCurrentAccounts: true, missingOpaqueAndRefreshTokensRejected: true };
     await waitForHttp(`http://localhost:${NEXT_PORT}/ng/provider/appointments/${APPOINTMENT_ID}/call`, 90000);
 
     const providerUrl = `http://localhost:${NEXT_PORT}/ng/provider/appointments/${APPOINTMENT_ID}/call`;

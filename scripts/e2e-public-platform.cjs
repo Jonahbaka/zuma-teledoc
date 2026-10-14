@@ -7,6 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const net = require('node:net');
 const { chromium } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
 const express = require('express');
@@ -42,6 +43,11 @@ const captures = [];
 const runtime = [];
 const directoryChecks = [];
 const requests = [];
+const browserConsole = [];
+const startup = [];
+const previewDirectory = '.next-public-platform-preview';
+const nextLog = path.join(output, 'public-platform-next.log');
+const reportPath = path.join(output, 'DoctaRx public validation.json');
 const scopes = [
   { market: 'US', home: '/', directory: '/pharmacies', city: 'Juneau', state: 'AK', workCity: 'Anchorage', workState: 'AK', point: { latitude: 58.3019, longitude: -134.4197 } },
   { market: 'NG', home: '/ng', directory: '/ng/pharmacies', city: 'Damaturu', state: 'Yobe', workCity: 'Potiskum', workState: 'Yobe', point: { latitude: 11.7469, longitude: 11.9608 } },
@@ -51,12 +57,102 @@ function check(condition, message, details) {
   if (!condition) findings.push({ message, ...(details ? { details } : {}) });
 }
 
-async function waitFor(url) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    try { if ((await fetch(url)).ok) return; } catch {}
-    await new Promise(resolve => setTimeout(resolve, 1000));
+async function waitFor(url, { child, timeoutMs = 120000, intervalMs = 250, format = 'html', requireMain = false } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (child && (child.exitCode !== null || child.signalCode !== null)) throw new Error(`Owned Next preview exited before readiness (code ${child.exitCode}, signal ${child.signalCode}).`);
+    let response;
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())) });
+    } catch (error) {
+      // Only a listener that has not started can be polled. A failed streamed
+      // response, HTTP error, or compile error is evidence, never a retry pass.
+      if (error.cause?.code !== 'ECONNREFUSED' || Date.now() >= deadline) throw error;
+      await new Promise(resolve => setTimeout(resolve, Math.min(intervalMs, Math.max(1, deadline - Date.now()))));
+      continue;
+    }
+    // fetch resolves at headers. Drain the initial server-rendered stream before
+    // another request can race Next's cold compilation/global manifest writes.
+    const body = format === 'binary' ? await response.arrayBuffer() : await response.text();
+    assert.equal(response.ok, true, `Preview startup GET ${new URL(url).pathname} returned HTTP ${response.status}.`);
+    if (format === 'json') JSON.parse(body);
+    if (format === 'html') {
+      assert.ok(/<\/html\s*>/i.test(body), `Preview startup GET ${new URL(url).pathname} did not finish its HTML response.`);
+      assert.ok(!/id=["']__next_error__["']|data-next-error-message=|data-next-error-digest=/i.test(body), `Preview startup GET ${new URL(url).pathname} returned a Next error document.`);
+      if (requireMain) assert.ok(/<main(?:\s|>)/i.test(body), `Preview startup GET ${new URL(url).pathname} did not render its public main content.`);
+    }
+    return { path: new URL(url).pathname, status: response.status, bytes: typeof body === 'string' ? Buffer.byteLength(body) : body.byteLength, completedAt: new Date().toISOString() };
   }
-  throw new Error('Public platform preview did not start.');
+}
+
+async function availablePort(url) {
+  const parsed = new URL(url);
+  const probe = net.createServer();
+  await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(Number(parsed.port), parsed.hostname, resolve); });
+  await new Promise((resolve, reject) => probe.close(error => error ? reject(error) : resolve()));
+}
+
+async function stopOwnedPreview(child, { platform = process.platform, graceMs = 5000, spawnImpl = spawn, signalGroup = process.kill.bind(process) } = {}) {
+  if (!child) return;
+  if (platform !== 'win32') {
+    // The launcher can exit before its forked Next worker. Its detached group
+    // remains ours: prove that group is gone, rather than equating leader close
+    // with worker/listener shutdown.
+    const exists = () => { try { signalGroup(-child.pid, 0); return true; } catch (error) { if (error.code === 'ESRCH') return false; throw error; } };
+    const goneWithin = async milliseconds => {
+      const deadline = Date.now() + milliseconds;
+      while (exists()) {
+        if (Date.now() >= deadline) return false;
+        await new Promise(resolve => setTimeout(resolve, Math.min(25, Math.max(1, deadline - Date.now()))));
+      }
+      return true;
+    };
+    if (!exists()) return;
+    for (const signal of ['SIGTERM', 'SIGKILL']) {
+      try { signalGroup(-child.pid, signal); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+      if (await goneWithin(graceMs)) return;
+    }
+    throw new Error('Owned Next process group remains alive after its bounded shutdown.');
+  }
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  let closed = false;
+  const completion = new Promise(resolve => child.once('close', () => { closed = true; resolve(); }));
+  const within = async milliseconds => {
+    let timer;
+    try { return await Promise.race([completion.then(() => true), new Promise(resolve => { timer = setTimeout(() => resolve(false), milliseconds); })]); }
+    finally { clearTimeout(timer); }
+  };
+    // Windows terminates only this spawned process tree. No image-name kill or
+    // computed filesystem operation is involved, and no unrelated tab is owned.
+    const killer = spawnImpl('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+    await new Promise((resolve, reject) => { killer.once('error', reject); killer.once('close', code => code === 0 || closed ? resolve() : reject(new Error(`Owned Next process-tree shutdown failed (${code}).`))); });
+  if (await within(graceMs)) return;
+  throw new Error('Owned Next preview did not close after its bounded shutdown.');
+}
+
+function diagnostics(child) {
+  let logTail = '';
+  try { logTail = fs.readFileSync(nextLog, 'utf8').split(/\r?\n/).slice(-70).join('\n').slice(-12000); } catch {}
+  const manifests = ['routes-manifest.json', 'prerender-manifest.json', 'build-manifest.json', 'server/next-font-manifest.json', 'server/server-reference-manifest.json'].map(file => {
+    try {
+      const value = fs.readFileSync(path.join(__dirname, '..', previewDirectory, file), 'utf8');
+      let parseError = null; try { JSON.parse(value); } catch (error) { parseError = error.message; }
+      return { file, bytes: Buffer.byteLength(value), parseError };
+    } catch (error) { return { file, unavailable: error.code || error.message }; }
+  });
+  return { process: child ? { pid: child.pid, exitCode: child.exitCode, signalCode: child.signalCode } : null, manifests, nextLogTail: logTail };
+}
+
+function recordFailure(label, error) {
+  const finding = { message: label + ': ' + error.message, stack: error.stack || null };
+  findings.push(finding); console.error('Public validation failure:', finding.message, '\n' + (finding.stack || ''));
+}
+
+function observeRuntime(page) {
+  page.on('pageerror', error => { runtime.push({ route: page.url(), message: error.message, stack: error.stack }); console.error('Public runtime:', error.stack || error.message); });
+  page.on('console', entry => {
+    if (['error', 'warning'].includes(entry.type())) browserConsole.push({ route: page.url(), type: entry.type(), message: entry.text() });
+  });
 }
 
 async function settle(page) {
@@ -144,7 +240,7 @@ async function publicScope(browser, scope, width) {
   const context = await browser.newContext({ viewport: { width, height: width === 390 ? 844 : 1000 }, geolocation: scope.point });
   context.setDefaultNavigationTimeout(90000); context.setDefaultTimeout(90000);
   const page = await context.newPage();
-  page.on('pageerror', error => { runtime.push({ route: page.url(), message: error.message, stack: error.stack }); console.error('Public runtime:', error.stack || error.message); });
+  observeRuntime(page);
   page.on('request', request => { if (request.url().startsWith(api)) requests.push({ method: request.method(), path: new URL(request.url()).pathname }); });
   try {
     await page.goto(web + scope.home);
@@ -219,7 +315,7 @@ async function videoPreflight(browser) {
     assert.equal(login.ok(), true, 'The existing provider must authenticate; no account reset is performed.');
     const session = await login.json(); assert.equal(session.success, true);
     const page = await context.newPage();
-    page.on('pageerror', error => runtime.push({ route: page.url(), message: error.message, stack: error.stack }));
+    observeRuntime(page);
     const writes = [];
     page.on('request', request => { if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method()) && request.url().includes('/conference/')) writes.push(new URL(request.url()).pathname); });
     await page.addInitScript(session => { localStorage.setItem('accessToken', session.accessToken); localStorage.setItem('refreshToken', session.refreshToken); localStorage.setItem('user', JSON.stringify(session.user)); }, session);
@@ -244,9 +340,12 @@ async function businessCounts() {
 }
 
 async function main() {
-  const before = await businessCounts();
-  let server; let log; let next;
-  if (!reuse) {
+  fs.writeFileSync(reportPath, JSON.stringify({ passed: false, state: 'starting', startedAt: new Date().toISOString() }, null, 2));
+  let server; let log; let next; let browser; let shuttingDown = false; let preflight = { checked: false };
+  try {
+    const before = await businessCounts();
+    if (!reuse) {
+    await availablePort(web); await availablePort(api);
     const app = express();
     app.use(cors({ origin: web, credentials: true })); app.use(cookieParser()); app.use(express.json({ limit: '10mb' }));
     app.use('/api/directory', require('../server/routes/publicDirectory'));
@@ -254,27 +353,47 @@ async function main() {
     app.use('/api/ng', require('../ng/routes'));
     app.use((error, _req, res, _next) => res.status(500).json({ success: false, error: error.message }));
     server = app.listen(18083, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
-    log = fs.openSync(path.join(output, 'public-platform-next.log'), 'w');
+    log = fs.openSync(nextLog, 'w');
     next = spawn(process.execPath, [require.resolve('next/dist/bin/next'), 'dev', '-p', '3005', '-H', '127.0.0.1'], {
-      cwd: path.join(__dirname, '..'), env: { ...process.env, NEXT_DIST_DIR: '.next-public-platform-preview', DOCTARX_DISABLE_BUILD_CACHE: 'true' }, windowsHide: true, stdio: ['ignore', log, log],
+      cwd: path.join(__dirname, '..'), env: { ...process.env, NEXT_DIST_DIR: previewDirectory, DOCTARX_DISABLE_BUILD_CACHE: 'true' }, detached: process.platform !== 'win32', windowsHide: true, stdio: ['ignore', log, log],
     });
-  }
-  let browser; let preflight = { checked: false };
-  try {
-    await waitFor(web + '/'); browser = await chromium.launch({ headless: true });
-    for (const scope of scopes) for (const width of [1440, 390]) {
-      try { await publicScope(browser, scope, width); } catch (error) { findings.push({ message: scope.market + ' ' + width + ': ' + error.message }); console.error(error.message); }
+    next.once('error', error => recordFailure('Owned Next startup', error));
+    next.once('exit', (code, signal) => { if (!shuttingDown) recordFailure('Owned Next preview', new Error(`Exited before validation completed (code ${code}, signal ${signal}).`)); });
     }
-    try { preflight = await videoPreflight(browser); } catch (error) { findings.push({ message: 'Video preflight: ' + error.message }); }
+    // Finish exact tested cold routes one at a time, including metadata that a
+    // browser otherwise requests alongside its first page. This is preparation,
+    // not an assertion retry: any HTTP/stream/compile error fails the run.
+    for (const route of [
+      { path: '/', requireMain: true }, { path: '/manifest.webmanifest', format: 'json' },
+      { path: '/ng/manifest.webmanifest', format: 'json' }, { path: '/favicon.ico', format: 'binary' },
+      { path: '/ng', requireMain: true }, { path: '/pharmacies', requireMain: true }, { path: '/ng/pharmacies', requireMain: true },
+      ...(process.env.PUBLIC_PLATFORM_VIDEO_PREFLIGHT === 'false' ? [] : [{ path: '/ng/provider/call' }]),
+    ]) startup.push(await waitFor(web + route.path, { ...route, child: next }));
+    browser = await chromium.launch({ headless: true });
+    for (const scope of scopes) for (const width of [1440, 390]) {
+      try { await publicScope(browser, scope, width); } catch (error) { recordFailure(scope.market + ' ' + width, error); }
+    }
+    try { preflight = await videoPreflight(browser); } catch (error) { recordFailure('Video preflight', error); }
     check(runtime.length === 0, 'No uncaught public/preflight runtime errors.', runtime);
     check(requests.every(request => ['GET', 'HEAD', 'OPTIONS'].includes(request.method) || request.path === '/api/directory/pharmacies'), 'Public browser performs directory reads only.', requests.filter(request => !['GET', 'HEAD', 'OPTIONS'].includes(request.method) && request.path !== '/api/directory/pharmacies'));
     assert.deepEqual(await businessCounts(), before, 'No accounts or public business fixtures were created, reset, renamed, or deleted.');
+  } catch (error) {
+    recordFailure('Public preview setup/validation', error);
   } finally {
-    if (browser) await browser.close(); next?.kill(); if (log !== undefined) fs.closeSync(log); if (server) await new Promise(resolve => server.close(resolve)); await db.close();
-    fs.writeFileSync(path.join(output, 'DoctaRx public validation.json'), JSON.stringify({ passed: findings.length === 0, captures, findings, directoryChecks, runtime, videoPreflight: preflight, reusedLoopbackPreview: reuse, accountSeeding: false, accountReset: false, businessFixtureMutations: false, minimumTextPx: 16, viewports: [1440, 390], deviceLocation: 'Explicit Playwright permission and coordinate emulation; manual areas use actual API registry queries.', directoryOutage: 'Browser transport abort only; no replacement product data.', dataSource: 'Actual mounted publicDirectory and NG discovery handlers with isolated PostgreSQL; no fixture creation.' }, null, 2));
+    shuttingDown = true;
+    for (const [label, cleanup] of [
+      ['Browser shutdown', async () => { if (browser) await browser.close(); }],
+      ['Owned Next shutdown', () => stopOwnedPreview(next)],
+      ['Next log close', async () => { if (log !== undefined) fs.closeSync(log); }],
+      ['Owned API shutdown', async () => { if (server) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }],
+      ['Database close', () => db.close()],
+    ]) { try { await cleanup(); } catch (error) { recordFailure(label, error); } }
+    const failureEvidence = findings.length ? diagnostics(next) : null;
+    fs.writeFileSync(reportPath, JSON.stringify({ passed: findings.length === 0, captures, findings, directoryChecks, runtime, browserConsole, startup, diagnostics: failureEvidence, videoPreflight: preflight, reusedLoopbackPreview: reuse, accountSeeding: false, accountReset: false, businessFixtureMutations: false, minimumTextPx: 16, viewports: [1440, 390], deviceLocation: 'Explicit Playwright permission and coordinate emulation; manual areas use actual API registry queries.', directoryOutage: 'Browser transport abort only; no replacement product data.', dataSource: 'Actual mounted publicDirectory and NG discovery handlers with isolated PostgreSQL; no fixture creation.' }, null, 2));
+    if (findings.length) console.error('Public validation findings:', JSON.stringify({ findings, runtime, browserConsole: browserConsole.slice(-25), diagnostics: failureEvidence }, null, 2));
   }
   assert.equal(findings.length, 0, 'Public validation reported ' + findings.length + ' actionable findings; inspect DoctaRx public validation.json.');
   console.log('Public platform verified in ' + captures.length + ' desktop/mobile states.');
 }
 
-main().catch(async error => { console.error(error.message); await db.close(); process.exitCode = 1; });
+if (require.main === module) main().catch(async error => { console.error(error.stack || error.message); await db.close(); process.exitCode = 1; });
