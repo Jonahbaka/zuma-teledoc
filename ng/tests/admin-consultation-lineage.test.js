@@ -18,6 +18,9 @@ function lifecycleHandler(pool) {
     '../../server/db': { getPool: () => pool },
     '../../server/middleware/auth': { requireSuperAdmin: (_req, _res, next) => next() },
     '../../server/services/adminTestAccountService': {},
+    // Medication routes mount independently; this harness isolates the lifecycle
+    // handler. Their actual authentication is covered by medication HTTP tests.
+    './medicationDeliveryAdmin': express.Router(),
   };
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
     module: sourceModule, exports: sourceModule.exports,
