@@ -601,7 +601,7 @@ async function initializeApp() {
   app.use(express.json({
     limit: '10mb',
     verify: (req, _res, buffer) => {
-      if (['/api/ng/webhooks/paystack', '/api/ng/webhooks/livekit'].includes(req.originalUrl.split('?')[0])) req.rawBody = Buffer.from(buffer);
+      if (['/api/ng/webhooks/paystack', '/api/ng/webhooks/livekit', '/api/ng/webhooks/delivery/uber_direct'].includes(req.originalUrl.split('?')[0])) req.rawBody = Buffer.from(buffer);
     },
   }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));

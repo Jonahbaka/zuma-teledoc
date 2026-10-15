@@ -9,6 +9,7 @@ const pharmacyOnboardingService = require('../services/pharmacy/pharmacyOnboardi
 const complianceService = require('../services/compliance/complianceService');
 const { getPool } = require('../../server/db');
 const { requireSuperAdmin } = require('../../server/middleware/auth');
+router.use('/medication-delivery', require('./medicationDeliveryAdmin'));
 const {
   createAdminTestAccount,
   listAdminTestAccounts,

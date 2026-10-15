@@ -21,25 +21,30 @@ const path = require('path');
 const fs = require('fs');
 
 // =========================================================================
-// INITIALIZATION — Run migration on startup
+// INITIALIZATION — Schema and static account definitions only
 // =========================================================================
+
+function initializationSql() {
+  const migrationPath = path.join(__dirname, '../db/migrations/400_financial_system.sql');
+  const sql = fs.readFileSync(migrationPath, 'utf8');
+  // This reviewed migration places all table/index definitions and the standard
+  // chart of accounts before its bank-account fixture section. Keep that exact
+  // prefix; never replay bank records, balances, dated periods, or transactions
+  // during application startup. Existing account definitions use DO NOTHING.
+  const boundary = '--  SEED DATA: Bank Accounts';
+  const end = sql.indexOf(boundary);
+  if (end < 0 || end !== sql.lastIndexOf(boundary)) throw new Error('Financial initialization SQL boundary requires review.');
+  return sql.slice(0, end);
+}
 
 async function initialize() {
   try {
-    const migrationPath = path.join(__dirname, '../db/migrations/400_financial_system.sql');
-    const sql = fs.readFileSync(migrationPath, 'utf8');
-    await db.query(sql);
+    await db.query(initializationSql());
     console.log('  💰 Financial System schema: Applied');
-    
-    // Seed opening transactions if the ledger is empty
-    await seedOpeningTransactions();
-    
     return true;
   } catch (err) {
     if (err.code === '42P07' || err.message.includes('already exists')) {
       console.log('  💰 Financial System schema: Already current');
-      // Still try to seed if empty
-      try { await seedOpeningTransactions(); } catch (e) { /* ok */ }
       return true;
     }
     console.error('  💰 Financial System schema error:', err.message);
@@ -47,300 +52,13 @@ async function initialize() {
     setTimeout(async () => {
       try {
         console.log('  💰 Financial System: Retrying initialization...');
-        const migrationPath = path.join(__dirname, '../db/migrations/400_financial_system.sql');
-        const sql = fs.readFileSync(migrationPath, 'utf8');
-        await db.query(sql);
-        await seedOpeningTransactions();
+        await db.query(initializationSql());
         console.log('  💰 Financial System: Retry SUCCESS');
       } catch (e) {
         console.error('  💰 Financial System retry failed:', e.message);
       }
     }, 10000);
     return false;
-  }
-}
-
-// =========================================================================
-// SEED OPENING TRANSACTIONS — Give the bank realistic simulated data
-// =========================================================================
-
-async function seedOpeningTransactions() {
-  // Check if we already have journal entries
-  const existing = await db.query('SELECT COUNT(*) as count FROM fin_journal_entries');
-  if (parseInt(existing.rows[0].count) > 0) {
-    console.log('  💰 Financial ledger: Already has entries, skipping seed');
-    return;
-  }
-
-  console.log('  💰 Seeding opening financial transactions...');
-  const client = await db.getClient();
-  
-  try {
-    await client.query('BEGIN');
-
-    // Get current fiscal period
-    const periodResult = await client.query(`
-      SELECT id FROM fin_fiscal_periods 
-      WHERE period_type = 'month' AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE
-      LIMIT 1
-    `);
-    const fiscalPeriodId = periodResult.rows[0]?.id || null;
-
-    // Helper to create a journal entry with lines
-    async function postEntry(description, lines, source = 'system', date = null) {
-      const entryDate = date || new Date().toISOString().split('T')[0];
-      const je = await client.query(`
-        INSERT INTO fin_journal_entries (description, source, entry_date, posted_by, fiscal_period_id, is_posted, posted_at)
-        VALUES ($1, $2, $3, 'system_seed', $4, true, NOW())
-        RETURNING id
-      `, [description, source, entryDate, fiscalPeriodId]);
-
-      for (let i = 0; i < lines.length; i++) {
-        const l = lines[i];
-        await client.query(`
-          INSERT INTO fin_journal_lines (journal_entry_id, account_number, debit, credit, memo, line_order)
-          VALUES ($1, $2, $3, $4, $5, $6)
-        `, [je.rows[0].id, l.account, l.debit || 0, l.credit || 0, l.memo || '', i]);
-      }
-      return je.rows[0].id;
-    }
-
-    // ════════════════════════════════════════════════════════════════
-    // BOOTSTRAPPING — No outside investment. Revenue-funded only.
-    // All operating costs are funded by Stripe revenue from real customers.
-    // "Don't spend more than you bring in."
-    // ════════════════════════════════════════════════════════════════
-
-    // ═══ 1. FOUNDER SWEAT EQUITY — $0 cash, all effort ═══
-    await postEntry('Company formation — sweat equity capitalization', [
-      { account: '1310', debit: 0.01, memo: 'Intellectual property — DoctaRx platform (nominal value)' },
-      { account: '3000', credit: 0.01, memo: 'Founder sweat equity — zero cash, 100% hustle' }
-    ], 'manual', '2026-01-05');
-
-    // ═══ 2. GCP HOSTING — Jan bill $380 (accrued, paid from revenue) ═══
-    await postEntry('Google Cloud Platform — January hosting', [
-      { account: '5010', debit: 380, memo: 'GCP hosting — compute, storage, networking' },
-      { account: '2100', credit: 380, memo: 'Accrued — paid when revenue allows' }
-    ], 'system', '2026-01-15');
-
-    // ═══ 3. GEMINI AI API — Jan usage $145 ═══
-    await postEntry('Google Gemini API — January AI usage', [
-      { account: '6210', debit: 145, memo: 'Gemini Pro + Flash API calls' },
-      { account: '2100', credit: 145, memo: 'Accrued — paid from revenue' }
-    ], 'system', '2026-01-15');
-
-    // ═══ 4. DOMAIN & ZOHO MAIL — $32 ═══
-    await postEntry('Domain registration + Zoho Mail — annual', [
-      { account: '6200', debit: 32, memo: 'doctarx.com domain + Zoho Mail' },
-      { account: '2100', credit: 32, memo: 'Accrued — minimal cost, paid from personal' }
-    ], 'system', '2026-01-10');
-
-    // ═══ 5. PATIENT SUBSCRIPTION — Gold $39.99 ═══
-    await postEntry('Patient subscription — Docta Gold (monthly)', [
-      { account: '1050', debit: 38.83, memo: 'Stripe settlement (after fees)' },
-      { account: '4900', debit: 1.16, memo: 'Stripe fee 2.9% + $0.30' },
-      { account: '4010', credit: 39.99, memo: 'Patient Gold subscription revenue' }
-    ], 'stripe_sync', '2026-01-20');
-
-    // ═══ 8. PATIENT SUBSCRIPTION — Basic $19.99 ═══
-    await postEntry('Patient subscription — Docta Basic (monthly)', [
-      { account: '1050', debit: 19.11, memo: 'Stripe settlement' },
-      { account: '4900', debit: 0.88, memo: 'Stripe fee' },
-      { account: '4010', credit: 19.99, memo: 'Patient Basic subscription revenue' }
-    ], 'stripe_sync', '2026-01-22');
-
-    // ═══ 9. CONSULTATION FEE — $79 initial visit ═══
-    await postEntry('Consultation — initial patient visit', [
-      { account: '1050', debit: 76.41, memo: 'Stripe settlement' },
-      { account: '4900', debit: 2.59, memo: 'Stripe fee' },
-      { account: '4030', credit: 79.00, memo: 'Initial consultation revenue' }
-    ], 'stripe_sync', '2026-01-25');
-
-    // ═══ 10. PROVIDER SUBSCRIPTION — Starter $99/mo ═══
-    await postEntry('Provider subscription — Starter plan', [
-      { account: '1050', debit: 95.83, memo: 'Stripe settlement' },
-      { account: '4900', debit: 3.17, memo: 'Stripe fee' },
-      { account: '4020', credit: 99.00, memo: 'Provider Starter subscription' }
-    ], 'stripe_sync', '2026-01-28');
-
-    // ═══ 11. CREDENTIALING FEE — $199 ═══
-    await postEntry('Provider credentialing — full package', [
-      { account: '1050', debit: 193.07, memo: 'Stripe settlement' },
-      { account: '4900', debit: 5.93, memo: 'Stripe fee' },
-      { account: '4040', credit: 199.00, memo: 'Full credentialing package' }
-    ], 'stripe_sync', '2026-01-29');
-
-    // ═══ 12. FOLLOW-UP CONSULTATION — $49 ═══
-    await postEntry('Consultation — follow-up visit', [
-      { account: '1050', debit: 47.28, memo: 'Stripe settlement' },
-      { account: '4900', debit: 1.72, memo: 'Stripe fee' },
-      { account: '4030', credit: 49.00, memo: 'Follow-up consultation revenue' }
-    ], 'stripe_sync', '2026-02-01');
-
-    // ═══ 11. FEB — GCP HOSTING $420 ═══
-    await postEntry('Google Cloud Platform — February hosting', [
-      { account: '5010', debit: 420, memo: 'GCP hosting — growing usage' },
-      { account: '2100', credit: 420, memo: 'Accrued — paid from revenue' }
-    ], 'system', '2026-02-01');
-
-    // ═══ 12. FEB — GEMINI API $180 ═══
-    await postEntry('Google Gemini API — February AI usage', [
-      { account: '6210', debit: 180, memo: 'Gemini Pro + Flash — agent operations' },
-      { account: '2100', credit: 180, memo: 'Accrued — paid from revenue' }
-    ], 'system', '2026-02-01');
-
-    // ═══ 13. MARKETING SPEND — $250 (organic + minimal ads) ═══
-    await postEntry('Digital marketing — Google Ads + social', [
-      { account: '6100', debit: 250, memo: 'Google Ads, LinkedIn — bootstrapping budget' },
-      { account: '2100', credit: 250, memo: 'Accrued — paid from revenue' }
-    ], 'system', '2026-02-03');
-
-    // ═══ 14. THIRD-PARTY APIs — Twilio, SendGrid, etc. $95 ═══
-    await postEntry('Third-party API services — January', [
-      { account: '5020', debit: 95, memo: 'Twilio SMS, SendGrid, OCR, etc.' },
-      { account: '2100', credit: 95, memo: 'Accrued — paid from revenue' }
-    ], 'system', '2026-01-31');
-
-    // ═══ 18. PATIENT SUBSCRIPTION — Platinum $79.99 ═══
-    await postEntry('Patient subscription — Docta Platinum (monthly)', [
-      { account: '1050', debit: 77.67, memo: 'Stripe settlement' },
-      { account: '4900', debit: 2.32, memo: 'Stripe fee' },
-      { account: '4010', credit: 79.99, memo: 'Patient Platinum subscription' }
-    ], 'stripe_sync', '2026-02-03');
-
-    // ═══ 19. SPECIALIST CONSULTATION — $129 ═══
-    await postEntry('Consultation — specialist visit', [
-      { account: '1050', debit: 125.04, memo: 'Stripe settlement' },
-      { account: '4900', debit: 3.96, memo: 'Stripe fee' },
-      { account: '4030', credit: 129.00, memo: 'Specialist consultation revenue' }
-    ], 'stripe_sync', '2026-02-05');
-
-    // ═══ 20. PROVIDER PRO SUBSCRIPTION — $199 ═══
-    await postEntry('Provider subscription — Professional plan', [
-      { account: '1050', debit: 193.07, memo: 'Stripe settlement' },
-      { account: '4900', debit: 5.93, memo: 'Stripe fee' },
-      { account: '4020', credit: 199.00, memo: 'Provider Professional subscription' }
-    ], 'stripe_sync', '2026-02-06');
-
-    // Now update bank account balances — bootstrapping, funded by revenue only
-    // Operating account: $0 start, only Stripe payouts fund it
-    await client.query("UPDATE fin_bank_accounts SET current_balance = 0, available_balance = 0 WHERE account_number = 'DCTA-OPS-001'");
-    await client.query("UPDATE fin_bank_accounts SET current_balance = 0, available_balance = 0 WHERE account_number = 'DCTA-RES-001'");
-    await client.query("UPDATE fin_bank_accounts SET current_balance = 0, available_balance = 0 WHERE account_number = 'DCTA-TAX-001'");
-
-    // Stripe account: sum of all stripe settlements (real revenue)
-    const stripeBalance = 38.83 + 19.11 + 76.41 + 95.83 + 193.07 + 47.28 + 77.67 + 125.04 + 193.07;
-    await client.query("UPDATE fin_bank_accounts SET current_balance = $1, available_balance = $1 WHERE account_number = 'DCTA-STR-001'", [stripeBalance]);
-
-    // Seed bank transactions
-    const stripeAccountId = (await client.query("SELECT id FROM fin_bank_accounts WHERE account_number = 'DCTA-STR-001'")).rows[0]?.id;
-
-    if (stripeAccountId) {
-      const stripeTxns = [
-        { type: 'stripe_charge', amount: 38.83, desc: 'Patient Gold subscription', party: 'Patient #1', date: '2026-01-20', bal: 38.83 },
-        { type: 'stripe_charge', amount: 19.11, desc: 'Patient Basic subscription', party: 'Patient #2', date: '2026-01-22', bal: 57.94 },
-        { type: 'stripe_charge', amount: 76.41, desc: 'Initial consultation', party: 'Patient #3', date: '2026-01-25', bal: 134.35 },
-        { type: 'stripe_charge', amount: 95.83, desc: 'Provider Starter plan', party: 'Dr. Provider #1', date: '2026-01-28', bal: 230.18 },
-        { type: 'stripe_charge', amount: 193.07, desc: 'Provider credentialing', party: 'Dr. Provider #2', date: '2026-01-29', bal: 423.25 },
-        { type: 'stripe_charge', amount: 47.28, desc: 'Follow-up consultation', party: 'Patient #1', date: '2026-02-01', bal: 470.53 },
-        { type: 'stripe_charge', amount: 77.67, desc: 'Patient Platinum subscription', party: 'Patient #4', date: '2026-02-03', bal: 548.20 },
-        { type: 'stripe_charge', amount: 125.04, desc: 'Specialist consultation', party: 'Patient #5', date: '2026-02-05', bal: 673.24 },
-        { type: 'stripe_charge', amount: 193.07, desc: 'Provider Pro plan', party: 'Dr. Provider #3', date: '2026-02-06', bal: 866.31 },
-      ];
-      for (const t of stripeTxns) {
-        await client.query(`
-          INSERT INTO fin_bank_transactions (bank_account_id, transaction_type, amount, running_balance, description, counterparty, posted_date, status, category)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, 'completed', 'revenue')
-        `, [stripeAccountId, t.type, t.amount, t.bal, t.desc, t.party, t.date]);
-      }
-    }
-
-    // Seed some AR invoices
-    const invoices = [
-      { num: 'INV-2026-001', type: 'patient', name: 'Sarah Johnson', amount: 39.99, status: 'paid', due: '2026-02-20' },
-      { num: 'INV-2026-002', type: 'patient', name: 'Michael Chen', amount: 19.99, status: 'outstanding', due: '2026-02-22' },
-      { num: 'INV-2026-003', type: 'provider', name: 'Dr. James Wilson', amount: 99.00, status: 'paid', due: '2026-02-28' },
-      { num: 'INV-2026-004', type: 'patient', name: 'Emily Davis', amount: 79.00, status: 'outstanding', due: '2026-03-01' },
-      { num: 'INV-2026-005', type: 'provider', name: 'Dr. Lisa Park', amount: 199.00, status: 'outstanding', due: '2026-03-05' },
-      { num: 'INV-2026-006', type: 'patient', name: 'Robert Martinez', amount: 79.99, status: 'outstanding', due: '2026-03-03' },
-      { num: 'INV-2026-007', type: 'insurance', name: 'Blue Cross Blue Shield', amount: 450.00, status: 'outstanding', due: '2026-03-15' },
-    ];
-    for (const inv of invoices) {
-      await client.query(`
-        INSERT INTO fin_accounts_receivable (invoice_number, customer_type, customer_name, amount, amount_paid, due_date, status)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (invoice_number) DO NOTHING
-      `, [inv.num, inv.type, inv.name, inv.amount, inv.status === 'paid' ? inv.amount : 0, inv.due, inv.status]);
-    }
-
-    // Seed some AP bills
-    const bills = [
-      { num: 'BILL-GCP-0126', vendor: 'Google Cloud Platform', type: 'cloud_hosting', amount: 380, status: 'paid', due: '2026-02-15' },
-      { num: 'BILL-GCP-0226', vendor: 'Google Cloud Platform', type: 'cloud_hosting', amount: 420, status: 'pending', due: '2026-03-15', recurring: true },
-      { num: 'BILL-GAI-0126', vendor: 'Google AI (Gemini)', type: 'api_service', amount: 145, status: 'paid', due: '2026-02-15' },
-      { num: 'BILL-GAI-0226', vendor: 'Google AI (Gemini)', type: 'api_service', amount: 180, status: 'pending', due: '2026-03-15', recurring: true },
-      { num: 'BILL-LAW-001', vendor: 'HIPAA Legal Counsel', type: 'legal', amount: 500, status: 'paid', due: '2026-02-20' },
-      { num: 'BILL-MKT-001', vendor: 'Google Ads', type: 'marketing', amount: 250, status: 'paid', due: '2026-02-28' },
-      { num: 'BILL-API-0126', vendor: 'Twilio/SendGrid/OCR', type: 'api_service', amount: 95, status: 'paid', due: '2026-02-15' },
-      { num: 'BILL-INS-001', vendor: 'CyberSecurity Insurance', type: 'insurance', amount: 1200, status: 'pending', due: '2026-03-30' },
-    ];
-    for (const b of bills) {
-      await client.query(`
-        INSERT INTO fin_accounts_payable (bill_number, vendor_name, vendor_type, amount, amount_paid, due_date, status, recurring)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `, [b.num, b.vendor, b.type, b.amount, b.status === 'paid' ? b.amount : 0, b.due, b.status, b.recurring || false]);
-    }
-
-    // Seed ROI tracking — bootstrapping, all sweat equity
-    const roiItems = [
-      { name: 'Google Ads Campaign Q1', cat: 'marketing', invested: 250, revenue: 138.98, savings: 0 },
-      { name: 'AI Agent Automation', cat: 'agent_operations', invested: 325, revenue: 0, savings: 8500 },
-      { name: 'CRM Cold Outreach', cat: 'crm_outreach', invested: 32, revenue: 298, savings: 0 },
-      { name: 'Platform Development (Sweat Equity)', cat: 'product', invested: 0, revenue: 866.31, savings: 0 },
-    ];
-    for (const r of roiItems) {
-      const roi = r.invested > 0 ? ((r.revenue + r.savings - r.invested) / r.invested * 100) : 0;
-      await client.query(`
-        INSERT INTO fin_roi_tracking (initiative_name, category, investment_amount, revenue_generated, cost_savings, roi_percentage, time_period, start_date, status, agent_managed)
-        VALUES ($1, $2, $3, $4, $5, $6, 'monthly', '2026-01-01', 'active', $7)
-      `, [r.name, r.cat, r.invested, r.revenue, r.savings, roi, r.cat === 'agent_operations' || r.cat === 'crm_outreach']);
-    }
-
-    // Seed Stripe bridge records
-    const bridgeRecords = [
-      { type: 'patient_subscription', sim: 39.99, real: 39.99, fee: 1.16, net: 38.83 },
-      { type: 'patient_subscription', sim: 19.99, real: 19.99, fee: 0.88, net: 19.11 },
-      { type: 'consultation', sim: 79.00, real: 79.00, fee: 2.59, net: 76.41 },
-      { type: 'provider_subscription', sim: 99.00, real: 99.00, fee: 3.17, net: 95.83 },
-      { type: 'credentialing', sim: 199.00, real: 199.00, fee: 5.93, net: 193.07 },
-      { type: 'consultation', sim: 49.00, real: 49.00, fee: 1.72, net: 47.28 },
-      { type: 'patient_subscription', sim: 79.99, real: 79.99, fee: 2.32, net: 77.67 },
-      { type: 'consultation', sim: 129.00, real: 129.00, fee: 3.96, net: 125.04 },
-      { type: 'provider_subscription', sim: 199.00, real: 199.00, fee: 5.93, net: 193.07 },
-    ];
-    for (const br of bridgeRecords) {
-      await client.query(`
-        INSERT INTO fin_stripe_bridge (enrollment_type, sim_amount, real_amount, fee_amount, net_amount, status, reconciled)
-        VALUES ($1, $2, $3, $4, $5, 'completed', true)
-      `, [br.type, br.sim, br.real, br.fee, br.net]);
-    }
-
-    // Seed investor relations
-    await client.query(`
-      INSERT INTO fin_investor_relations (investor_name, investor_type, round_name, committed_amount, equity_percentage, valuation_at_entry, status, contact_email, notes) VALUES
-      ('TechHealth Ventures', 'vc', 'Seed', 0, 0, 5000000, 'contacted', 'deals@techhealthvc.com', 'AI-focused healthcare VC, interested in our agent architecture'),
-      ('Dr. Richard Hoffman', 'angel', 'Seed', 0, 0, 5000000, 'prospect', 'rhoffman@gmail.com', 'Former CMO at large health system, interested in telehealth disruption'),
-      ('Meridian Capital', 'vc', 'Seed', 0, 0, 5000000, 'pitch_sent', 'pipeline@meridiancap.com', 'Series Seed focus, healthcare portfolio'),
-      ('StartupFund Angels', 'angel', 'Seed', 0, 0, 5000000, 'prospect', 'invest@startupfund.co', 'Angel network with healthcare allocation')
-    `);
-
-    await client.query('COMMIT');
-    console.log('  💰 Financial seed data: 20 journal entries, bank transactions, AR/AP, ROI, investors — DONE');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('  💰 Financial seed error:', err.message);
-  } finally {
-    client.release();
   }
 }
 

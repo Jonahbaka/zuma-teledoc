@@ -109,25 +109,22 @@ router.post('/flutterwave', async (req, res) => {
   }
 });
 
-// Delivery partner webhooks
-router.post('/delivery/:partner', async (req, res) => {
+// Uber Direct signs the original bytes. Never accept client-supplied internal
+// tracking IDs/statuses or reserialize a parsed body to verify its signature.
+router.post('/delivery/uber_direct', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
   try {
-    const { partner } = req.params;
-    const { tracking_id, status, rider_location, proof_url, recipient_name } = req.body;
-
-    const deliveryService = require('../services/logistics/deliveryService');
-    await deliveryService.updateDeliveryStatus(tracking_id, {
-      status,
-      riderLocation: rider_location,
-      proofUrl: proof_url,
-      recipientName: recipient_name,
-    });
-
-    res.status(200).json({ received: true });
+    const rawBody = req.rawBody || (Buffer.isBuffer(req.body) ? req.body : null);
+    const workflow = require('../services/logistics/medicationDeliveryWorkflowService');
+    const result = await workflow.acceptCourierWebhook(rawBody, req.headers);
+    res.status(200).json({ received: true, duplicate: result?.duplicate === true });
   } catch (err) {
-    console.error(`Delivery webhook error (${req.params.partner}):`, err.message);
-    res.status(500).json({ error: 'Webhook processing failed' });
+    const status = [400, 401, 403, 409, 422, 503].includes(err.statusCode || err.status) ? (err.statusCode || err.status) : 500;
+    // Provider payloads and addresses must not enter public error responses/logs.
+    console.error('Courier webhook rejected:', /^[A-Z0-9_]{1,80}$/.test(err.code || '') ? err.code : 'COURIER_EVENT_FAILED');
+    res.status(status).json({ error: status === 401 ? 'Invalid courier signature' : 'Courier event could not be accepted' });
   }
 });
+
+router.post('/delivery/:partner', (_req, res) => res.status(404).json({ error: 'Courier integration is not available' }));
 
 module.exports = router;

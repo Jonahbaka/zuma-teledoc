@@ -6,8 +6,6 @@
  * and collectively shape the future of the platform.
  */
 
-const fs = require('fs');
-const path = require('path');
 const db = require('../db');
 
 // ═══════════════════════════════════════════════════════════════════
@@ -16,28 +14,24 @@ const db = require('../db');
 
 async function initialize() {
   try {
-    const migrationPath = path.join(__dirname, '../db/migrations/500_agent_social_media.sql');
-    const sql = fs.readFileSync(migrationPath, 'utf8');
-    await db.query(sql);
-    console.log('  🏛️ Agent Social (The Agora): Schema applied');
+    // Runtime readiness must not replay the legacy migration's invented posts
+    // or overwrite existing profiles. Schema changes are explicit migrations.
+    const result = await db.query(`
+      SELECT relation FROM unnest($1::text[]) AS relation
+      WHERE to_regclass(relation) IS NULL
+    `, [[
+      'agora_profiles', 'agora_posts', 'agora_reactions', 'agora_comments',
+      'agora_topics', 'agora_follows', 'agora_polls', 'agora_poll_votes',
+      'agora_brainstorms', 'agora_achievements', 'agora_daily_digest',
+    ]]);
+    if (result.rows.length) {
+      console.error('Agent activity schema is unavailable; apply reviewed schema migrations.');
+      return false;
+    }
+    console.log('Agent activity schema is ready.');
     return true;
   } catch (err) {
-    if (err.code === '42P07' || err.message.includes('already exists')) {
-      console.log('  🏛️ Agent Social (The Agora): Already current');
-      return true;
-    }
-    console.error('  🏛️ Agent Social schema error:', err.message);
-    setTimeout(async () => {
-      try {
-        console.log('  🏛️ Agent Social: Retrying initialization...');
-        const migrationPath = path.join(__dirname, '../db/migrations/500_agent_social_media.sql');
-        const sql = fs.readFileSync(migrationPath, 'utf8');
-        await db.query(sql);
-        console.log('  🏛️ Agent Social: Retry SUCCESS');
-      } catch (e) {
-        console.error('  🏛️ Agent Social retry failed:', e.message);
-      }
-    }, 12000);
+    console.error('Agent activity schema readiness check failed.');
     return false;
   }
 }

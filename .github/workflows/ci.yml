@@ -113,6 +113,9 @@ jobs:
       - name: Run PHC PostgreSQL workflow tests
         run: npm run test:ng:phc:db
 
+      - name: Run medication delivery PostgreSQL and authenticated HTTP tests
+        run: SIMULATION_DATABASE_URL="$DATABASE_URL" npm run test:ng:medication-delivery:db
+
       - name: Back up populated database
         run: |
           pg_dump --format=custom --no-owner --no-acl --file=artifacts/database/10-post-tests.dump "$DATABASE_URL"
@@ -170,16 +173,16 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: doctarx_browser
+          POSTGRES_DB: doctarx_browser_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d doctarx_browser"
+          --health-cmd "pg_isready -U postgres -d doctarx_browser_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/doctarx_browser
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/doctarx_browser_test
       JWT_ACCESS_SECRET: fictional-ci-access-secret-at-least-32-characters
       JWT_REFRESH_SECRET: fictional-ci-refresh-secret-at-least-32-characters
       SESSION_SECRET: fictional-ci-session-secret-at-least-32-characters

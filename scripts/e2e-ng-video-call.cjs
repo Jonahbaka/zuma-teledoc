@@ -477,7 +477,11 @@ function startFixtureServer() {
 
   return new Promise((resolve, reject) => {
     server.once('error', reject);
-    server.listen(API_PORT, () => resolve({ server, io }));
+    server.listen(API_PORT, '127.0.0.1', () => resolve({
+      server, io,
+      activeParticipants: () => roomParticipants.size,
+      activeSessions: () => socketSessions.size,
+    }));
   });
 }
 
@@ -736,7 +740,6 @@ async function launchBrowserAgent({ role, session, debugPort, width = 1280, heig
     'doctarx-video-e2e-media',
     `${path.basename(ARTIFACT_DIR)}-${role}`
   );
-  fs.rmSync(roleMediaDir, { recursive: true, force: true });
   fs.mkdirSync(roleMediaDir, { recursive: true });
   const fakeMedia = {
     videoPath: path.join(roleMediaDir, `${role}-camera.y4m`),
@@ -749,7 +752,6 @@ async function launchBrowserAgent({ role, session, debugPort, width = 1280, heig
     'doctarx-video-e2e',
     `${path.basename(ARTIFACT_DIR)}-${role}-chrome-profile`
   );
-  fs.rmSync(userDataDir, { recursive: true, force: true });
   fs.mkdirSync(userDataDir, { recursive: true });
   const proc = spawn(chromePath, [
     '--headless=new',
@@ -758,6 +760,11 @@ async function launchBrowserAgent({ role, session, debugPort, width = 1280, heig
     `--window-size=${width},${height}`,
     '--no-first-run',
     '--no-default-browser-check',
+    '--disk-cache-size=1048576',
+    '--media-cache-size=1048576',
+    '--disable-gpu-shader-disk-cache',
+    '--disable-component-update',
+    '--disable-crash-reporter',
     '--disable-background-timer-throttling',
     '--disable-extensions',
     '--disable-component-extensions-with-background-pages',
@@ -811,6 +818,22 @@ async function launchBrowserAgent({ role, session, debugPort, width = 1280, heig
     source: `
       localStorage.setItem('accessToken', ${JSON.stringify(session.accessToken)});
       localStorage.setItem('refreshToken', ${JSON.stringify(session.refreshToken)});
+      // Observe actual browser media objects; do not replace their state or
+      // simulate successful cleanup. Chrome supplies only generated devices.
+      window.__doctarxVideoE2E = { tracks: [], peerConnections: [] };
+      const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = async (...args) => {
+        const stream = await getUserMedia(...args);
+        window.__doctarxVideoE2E.tracks.push(...stream.getTracks());
+        return stream;
+      };
+      const PeerConnection = window.RTCPeerConnection;
+      window.RTCPeerConnection = class extends PeerConnection {
+        constructor(...args) {
+          super(...args);
+          window.__doctarxVideoE2E.peerConnections.push(this);
+        }
+      };
     `
   });
 
@@ -821,11 +844,25 @@ function isConnectedSnapshot(snapshot) {
   return Boolean(
     snapshot &&
       snapshot.roomId === ROOM_ID &&
-      snapshot.localTrackCount >= 1 &&
-      snapshot.remoteTrackCount >= 1 &&
+      snapshot.localAudioTrackCount >= 1 && snapshot.localVideoTrackCount >= 1 &&
+      snapshot.remoteAudioTrackCount >= 1 && snapshot.remoteVideoTrackCount >= 1 &&
       ['connected', 'completed'].includes(String(snapshot.peerConnectionState || '')) &&
       ['connected', 'completed'].includes(String(snapshot.iceConnectionState || ''))
   );
+}
+
+const mediaLifecycleExpression = `(() => {
+  const observed = window.__doctarxVideoE2E;
+  return observed ? {
+    tracks: observed.tracks.map(track => ({ kind: track.kind, readyState: track.readyState })),
+    peers: observed.peerConnections.map(peer => ({ connectionState: peer.connectionState, signalingState: peer.signalingState })),
+  } : null;
+})()`;
+
+function isReleasedMedia(snapshot) {
+  return Boolean(snapshot && snapshot.tracks.length >= 2 && snapshot.peers.length >= 1 &&
+    snapshot.tracks.every(track => track.readyState === 'ended') &&
+    snapshot.peers.every(peer => peer.connectionState === 'closed' && peer.signalingState === 'closed'));
 }
 
 async function runE2E() {
@@ -848,16 +885,16 @@ async function runE2E() {
   });
 
   try {
-    await waitForHttp(`http://localhost:${API_PORT}/api/health`, 30000);
+    await waitForHttp(`http://127.0.0.1:${API_PORT}/api/health`, 30000);
     // Keep rejection assertions alongside the positive browser journey. Neither
     // missing credentials, opaque tokens, nor refresh tokens authenticate here.
     for (const token of [null, 'provider-token', providerSession.refreshToken]) {
-      const rejected = await fetch(`http://localhost:${API_PORT}/api/auth/me`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const rejected = await fetch(`http://127.0.0.1:${API_PORT}/api/auth/me`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       assert.equal(rejected.status, 401);
     }
     for (const [session, user] of [[providerSession, providerUser], [patientSession, patientUser]]) {
       const claims = jwt.decode(session.accessToken);
-      const response = await fetch(`http://localhost:${API_PORT}/api/auth/me`, { headers: { Authorization: `Bearer ${session.accessToken}` } });
+      const response = await fetch(`http://127.0.0.1:${API_PORT}/api/auth/me`, { headers: { Authorization: `Bearer ${session.accessToken}` } });
       assert.equal(response.status, 200);
       const verified = (await response.json()).user;
       assert.equal(claims.userId, verified.id);
@@ -984,8 +1021,13 @@ async function runE2E() {
     evidence.screenshots.patientChat = await patientAgent.client.screenshot('patient-chat');
 
     await providerAgent.client.clickBySelector('[data-testid="telehealth-leave-call"]');
-    await wait(500);
+    evidence.provider.mediaCleanup = await providerAgent.client.waitForValue(mediaLifecycleExpression, isReleasedMedia, 15000);
     await patientAgent.client.clickBySelector('[data-testid="telehealth-leave-call"]');
+    evidence.patient.mediaCleanup = await patientAgent.client.waitForValue(mediaLifecycleExpression, isReleasedMedia, 15000);
+    assert.equal(fixture.activeParticipants(), 0, 'Both participants must leave the isolated signaling room');
+    assert.equal(fixture.activeSessions(), 0, 'Both isolated signaling sessions must be removed');
+    evidence.fixture.activeParticipantsAfterLeave = fixture.activeParticipants();
+    evidence.fixture.activeSessionsAfterLeave = fixture.activeSessions();
     evidence.provider.leftCleanly = true;
     evidence.patient.leftCleanly = true;
 

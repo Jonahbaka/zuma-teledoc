@@ -36,8 +36,7 @@ function stripComments(sql) {
     .replace(/\/\*[\s\S]*?\*\//g, ' ');
 }
 
-function checkFile(file) {
-  const raw = fs.readFileSync(file, 'utf8');
+function checkSql(raw, file) {
   const sql = stripComments(raw);
   const statements = sql
     .split(';')
@@ -46,13 +45,22 @@ function checkFile(file) {
 
   const findings = [];
 
-  for (const statement of statements) {
+  for (const [index, statement] of statements.entries()) {
     const upper = statement.toUpperCase();
     // Idempotency expressed as "ignore it if the column already exists".
     const guarded = /\bDO\s+\$\$/.test(statement) && /duplicate_column|duplicate_object|already exists/i.test(sql);
 
     if (/\bDROP\s+(TABLE|SCHEMA|DATABASE|COLUMN|TYPE|INDEX)\b/.test(upper)) {
-      findings.push({ severity: 'blocking', kind: 'DESTRUCTIVE_DDL', statement: statement.slice(0, 120) });
+      // One reviewed index replacement preserves every clinical/history row
+      // while allowing a cancelled, undispatched Rx claim to be released.
+      // Accept only this file, this exact index and the immediately following
+      // equivalent active-claim uniqueness constraint. A comment cannot opt
+      // other migrations or destructive statements out of the safety gate.
+      const reviewedReplacement = file === 'ng/migrations/030_ng_medication_prescription_claims.sql'
+        && statement === 'DROP INDEX IF EXISTS ng_medication_one_digital_rx'
+        && statements[index + 1] === 'CREATE UNIQUE INDEX IF NOT EXISTS ng_medication_one_digital_rx ON ng_medication_fulfillments(digital_prescription_id) WHERE digital_prescription_id IS NOT NULL AND prescription_claim_active=true'
+        && statements.includes('ALTER TABLE ng_medication_fulfillments ADD COLUMN IF NOT EXISTS prescription_claim_active BOOLEAN NOT NULL DEFAULT true');
+      findings.push({ severity: reviewedReplacement ? 'info' : 'blocking', kind: reviewedReplacement ? 'REVIEWED_INDEX_REPLACEMENT' : 'DESTRUCTIVE_DDL', statement: statement.slice(0, 120) });
     }
     if (/\bTRUNCATE\b/.test(upper)) {
       findings.push({ severity: 'blocking', kind: 'TRUNCATE', statement: statement.slice(0, 120) });
@@ -103,12 +111,14 @@ function checkFile(file) {
   return findings;
 }
 
+function main() {
 const results = [];
 for (const dir of DIRS) {
   if (!fs.existsSync(dir)) continue;
   for (const name of fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()) {
     const file = path.join(dir, name);
-    results.push({ file: path.relative(ROOT, file).replace(/\\/g, '/'), findings: checkFile(file) });
+    const relative = path.relative(ROOT, file).replace(/\\/g, '/');
+    results.push({ file: relative, findings: checkSql(fs.readFileSync(file, 'utf8'), relative) });
   }
 }
 
@@ -140,3 +150,7 @@ if (blocking > 0 && !allowDestructive) {
 }
 
 console.log('[migrations] OK');
+}
+
+if (require.main === module) main();
+module.exports = { checkSql };

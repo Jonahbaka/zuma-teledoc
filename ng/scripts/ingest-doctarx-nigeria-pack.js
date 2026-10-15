@@ -2,8 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getPool } = require('../../server/db');
-const { runNgMigrations } = require('../migrations/migrate');
+const { fixtureTargetSafety } = require('./fixtureTargetSafety');
 const {
   buildProviderMatchKey,
   deriveProviderFlags,
@@ -758,7 +757,16 @@ async function upsertProviderRows(pool, rows) {
 }
 
 async function ingestNigeriaPack() {
-  const pool = await getPool();
+  const safety = fixtureTargetSafety();
+  if (safety.skipped) return safety;
+  const { getPool } = require('../../server/db');
+  const pool = getPool();
+  // The shared DB module can briefly return a lazy proxy; resolve only its
+  // options metadata before allowing migrations or SQL against that pool.
+  const options = typeof pool.options === 'function' ? await pool.options() : pool.options;
+  const poolSafety = fixtureTargetSafety({ pool: { options } });
+  if (poolSafety.skipped) return poolSafety;
+  const { runNgMigrations } = require('../migrations/migrate');
   await runNgMigrations(pool);
 
   const hmoRows = readCsv('nhia_hmo_seed.csv').map(normalizeHmoRow).filter((row) => row.payer_name);
@@ -806,7 +814,13 @@ async function getDiscoverySeedCounts(pool) {
 }
 
 async function seedNigeriaDiscoveryIfNeeded() {
-  const pool = await getPool();
+  const safety = fixtureTargetSafety();
+  if (safety.skipped) return safety;
+  const { getPool } = require('../../server/db');
+  const pool = getPool();
+  const options = typeof pool.options === 'function' ? await pool.options() : pool.options;
+  const poolSafety = fixtureTargetSafety({ pool: { options } });
+  if (poolSafety.skipped) return poolSafety;
   const before = await getDiscoverySeedCounts(pool);
   const needsSeed =
     Number(before.providers || 0) < 1000 ||
@@ -819,6 +833,7 @@ async function seedNigeriaDiscoveryIfNeeded() {
   }
 
   const summary = await ingestNigeriaPack();
+  if (summary.skipped) return summary;
   const after = await getDiscoverySeedCounts(pool);
   return { skipped: false, before, after, summary };
 }
@@ -826,7 +841,7 @@ async function seedNigeriaDiscoveryIfNeeded() {
 if (require.main === module) {
   seedNigeriaDiscoveryIfNeeded()
     .then((summary) => {
-      console.log('[NG Discovery] Nigeria pack ingestion complete');
+      console.log(summary.skipped ? '[NG Discovery] Nigeria pack ingestion skipped; no fixture writes performed.' : '[NG Discovery] Nigeria pack ingestion complete');
       console.log(JSON.stringify(summary, null, 2));
       process.exit(0);
     })

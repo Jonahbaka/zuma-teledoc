@@ -51,6 +51,7 @@ export const nigeriaAdminNavigation = [
   { name: 'Providers', href: '/ng/admin/providers', icon: Stethoscope },
   { name: 'Hospitals', href: '/ng/admin/hospitals', icon: Building2 },
   { name: 'Pharmacies', href: '/ng/admin/pharmacies', icon: Pill },
+  { name: 'Medication delivery', href: '/ng/admin/medication-delivery', icon: Package },
   { name: 'Organisations', href: '/ng/admin/organizations', icon: Users },
   { name: 'Subscriptions', href: '/ng/admin/subscriptions', icon: CreditCard },
   { name: 'Revenue', href: '/ng/admin/revenue', icon: Wallet },

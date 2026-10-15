@@ -11,8 +11,15 @@ const multer = require('multer');
 const { requireRole } = require('../../server/middleware/auth');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: privateUpload.MAX_IMAGE_BYTES, files: 1, fields: 0, parts: 1 } }).single('image');
 const orderService = require('../services/pharmacy/orderService');
-const deliveryService = require('../services/logistics/deliveryService');
+const medicationDelivery = require('../services/logistics/medicationDeliveryWorkflowService');
 const { getPool } = require('../../server/db');
+
+function handleMedicationOrderError(res, error) {
+  const explicitStatus = error.status ?? error.statusCode;
+  const hasSafeStatus = Number.isInteger(explicitStatus) && explicitStatus >= 400 && explicitStatus <= 599;
+  const status = hasSafeStatus ? explicitStatus : ['42P01', '42703'].includes(error.code) ? 503 : 500;
+  res.status(status).json({ error: hasSafeStatus ? error.message : 'Medication order service is temporarily unavailable.' });
+}
 
 // --- DRUG SEARCH ---
 
@@ -176,26 +183,86 @@ router.get('/prescriptions', async (req, res) => {
 
 // --- ORDERS ---
 
+// The patient identity always comes from the authenticated session. Order and
+// tracking payloads must never become shared browser/proxy cache entries.
+router.use(['/orders', '/order-options', '/tracking'], requireRole('patient'), (_req, res, next) => {
+  res.set('Cache-Control', 'private, no-store');
+  next();
+});
+
+router.get('/order-options', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.getOrderOptions(req.user));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
 // Create order
 router.post('/orders', async (req, res) => {
   try {
-    const result = await orderService.createOrder({
-      patientUserId: req.user.id,
-      ...req.body,
-    });
+    const result = await medicationDelivery.createOrder(req.body, req.user);
     res.status(201).json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.get('/orders/:orderId/checkout', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.getCheckout(req.params.orderId, req.user));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/orders/:orderId/fulfillment', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.setFulfillment(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/orders/:orderId/approve', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.approve(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/orders/:orderId/delivery-quote', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.requestQuote(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
   }
 });
 
 // Pay for order
 router.post('/orders/:orderId/pay', async (req, res) => {
   try {
-    const result = await orderService.initiatePayment(req.params.orderId, req.user.id);
+    const result = await medicationDelivery.initiatePayment(req.params.orderId, req.user, req.body);
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/orders/:orderId/payments/:reference/verify', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.verifyPayment(req.params.orderId, req.user, req.params.reference));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/orders/:orderId/delivery/refresh', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.refresh(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
   }
 });
 
@@ -227,12 +294,10 @@ router.get('/orders', async (req, res) => {
 // Cancel order
 router.post('/orders/:orderId/cancel', async (req, res) => {
   try {
-    const result = await orderService.cancelOrder(
-      req.params.orderId, req.user.id, req.body.reason || 'Patient cancelled'
-    );
+    const result = await medicationDelivery.cancel(req.params.orderId, req.user, req.body);
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    handleMedicationOrderError(res, err);
   }
 });
 
@@ -241,11 +306,11 @@ router.post('/orders/:orderId/cancel', async (req, res) => {
 // Get delivery tracking
 router.get('/tracking/:trackingId', async (req, res) => {
   try {
-    const result = await deliveryService.getTracking(req.params.trackingId);
+    const result = await medicationDelivery.getTracking(req.params.trackingId, req.user);
     if (!result) return res.status(404).json({ error: 'Tracking not found' });
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleMedicationOrderError(res, err);
   }
 });
 

@@ -197,12 +197,37 @@ test('artifact deploy runs migrations before agent table backfill', () => {
   assert.match(source, /verifyGithubOidcToken/);
 });
 
-test('artifact deploy refreshes explicitly marked fictional developer demo accounts', () => {
-  const source = fs.readFileSync(uploadRoutePath, 'utf8');
+test('production artifact deploy preserves existing accounts without fixture commands or seeding overrides', () => {
+  const route = loadUploadRouteWithSecret(undefined);
+  // Build the command text only. Never execute a deployment, seed or SQL.
+  const script = route._test.artifactDeployScript({ deployId: 'guard-only', tmpFile: '/tmp/guard-artifact.tar.gz', gitSha: 'a'.repeat(40), branch: 'main', scriptPath: '/tmp/guard-script.sh' });
+  assert.match(script, /fixture seeding skipped; existing accounts and records preserved/);
+  assert.doesNotMatch(script, /ng:seed-demo|ingest-doctarx-nigeria-pack|seedDemoAccounts|ALLOW_(?:DEFAULT_DEMO_PASSWORD|DATABASE_URL_SIMULATION|PRODUCTION_SIMULATION)/);
+  const ordered = [
+    'npm run migrate', 'ensureAgentTables', 'node ng/migrations/migrate.js',
+    'fixture seeding skipped', 'tar -xzf',
+    'bash scripts/doctarx-blue-green-switch.sh',
+    'pm2 reload ecosystem.config.js --only cronops',
+    '/api/health', '/api/ng/health', '[verify:result] PASS',
+  ];
+  let previous = -1;
+  for (const command of ordered) {
+    const index = script.indexOf(command, previous + 1);
+    assert.ok(index > previous, 'Established deploy order must retain: ' + command);
+    previous = index;
+  }
+  assert.match(script, /restore_next_on_failure/);
+  assert.match(script, /test -s \.next\.artifact-staging\/\.next\/BUILD_ID/);
+});
 
-  assert.match(source, /refreshing developer-only fictional demo accounts/);
-  assert.match(source, /ALLOW_DEFAULT_DEMO_PASSWORD=true/);
-  assert.match(source, /ALLOW_DATABASE_URL_SIMULATION=true/);
-  assert.match(source, /ALLOW_PRODUCTION_SIMULATION=true/);
-  assert.match(source, /npm run ng:seed-demo/);
+test('manual recovery deploy also skips fixtures while preserving migration, build and health gates', () => {
+  const { buildDeployCommand } = require('../routes/deploy-command');
+  const script = buildDeployCommand('guard-only');
+  assert.match(script, /fixture seeding skipped; existing accounts and records preserved/);
+  assert.doesNotMatch(script, /ng:seed-demo|ingest-doctarx-nigeria-pack|seedDemoAccounts|ALLOW_(?:DEFAULT_DEMO_PASSWORD|DATABASE_URL_SIMULATION|PRODUCTION_SIMULATION)/);
+  assert.match(script, /npm run migrate/);
+  assert.match(script, /node ng\/migrations\/migrate\.js/);
+  assert.match(script, /npm run test:deploy-gate/);
+  assert.match(script, /npm run build/);
+  for (const phase of ['build', 'pm2', 'health', 'ngHealth']) assert.ok(script.includes(`[deploy:check] ${phase}=success`));
 });

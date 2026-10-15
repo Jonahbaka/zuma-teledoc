@@ -217,6 +217,32 @@ class PaystackService {
     return paystackRequest('POST', '/refund', body);
   }
 
+  /** Fetch the authoritative status of an already initiated refund. */
+  async getRefund(refundId) {
+    // Official contract: https://paystack.com/docs/api/refund/#fetch
+    const id = String(refundId ?? '');
+    if (!/^[1-9]\d{0,19}$/.test(id)) throw new Error('A valid provider refund ID is required');
+    if (!SECRET_KEY) throw new Error('Paystack is not configured');
+    return paystackRequest('GET', `/refund/${encodeURIComponent(id)}`);
+  }
+
+  async verifyTransfer(reference) {
+    if (!/^[a-z0-9_-]{16,50}$/.test(reference || '')) throw new Error('A valid transfer reference is required');
+    if (!SECRET_KEY) throw new Error('Paystack is not configured');
+    return paystackRequest('GET', `/transfer/verify/${encodeURIComponent(reference)}`);
+  }
+
+  async getTransferRecipient(code) {
+    if (!/^RCP_[A-Za-z0-9]{5,100}$/.test(code || '')) throw new Error('An approved transfer recipient is required');
+    if (!SECRET_KEY) throw new Error('Paystack is not configured');
+    return paystackRequest('GET', `/transferrecipient/${encodeURIComponent(code)}`);
+  }
+
+  async getBalance() {
+    if (!SECRET_KEY) throw new Error('Paystack is not configured');
+    return paystackRequest('GET', '/balance');
+  }
+
   /**
    * Generate a USSD payment code
    */

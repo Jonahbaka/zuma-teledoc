@@ -6,228 +6,25 @@
 
 const { getPool } = require('../../../server/db');
 const paymentOrchestrator = require('../payments/paymentOrchestrator');
-const deliveryService = require('../logistics/deliveryService');
+const workflow = require('../logistics/medicationDeliveryWorkflowService');
 const complianceService = require('../compliance/complianceService');
 
 class OrderService {
   /**
    * Create a new order
    */
-  async createOrder({
-    patientUserId, pharmacyId, prescriptionId = null,
-    items, deliveryType = 'delivery', deliveryAddress = null,
-    paymentMethod = 'card', notes = null,
-  }) {
-    const pool = getPool();
+  createOrder(input, actor) { return workflow.createOrder(input, actor); }
+  initiatePayment(orderId, actor, input) { return workflow.initiatePayment(orderId, actor, input); }
 
-    // Validate pharmacy
-    const pharmacy = await pool.query(
-      `SELECT id, name, status, minimum_order_amount, delivery_enabled,
-              delivery_radius_km, paystack_subaccount_code, flutterwave_subaccount_id,
-              subscription_tier, latitude, longitude
-       FROM ng_pharmacies WHERE id = $1 AND status = 'approved'`,
-      [pharmacyId]
-    );
-    if (!pharmacy.rows.length) throw new Error('Pharmacy not found or not approved');
-    const pharm = pharmacy.rows[0];
-
-    // Validate and price items
-    let subtotal = 0;
-    const pricedItems = [];
-
-    for (const item of items) {
-      // Check inventory
-      const inv = await pool.query(
-        `SELECT i.*, d.name as drug_name, d.generic_name, d.requires_prescription, d.category
-         FROM ng_pharmacy_inventory i
-         JOIN ng_drug_catalog d ON d.id = i.drug_id
-         WHERE i.pharmacy_id = $1 AND i.drug_id = $2
-           AND i.is_available = true
-           AND i.quantity_available >= $3
-           AND i.availability_verification_status = 'verified'
-           AND i.availability_verified_at IS NOT NULL`,
-        [pharmacyId, item.drugId, item.quantity]
-      );
-
-      if (!inv.rows.length) {
-        throw new Error(`Drug ${item.drugId} does not have verified pharmacy availability in the requested quantity`);
-      }
-
-      const invItem = inv.rows[0];
-
-      // Check if prescription is required
-      if (invItem.requires_prescription && !prescriptionId) {
-        throw new Error(`${invItem.drug_name} requires a valid prescription`);
-      }
-
-      // Check controlled substance compliance
-      if (invItem.category === 'controlled') {
-        const compCheck = await complianceService.canSellWithoutPrescription(item.drugId);
-        if (!compCheck.allowed) throw new Error(compCheck.reason);
-      }
-
-      const effectivePrice = invItem.discount_percent
-        ? invItem.selling_price * (1 - invItem.discount_percent / 100)
-        : invItem.selling_price;
-
-      const lineTotal = Math.round(effectivePrice * item.quantity);
-      subtotal += lineTotal;
-
-      pricedItems.push({
-        drug_id: item.drugId,
-        drug_name: invItem.drug_name,
-        generic_name: invItem.generic_name,
-        quantity: item.quantity,
-        unit_price: effectivePrice,
-        total_price: lineTotal,
-        is_prescription: invItem.requires_prescription,
-        batch_number: invItem.batch_number,
-      });
-    }
-
-    // Minimum order check
-    if (subtotal < parseFloat(pharm.minimum_order_amount)) {
-      throw new Error(`Minimum order amount is ₦${pharm.minimum_order_amount}`);
-    }
-
-    // Calculate fees
-    const fees = paymentOrchestrator.calculateFees(subtotal, pharm.subscription_tier);
-
-    // Calculate delivery fee if applicable
-    let deliveryFee = 0;
-    if (deliveryType === 'delivery' && deliveryAddress) {
-      if (!pharm.delivery_enabled) throw new Error('This pharmacy does not offer delivery');
-      const distance = deliveryService.calculateDistance(
-        pharm.latitude, pharm.longitude,
-        deliveryAddress.latitude, deliveryAddress.longitude
-      );
-      if (distance > parseFloat(pharm.delivery_radius_km)) {
-        throw new Error('Delivery address is outside pharmacy delivery radius');
-      }
-      deliveryFee = deliveryService.calculateDeliveryFee(distance);
-    }
-
-    const totalAmount = subtotal + fees.platformFee + deliveryFee + fees.vat;
-    const orderNumber = await paymentOrchestrator.generateOrderNumber();
-
-    // Create the order
-    const orderResult = await pool.query(
-      `INSERT INTO ng_orders (
-        order_number, patient_user_id, pharmacy_id, prescription_id,
-        items, subtotal, platform_fee, delivery_fee, vat_amount, total_amount,
-        delivery_type, delivery_address, payment_method, notes,
-        pharmacy_payout_amount
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-      RETURNING *`,
-      [
-        orderNumber, patientUserId, pharmacyId, prescriptionId,
-        JSON.stringify(pricedItems), subtotal, fees.platformFee, deliveryFee,
-        fees.vat, totalAmount, deliveryType,
-        deliveryAddress ? JSON.stringify(deliveryAddress) : null,
-        paymentMethod, notes,
-        subtotal - fees.marginShare, // Pharmacy gets subtotal minus margin share
-      ]
-    );
-
-    const order = orderResult.rows[0];
-
-    // Reserve inventory
-    for (const item of pricedItems) {
-      await pool.query(
-        `UPDATE ng_pharmacy_inventory SET
-          quantity_reserved = quantity_reserved + $1,
-          quantity_available = quantity_available - $1,
-          updated_at = NOW()
-        WHERE pharmacy_id = $2 AND drug_id = $3`,
-        [item.quantity, pharmacyId, item.drug_id]
-      );
-    }
-
-    // Log compliance event
-    await complianceService.logAction({
-      actorUserId: patientUserId,
-      actorType: 'patient',
-      action: 'order.created',
-      resourceType: 'order',
-      resourceId: order.id,
-      details: {
-        orderNumber, subtotal, totalAmount,
-        itemCount: pricedItems.length,
-        hasPrescription: !!prescriptionId,
-      },
-      pharmacyId,
-    });
-
-    return {
-      order,
-      fees: {
-        subtotal,
-        platformFee: fees.platformFee,
-        deliveryFee,
-        vat: fees.vat,
-        total: totalAmount,
-      },
-    };
-  }
-
-  /**
-   * Initialize payment for an order
-   */
-  async initiatePayment(orderId, patientUserId) {
-    const pool = getPool();
-
-    const order = await pool.query(
-      `SELECT o.*, u.email, u.first_name, u.last_name, u.phone_number,
-              p.paystack_subaccount_code, p.flutterwave_subaccount_id
-       FROM ng_orders o
-       JOIN users u ON u.id = o.patient_user_id
-       JOIN ng_pharmacies p ON p.id = o.pharmacy_id
-       WHERE o.id = $1 AND o.patient_user_id = $2 AND o.payment_status = 'pending' AND o.status <> 'cancelled'`,
-      [orderId, patientUserId]
-    );
-
-    if (!order.rows.length) throw new Error('Order not found or already paid');
-    const o = order.rows[0];
-    const paymentReference = paymentOrchestrator.generateReference();
-    const reserved = await pool.query(
-      `UPDATE ng_orders SET payment_reference = $1, payment_provider = 'paystack', updated_at = NOW()
-       WHERE id = $2 AND patient_user_id = $3 AND payment_status = 'pending' AND status <> 'cancelled' AND payment_reference IS NULL
-       RETURNING id`,
-      [paymentReference, orderId, patientUserId]
-    );
-    if (!reserved.rows.length) throw new Error('A payment attempt already exists. Reconcile it before starting another.');
-
-    const payment = await paymentOrchestrator.initializePayment({
-      orderId: o.id,
-      email: o.email,
-      amount: parseFloat(o.total_amount),
-      pharmacySubaccountCode: o.paystack_subaccount_code,
-      pharmacySubaccountId: o.flutterwave_subaccount_id,
-      platformFee: parseFloat(o.platform_fee),
-      patientName: `${o.first_name} ${o.last_name}`,
-      patientPhone: o.phone_number,
-      paymentMethod: o.payment_method,
-      paymentReference,
-      provider: 'paystack',
-    });
-
-    // Store payment reference
-    await pool.query(
-      `UPDATE ng_orders SET
-        payment_reference = $1,
-        payment_provider = $2,
-        updated_at = NOW()
-      WHERE id = $3`,
-      [payment.reference, payment.provider, orderId]
-    );
-
-    return payment;
-  }
-
-  /**
-   * Confirm payment (called from webhook or verification)
-   */
   async confirmPayment(paymentReference, provider) {
+    const stage = await getPool().query('SELECT 1 FROM ng_medication_payment_attempts WHERE provider_reference=$1', [paymentReference]);
+    if (stage.rows.length) {
+      if (provider !== 'paystack') throw new Error('Medication payments require the configured payment provider.');
+      return workflow.confirmPaymentReference(paymentReference);
+    }
+    const medicationOrder = await getPool().query('SELECT 1 FROM ng_orders o JOIN ng_medication_fulfillments f ON f.order_id=o.id WHERE o.payment_reference=$1', [paymentReference]);
+    if (medicationOrder.rows.length) throw new Error('Medication payment requires stage reconciliation.');
+
     const pool = getPool();
 
     // Verify with payment provider
@@ -335,113 +132,10 @@ class OrderService {
   /**
    * Pharmacy confirms order (starts preparing)
    */
-  async pharmacyConfirmOrder(orderId, pharmacyId) {
-    const pool = getPool();
+  pharmacyConfirmOrder(orderId, actor, input) { return workflow.confirmPharmacy(orderId, actor, input); }
+  markReady(orderId, actor, input) { return workflow.markReady(orderId, actor, input); }
+  cancelOrder(orderId, actor, input) { return workflow.cancel(orderId, actor, input); }
 
-    const result = await pool.query(
-      `UPDATE ng_orders SET status = 'preparing', updated_at = NOW()
-       WHERE id = $1 AND pharmacy_id = $2 AND status = 'confirmed'
-       RETURNING *`,
-      [orderId, pharmacyId]
-    );
-
-    if (!result.rows.length) throw new Error('Order not found or not in confirmed status');
-    return result.rows[0];
-  }
-
-  /**
-   * Mark order as ready (pickup or delivery)
-   */
-  async markReady(orderId, pharmacyId) {
-    const pool = getPool();
-
-    const order = await pool.query(
-      `UPDATE ng_orders SET status = 'ready_for_pickup', updated_at = NOW()
-       WHERE id = $1 AND pharmacy_id = $2 AND status = 'preparing'
-       RETURNING *`,
-      [orderId, pharmacyId]
-    );
-
-    if (!order.rows.length) throw new Error('Order not found or not in preparing status');
-    const o = order.rows[0];
-
-    // If delivery type, dispatch rider
-    if (o.delivery_type === 'delivery') {
-      try {
-        const delivery = await deliveryService.requestDelivery(orderId);
-        return { order: o, delivery };
-      } catch (err) {
-        console.error('Delivery dispatch failed:', err.message);
-        return { order: o, delivery: null, deliveryError: err.message };
-      }
-    }
-
-    return { order: o };
-  }
-
-  /**
-   * Cancel an order
-   */
-  async cancelOrder(orderId, userId, reason) {
-    const pool = getPool();
-
-    const order = await pool.query(
-      `SELECT * FROM ng_orders WHERE id = $1 AND (patient_user_id = $2 OR pharmacy_id IN (
-        SELECT id FROM ng_pharmacies WHERE owner_user_id = $2
-      ))`, [orderId, userId]
-    );
-
-    if (!order.rows.length) throw new Error('Order not found');
-    const o = order.rows[0];
-
-    // Can only cancel if not yet dispatched
-    if (['dispatched', 'in_transit', 'delivered'].includes(o.status)) {
-      throw new Error('Cannot cancel order after dispatch');
-    }
-
-    // Restore inventory
-    const items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
-    for (const item of items) {
-      await pool.query(
-        `UPDATE ng_pharmacy_inventory SET
-          quantity_available = quantity_available + $1,
-          quantity_reserved = GREATEST(quantity_reserved - $1, 0),
-          updated_at = NOW()
-        WHERE pharmacy_id = $2 AND drug_id = $3`,
-        [item.quantity, o.pharmacy_id, item.drug_id]
-      );
-    }
-
-    // Process refund if paid
-    if (o.payment_status === 'completed' && o.payment_reference) {
-      try {
-        await paymentOrchestrator.processRefund({
-          paymentReference: o.payment_reference,
-          amount: parseFloat(o.total_amount),
-          provider: o.payment_provider,
-          reason,
-        });
-      } catch (err) {
-        console.error('Refund failed:', err.message);
-      }
-    }
-
-    await pool.query(
-      `UPDATE ng_orders SET
-        status = 'cancelled',
-        cancellation_reason = $1,
-        payment_status = CASE WHEN payment_status = 'completed' THEN 'refunded' ELSE payment_status END,
-        updated_at = NOW()
-      WHERE id = $2`,
-      [reason, orderId]
-    );
-
-    return { orderId, status: 'cancelled' };
-  }
-
-  /**
-   * Get order details
-   */
   async getOrder(orderId, userId) {
     const pool = getPool();
     const result = await pool.query(

@@ -135,8 +135,8 @@ async function createDraft(input, existing = null) {
   return getPrescription(rxId);
 }
 
-async function getPrescription(id, pool = getPool()) {
-  const r = await pool.query(`SELECT * FROM ng_digital_prescriptions WHERE id = $1`, [id]);
+async function getPrescription(id, pool = getPool(), lock = false) {
+  const r = await pool.query(`SELECT * FROM ng_digital_prescriptions WHERE id = $1${lock ? ' FOR UPDATE' : ''}`, [id]);
   if (!r.rows[0]) return null;
   const items = await pool.query(
     `SELECT * FROM ng_rx_items WHERE prescription_id = $1 ORDER BY position`, [id]
@@ -170,16 +170,18 @@ async function listPrescriptions({ provider_id, patient_user_id, pharmacy_id, st
  * Sign (lock) a draft. Optional sig_text snapshot saved.
  */
 async function sign(id, actor, { sig_text } = {}, pool = getPool()) {
-  const rx = await getPrescription(id, pool);
+  if (isConnectionPool(pool)) return atomicMutation(pool, client => sign(id, actor, { sig_text }, client));
+  const rx = await getPrescription(id, pool, true);
   if (!rx) throwNotFound();
   assertTransition(rx.lifecycle_status, 'signed');
   const r = await pool.query(
     `UPDATE ng_digital_prescriptions
         SET lifecycle_status = 'signed', signed_at = NOW(),
             sig_text = COALESCE($2, sig_text), updated_at = NOW()
-      WHERE id = $1 RETURNING *`,
-    [id, sig_text || null]
+      WHERE id = $1 AND lifecycle_status = $3 RETURNING *`,
+    [id, sig_text || null, rx.lifecycle_status]
   );
+  requireChanged(r);
   await logEvent(id, null, actor, 'signed', rx.lifecycle_status, 'signed', 'prescriber signed', null, pool);
   return r.rows[0];
 }
@@ -188,8 +190,9 @@ async function sign(id, actor, { sig_text } = {}, pool = getPool()) {
  * Route a signed prescription to a specific pharmacy.
  */
 async function sendToPharmacy(id, pharmacyId, actor, pool = getPool()) {
+  if (isConnectionPool(pool)) return atomicMutation(pool, client => sendToPharmacy(id, pharmacyId, actor, client));
   if (!pharmacyId) throw new Error('pharmacyId required');
-  const rx = await getPrescription(id, pool);
+  const rx = await getPrescription(id, pool, true);
   if (!rx) throwNotFound();
   assertTransition(rx.lifecycle_status, 'sent_to_pharmacy');
   const r = await pool.query(
@@ -197,9 +200,10 @@ async function sendToPharmacy(id, pharmacyId, actor, pool = getPool()) {
         SET lifecycle_status = 'sent_to_pharmacy',
             routed_pharmacy_id = $2, routed_at = NOW(),
             sent_at = NOW(), updated_at = NOW()
-      WHERE id = $1 RETURNING *`,
-    [id, pharmacyId]
+      WHERE id = $1 AND lifecycle_status = $3 RETURNING *`,
+    [id, pharmacyId, rx.lifecycle_status]
   );
+  requireChanged(r);
   await logEvent(id, null, actor, 'sent', rx.lifecycle_status, 'sent_to_pharmacy',
     `routed to pharmacy ${pharmacyId}`, { pharmacy_id: pharmacyId }, pool);
   return r.rows[0];
@@ -209,14 +213,16 @@ async function sendToPharmacy(id, pharmacyId, actor, pool = getPool()) {
  * Pharmacy acknowledges receipt.
  */
 async function acknowledgeReceipt(id, actor, pool = getPool()) {
-  const rx = await getPrescription(id, pool);
+  if (isConnectionPool(pool)) return atomicMutation(pool, client => acknowledgeReceipt(id, actor, client));
+  const rx = await getPrescription(id, pool, true);
   if (!rx) throwNotFound();
   assertTransition(rx.lifecycle_status, 'received');
   const r = await pool.query(
     `UPDATE ng_digital_prescriptions
         SET lifecycle_status = 'received', received_at = NOW(), updated_at = NOW()
-      WHERE id = $1 RETURNING *`, [id]
+      WHERE id = $1 AND lifecycle_status = $2 RETURNING *`, [id, rx.lifecycle_status]
   );
+  requireChanged(r);
   await logEvent(id, null, actor, 'received', rx.lifecycle_status, 'received',
     'pharmacy acknowledged receipt', null, pool);
   return r.rows[0];
@@ -230,7 +236,8 @@ async function acknowledgeReceipt(id, actor, pool = getPool()) {
  *   opts: { quantity, substitute_drug_id?, substitute_reason?, pharmacy_id?, notes? }
  */
 async function dispenseItem(prescriptionId, itemId, actor, opts = {}, pool = getPool()) {
-  const rx = await getPrescription(prescriptionId, pool);
+  if (isConnectionPool(pool)) return atomicMutation(pool, client => dispenseItem(prescriptionId, itemId, actor, opts, client));
+  const rx = await getPrescription(prescriptionId, pool, true);
   if (!rx) throwNotFound();
   if (!['received', 'partially_dispensed'].includes(rx.lifecycle_status)) {
     const e = new Error(`Cannot dispense from status ${rx.lifecycle_status}`);
@@ -245,9 +252,17 @@ async function dispenseItem(prescriptionId, itemId, actor, opts = {}, pool = get
     const e = new Error(`Item already in terminal state ${item.status}`);
     e.code = 'INVALID_STATE'; throw e;
   }
+  if (item.fulfillment_order_id && item.fulfillment_order_id !== opts.fulfillment_order_id) {
+    const e = new Error('This medicine is reserved for its medication order; complete handover through that order.');
+    e.code = 'INVALID_STATE'; throw e;
+  }
 
   const qty = Number(opts.quantity ?? item.quantity ?? 0);
-  await pool.query(
+  if (!Number.isSafeInteger(qty) || qty <= 0 || !Number.isSafeInteger(Number(item.quantity)) || qty > Number(item.quantity)) {
+    const e = new Error('Dispensed quantity must be a positive integer within the signed prescription quantity');
+    e.code = 'INVALID_STATE'; throw e;
+  }
+  const dispensed = await pool.query(
     `UPDATE ng_rx_items
         SET status = 'dispensed',
             dispensed_quantity = $2,
@@ -256,9 +271,14 @@ async function dispenseItem(prescriptionId, itemId, actor, opts = {}, pool = get
             pharmacy_id        = COALESCE($5, pharmacy_id),
             dispensed_at       = NOW(),
             updated_at         = NOW()
-      WHERE id = $1`,
-    [itemId, qty, opts.substitute_drug_id || null, opts.substitute_reason || null, opts.pharmacy_id || null]
+      WHERE id = $1 AND prescription_id=$7 AND status NOT IN ('dispensed','cancelled') AND (fulfillment_order_id IS NULL OR fulfillment_order_id=$6)
+      RETURNING id`,
+    [itemId, qty, opts.substitute_drug_id || null, opts.substitute_reason || null, opts.pharmacy_id || null, opts.fulfillment_order_id || null, prescriptionId]
   );
+  if (!dispensed.rows.length) {
+    const e = new Error('The medicine reservation changed; refresh before dispensing.');
+    e.code = 'INVALID_STATE'; throw e;
+  }
 
   const advanced = await recomputeDispenseStatus(prescriptionId, rx.lifecycle_status, itemId, actor, pool, { quantity: qty });
   if (!advanced) {
@@ -292,10 +312,11 @@ async function recomputeDispenseStatus(prescriptionId, fromStatus, itemId, actor
   const next = nextDispenseStatus(fromStatus, { total, dispensed, finalized });
 
   if (next === fromStatus) return false;
-  await pool.query(
-    `UPDATE ng_digital_prescriptions SET lifecycle_status = $2, updated_at = NOW() WHERE id = $1`,
-    [prescriptionId, next]
+  const changed = await pool.query(
+    `UPDATE ng_digital_prescriptions SET lifecycle_status = $2, updated_at = NOW() WHERE id = $1 AND lifecycle_status=$3 RETURNING id`,
+    [prescriptionId, next, fromStatus]
   );
+  requireChanged(changed);
   await logEvent(prescriptionId, itemId, actor,
     next === 'fully_dispensed' ? 'full' : 'partial',
     fromStatus, next, `auto-advance after item ${meta.quantity != null ? 'dispense' : 'status change'}`,
@@ -307,13 +328,21 @@ async function recomputeDispenseStatus(prescriptionId, fromStatus, itemId, actor
  * Mark an item as unavailable (out of stock). Optionally suggest a substitute.
  */
 async function markItemUnavailable(prescriptionId, itemId, actor, { notes } = {}, pool = getPool()) {
-  const rx = await getPrescription(prescriptionId, pool);
+  if (isConnectionPool(pool)) return atomicMutation(pool, client => markItemUnavailable(prescriptionId, itemId, actor, { notes }, client));
+  const rx = await getPrescription(prescriptionId, pool, true);
   if (!rx) throwNotFound();
-  await pool.query(
+  const item = rx.items.find(row => row.id === itemId);
+  if (!item) { const e = new Error('Item not found on this prescription'); e.code = 'NOT_FOUND'; throw e; }
+  if (!['sent_to_pharmacy', 'received', 'partially_dispensed'].includes(rx.lifecycle_status) || ['dispensed', 'cancelled'].includes(item.status) || item.fulfillment_order_id) {
+    const e = new Error('This medicine is closed or reserved for its medication order; use the order workflow');
+    e.code = 'INVALID_STATE'; throw e;
+  }
+  const changed = await pool.query(
     `UPDATE ng_rx_items SET status = 'unavailable', notes = COALESCE($2, notes), updated_at = NOW()
-      WHERE id = $1 AND prescription_id = $3`,
+      WHERE id = $1 AND prescription_id = $3 AND fulfillment_order_id IS NULL AND status NOT IN ('dispensed','cancelled') RETURNING id`,
     [itemId, notes || null, prescriptionId]
   );
+  requireChanged(changed);
   await logEvent(prescriptionId, itemId, actor, 'item_unavailable', null, null,
     'pharmacy reports item unavailable', { notes }, pool);
   // Marking the last pending item unavailable can complete the dispense.
@@ -322,31 +351,36 @@ async function markItemUnavailable(prescriptionId, itemId, actor, { notes } = {}
 }
 
 async function cancel(id, actor, { reason } = {}, pool = getPool()) {
-  const rx = await getPrescription(id, pool);
+  if (isConnectionPool(pool)) return atomicMutation(pool, client => cancel(id, actor, { reason }, client));
+  const rx = await getPrescription(id, pool, true);
   if (!rx) throwNotFound();
   if (isTerminal(rx.lifecycle_status)) {
     const e = new Error(`Cannot cancel from terminal ${rx.lifecycle_status}`);
     e.code = 'INVALID_STATE'; throw e;
   }
+  assertTransition(rx.lifecycle_status, 'cancelled');
   const r = await pool.query(
     `UPDATE ng_digital_prescriptions
         SET lifecycle_status = 'cancelled', cancelled_at = NOW(),
             cancellation_reason = $2, updated_at = NOW()
-      WHERE id = $1 RETURNING *`, [id, reason || null]
+      WHERE id = $1 AND lifecycle_status = $3 RETURNING *`, [id, reason || null, rx.lifecycle_status]
   );
+  requireChanged(r);
   await logEvent(id, null, actor, 'cancelled', rx.lifecycle_status, 'cancelled', reason || null, null, pool);
   return r.rows[0];
 }
 
 async function complete(id, actor, pool = getPool()) {
-  const rx = await getPrescription(id, pool);
+  if (isConnectionPool(pool)) return atomicMutation(pool, client => complete(id, actor, client));
+  const rx = await getPrescription(id, pool, true);
   if (!rx) throwNotFound();
   assertTransition(rx.lifecycle_status, 'completed');
   const r = await pool.query(
     `UPDATE ng_digital_prescriptions
         SET lifecycle_status = 'completed', completed_at = NOW(), updated_at = NOW()
-      WHERE id = $1 RETURNING *`, [id]
+      WHERE id = $1 AND lifecycle_status = $2 RETURNING *`, [id, rx.lifecycle_status]
   );
+  requireChanged(r);
   await logEvent(id, null, actor, 'completed', rx.lifecycle_status, 'completed', null, null, pool);
   return r.rows[0];
 }
@@ -401,6 +435,20 @@ async function denyRefill(refillId, actor, { reason } = {}, pool = getPool()) {
 }
 
 // ─── Utility ─────────────────────────────────────────────────────────────────
+
+function isConnectionPool(pool) { return typeof pool.connect === 'function' && typeof pool.release !== 'function'; }
+async function atomicMutation(pool, action) {
+  const client = await pool.connect();
+  try { await client.query('BEGIN'); const result = await action(client); await client.query('COMMIT'); return result; }
+  catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
+function requireChanged(result) {
+  if (!result.rows.length) {
+    const e = new Error('Prescription changed concurrently; refresh before repeating this action');
+    e.code = 'INVALID_STATE'; throw e;
+  }
+}
 
 async function logEvent(prescriptionId, itemId, actor, eventKind, fromStatus, toStatus, notes, payload, pool = getPool()) {
   await pool.query(

@@ -8,6 +8,7 @@ const router = express.Router();
 const pharmacyOnboardingService = require('../services/pharmacy/pharmacyOnboardingService');
 const inventoryService = require('../services/pharmacy/inventoryService');
 const orderService = require('../services/pharmacy/orderService');
+const medicationDelivery = require('../services/logistics/medicationDeliveryWorkflowService');
 const walletService = require('../services/pharmacy/walletService');
 const complianceService = require('../services/compliance/complianceService');
 const { getPool } = require('../../server/db');
@@ -55,6 +56,32 @@ async function assertPharmacyAccess(req, pharmacyId) {
     error.statusCode = 403;
     throw error;
   }
+}
+
+async function assertPharmacyOrderAccess(req) {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuid.test(req.params.orderId) || !uuid.test(req.params.pharmacyId)) {
+    const error = new Error('A valid pharmacy and order identifier are required.');
+    error.status = 400;
+    throw error;
+  }
+  await assertPharmacyAccess(req, req.params.pharmacyId);
+  const result = await getPool().query(
+    'SELECT id FROM ng_orders WHERE id = $1 AND pharmacy_id = $2 LIMIT 1',
+    [req.params.orderId, req.params.pharmacyId]
+  );
+  if (!result.rows.length) {
+    const error = new Error('Order not found for this pharmacy.');
+    error.status = 404;
+    throw error;
+  }
+}
+
+function handleMedicationOrderError(res, error) {
+  const explicitStatus = error.status ?? error.statusCode;
+  const hasSafeStatus = Number.isInteger(explicitStatus) && explicitStatus >= 400 && explicitStatus <= 599;
+  const status = hasSafeStatus ? explicitStatus : ['42P01', '42703'].includes(error.code) ? 503 : 500;
+  res.status(status).json({ error: hasSafeStatus ? error.message : 'Medication order service is temporarily unavailable.' });
 }
 
 function handleRouteError(res, err) {
@@ -305,6 +332,11 @@ router.get('/:pharmacyId/inventory/stats', async (req, res) => {
 });
 
 // --- ORDERS ---
+
+router.use('/:pharmacyId/orders', (_req, res, next) => {
+  res.set('Cache-Control', 'private, no-store');
+  next();
+});
 
 // Get pharmacy orders
 router.get('/:pharmacyId/orders', async (req, res) => {
@@ -611,30 +643,87 @@ router.patch('/:pharmacyId/medication-requests/:requestId', async (req, res) => 
 // Confirm order (start preparing)
 router.post('/:pharmacyId/orders/:orderId/confirm', async (req, res) => {
   try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-    const result = await orderService.pharmacyConfirmOrder(
-      req.params.orderId, req.params.pharmacyId
-    );
+    await assertPharmacyOrderAccess(req);
+    const result = await medicationDelivery.confirmPharmacy(req.params.orderId, req.user, req.body);
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    handleMedicationOrderError(res, err);
   }
 });
 
 // Mark order ready
 router.post('/:pharmacyId/orders/:orderId/ready', async (req, res) => {
   try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-    const result = await orderService.markReady(
-      req.params.orderId, req.params.pharmacyId
-    );
+    await assertPharmacyOrderAccess(req);
+    const result = await medicationDelivery.markReady(req.params.orderId, req.user, req.body);
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.get('/:pharmacyId/orders/:orderId/checkout', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  try {
+    await assertPharmacyOrderAccess(req);
+    res.json(await medicationDelivery.getCheckout(req.params.orderId, req.user));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/:pharmacyId/orders/:orderId/price', async (req, res) => {
+  try {
+    await assertPharmacyOrderAccess(req);
+    res.json(await medicationDelivery.confirmPrice(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/:pharmacyId/orders/:orderId/delivery/dispatch', async (req, res) => {
+  try {
+    await assertPharmacyOrderAccess(req);
+    res.json(await medicationDelivery.dispatch(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/:pharmacyId/orders/:orderId/delivery/refresh', async (req, res) => {
+  try {
+    await assertPharmacyOrderAccess(req);
+    res.json(await medicationDelivery.refresh(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/:pharmacyId/orders/:orderId/collect', async (req, res) => {
+  try {
+    await assertPharmacyOrderAccess(req);
+    res.json(await medicationDelivery.collect(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/:pharmacyId/orders/:orderId/cancel', async (req, res) => {
+  try {
+    await assertPharmacyOrderAccess(req);
+    res.json(await medicationDelivery.cancel(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
   }
 });
 
 // --- WALLET ---
+router.post('/:pharmacyId/orders/:orderId/returns/receive', async (req, res) => {
+  try {
+    await assertPharmacyOrderAccess(req);
+    res.json(await medicationDelivery.receiveReturn(req.params.orderId, req.user, req.body));
+  } catch (err) { handleMedicationOrderError(res, err); }
+});
 
 // Get wallet
 router.get('/:pharmacyId/wallet', async (req, res) => {

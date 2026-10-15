@@ -32,7 +32,7 @@ function buildPhase() {
     `rm -rf .turbo ${NEXT_STAGING_DIR} _next public/_next`,
     'npm run migrate',
     'node ng/migrations/migrate.js',
-    'node ng/scripts/ingest-doctarx-nigeria-pack.js',
+    'echo "[deploy] fixture seeding skipped; existing accounts and records preserved"',
     'npm run test:deploy-gate',
     `NEXT_DIST_DIR=${NEXT_STAGING_DIR} NODE_OPTIONS="--max-old-space-size=${DEPLOY_BUILD_MEMORY_MB}" npm run build`,
     `test -s ${NEXT_STAGING_DIR}/BUILD_ID`,
