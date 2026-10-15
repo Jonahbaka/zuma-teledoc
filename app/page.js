@@ -1,7 +1,7 @@
 import MarketHomepage from '@/components/marketing/MarketHomepage';
 
 export const metadata = {
-  title: 'United States Telehealth',
+  title: 'DoctaRx | Connected Virtual Care',
   description:
     'DoctaRx delivers a premium US telehealth experience with secure visits, messaging, e-prescribing, insurance-ready workflows, and connected pharmacy coordination.',
   alternates: {

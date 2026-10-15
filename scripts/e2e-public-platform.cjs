@@ -158,10 +158,52 @@ function observeRuntime(page) {
 async function settle(page) {
   await page.waitForFunction(() => document.querySelector('main') && ![...document.querySelectorAll('main [role="status"]')].some(element => /^(Finding your device location|Searching the pharmacy directory|Loading|Checking secure access)/i.test(element.textContent.trim())), null, { timeout: 90000 });
   await page.evaluate(async () => { await document.fonts.ready; await Promise.all([...document.images].map(image => image.decode().catch(() => undefined))); });
+  return waitForRenderedPage(page);
+}
+
+async function waitForRenderedPage(page, { timeoutMs = 10000 } = {}) {
+  const pathname = new URL(page.url()).pathname;
+  const expectedTitle = {
+    '/': 'DoctaRx | Connected Virtual Care',
+    '/ng': 'Online Doctor Consultation and Pharmacy Access in Nigeria',
+    '/pharmacies': 'Pharmacy directory',
+    '/ng/pharmacies': 'Pharmacy directory',
+    '/ng/provider/call': 'DoctaRx | Virtual Care, Prescriptions, and Pharmacy Coordination',
+  }[pathname];
+  assert.ok(expectedTitle, 'An explicit rendered-page title contract is required for ' + pathname);
+  // Main content and its API response can finish before App Router's metadata
+  // boundary. Next 15 can append streamed metadata to body, so observe the
+  // actual HTML title anywhere in this document, not only inside head.
+  // Observe normal motion; never inject a title,
+  // disable animations, or rerun Axe until an accessibility failure disappears.
+  return page.evaluate(({ pathname, expectedTitle, timeoutMs }) => new Promise((resolve, reject) => {
+    let frame; let stableFrames = 0; let previous = ''; let snapshot;
+    const timer = setTimeout(() => {
+      cancelAnimationFrame(frame);
+      reject(new Error('Rendered-page readiness timed out: ' + JSON.stringify(snapshot)));
+    }, timeoutMs);
+    function inspect() {
+      const titles = [...document.querySelectorAll('title')].filter(element => element.namespaceURI === 'http://www.w3.org/1999/xhtml')
+        .map(element => ({ text: element.textContent.trim(), parent: element.parentElement.tagName }));
+      const title = document.title.trim();
+      const finiteAnimations = document.getAnimations().filter(animation =>
+        (animation.playState === 'running' || animation.pending) && Number.isFinite(animation.effect?.getComputedTiming().endTime)
+      ).map(animation => ({ type: animation.constructor.name, state: animation.playState }));
+      snapshot = { pathname: location.pathname, title, titles, finiteAnimations };
+      const signature = JSON.stringify(snapshot);
+      const ready = location.pathname === pathname && titles.length === 1 && titles[0].text === title &&
+        (title === expectedTitle || title.startsWith(expectedTitle + ' | ')) && title.includes('DoctaRx') && finiteAnimations.length === 0;
+      stableFrames = ready ? signature === previous ? stableFrames + 1 : 1 : 0;
+      previous = signature;
+      if (stableFrames >= 3) { clearTimeout(timer); resolve(snapshot); return; }
+      frame = requestAnimationFrame(inspect);
+    }
+    frame = requestAnimationFrame(inspect);
+  }), { pathname, expectedTitle, timeoutMs });
 }
 
 async function capture(page, name) {
-  await settle(page);
+  const renderedPage = await settle(page);
   const typography = await page.evaluate(() => [...document.querySelectorAll('main *,header *,nav *,footer *,aside *')].filter(element => {
     const box = element.getBoundingClientRect(), style = getComputedStyle(element);
     return box.width > 2 && box.height > 2 && style.visibility !== 'hidden' && style.display !== 'none' && [...element.childNodes].some(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()) && parseFloat(style.fontSize) < 16;
@@ -180,6 +222,10 @@ async function capture(page, name) {
   check(publicHeadingFonts.length === 0, name + ': public and footer headings use the shared readable sans font.', publicHeadingFonts);
   const images = await page.evaluate(() => [...document.images].map(image => ({ src: image.getAttribute('src'), alt: image.alt, loaded: image.complete && image.naturalWidth > 0 })));
   check(images.every(image => image.loaded), name + ': every image must load.', images.filter(image => !image.loaded));
+  renderedPage.submitButtons = await page.evaluate(() => [...document.querySelectorAll('main button[type="submit"]')].map(element => {
+    const style = getComputedStyle(element);
+    return { text: element.textContent.trim(), disabled: element.disabled, opacity: style.opacity, color: style.color, background: style.backgroundColor, transitionProperty: style.transitionProperty };
+  }));
   const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   const accessibility = axe.violations.map(({ id, impact, nodes }) => ({ id, impact, nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })) }));
   fs.writeFileSync(path.join(output, name + ' accessibility.json'), JSON.stringify(accessibility, null, 2));
@@ -187,7 +233,7 @@ async function capture(page, name) {
   await page.screenshot({ path: path.join(output, name + '.png'), fullPage: true });
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   await page.screenshot({ path: path.join(output, name + ' viewport.png'), fullPage: false });
-  captures.push({ name, images, widths, bodyFont, typographyMinimum: typography.length ? Math.min(...typography.map(item => parseFloat(item.size))) : 16 });
+  captures.push({ name, images, widths, bodyFont, renderedPage, typographyMinimum: typography.length ? Math.min(...typography.map(item => parseFloat(item.size))) : 16 });
   console.log('Checked:', name);
 }
 

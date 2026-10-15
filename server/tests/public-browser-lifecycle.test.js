@@ -14,15 +14,15 @@ const ts = require('typescript');
 // importing its database, or changing environment/account data.
 const filename = path.resolve(__dirname, '../../scripts/e2e-public-platform.cjs');
 const source = ts.createSourceFile(filename, fs.readFileSync(filename, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-const names = ['waitFor', 'availablePort', 'stopOwnedPreview'];
+const names = ['waitFor', 'availablePort', 'stopOwnedPreview', 'waitForRenderedPage'];
 const functions = source.statements.filter(node => ts.isFunctionDeclaration(node) && names.includes(node.name?.text)).map(node => node.getText(source));
 assert.equal(functions.length, names.length);
 const isolated = { exports: {} };
-vm.runInNewContext(functions.join('\n') + '\nmodule.exports={waitFor,availablePort,stopOwnedPreview};', {
+vm.runInNewContext(functions.join('\n') + '\nmodule.exports={waitFor,availablePort,stopOwnedPreview,waitForRenderedPage};', {
   module: isolated, assert, fetch, AbortSignal, Buffer, URL, Date, setTimeout, clearTimeout, process, net,
   spawn() { throw new Error('Tests must explicitly scope their simulated owned process.'); },
 });
-const { waitFor, availablePort, stopOwnedPreview } = isolated.exports;
+const { waitFor, availablePort, stopOwnedPreview, waitForRenderedPage } = isolated.exports;
 const turn = () => new Promise(resolve => setImmediate(resolve));
 async function listen(handler) {
   const server = http.createServer(handler);
@@ -115,4 +115,72 @@ test('an exited or closed POSIX launcher does not hide a surviving owned Next wo
     } });
     assert.equal(alive, false); assert.ok(probes > 1); assert.deepEqual(signals, ['SIGTERM', 'SIGKILL']);
   }
+});
+
+function renderedDocument(pathname = '/pharmacies') {
+  const state = { title: '', titles: [], titleParent: 'BODY', animations: [], frames: 0 };
+  const document = {
+    get title() { return state.title; },
+    querySelectorAll(selector) { assert.equal(selector, 'title'); return state.titles.map(textContent => ({ textContent, namespaceURI: 'http://www.w3.org/1999/xhtml', parentElement: { tagName: state.titleParent } })); },
+    getAnimations() { return state.animations; },
+  };
+  const page = {
+    url: () => 'http://127.0.0.1' + pathname,
+    evaluate(callback, argument) {
+      return vm.runInNewContext('(' + callback.toString() + ')(argument)', {
+        document, location: { pathname }, argument, setTimeout, clearTimeout,
+        requestAnimationFrame(callback) { return setTimeout(() => { state.frames++; callback(); }, 5); },
+        cancelAnimationFrame: clearTimeout,
+      });
+    },
+  };
+  return { state, page };
+}
+
+test('render readiness waits for independent route metadata and naturally completed finite motion before its single audit', async () => {
+  const { state, page } = renderedDocument();
+  const animation = { playState: 'running', pending: false, effect: { getComputedTiming: () => ({ endTime: 200 }) }, cancel() { assert.fail('Motion must not be disabled'); }, finish() { assert.fail('Motion must complete naturally'); } };
+  state.animations = [animation];
+  let ready = false;
+  const waiting = waitForRenderedPage(page, { timeoutMs: 1000 }).then(value => { ready = true; return value; });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(ready, false, 'Rendered content cannot stand in for its missing streamed metadata');
+  state.title = 'Pharmacy directory | DoctaRx | DoctaRx'; state.titles = [state.title];
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(ready, false, 'An active finite transition must still finish');
+  animation.playState = 'finished';
+  const result = await waiting;
+  assert.equal(result.title, state.title); assert.equal(result.titles[0].parent, 'BODY'); assert.equal(result.finiteAnimations.length, 0); assert.ok(state.frames >= 3);
+  assert.equal(animation.playState, 'finished');
+});
+
+test('permanently absent or wrong route titles fail bounded readiness without creating metadata or suppressing Axe', async () => {
+  for (const initialTitle of ['', 'United States Telehealth | DoctaRx']) {
+    const { state, page } = renderedDocument();
+    state.title = initialTitle; state.titles = initialTitle ? [initialTitle] : [];
+    await assert.rejects(waitForRenderedPage(page, { timeoutMs: 45 }), /Rendered-page readiness timed out:.*titles/);
+    assert.equal(state.title, initialTitle, 'The harness must never manufacture a passing title');
+  }
+  await assert.rejects(waitForRenderedPage(renderedDocument('/unlisted-route').page), /explicit rendered-page title contract/);
+});
+
+test('stuck finite transitions fail rather than being skipped while unchanged infinite decorative motion remains allowed', async () => {
+  const { state, page } = renderedDocument();
+  state.title = 'Pharmacy directory | DoctaRx'; state.titles = [state.title];
+  state.animations = [{ playState: 'running', effect: { getComputedTiming: () => ({ endTime: 200 }) } }];
+  await assert.rejects(waitForRenderedPage(page, { timeoutMs: 45 }), /Rendered-page readiness timed out:.*finiteAnimations.*running/);
+  state.animations = [{ playState: 'running', effect: { getComputedTiming: () => ({ endTime: Infinity }) } }];
+  const result = await waitForRenderedPage(page, { timeoutMs: 1000 });
+  assert.equal(result.finiteAnimations.length, 0); assert.equal(state.animations[0].playState, 'running');
+});
+
+test('both ordinary head metadata and Next 15 streamed body metadata are valid while duplicate titles remain a failure', async () => {
+  const { state, page } = renderedDocument('/');
+  state.title = 'DoctaRx | Connected Virtual Care'; state.titles = [state.title]; state.titleParent = 'HEAD';
+  assert.equal((await waitForRenderedPage(page, { timeoutMs: 1000 })).titles[0].parent, 'HEAD');
+  state.titleParent = 'BODY';
+  assert.equal((await waitForRenderedPage(page, { timeoutMs: 1000 })).titles[0].parent, 'BODY');
+  state.titles.push(state.title);
+  await assert.rejects(waitForRenderedPage(page, { timeoutMs: 45 }), /Rendered-page readiness timed out:.*titles/);
+  assert.equal(state.titles.length, 2, 'Duplicate metadata must be retained as failure evidence, never removed by the harness');
 });
