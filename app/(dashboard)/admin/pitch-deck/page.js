@@ -615,7 +615,7 @@ export default function PitchDeckPage() {
         <section className="items-center text-center">
           <div className="bg-glow" style={{width:600,height:600,top:'10%',left:'20%',background:'radial-gradient(circle,rgba(59,130,246,0.15),transparent)'}} />
           <div className="bg-glow" style={{width:500,height:500,bottom:'10%',right:'15%',background:'radial-gradient(circle,rgba(168,85,247,0.1),transparent)'}} />
-          <div className="w-28 h-28 bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-600 rounded-3xl mb-8 flex items-center justify-center shadow-2xl shadow-blue-500/25 relative">
+          <div className="w-28 h-28 bg-gradient-to-tr from-blue-600 via-blue-500 to-blue-600 rounded-3xl mb-8 flex items-center justify-center shadow-2xl shadow-blue-500/25 relative">
             <div className="w-14 h-14 bg-white rounded-full" />
           </div>
           <h1 className="text-7xl font-extrabold mb-4 tracking-tight">DoctaRx</h1>
@@ -658,7 +658,7 @@ export default function PitchDeckPage() {
             ].map((s, i) => (
               <div key={i} className="stat-card">
                 <p className="text-4xl font-extrabold text-white mb-1">{s.n}</p>
-                <div className="w-12 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 mb-3 rounded" />
+                <div className="w-12 h-0.5 bg-gradient-to-r from-blue-500 to-blue-500 mb-3 rounded" />
                 <p className="text-slate-400 text-sm leading-relaxed">{s.d}</p>
               </div>
             ))}
@@ -677,17 +677,17 @@ export default function PitchDeckPage() {
         <section>
           <div className="bg-glow" style={{width:600,height:600,bottom:'-20%',left:'30%',background:'radial-gradient(circle,rgba(168,85,247,0.08),transparent)'}} />
           <div className="section-label">
-            <div className="dot bg-purple-500" />
-            <span className="text-purple-500">Our Solution</span>
+            <div className="dot bg-blue-500" />
+            <span className="text-blue-500">Our Solution</span>
           </div>
           <h3 className="slide-title">Doctor-first telehealth, enhanced by AI built for <span className="gradient-text">scale</span>.</h3>
 
           <div className="grid grid-cols-2 gap-6">
             {[
               { t: 'Instant Access', d: 'See a board-certified doctor in minutes, not weeks. Licensed providers available via video/chat with AI-assisted triage.', c: 'from-blue-500 to-blue-600' },
-              { t: 'AI-Assisted Workflows', d: 'Automated SOAP note drafting, smart triage routing, and predictive health insights. Doctors make every final decision.', c: 'from-purple-500 to-purple-600' },
-              { t: 'Transparent Pricing', d: 'Subscriptions from $19.99/mo. No surprise bills. Real-time insurance eligibility checks at the point of care.', c: 'from-emerald-500 to-emerald-600' },
-              { t: 'FHIR-Native Security', d: 'End-to-end encryption, SOC 2 compliant, and seamless interoperability with existing health systems.', c: 'from-blue-500 to-indigo-600' },
+              { t: 'AI-Assisted Workflows', d: 'Automated SOAP note drafting, smart triage routing, and predictive health insights. Doctors make every final decision.', c: 'from-blue-500 to-blue-600' },
+              { t: 'Transparent Pricing', d: 'Subscriptions from $19.99/mo. No surprise bills. Real-time insurance eligibility checks at the point of care.', c: 'from-blue-500 to-blue-600' },
+              { t: 'FHIR-Native Security', d: 'End-to-end encryption, SOC 2 compliant, and seamless interoperability with existing health systems.', c: 'from-blue-500 to-blue-600' },
             ].map((s, i) => (
               <div key={i} className="glass p-7 rounded-2xl">
                 <div className="flex items-center gap-3 mb-3">
@@ -703,8 +703,8 @@ export default function PitchDeckPage() {
         {/* SLIDE 4: THE PRODUCT */}
         <section>
           <div className="section-label">
-            <div className="dot bg-emerald-500" />
-            <span className="text-emerald-500">The Product</span>
+            <div className="dot bg-blue-500" />
+            <span className="text-blue-500">The Product</span>
           </div>
           <h3 className="slide-title">A Full-Stack Clinical Platform</h3>
 
@@ -713,12 +713,12 @@ export default function PitchDeckPage() {
               { n: 'Video Consultations', d: 'HD video with AI clinical scribing', c: 'border-l-blue-500' },
               { n: 'E-Prescribing', d: 'Direct-to-pharmacy integration', c: 'border-l-blue-500' },
               { n: 'AI-Powered Triage', d: 'Smart symptom & acuity routing', c: 'border-l-blue-500' },
-              { n: 'Insurance Wallet', d: 'OCR card scanning & eligibility', c: 'border-l-purple-500' },
-              { n: 'Clinical Records', d: 'FHIR-native internal EHR', c: 'border-l-purple-500' },
-              { n: 'Provider Dashboard', d: 'Unified revenue & schedule mgmt', c: 'border-l-purple-500' },
-              { n: 'Predictive Analytics', d: 'ML insights for patient outcomes', c: 'border-l-emerald-500' },
-              { n: 'Payment Processing', d: 'Stripe billing & automated claims', c: 'border-l-emerald-500' },
-              { n: 'OpenClaw AI', d: 'Core AI Ops automation layer', c: 'border-l-emerald-500', special: true },
+              { n: 'Insurance Wallet', d: 'OCR card scanning & eligibility', c: 'border-l-blue-500' },
+              { n: 'Clinical Records', d: 'FHIR-native internal EHR', c: 'border-l-blue-500' },
+              { n: 'Provider Dashboard', d: 'Unified revenue & schedule mgmt', c: 'border-l-blue-500' },
+              { n: 'Predictive Analytics', d: 'ML insights for patient outcomes', c: 'border-l-blue-500' },
+              { n: 'Payment Processing', d: 'Stripe billing & automated claims', c: 'border-l-blue-500' },
+              { n: 'OpenClaw AI', d: 'Core AI Ops automation layer', c: 'border-l-blue-500', special: true },
             ].map((p, i) => (
               <div key={i} className={`stat-card border-l-4 ${p.c} ${p.special ? 'bg-slate-800/80' : ''}`}>
                 <h5 className={`font-bold ${p.special ? 'text-blue-400' : 'text-white'}`}>{p.n}</h5>
@@ -750,7 +750,7 @@ export default function PitchDeckPage() {
                   <p className="text-2xl font-extrabold">$83B</p>
                   <p className="text-[10px] text-blue-400">Telehealth 2030</p>
                 </div>
-                <div className="flex-1 bg-gradient-to-t from-blue-600 to-purple-600 rounded-t-xl p-4 flex flex-col justify-end h-1/4">
+                <div className="flex-1 bg-gradient-to-t from-blue-600 to-blue-600 rounded-t-xl p-4 flex flex-col justify-end h-1/4">
                   <p className="text-[10px] text-white uppercase tracking-wider">SOM</p>
                   <p className="text-2xl font-extrabold">$830M</p>
                   <p className="text-[10px] text-white/70">1% Capture Plan</p>
@@ -759,9 +759,9 @@ export default function PitchDeckPage() {
             </div>
             <div className="flex-1 grid grid-cols-1 gap-4">
               {[
-                { h: '\u2191 48.1% CAGR', t: 'AI in Healthcare growth (2024\u20132030)', c: 'text-emerald-400' },
+                { h: '\u2191 48.1% CAGR', t: 'AI in Healthcare growth (2024\u20132030)', c: 'text-blue-400' },
                 { h: '124K Deficit', t: 'Projected physician shortage by 2034', c: 'text-blue-400' },
-                { h: 'CMS Expanded', t: 'Permanent reimbursement for virtual visits', c: 'text-purple-400' },
+                { h: 'CMS Expanded', t: 'Permanent reimbursement for virtual visits', c: 'text-blue-400' },
               ].map((tw, i) => (
                 <div key={i} className="glass p-5 rounded-xl text-sm flex items-center gap-3">
                   <div className={`w-2.5 h-2.5 rounded-full ${tw.c.replace('text-', 'bg-')}`} />
@@ -783,8 +783,8 @@ export default function PitchDeckPage() {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
             {[
-              { n: 'Patient Subscriptions', m: '85% Margin', p: '$19.99 - $79.99', d: 'Monthly recurring revenue (B2C)', mc: 'text-emerald-500 bg-emerald-500/10' },
-              { n: 'Provider Platform', m: '90% Margin', p: '$99 - $499', d: 'SaaS fees for practitioners', mc: 'text-emerald-500 bg-emerald-500/10' },
+              { n: 'Patient Subscriptions', m: '85% Margin', p: '$19.99 - $79.99', d: 'Monthly recurring revenue (B2C)', mc: 'text-blue-500 bg-blue-500/10' },
+              { n: 'Provider Platform', m: '90% Margin', p: '$99 - $499', d: 'SaaS fees for practitioners', mc: 'text-blue-500 bg-blue-500/10' },
               { n: 'Consultation Fees', m: '35% Margin', p: '$49 - $129', d: 'Per-visit fees for non-subscribers', mc: 'text-blue-500 bg-blue-500/10' },
             ].map((r, i) => (
               <div key={i} className="stat-card">
@@ -799,7 +799,7 @@ export default function PitchDeckPage() {
             <div className="stat-card">
               <div className="flex justify-between items-start mb-4">
                 <h4 className="font-bold text-sm">Enterprise</h4>
-                <span className="text-purple-500 bg-purple-500/10 text-[10px] font-bold px-2.5 py-1 rounded-full">75% Margin</span>
+                <span className="text-blue-500 bg-blue-500/10 text-[10px] font-bold px-2.5 py-1 rounded-full">75% Margin</span>
               </div>
               <p className="text-2xl font-extrabold">$2,000+</p>
               <p className="text-xs text-slate-500 mt-1">White-label &amp; employer deals</p>
@@ -821,8 +821,8 @@ export default function PitchDeckPage() {
         {/* SLIDE 7: FINANCIAL PROJECTIONS */}
         <section>
           <div className="section-label">
-            <div className="dot bg-emerald-500" />
-            <span className="text-emerald-500">Financial Projections</span>
+            <div className="dot bg-blue-500" />
+            <span className="text-blue-500">Financial Projections</span>
           </div>
           <h3 className="slide-title">Path to <span className="gradient-text">$120M ARR</span></h3>
 
@@ -841,7 +841,7 @@ export default function PitchDeckPage() {
                   { l: 'Providers', v: ['25', '100', '400', '1,200', '3,000'] },
                   { l: 'Revenue', v: ['$120K', '$1.8M', '$12M', '$45M', '$120M'], hi: true },
                   { l: 'Gross Margin', v: ['65%', '70%', '75%', '78%', '80%'] },
-                  { l: 'Net Income', v: ['($360K)', '($600K)', '$3M', '$18M', '$60M'], cm: ['text-red-400', 'text-red-400', 'text-emerald-400', 'text-emerald-400', 'text-emerald-400'] },
+                  { l: 'Net Income', v: ['($360K)', '($600K)', '$3M', '$18M', '$60M'], cm: ['text-red-400', 'text-red-400', 'text-blue-400', 'text-blue-400', 'text-blue-400'] },
                 ].map((r, ri) => (
                   <tr key={ri} className={r.hi ? 'bg-blue-500/5' : ri % 2 === 0 ? 'bg-slate-900/30' : ''}>
                     <td className={`p-4 ${r.hi ? 'font-bold text-blue-400' : 'font-semibold'}`}>{r.l}</td>
@@ -855,9 +855,9 @@ export default function PitchDeckPage() {
           </div>
           <div className="mt-6 grid grid-cols-3 gap-6">
             {[
-              { l: 'Break-Even', v: 'Month 18', c: 'bg-emerald-500' },
+              { l: 'Break-Even', v: 'Month 18', c: 'bg-blue-500' },
               { l: 'Year 5 ARR', v: '$120M', c: 'bg-blue-500' },
-              { l: 'Est. Valuation (10x)', v: '$1.2B', c: 'bg-purple-500' },
+              { l: 'Est. Valuation (10x)', v: '$1.2B', c: 'bg-blue-500' },
             ].map((s, i) => (
               <div key={i} className="text-center p-5 glass rounded-xl flex items-center gap-3 justify-center">
                 <div className={`w-2.5 h-2.5 rounded-full ${s.c}`} />
@@ -873,8 +873,8 @@ export default function PitchDeckPage() {
         {/* SLIDE 8: THE TEAM */}
         <section>
           <div className="section-label">
-            <div className="dot bg-purple-500" />
-            <span className="text-purple-500">The Team</span>
+            <div className="dot bg-blue-500" />
+            <span className="text-blue-500">The Team</span>
           </div>
           <h3 className="slide-title">Human Leadership, AI-Amplified Execution</h3>
 
@@ -893,7 +893,7 @@ export default function PitchDeckPage() {
             </div>
             <div className="glass p-7 rounded-2xl">
               <h4 className="text-lg font-bold mb-2">Key Hires in Progress</h4>
-              <div className="w-16 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 mb-5 rounded" />
+              <div className="w-16 h-0.5 bg-gradient-to-r from-blue-500 to-blue-500 mb-5 rounded" />
               <ul className="space-y-4 text-sm text-slate-300">
                 {['Chief Medical Officer (Clinical Oversight)', 'VP Engineering (Platform Scaling)', 'Compliance Officer (HIPAA/SOC 2)', 'Head of Growth (Marketing and BD)'].map((h, i) => (
                   <li key={i} className="flex items-center gap-3">
@@ -914,14 +914,14 @@ export default function PitchDeckPage() {
             <span className="text-blue-500">The Ask</span>
           </div>
           <h3 className="text-7xl font-extrabold mb-2 tracking-tight">$2,500,000</h3>
-          <div className="w-20 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 mx-auto mb-4 rounded" />
+          <div className="w-20 h-0.5 bg-gradient-to-r from-blue-500 to-blue-500 mx-auto mb-4 rounded" />
           <p className="text-xl text-slate-400 mb-12">Seed Round &nbsp;|&nbsp; $10M Pre-Money Valuation</p>
 
           <div className="max-w-4xl w-full grid grid-cols-4 gap-4">
             {[
               { p: '40%', l: 'Eng & Product', d: 'Core engineering & OpenClaw AI dev', c: 'border-l-blue-500' },
-              { p: '25%', l: 'Growth', d: 'Provider & patient acquisition', c: 'border-l-purple-500' },
-              { p: '15%', l: 'Compliance', d: 'SOC 2, state licensing & legal', c: 'border-l-emerald-500' },
+              { p: '25%', l: 'Growth', d: 'Provider & patient acquisition', c: 'border-l-blue-500' },
+              { p: '15%', l: 'Compliance', d: 'SOC 2, state licensing & legal', c: 'border-l-blue-500' },
               { p: '20%', l: 'Ops & Reserve', d: '18-month runway buffer', c: 'border-l-orange-500' },
             ].map((f, i) => (
               <div key={i} className={`stat-card border-l-4 ${f.c} text-left`}>
@@ -947,7 +947,7 @@ export default function PitchDeckPage() {
         {/* SLIDE 10: CONTACT */}
         <section className="items-center text-center">
           <div className="bg-glow" style={{width:600,height:600,top:'15%',left:'25%',background:'radial-gradient(circle,rgba(99,102,241,0.08),transparent)'}} />
-          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-600 rounded-2xl mb-8 flex items-center justify-center shadow-2xl shadow-blue-500/20">
+          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 via-blue-500 to-blue-600 rounded-2xl mb-8 flex items-center justify-center shadow-2xl shadow-blue-500/20">
             <div className="w-10 h-10 bg-white rounded-full" />
           </div>
           <h2 className="text-5xl font-extrabold mb-3 tracking-tight">Let&apos;s Build the Future</h2>

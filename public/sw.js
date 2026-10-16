@@ -5,7 +5,7 @@ const ASSET_CACHE = `${CACHE_NAME}-assets`;
 const ICON_CACHE = `${CACHE_NAME}-icons`;
 const OFFLINE_FALLBACK = '/offline.html';
 const TRACKING_PARAMS = ['source', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
-const MANIFEST_PATHS = new Set(['/manifest.webmanifest', '/ng/manifest.webmanifest']);
+const MANIFEST_PATHS = new Set(['/manifest.webmanifest', '/ng/manifest.webmanifest', '/careops/manifest.webmanifest']);
 const ICON_PATHS = new Set([
   '/apple-touch-icon.png',
   '/favicon.ico',
@@ -47,6 +47,7 @@ const PUBLIC_NAVIGATION_PATHS = new Set([
 ]);
 const LEGACY_CACHE_PREFIXES = ['doctarx-app-shell-', 'doctarx-shell-'];
 const SENSITIVE_PATH_PREFIXES = [
+  '/careops/',
   '/api/',
   '/socket.io',
   '/admin/',

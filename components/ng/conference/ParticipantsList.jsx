@@ -81,8 +81,8 @@ function Row({ p, me, roomId, busy, withBusy, variant }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-semibold text-slate-800">{p.display_name || 'Guest'}</span>
-          {p.role === 'host' && <Crown className="h-3 w-3 text-purple-600" />}
-          {isSelf && <span className="text-[10px] font-semibold text-emerald-600">you</span>}
+          {p.role === 'host' && <Crown className="h-3 w-3 text-blue-600" />}
+          {isSelf && <span className="text-[10px] font-semibold text-blue-600">you</span>}
         </div>
         <div className="flex items-center gap-1.5">
           <span className={`rounded-full px-1.5 text-[10px] font-semibold ${roleBadge(p.role)}`}>{p.role}</span>
@@ -97,7 +97,7 @@ function Row({ p, me, roomId, busy, withBusy, variant }) {
         {variant === 'waiting' && canAdmit && (
           <>
             <IconBtn label="Admit"  onClick={() => withBusy(`adm-${p.id}`, () => conf.admit(roomId, p.id))} busy={busy === `adm-${p.id}`}>
-              <UserCheck className="h-4 w-4 text-emerald-600" />
+              <UserCheck className="h-4 w-4 text-blue-600" />
             </IconBtn>
             <IconBtn label="Deny" onClick={() => withBusy(`den-${p.id}`, () => conf.deny(roomId, p.id))} busy={busy === `den-${p.id}`}>
               <UserX className="h-4 w-4 text-rose-600" />

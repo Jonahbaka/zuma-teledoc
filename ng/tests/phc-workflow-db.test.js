@@ -133,6 +133,16 @@ test('synthetic PHC intake, device capture, clinician sign-off, referral, and re
   });
   assert.equal(Number(manualObservation.value_numeric), 37.1);
 
+  const fhir = require('../services/interop/clinicalFhirService');
+  assert.equal((await fhir.patient(pool, nurseContext, patient.id)).id, patient.id);
+  const fhirEncounter = await fhir.encounter(pool, nurseContext, encounter.id);
+  assert.equal(fhirEncounter.subject.reference, `Patient/${patient.id}`);
+  assert.equal(fhirEncounter.reasonCode[0].text, complaint);
+  const fhirObservations = await fhir.observations(pool, nurseContext, encounter.id);
+  assert.equal(fhirObservations.find((row) => row.id === manualObservation.id).valueQuantity.value, 37.1);
+  assert.equal(fhirObservations.find((row) => row.id === manualObservation.id).valueQuantity.code, 'Cel');
+  await assert.rejects(fhir.encounter(pool, { ...nurseContext, facility_id: crypto.randomUUID() }, encounter.id), { code: 'ENCOUNTER_NOT_FOUND' });
+
   const device = (await pool.query(
     `SELECT id FROM ng_clinical_devices
       WHERE programme_id=$1 AND facility_id=$2 AND adapter_key='mock_device_v1'

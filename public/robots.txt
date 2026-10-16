@@ -5,6 +5,8 @@ Allow: /ng/provider/register
 Allow: /ng/pharmacy
 Allow: /ng/patient/search
 Allow: /ng/patient/track
+Disallow: /careops/
+Disallow: /ng/patient/consultation-billing/
 Disallow: /api/
 Disallow: /admin/
 Disallow: /patient/dashboard/

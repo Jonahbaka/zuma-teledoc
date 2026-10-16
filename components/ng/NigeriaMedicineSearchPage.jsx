@@ -2,8 +2,10 @@
 
 import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, ClipboardList, Loader2, MapPin, Search, ShieldCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ClipboardList, Loader2, Search, ShieldCheck } from 'lucide-react';
 import api from '@/lib/api';
+import useCareLocation from '@/lib/useCareLocation';
+import CareLocationPicker from '@/components/discovery/CareLocationPicker';
 import { Button } from '@/components/ui/button';
 import {
   CATEGORY_IMAGE_KEYS,
@@ -49,10 +51,6 @@ const REQUEST_DEFAULTS = {
 
 const EXAMPLE_SEARCHES = ['malaria', 'cough', 'paracetamol', 'blood pressure', 'diabetes', 'ulcer'];
 
-function statusLabel(value) {
-  return String(value || '').replace(/_/g, ' ');
-}
-
 function buildRequestFromMedicine(medicine, query = '') {
   return {
     ...REQUEST_DEFAULTS,
@@ -92,7 +90,7 @@ function QuickSearchCard({ imageKey, onSelect }) {
     <button
       type="button"
       onClick={() => onSelect(searchTerm)}
-      className="group min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-slate-950 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+      className="group min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-slate-950 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500"
     >
       <MedicineImage imageKey={imageKey} alt={image.alt} eager className="aspect-square w-full" />
       <div className="p-3">
@@ -109,7 +107,7 @@ function CategoryCard({ imageKey, onSelect }) {
     <button
       type="button"
       onClick={() => onSelect(image.category || image.label)}
-      className="group min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-slate-950 shadow-sm transition hover:border-emerald-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+      className="group min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-slate-950 shadow-sm transition hover:border-blue-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500"
     >
       <MedicineImage imageKey={imageKey} alt={image.alt} className="aspect-[4/3] w-full" />
       <div className="p-4">
@@ -137,7 +135,7 @@ function MedicineResultCard({ medicine, onRequest }) {
               ) : null}
               <p className="mt-2 text-sm leading-6 text-slate-700">{commonUse}</p>
             </div>
-            <span className="max-w-full break-words rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold leading-5 text-emerald-800 lg:w-fit">
+            <span className="max-w-full break-words rounded-full bg-blue-50 px-3 py-1 text-xs font-bold leading-5 text-blue-800 lg:w-fit">
               {medicine.category || medicine.featuredCategory || 'Medicine'}
             </span>
           </div>
@@ -163,7 +161,7 @@ function MedicineResultCard({ medicine, onRequest }) {
           ) : null}
 
           <div className="grid gap-3 md:grid-cols-2">
-            <div className={`rounded-2xl border px-4 py-3 ${hasVerifiedAvailability ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+            <div className={`rounded-2xl border px-4 py-3 ${hasVerifiedAvailability ? 'border-blue-200 bg-blue-50 text-blue-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
               <p className="font-bold">Availability</p>
               <p className="mt-1 text-sm leading-6">{hasVerifiedAvailability ? medicine.availabilityMessage : UNKNOWN_AVAILABILITY_MESSAGE}</p>
             </div>
@@ -184,7 +182,7 @@ function MedicineResultCard({ medicine, onRequest }) {
             </div>
           ) : null}
 
-          <Button onClick={() => onRequest(medicine)} className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-500 sm:w-auto">
+          <Button onClick={() => onRequest(medicine)} className="h-11 w-full bg-blue-600 text-white hover:bg-blue-500 sm:w-auto">
             Request Availability
           </Button>
         </div>
@@ -193,21 +191,21 @@ function MedicineResultCard({ medicine, onRequest }) {
   );
 }
 
-function ManualRequestForm({ form, setForm, onSubmit, onClose, submitting, statusMessage, onUseLocation }) {
+function ManualRequestForm({ form, setForm, onSubmit, onClose, submitting, statusMessage, careLocation }) {
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
   return (
-    <section className="w-full min-w-0 rounded-3xl border border-emerald-200 bg-white text-slate-950 shadow-sm">
+    <section className="w-full min-w-0 rounded-3xl border border-blue-200 bg-white text-slate-950 shadow-sm">
       <div className="grid min-w-0 gap-0 lg:grid-cols-[0.85fr_minmax(0,1.15fr)]">
         <MedicineImage imageKey="manualRequest" className="aspect-[16/10] lg:aspect-auto lg:h-full" />
         <div className="min-w-0 space-y-4 p-4 sm:p-6">
           <div>
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-700">Medicine Request</p>
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-700">Medicine Request</p>
             <h2 className="mt-2 text-2xl font-bold text-slate-950">Request medicine availability</h2>
             <p className="mt-2 text-sm leading-6 text-slate-700">Partner pharmacies will confirm availability and price before pickup or delivery.</p>
           </div>
 
           {statusMessage ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
               {statusMessage}
             </div>
           ) : null}
@@ -234,27 +232,17 @@ function ManualRequestForm({ form, setForm, onSubmit, onClose, submitting, statu
             <input value={form.prescriptionAttachmentUrl} onChange={(event) => update('prescriptionAttachmentUrl', event.target.value)} placeholder="Prescription upload link or reference if available" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500 md:col-span-2" />
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-bold text-slate-950">Location</p>
-                  <p className="text-sm text-slate-700">Share location or enter your area manually.</p>
-                </div>
-                <Button type="button" variant="outline" onClick={onUseLocation} className="w-full sm:w-auto">
-                  <MapPin className="mr-2 h-4 w-4" />
-                  Use my location
-                </Button>
-              </div>
-              <p className="mt-2 text-xs font-semibold text-slate-600">Location status: {statusLabel(form.locationPermissionStatus)}</p>
+              <p className="font-semibold text-slate-950">Availability request area</p>
+              <p className="mt-2 leading-7 text-slate-700">{careLocation.location.mode === 'manual' ? [careLocation.location.label, careLocation.location.city, careLocation.location.state, careLocation.location.postalCode].filter(Boolean).join(' · ') : careLocation.location.status === 'ready' ? 'Near your device location' : 'Location is not available. Choose an area above or coordinate with the care team.'}</p>
+              <p className="mt-2 leading-7 text-slate-600">Use Change location above to search near home, work, or another area.</p>
             </div>
 
-            <input value={form.state} onChange={(event) => update('state', event.target.value)} placeholder="State / FCT" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
-            <input value={form.city} onChange={(event) => update('city', event.target.value)} placeholder="City / Area" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
             <input value={form.lga} onChange={(event) => update('lga', event.target.value)} placeholder="LGA" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
             <input value={form.landmark} onChange={(event) => update('landmark', event.target.value)} placeholder="Landmark" className="h-12 min-w-0 rounded-2xl border border-slate-300 bg-white px-4 text-base text-slate-950 placeholder:text-slate-500" />
             <textarea value={form.notes} onChange={(event) => update('notes', event.target.value)} placeholder="Notes for the pharmacy or DoctaRx care team" className="min-h-[112px] min-w-0 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 placeholder:text-slate-500 md:col-span-2" />
 
             <div className="flex flex-col gap-3 md:col-span-2 sm:flex-row">
-              <Button type="submit" disabled={submitting || !form.medicineName || (!form.phone && !form.email && !form.whatsappNumber)} className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-500 sm:w-auto">
+              <Button type="submit" disabled={submitting || !form.medicineName || (!form.phone && !form.email && !form.whatsappNumber)} className="h-11 w-full bg-blue-600 text-white hover:bg-blue-500 sm:w-auto">
                 {submitting ? 'Submitting...' : 'Submit Request'}
               </Button>
               <Button type="button" variant="outline" onClick={onClose} className="h-11 w-full sm:w-auto">Close</Button>
@@ -267,6 +255,9 @@ function ManualRequestForm({ form, setForm, onSubmit, onClose, submitting, statu
 }
 
 export default function NigeriaMedicineSearchPage() {
+  const careLocation = useCareLocation('NG');
+  const { location } = careLocation;
+  const { latitude, longitude, city, state, postalCode } = careLocation.params;
   const [query, setQuery] = useState('');
   const [apiResults, setApiResults] = useState([]);
   const [apiError, setApiError] = useState('');
@@ -299,11 +290,11 @@ export default function NigeriaMedicineSearchPage() {
       setApiError('');
       try {
         const response = await api.get('/ng/discovery/medicines', {
-          params: { q: term, limit: 16 },
+          params: { q: term, limit: 16, latitude, longitude, city, state, postalCode },
           signal: controller.signal,
           timeout: MEDICINE_SEARCH_API_TIMEOUT_MS,
         });
-        setApiResults(Array.isArray(response.data?.medicines) ? response.data.medicines : []);
+        if (!controller.signal.aborted) setApiResults(Array.isArray(response.data?.medicines) ? response.data.medicines : []);
       } catch (error) {
         if (error.name !== 'CanceledError') {
           setApiResults([]);
@@ -320,7 +311,7 @@ export default function NigeriaMedicineSearchPage() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [query, latitude, longitude, city, state, postalCode]);
 
   function selectSearch(term) {
     setQuery(term);
@@ -340,35 +331,22 @@ export default function NigeriaMedicineSearchPage() {
     setRequestOpen(true);
   }
 
-  function requestDeviceLocation() {
-    if (typeof window === 'undefined' || !navigator.geolocation) {
-      setRequestForm((current) => ({ ...current, locationPermissionStatus: 'manual_required' }));
-      return;
-    }
-
-    setRequestForm((current) => ({ ...current, locationPermissionStatus: 'requesting' }));
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setRequestForm((current) => ({
-          ...current,
-          locationPermissionStatus: 'granted',
-          locationLatitude: position.coords.latitude,
-          locationLongitude: position.coords.longitude,
-          locationAccuracy: position.coords.accuracy,
-        }));
-      },
-      () => setRequestForm((current) => ({ ...current, locationPermissionStatus: 'denied_manual_location' })),
-      { enableHighAccuracy: false, timeout: 7000, maximumAge: 300000 }
-    );
-  }
-
   async function submitRequest(event) {
     event.preventDefault();
     setSubmittingRequest(true);
     setRequestStatus('');
 
     try {
-      const response = await api.post('/ng/discovery/medication-requests', requestForm);
+      const response = await api.post('/ng/discovery/medication-requests', {
+        ...requestForm,
+        city: city || null,
+        state: state || null,
+        postalCode: postalCode || null,
+        locationPermissionStatus: location.mode === 'manual' ? 'manual_location' : location.status === 'ready' ? 'granted' : 'manual_required',
+        locationLatitude: location.mode === 'device' ? latitude ?? null : null,
+        locationLongitude: location.mode === 'device' ? longitude ?? null : null,
+        locationAccuracy: null,
+      });
       setRequestStatus(response.data?.statusMessage || 'Pending partner pharmacy confirmation.');
     } catch (error) {
       setRequestStatus('We could not submit online right now. You can try again, or contact DoctaRx support so partner pharmacies can confirm availability.');
@@ -379,10 +357,11 @@ export default function NigeriaMedicineSearchPage() {
 
   return (
     <main className="mx-auto w-full max-w-[1440px] space-y-8 overflow-x-clip px-3 py-4 text-slate-950 sm:px-5 sm:py-6 lg:px-8">
-      <section className="min-w-0 overflow-hidden rounded-[1.5rem] border border-emerald-100 bg-white shadow-sm sm:rounded-[2rem]">
+      <CareLocationPicker careLocation={careLocation} />
+      <section className="min-w-0 overflow-hidden rounded-[1.5rem] border border-blue-100 bg-white shadow-sm sm:rounded-[2rem]">
         <div className="grid min-w-0 lg:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)]">
           <div className="min-w-0 space-y-6 p-4 sm:p-7 lg:p-9">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-emerald-800">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-blue-800">
               <ShieldCheck className="h-4 w-4" />
               Nigeria pharmacy confirmation
             </div>
@@ -407,7 +386,7 @@ export default function NigeriaMedicineSearchPage() {
                 onChange={(event) => setQuery(event.target.value)}
                 onFocus={() => setFocused(true)}
                 placeholder="Search medicine, illness, or symptom"
-                className="h-14 w-full rounded-2xl border border-slate-300 bg-white pl-12 pr-4 text-base font-semibold text-slate-950 shadow-sm placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-100 sm:h-16 sm:rounded-3xl sm:text-lg"
+                className="h-14 w-full rounded-2xl border border-slate-300 bg-white pl-12 pr-4 text-base font-semibold text-slate-950 shadow-sm placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100 sm:h-16 sm:rounded-3xl sm:text-lg"
                 aria-label="Search medicine, illness, or symptom"
               />
               {focused && query.trim() && suggestions.length > 0 ? (
@@ -418,13 +397,13 @@ export default function NigeriaMedicineSearchPage() {
                       type="button"
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => selectSearch(item.name)}
-                      className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left last:border-b-0 hover:bg-emerald-50"
+                      className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left last:border-b-0 hover:bg-blue-50"
                     >
                       <span>
                         <span className="block font-bold text-slate-950">{item.name}</span>
                         <span className="block text-sm text-slate-600">{item.category}</span>
                       </span>
-                      <span className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Search</span>
+                      <span className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Search</span>
                     </button>
                   ))}
                 </div>
@@ -433,7 +412,7 @@ export default function NigeriaMedicineSearchPage() {
 
             <p className="break-words text-sm leading-6 text-slate-700">
               Try: {EXAMPLE_SEARCHES.map((item, index) => (
-                <button key={item} type="button" onClick={() => selectSearch(item)} className="font-bold text-emerald-700 hover:text-emerald-600">
+                <button key={item} type="button" onClick={() => selectSearch(item)} className="font-bold text-blue-700 hover:text-blue-600">
                   {index > 0 ? ', ' : ''}{item}
                 </button>
               ))}
@@ -474,7 +453,7 @@ export default function NigeriaMedicineSearchPage() {
               </h2>
               <p className="mt-1 text-sm text-slate-700">Every result still requires pharmacy confirmation for availability and price.</p>
             </div>
-            {loading ? <span className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-700"><Loader2 className="h-4 w-4 animate-spin" /> Checking</span> : null}
+            {loading ? <span className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700"><Loader2 className="h-4 w-4 animate-spin" /> Checking</span> : null}
           </div>
 
           {apiError ? (
@@ -496,7 +475,7 @@ export default function NigeriaMedicineSearchPage() {
                   <p className="text-sm leading-7 text-slate-700">
                     You can still request this medicine and partner pharmacies will confirm availability.
                   </p>
-                  <Button onClick={openManualRequest} className="w-full bg-emerald-600 text-white hover:bg-emerald-500 sm:w-auto">
+                  <Button onClick={openManualRequest} className="w-full bg-blue-600 text-white hover:bg-blue-500 sm:w-auto">
                     Request Medicine
                   </Button>
                 </div>
@@ -514,7 +493,7 @@ export default function NigeriaMedicineSearchPage() {
               onClose={() => setRequestOpen(false)}
               submitting={submittingRequest}
               statusMessage={requestStatus}
-              onUseLocation={requestDeviceLocation}
+              careLocation={careLocation}
             />
           ) : null}
         </div>
@@ -531,7 +510,7 @@ export default function NigeriaMedicineSearchPage() {
                 'You continue with pickup or delivery.',
               ].map((step) => (
                 <div key={step} className="flex items-start gap-3 text-sm leading-6 text-slate-700">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-emerald-600" />
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-blue-600" />
                   <span>{step}</span>
                 </div>
               ))}

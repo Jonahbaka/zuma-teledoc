@@ -1,660 +1,145 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { 
-  Stethoscope, Menu, X, Bell, Settings, LogOut, User,
-  ChevronDown, Search, Moon, Sun, Plus, FileText, LinkIcon,
-  UserPlus, ChevronRight, Copy, Check
-} from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { Bell, ChevronDown, LogOut, Menu, Settings, User, X } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Button } from '@/components/ui/button';
-import { ThemeToggle } from '@/components/ui/theme-toggle';
-import { LanguageToggle } from '@/components/ui/language-toggle';
 import { notificationsAPI } from '@/lib/api';
+import { getPortalPath } from '@/lib/portalPaths';
 import { cn } from '@/lib/utils';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
-import {
-  getProviderInvitePatientPath,
-  toProviderPortalPath,
-} from '@/lib/providerPortal';
-import { getPortalPath } from '@/lib/portalPaths';
 
-const MOBILE_NAV_PRIORITIES = {
-  Provider: ['Dashboard', 'Triage Queue', 'Schedule', 'Patients'],
-  Patient: ['Dashboard', 'Appointments', 'AI Triage', 'Messages'],
-  Admin: ['Dashboard', 'Users', 'Notifications', 'Analytics'],
-  Pharmacy: ['Dashboard', 'Prescriptions', 'Orders', 'Settings'],
-  default: ['Dashboard'],
+const PRIORITIES = {
+  Patient: ['Home', 'Get care', 'Visits', 'Messages'],
+  Provider: ['Today', 'Appointments', 'Patients', 'Messages'],
+  Admin: ['Dashboard', 'Users', 'Analytics'],
+  Administration: ['Overview', 'Accounts', 'Providers', 'Analytics'],
+  Pharmacy: ['Dashboard', 'Prescriptions', 'Orders'],
 };
 
-function isActivePath(pathname, href) {
-  const normalizedPathname = normalizeHref(pathname);
-  const normalizedHref = normalizeHref(href);
-  return normalizedPathname === normalizedHref || normalizedPathname.startsWith(`${normalizedHref}/`);
+function activePath(pathname, href, home) {
+  return pathname === href || (href !== home && pathname.startsWith(href + '/'));
 }
 
-function normalizeHref(href = '') {
-  const value = String(href || '/').trim();
-  if (!value || value === '/') return '/';
-  return value.replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
+function videoRoute(pathname = '') {
+  return /^\/(?:ng\/)?(?:patient|provider)(?:\/appointments\/[^/]+)?\/call\/?$/.test(pathname);
 }
 
-function getMobileLabel(name) {
-  const compactLabels = {
-    'AI Triage': 'Triage',
-    'Triage Queue': 'Queue',
-    'Prescription Activity': 'Rx',
-    'Health Records': 'Records',
-    'Hospital Network': 'Network',
-    'Visit Notes': 'Notes',
-  };
-
-  return compactLabels[name] || name;
-}
-
-function pickMobileNavigation(portalName, items) {
-  const priorities = MOBILE_NAV_PRIORITIES[portalName] || MOBILE_NAV_PRIORITIES.default;
-  const selected = [];
-  const seen = new Set();
-
-  priorities.forEach((label) => {
-    const match = items.find((item) => item.name === label);
-    if (match && !seen.has(match.href)) {
-      selected.push(match);
-      seen.add(match.href);
-    }
-  });
-
-  items.forEach((item) => {
-    if (selected.length >= 4 || seen.has(item.href)) return;
-    selected.push(item);
-    seen.add(item.href);
-  });
-
-  return selected.slice(0, 4);
-}
-
-function isVideoCallRoute(pathname) {
-  const normalizedPath = (pathname || '').replace(/\/$/, '').replace(/^\/ng(?=\/)/, '');
-  return /^\/(patient|provider)(\/appointments\/[^/]+)?\/call$/.test(normalizedPath);
-}
-
-export default function DashboardLayout({ 
-  children, 
-  navigation, 
-  navigationGroups, // NEW: Support for grouped navigation
-  portalName, 
-  portalColor, 
-  portalHomeHref,
-  showQuickActions = false 
-}) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
-  const [showSidebarEmail, setShowSidebarEmail] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState({});
+export default function DashboardLayout({ children, navigation = [], navigationGroups, portalName = 'Patient', portalHomeHref }) {
+  const pathname = usePathname() || '';
   const { user, logout } = useAuth();
-  const pathname = usePathname();
-  const router = useRouter();
-  const useImmersiveVideoLayout = isVideoCallRoute(pathname);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(null);
+  const drawer = useRef(null);
+  const menuButton = useRef(null);
+  const accountMenu = useRef(null);
+  const immersive = videoRoute(pathname);
+  const filter = (items) => items.filter((item) => (!item.superAdminOnly || user?.role === 'super_admin') && !item.hideFromRole?.includes(user?.role));
+  const groups = navigationGroups?.map((group) => ({ ...group, items: filter(group.items) })).filter((group) => group.items.length);
+  const topLevel = filter(navigation);
+  const items = groups ? [...topLevel, ...groups.flatMap((group) => group.items)] : topLevel;
+  const home = portalHomeHref || items[0]?.href || '/';
+  const current = [...items].sort((a, b) => b.href.length - a.href.length).find((item) => activePath(pathname, item.href, home));
+  const mobile = (PRIORITIES[portalName] || []).map((name) => items.find((item) => item.name === name)).filter(Boolean).slice(0, 3);
+  const quickItems = mobile.length ? mobile : items.slice(0, 3);
+  const portalPath = (suffix) => getPortalPath(suffix, { pathname, user });
 
-  // Initialize expanded groups based on current path
+  useEffect(() => { setSidebarOpen(false); setAccountOpen(false); }, [pathname]);
   useEffect(() => {
-    if (navigationGroups) {
-      const initialExpanded = {};
-      navigationGroups.forEach(group => {
-        const hasActiveItem = group.items.some(item => 
-          pathname === item.href || pathname.startsWith(item.href + '/')
-        );
-        if (hasActiveItem) {
-          initialExpanded[group.name] = true;
-        }
-      });
-      setExpandedGroups(initialExpanded);
-    }
-  }, [navigationGroups, pathname]);
-
-  useEffect(() => {
-    const fetchUnreadCount = async () => {
+    let cancelled = false;
+    const load = async () => {
       try {
-        const response = await notificationsAPI.getUnreadCount();
-        if (response.data.success) {
-          setUnreadCount(response.data.unreadCount);
-        }
-      } catch (error) {
-        // Silent fail
-      }
+        const { data } = await notificationsAPI.getUnreadCount();
+        if (!cancelled) setUnreadCount(data.success ? data.unreadCount : null);
+      } catch { if (!cancelled) setUnreadCount(null); }
     };
-
-    fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 60000);
-    
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleLogout = async () => {
-    await logout();
-  };
-
-  const handleCopyInviteLink = async () => {
-    const baseUrl = window.location.origin;
-    const invitePath = getProviderInvitePatientPath({ pathname, user });
-    const inviteLink = `${baseUrl}${invitePath}${invitePath.includes('?') ? '&' : '?'}ref=${user?.id || 'provider'}`;
-    try {
-      await navigator.clipboard.writeText(inviteLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  };
-
-  const toggleGroup = (groupName) => {
-    setExpandedGroups(prev => ({
-      ...prev,
-      [groupName]: !prev[groupName]
-    }));
-  };
-
-  const isProviderPortal = portalName === 'Provider';
-  const isAdminPortal = portalName === 'Admin';
-  const visibleNavigation = navigation
-    ?.filter((item) => !item.superAdminOnly || user?.role === 'super_admin')
-    ?.filter((item) => !item.hideFromRole || !item.hideFromRole.includes(user?.role)) || [];
-  const groupedNavigation = navigationGroups
-    ? navigationGroups.flatMap((group) =>
-        group.items.filter((item) => {
-          if (item.superAdminOnly && user?.role !== 'super_admin') return false;
-          if (item.hideFromRole && item.hideFromRole.includes(user?.role)) return false;
-          return true;
-        })
-      )
-    : [];
-  const allNavigationItems = [...visibleNavigation, ...groupedNavigation].filter(
-    (item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index
-  );
-  const activeNavigationItem = allNavigationItems.find((item) => isActivePath(pathname, item.href)) || allNavigationItems[0];
-  const mobileNavigation = pickMobileNavigation(portalName, allNavigationItems);
-  const userInitials = `${user?.firstName?.[0] || ''}${user?.lastName?.[0] || ''}` || user?.email?.[0]?.toUpperCase() || 'U';
-  const resolvedPortalHomeHref =
-    portalHomeHref ||
-    visibleNavigation[0]?.href ||
-    allNavigationItems[0]?.href ||
-    '/';
-
+    if (user?.id) load();
+    const timer = setInterval(() => { if (user?.id) load(); }, 60000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [user?.id]);
   useEffect(() => {
-    setSidebarOpen(false);
-    setUserMenuOpen(false);
-    setQuickActionsOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (typeof document === 'undefined' || typeof window === 'undefined') return undefined;
-
-    if (window.innerWidth >= 1024) {
-      return undefined;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    if (sidebarOpen || userMenuOpen || quickActionsOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = previousOverflow;
-    }
-
+    if (!sidebarOpen) return undefined;
+    const previousFocus = document.activeElement;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    drawer.current?.querySelector('button, a')?.focus();
+    const handleKey = (event) => {
+      if (event.key === 'Escape') { setSidebarOpen(false); return; }
+      if (event.key !== 'Tab' || !drawer.current) return;
+      const focusable = [...drawer.current.querySelectorAll('a, button')].filter((element) => element.getClientRects().length);
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', handleKey);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.body.style.overflow = overflow;
+      document.removeEventListener('keydown', handleKey);
+      if (previousFocus?.isConnected) previousFocus.focus();
     };
-  }, [quickActionsOpen, sidebarOpen, userMenuOpen]);
+  }, [sidebarOpen]);
+  useEffect(() => {
+    if (!accountOpen) return undefined;
+    const close = (event) => { if (!accountMenu.current?.contains(event.target)) setAccountOpen(false); };
+    const escape = (event) => { if (event.key === 'Escape') { setAccountOpen(false); accountMenu.current?.querySelector('button')?.focus(); } };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', escape); };
+  }, [accountOpen]);
 
-  // Render navigation item
-  const renderNavItem = (item, inGroup = false) => {
-    // Check if item should be hidden based on role
-    if (item.superAdminOnly && user?.role !== 'super_admin') {
-      return null;
-    }
-    if (item.hideFromRole && item.hideFromRole.includes(user?.role)) {
-      return null;
-    }
+  const renderLink = (item) => <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}
+    aria-current={activePath(pathname, item.href, home) ? 'page' : undefined}
+    className={cn('flex min-h-12 items-center gap-3 rounded-xl px-4 py-3 font-medium transition-colors',
+      activePath(pathname, item.href, home) ? 'bg-blue-50 text-blue-800' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950')}>
+    <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" /><span>{item.name}</span>
+  </Link>;
 
-    const href = normalizeHref(item.href);
-    const isActive = isActivePath(pathname, href);
-    
-    return (
-      <Link
-        key={`${item.name}-${href}`}
-        href={href}
-        className={cn(
-          'flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all active:scale-[0.98]',
-          inGroup && 'ml-4 rounded-xl px-3 py-2.5',
-          isActive 
-            ? `bg-gradient-to-r ${portalColor} text-white shadow-lg` 
-            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-        )}
-        onClick={() => setSidebarOpen(false)}
-        aria-current={isActive ? 'page' : undefined}
-      >
-        <item.icon className="w-5 h-5 flex-shrink-0" />
-        <span className="truncate">{item.name}</span>
-        {item.badge && (
-          <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-            {item.badge}
-          </span>
-        )}
-      </Link>
-    );
-  };
-
-  // Render grouped navigation (for Admin)
-  const renderGroupedNavigation = () => {
-    if (!navigationGroups) return null;
-
-    return (
-      <div className="space-y-2">
-        {navigationGroups.map((group) => {
-          // Filter items based on role
-          const visibleItems = group.items.filter(item => {
-            if (item.superAdminOnly && user?.role !== 'super_admin') return false;
-            if (item.hideFromRole && item.hideFromRole.includes(user?.role)) return false;
-            return true;
-          });
-
-          if (visibleItems.length === 0) return null;
-
-          const isExpanded = expandedGroups[group.name];
-          const hasActiveItem = visibleItems.some(item => 
-            pathname === item.href || pathname.startsWith(item.href + '/')
-          );
-
-          return (
-            <div key={group.name} className="space-y-1">
-              <button
-                type="button"
-                onClick={() => toggleGroup(group.name)}
-                aria-expanded={Boolean(isExpanded)}
-                className={cn(
-                  "w-full flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition-all",
-                  hasActiveItem 
-                    ? "text-foreground bg-accent/50" 
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent/30"
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <group.icon className="w-4 h-4" />
-                  <span>{group.name}</span>
-                </div>
-                <ChevronDown className={cn(
-                  "w-4 h-4 transition-transform duration-200",
-                  isExpanded && "rotate-180"
-                )} />
-              </button>
-              
-              <div className={cn(
-                "overflow-hidden transition-all duration-200",
-                isExpanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
-              )}>
-                <div className="space-y-1 py-1">
-                  {visibleItems.map(item => renderNavItem(item, true))}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const getPortalHref = (suffix) => {
-    return getPortalPath(suffix, { pathname, user });
-  };
-
-  return (
-    <div className="app-shell-root min-h-[100dvh] bg-background text-foreground">
-      {/* Mobile sidebar backdrop */}
-      {!useImmersiveVideoLayout && sidebarOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-sm lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      {!useImmersiveVideoLayout && (
-      <aside className={cn(
-        'app-safe-top fixed inset-y-0 left-0 z-50 flex h-full w-64 max-w-[86vw] flex-col border-r border-border/80 bg-card/92 shadow-2xl backdrop-blur-2xl transition-transform duration-300 lg:max-w-none lg:translate-x-0',
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      )}>
-        {/* Logo */}
-        <div className="flex min-h-[4.75rem] items-center justify-between border-b border-border/70 px-4">
-          <Link href={resolvedPortalHomeHref} className="flex items-center gap-2">
-            <div>
-              <span className="inline-flex rounded-xl bg-slate-950/95 px-3 py-2 shadow-[0_0_20px_rgba(34,211,238,0.18)] border border-slate-800">
-                <DoctaRxLogo className="h-7 w-auto" />
-              </span>
-              <span className={cn(
-                'block text-xs font-medium',
-                'text-purple-600'
-              )}>
-                {portalName} Portal
-              </span>
-            </div>
-          </Link>
-          <button 
-            type="button"
-            aria-label={`Close ${portalName.toLowerCase()} navigation`}
-            className="lg:hidden text-muted-foreground hover:text-foreground"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <X className="w-6 h-6" />
-          </button>
+  return <div className="doctarx-portal clinical-readable min-h-[100dvh] bg-slate-50 text-slate-950">
+    <a href="#portal-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-white focus:p-4">Skip to main content</a>
+    {!immersive && <>
+      {sidebarOpen && <div className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden" onClick={() => setSidebarOpen(false)} aria-hidden="true" />}
+      <aside ref={drawer} aria-label={portalName + ' navigation'} role={sidebarOpen ? 'dialog' : undefined} aria-modal={sidebarOpen ? true : undefined}
+        className={cn('fixed inset-y-0 left-0 z-50 flex w-72 max-w-[88vw] flex-col border-r border-slate-200 bg-white transition-transform lg:translate-x-0', sidebarOpen ? 'translate-x-0' : '-translate-x-full')}>
+        <div className="flex min-h-24 items-center justify-between bg-[#101d36] px-6">
+          <Link href={home} aria-label="DoctaRx home"><DoctaRxLogo glow={false} className="h-9 w-auto" /></Link>
+          <button className="rounded-lg p-2 text-white lg:hidden" aria-label={'Close ' + portalName.toLowerCase() + ' navigation'} onClick={() => setSidebarOpen(false)}><X className="h-6 w-6" /></button>
         </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 space-y-1 overflow-y-auto px-4 pb-6 pt-4" style={{ maxHeight: 'calc(100dvh - 220px)' }}>
-          {/* Use grouped navigation if available, otherwise flat */}
-          {navigationGroups ? (
-            renderGroupedNavigation()
-          ) : (
-            visibleNavigation.map((item) => renderNavItem(item))
-          )}
+        <nav className="flex-1 overflow-y-auto p-4" aria-label={portalName + ' main navigation'}>
+          {groups ? <><div className="mb-5 space-y-1">{topLevel.map(renderLink)}</div>{groups.map((group) => <section key={group.name} className="mb-5"><p className="mb-2 px-4 font-semibold text-slate-500">{group.name}</p><div className="space-y-1">{group.items.map(renderLink)}</div></section>)}</> : <div className="space-y-1">{items.map(renderLink)}</div>}
         </nav>
-
-        {/* User info at bottom - Privacy Enhanced */}
-        <div className="app-safe-bottom border-t border-border/70 bg-background/75 p-4 backdrop-blur-xl">
-          <div 
-            className="flex items-center gap-3 cursor-pointer group"
-            onClick={() => setShowSidebarEmail(!showSidebarEmail)}
-          >
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center border border-border shadow-md">
-              <span className="text-white text-sm font-medium">
-                {userInitials}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">
-                {user?.firstName} {user?.lastName}
-              </p>
-              {showSidebarEmail ? (
-                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-              ) : (
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Settings className="w-3 h-3" />
-                  <span>Tap to expand</span>
-                </p>
-              )}
-            </div>
-            <ChevronRight className={cn(
-              "w-4 h-4 text-muted-foreground transition-transform",
-              showSidebarEmail && "rotate-90"
-            )} />
-          </div>
+        <div className="space-y-3 border-t border-slate-200 p-5">
+          <p className="break-words font-medium text-slate-900">{user?.firstName} {user?.lastName}</p>
+          <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-slate-600 hover:bg-slate-50" onClick={() => logout()}><LogOut className="h-5 w-5" aria-hidden="true" />Sign out</button>
         </div>
       </aside>
-      )}
-
-      {/* Main content */}
-      <div className={cn('min-h-[100dvh]', !useImmersiveVideoLayout && 'lg:pl-64')}>
-        {/* Top header */}
-        {!useImmersiveVideoLayout && (
-        <header className="sticky top-0 z-30 border-b border-border/70 bg-background/88 backdrop-blur-2xl">
-          <div className="flex min-h-[4.5rem] items-center justify-between gap-3 px-4 py-3 md:px-6 lg:min-h-20 lg:px-8 [padding-top:calc(0.75rem+env(safe-area-inset-top,0px))]">
-            <div className="flex min-w-0 items-center gap-3">
-            <button 
-              className="rounded-2xl border border-border/70 bg-card/80 p-2.5 text-muted-foreground shadow-sm transition hover:text-foreground lg:hidden"
-              onClick={() => setSidebarOpen(true)}
-              aria-label={`Open ${portalName.toLowerCase()} navigation`}
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-
-            <div className="min-w-0 lg:hidden">
-              <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                {portalName} Portal
-              </div>
-              <div className="truncate text-sm font-semibold text-foreground sm:text-base">
-                {activeNavigationItem?.name || portalName}
-              </div>
-            </div>
-            
-            {/* Search */}
-            <div className="hidden md:flex items-center">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder={isAdminPortal ? "Search users, logs..." : "Search patients, notes, ICD-10..."}
-                  className="w-[min(28rem,48vw)] rounded-2xl border border-border bg-muted/60 py-2.5 pl-10 pr-4 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
+    </>}
+    <div className={cn('min-h-[100dvh] min-w-0', !immersive && 'lg:pl-72')}>
+      {!immersive && <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
+        <div className="flex min-h-24 items-center justify-between gap-3 px-4 py-4 sm:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <button ref={menuButton} className="shrink-0 rounded-xl border border-slate-200 p-3 lg:hidden" aria-label={'Open ' + portalName.toLowerCase() + ' navigation'} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><Menu className="h-6 w-6" /></button>
+            <div className="min-w-0"><p className="font-medium text-slate-500">DoctaRx · {portalName === 'Provider' ? 'Clinical workspace' : portalName === 'Patient' ? 'Your care' : portalName + ' workspace'}</p><p className="font-semibold text-slate-950">{current?.name || portalName}</p></div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link href={portalPath('/notifications')} aria-label="Notifications" className="relative flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50"><Bell className="h-5 w-5" aria-hidden="true" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-h-6 min-w-6 items-center justify-center rounded-full bg-blue-700 px-1 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}</Link>
+            <div ref={accountMenu} className="relative">
+              <button onClick={() => setAccountOpen(!accountOpen)} aria-expanded={accountOpen} aria-controls="portal-account-menu" aria-label="Account menu" className="flex h-12 items-center gap-2 rounded-xl border border-slate-200 px-3"><User className="h-5 w-5" aria-hidden="true" /><span className="hidden sm:inline">Account</span><ChevronDown className="hidden h-4 w-4 sm:block" aria-hidden="true" /></button>
+              {accountOpen && <div id="portal-account-menu" className="absolute right-0 mt-3 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                <Link href={portalPath('/profile')} className="flex items-center gap-3 rounded-lg p-3 hover:bg-slate-50"><User className="h-5 w-5" />Profile</Link>
+                <Link href={portalPath('/settings')} className="flex items-center gap-3 rounded-lg p-3 hover:bg-slate-50"><Settings className="h-5 w-5" />Settings</Link>
+                <button onClick={() => logout()} className="flex w-full items-center gap-3 rounded-lg p-3 text-left hover:bg-slate-50"><LogOut className="h-5 w-5" />Sign out</button>
+              </div>}
             </div>
           </div>
-
-            <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Quick Actions - Provider Only */}
-            {isProviderPortal && (
-              <div className="relative">
-                <div className="hidden sm:flex items-center gap-2 mr-2">
-                  <Link href={toProviderPortalPath('/patients', { pathname, user })}>
-                    <Button 
-                      size="sm" 
-                      className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25"
-                    >
-                      <UserPlus className="w-4 h-4 mr-1.5" />
-                      Open Patients
-                    </Button>
-                  </Link>
-                  <Link href={toProviderPortalPath('/visits', { pathname, user })}>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      className="border-purple-500 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950"
-                    >
-                      <FileText className="w-4 h-4 mr-1.5" />
-                      Visit Notes
-                    </Button>
-                  </Link>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={handleCopyInviteLink}
-                    className="border-amber-600 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950"
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="w-4 h-4 mr-1.5" />
-                        Copied!
-                      </>
-                    ) : (
-                      <>
-                        <LinkIcon className="w-4 h-4 mr-1.5" />
-                        Invite Link
-                      </>
-                    )}
-                  </Button>
-                </div>
-
-                {/* Mobile Quick Actions Dropdown */}
-                <div className="sm:hidden">
-                  <Button 
-                    variant="outline" 
-                    size="icon"
-                    aria-label="Open provider quick actions"
-                    onClick={() => setQuickActionsOpen(!quickActionsOpen)}
-                    className="border-purple-500 text-purple-600"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </Button>
-                  
-                  {quickActionsOpen && (
-                    <>
-                      <div 
-                        className="fixed inset-0 z-40"
-                        onClick={() => setQuickActionsOpen(false)}
-                      />
-                      <div className="absolute right-0 mt-2 w-48 bg-popover rounded-xl shadow-lg border border-border py-2 z-50">
-                        <Link
-                          href={toProviderPortalPath('/patients', { pathname, user })}
-                          className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent"
-                          onClick={() => setQuickActionsOpen(false)}
-                        >
-                          <UserPlus className="w-4 h-4 text-emerald-500" />
-                          Open Patients
-                        </Link>
-                        <Link
-                          href={toProviderPortalPath('/visits', { pathname, user })}
-                          className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent"
-                          onClick={() => setQuickActionsOpen(false)}
-                        >
-                          <FileText className="w-4 h-4 text-purple-500" />
-                          Visit Notes
-                        </Link>
-                        <button
-                          onClick={() => {
-                            handleCopyInviteLink();
-                            setQuickActionsOpen(false);
-                          }}
-                          className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent w-full"
-                        >
-                          <LinkIcon className="w-4 h-4 text-amber-500" />
-                          Copy Invite Link
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <LanguageToggle className="hidden xl:flex" />
-            <ThemeToggle className="hidden sm:inline-flex" />
-            
-            {/* Notifications */}
-            <Link href={getPortalHref('/notifications')} aria-label="Notifications">
-              <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
-                <Bell className="w-5 h-5" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </Button>
-            </Link>
-
-            {/* Settings */}
-            <Link href={getPortalHref('/settings')} className="hidden sm:block" aria-label="Settings">
-              <Button variant="ghost" size="icon" aria-label="Settings">
-                <Settings className="w-5 h-5" />
-              </Button>
-            </Link>
-
-            {/* User menu */}
-            <div className="relative hidden sm:block">
-              <button
-                onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent transition-colors"
-              >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center">
-                  <span className="text-white text-sm font-medium">
-                    {userInitials}
-                  </span>
-                </div>
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              </button>
-
-              {userMenuOpen && (
-                <>
-                  <div 
-                    className="fixed inset-0 z-40"
-                    onClick={() => setUserMenuOpen(false)}
-                  />
-                  <div className="absolute right-0 mt-2 w-56 bg-popover rounded-xl shadow-lg border border-border py-2 z-50">
-                    <div className="px-4 py-2 border-b border-border">
-                      <p className="font-medium text-foreground">
-                        {user?.firstName} {user?.lastName}
-                      </p>
-                      <p className="text-sm text-muted-foreground">{user?.email}</p>
-                    </div>
-                    <Link
-                      href={getPortalHref('/profile')}
-                      className="flex items-center gap-3 px-4 py-2 text-sm text-foreground/90 hover:bg-accent"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      <User className="w-4 h-4" />
-                      Profile
-                    </Link>
-                    <Link
-                      href={getPortalHref('/settings')}
-                      className="flex items-center gap-3 px-4 py-2 text-sm text-foreground/90 hover:bg-accent"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      <Settings className="w-4 h-4" />
-                      Settings
-                    </Link>
-                    <div className="border-t border-border mt-2 pt-2">
-                      <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 w-full"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        Sign out
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-          </div>
-        </header>
-        )}
-
-        {/* Page content */}
-        <main className={cn(
-          useImmersiveVideoLayout
-            ? 'h-[100dvh] overflow-hidden p-0'
-            : 'app-mobile-content-pad p-4 pt-5 lg:p-8 lg:pb-8'
-        )}>
-          {children}
-        </main>
-
-        {!useImmersiveVideoLayout && mobileNavigation.length > 0 ? (
-          <nav className="app-mobile-dock lg:hidden" aria-label={`${portalName} quick navigation`}>
-            {mobileNavigation.map((item) => (
-              <div key={normalizeHref(item.href)} className="app-mobile-dock__item">
-                <Link
-                  href={normalizeHref(item.href)}
-                  className="app-mobile-dock__link"
-                  data-active={isActivePath(pathname, item.href)}
-                  aria-current={isActivePath(pathname, item.href) ? 'page' : undefined}
-                >
-                  <span className="app-mobile-dock__icon">
-                    <item.icon className="h-5 w-5" />
-                  </span>
-                  <span className="app-mobile-dock__label">{getMobileLabel(item.name)}</span>
-                </Link>
-              </div>
-            ))}
-            <div className="app-mobile-dock__item">
-              <button
-                type="button"
-                className="app-mobile-dock__link"
-                data-active={sidebarOpen}
-                onClick={() => setSidebarOpen(true)}
-                aria-label={`Open ${portalName.toLowerCase()} menu`}
-              >
-                <span className="app-mobile-dock__icon">
-                  <Menu className="h-5 w-5" />
-                </span>
-                <span className="app-mobile-dock__label">Menu</span>
-              </button>
-            </div>
-          </nav>
-        ) : null}
-      </div>
+        </div>
+      </header>}
+      <main id="portal-content" tabIndex={-1} className={immersive ? 'h-[100dvh] overflow-hidden p-0' : 'mx-auto max-w-[1560px] p-4 pb-28 sm:p-8 sm:pb-28 lg:pb-8'}>{children}</main>
+      {!immersive && <nav aria-label={portalName + ' quick navigation'} className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
+        {quickItems.map((item) => <Link key={item.href} href={item.href} aria-current={activePath(pathname, item.href, home) ? 'page' : undefined} className={cn('flex min-h-20 min-w-0 flex-col items-center justify-center gap-1 px-1 text-center', activePath(pathname, item.href, home) ? 'text-blue-800' : 'text-slate-600')}><item.icon className="h-5 w-5" aria-hidden="true" /><span>{item.name === 'Appointments' ? 'Visits' : item.name}</span></Link>)}
+        <button aria-label={'Open ' + portalName.toLowerCase() + ' menu'} onClick={() => setSidebarOpen(true)} className="flex min-h-20 flex-col items-center justify-center gap-1 text-slate-600"><Menu className="h-5 w-5" aria-hidden="true" />Menu</button>
+      </nav>}
     </div>
-  );
+  </div>;
 }

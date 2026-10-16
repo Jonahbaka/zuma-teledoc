@@ -198,7 +198,7 @@ export default function ProviderSettingsPage() {
                     <p className="font-medium text-slate-900">{user?.email}</p>
                     <p className="text-sm text-slate-500">
                       {user?.isVerified ? (
-                        <span className="flex items-center gap-1 text-purple-600">
+                        <span className="flex items-center gap-1 text-blue-600">
                           <CheckCircle className="w-4 h-4" />
                           Verified
                         </span>

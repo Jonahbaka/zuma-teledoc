@@ -21,6 +21,26 @@ const AnalyticsEngine = require('../services/analytics-engine');
 // Initialize services
 const fhirBridge = new FHIRBridge(db);
 const analytics = new AnalyticsEngine(db);
+const { patientFinancialAccess } = require('../middleware/financialRecordScope');
+const { auditMiddleware } = require('../middleware/audit');
+
+function patientScope(resolvePatient) {
+  return async (req, res, next) => {
+    try {
+      const patientId = await resolvePatient(req);
+      if (!await patientFinancialAccess(req.user, patientId)) return res.status(404).json({ resourceType: 'OperationOutcome', issue: [{ severity: 'error', code: 'not-found', diagnostics: 'Resource not found' }] });
+      next();
+    } catch (error) { next(error); }
+  };
+}
+
+function recordPatient(table, parameter, idColumn = 'id') {
+  return async (req) => {
+    if (!/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(String(req.params[parameter] || ''))) return null;
+    const { rows } = await db.query(`SELECT patient_id FROM ${table} WHERE ${idColumn} = $1`, [req.params[parameter]]);
+    return rows[0]?.patient_id;
+  };
+}
 
 // ============================================================================
 // FHIR RESOURCE ENDPOINTS
@@ -33,7 +53,7 @@ const analytics = new AnalyticsEngine(db);
  * Retrieve patient data in FHIR R4 format
  * Requires: Patient consent for the requesting organization
  */
-router.get('/fhir/Patient/:id', authenticate, async (req, res) => {
+router.get('/fhir/Patient/:id', authenticate, patientScope((req) => req.params.id), auditMiddleware('read', 'fhir_patient', { phiAccessed: true }), async (req, res) => {
   try {
     const patientId = req.params.id;
     const requestingOrg = req.headers['x-organization-id'];
@@ -79,7 +99,7 @@ router.get('/fhir/Patient/:id', authenticate, async (req, res) => {
  * 
  * Retrieve encounter/visit data in FHIR format
  */
-router.get('/fhir/Encounter/:id', authenticate, async (req, res) => {
+router.get('/fhir/Encounter/:id', authenticate, patientScope(recordPatient('appointments', 'id')), auditMiddleware('read', 'fhir_encounter', { phiAccessed: true }), async (req, res) => {
   try {
     const encounter = await fhirBridge.toFHIREncounter(req.params.id);
     res.set('Content-Type', 'application/fhir+json');
@@ -97,7 +117,7 @@ router.get('/fhir/Encounter/:id', authenticate, async (req, res) => {
  * 
  * Retrieve prescription data in FHIR format
  */
-router.get('/fhir/MedicationRequest/:id', authenticate, async (req, res) => {
+router.get('/fhir/MedicationRequest/:id', authenticate, patientScope(recordPatient('prescriptions', 'id')), auditMiddleware('read', 'fhir_medication_request', { phiAccessed: true }), async (req, res) => {
   try {
     const medication = await fhirBridge.toFHIRMedicationRequest(req.params.id);
     res.set('Content-Type', 'application/fhir+json');
@@ -115,31 +135,12 @@ router.get('/fhir/MedicationRequest/:id', authenticate, async (req, res) => {
  * 
  * Retrieve patient vitals and lab results
  */
-router.get('/fhir/Patient/:patientId/Observation', authenticate, async (req, res) => {
-  try {
-    const { startDate, endDate } = req.query;
-    const observations = await fhirBridge.toFHIRObservations(req.params.patientId, {
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined
-    });
-
-    // Return as a FHIR Bundle
-    res.set('Content-Type', 'application/fhir+json');
-    res.json({
-      resourceType: 'Bundle',
-      type: 'searchset',
-      total: observations.length,
-      entry: observations.map(obs => ({
-        resource: obs,
-        fullUrl: `urn:uuid:${obs.id}`
-      }))
-    });
-  } catch (error) {
-    res.status(500).json({
-      resourceType: 'OperationOutcome',
-      issue: [{ severity: 'error', code: 'exception', diagnostics: error.message }]
-    });
-  }
+router.get('/fhir/Patient/:patientId/Observation', authenticate, patientScope((req) => req.params.patientId), auditMiddleware('read', 'fhir_observations', { phiAccessed: true }), async (req, res) => {
+  // The legacy mapper expects a vitals table absent from the migrated schema.
+  // Canonical PHC observations are exposed through the programme-scoped API.
+  res.status(503).set('Content-Type', 'application/fhir+json').json({
+    resourceType: 'OperationOutcome', issue: [{ severity: 'error', code: 'not-supported', diagnostics: 'This legacy observation source is unavailable. Use the authorised programme-scoped clinical FHIR API.' }],
+  });
 });
 
 // ============================================================================
@@ -151,7 +152,7 @@ router.get('/fhir/Patient/:patientId/Observation', authenticate, async (req, res
  * 
  * Create and dispatch a patient referral to an external hospital
  */
-router.post('/referrals', authenticate, requireRole('provider', 'admin'), async (req, res) => {
+router.post('/referrals', authenticate, requireRole('provider', 'admin'), patientScope((req) => req.body.patientId), auditMiddleware('export', 'fhir_referral', { phiAccessed: true }), async (req, res) => {
   try {
     const {
       patientId,
@@ -236,7 +237,7 @@ router.post('/referrals', authenticate, requireRole('provider', 'admin'), async 
  * 
  * Get referral status
  */
-router.get('/referrals/:bundleId', authenticate, async (req, res) => {
+router.get('/referrals/:bundleId', authenticate, patientScope(recordPatient('referral_audit_log', 'bundleId', 'bundle_id')), async (req, res) => {
   try {
     const { rows } = await db.query(
       `SELECT r.*, d.status as dispatch_status, d.dispatched_at
@@ -265,7 +266,7 @@ router.get('/referrals/:bundleId', authenticate, async (req, res) => {
  * 
  * Create a new data sharing consent
  */
-router.post('/consents', authenticate, async (req, res) => {
+router.post('/consents', authenticate, requireRole('patient'), patientScope((req) => req.body.patientId), async (req, res) => {
   try {
     const {
       patientId,
@@ -312,7 +313,7 @@ router.post('/consents', authenticate, async (req, res) => {
  * 
  * Get all consents for a patient
  */
-router.get('/consents/patient/:patientId', authenticate, async (req, res) => {
+router.get('/consents/patient/:patientId', authenticate, patientScope((req) => req.params.patientId), async (req, res) => {
   try {
     const includeRevoked = req.query.includeRevoked === 'true';
     const consents = await fhirBridge.consentManager.getPatientConsents(
@@ -331,7 +332,7 @@ router.get('/consents/patient/:patientId', authenticate, async (req, res) => {
  * 
  * Revoke a consent
  */
-router.delete('/consents/:consentId', authenticate, async (req, res) => {
+router.delete('/consents/:consentId', authenticate, requireRole('patient'), patientScope(recordPatient('patient_consents', 'consentId')), async (req, res) => {
   try {
     const { reason } = req.body;
     

@@ -1,7 +1,7 @@
 {
   "name": "zuma-teledoc",
   "version": "1.0.0",
-  "description": "DoctaRx - Production HIPAA-compliant Telehealth Platform",
+  "description": "DoctaRx connected virtual care and clinical operations platform",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:next\"",
@@ -20,6 +20,15 @@
     "verify:admin-test-access": "node scripts/verify-admin-test-access-flow.cjs",
     "verify:testing-link-lifecycle": "node scripts/verify-testing-link-lifecycle.cjs",
     "test": "node --test server/tests/message-authorization.test.js ng/tests/auditLineage.test.js ng/tests/clinical-access-authorization.test.js ng/tests/conference-authorization.test.js ng/tests/conferencing.test.js ng/tests/dhis2.test.js ng/tests/governance.test.js ng/tests/livekit-provider-conference-contract.test.js ng/tests/nigeria-imaging-authorization.test.js ng/tests/phc-governance-services.test.js ng/tests/phc-workflow-service.test.js ng/tests/programme-scope-authorization.test.js ng/tests/provider-workflow-discovery.test.js ng/tests/public-health-missing-data.test.js ng/tests/rbac.test.js ng/tests/telehealth-lifecycle-integration.test.js ng/tests/telehealth-lifecycle-db.test.js ng/tests/clinical-record-integrity.test.js ng/tests/patient-safety.test.js ng/tests/video-connection-resilience.test.js ng/tests/dhis2-export-architecture.test.js ng/tests/message-idempotency.test.js ng/tests/clinical-documentation-assistant.test.js ng/tests/clinical-list-safety.test.js ng/tests/ui-accessibility-contract.test.js && node ng/tests/regression.test.js && node ng/tests/portal-contract.test.js",
+    "pretest": "node --test ng/tests/careops-production.test.js ng/tests/provider-portal-contract.test.js ng/tests/private-prescription-upload.test.js ng/tests/private-prescription-endpoints.test.js ng/tests/prescription-submission-navigation.test.js ng/tests/provider-prescription-authorization.test.js ng/tests/care-location-policy.test.js ng/tests/client-integration-truthfulness.test.js ng/tests/insurance-integration-truthfulness.test.js ng/tests/admin-workspace-resilience.test.js ng/tests/admin-decisions.test.js ng/tests/discovery-truthfulness.test.js server/tests/public-directory.test.js server/tests/admin-dashboard-truthfulness.test.js server/tests/credentialing-route-discovery.test.js ng/tests/patient-caller-state.test.js ng/tests/pwa-navigation-update.test.js ng/tests/pharmacy-preference-authorization.test.js server/tests/admin-recorded-actions.test.js ng/tests/patient-pharmacy-state.test.js ng/tests/phc-fhir-capability.test.js server/tests/legacy-prescription-access.test.js server/tests/erx-intent-integrity.test.js server/tests/consumer-membership-safety.test.js ng/tests/consumer-membership-state.test.js server/tests/medical-record-integrity.test.js server/tests/careops-deployment-profile.test.js ng/tests/dhis2-delivery-worker.test.js ng/tests/dhis2-delivery-ui-state.test.js server/tests/clinical-encounter-integrity.test.js server/tests/auth-session-races.test.js server/tests/patient-clinical-profile-integrity.test.js server/tests/public-browser-lifecycle.test.js && npm run test:ng:medication-delivery && npm run test:fixture-safety",
+    "test:platform:db": "node --test --test-concurrency=1 ng/tests/appointment-list-scope-db.test.js ng/tests/private-prescription-endpoints.test.js ng/tests/provider-prescription-authorization.test.js ng/tests/pharmacy-workspace-queries-db.test.js ng/tests/manual-insurance-integrity.test.js ng/tests/admin-consultation-lineage.test.js ng/tests/admin-decisions-db.test.js ng/tests/discovery-truthfulness-db.test.js ng/tests/pharmacy-preference-authorization.test.js server/tests/admin-recorded-actions-db.test.js server/tests/crm-schema-upgrade-db.test.js ng/tests/phc-fhir-capability-db.test.js server/tests/legacy-prescription-access.test.js server/tests/erx-intent-integrity.test.js server/tests/consumer-membership-safety.test.js ng/tests/dhis2-delivery-integrity-db.test.js server/tests/medical-record-integrity.test.js ng/tests/dhis2-delivery-operations-db.test.js server/tests/clinical-encounter-integrity.test.js server/tests/patient-clinical-profile-integrity.test.js",
+    "test:careops:db": "node --test ng/tests/careops-production-db.test.js",
+    "e2e:careops": "node scripts/e2e-careops-ui.cjs",
+    "e2e:main-platform": "node scripts/e2e-main-platform.cjs",
+    "e2e:admin-platform": "node scripts/e2e-admin-platform.cjs",
+    "e2e:public-platform": "node scripts/e2e-public-platform.cjs",
+    "e2e:membership-platform": "node scripts/e2e-membership-platform.cjs",
+    "reconcile:ng:payments": "node scripts/reconcile-ng-payment-receipts.cjs",
     "test:regression": "node ng/tests/regression.test.js",
     "test:portal": "node ng/tests/portal-contract.test.js",
     "test:sim": "node ng/scripts/simulate.js",
@@ -50,7 +59,17 @@
     "lint": "eslint .",
     "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\"",
     "validate:db": "node scripts/validate-db.js",
-    "migrations:verify": "node scripts/verify-migration-safety.cjs"
+    "migrations:verify": "node scripts/verify-migration-safety.cjs",
+    "careops:validate": "node scripts/careops-profile.cjs validate",
+    "careops:build": "node scripts/careops-profile.cjs build",
+    "careops:start": "node scripts/careops-profile.cjs start",
+    "e2e:careops-profile": "node scripts/e2e-careops-profile.cjs",
+    "reconcile:ng:dhis2": "node scripts/process-ng-dhis2-deliveries.cjs",
+    "worker:ng:dhis2": "node scripts/process-ng-dhis2-deliveries.cjs --watch",
+    "test:ng:medication-delivery": "node --test ng/tests/courier-provider-contract.test.js ng/tests/medication-delivery-pricing.test.js ng/tests/medication-delivery-webhooks.test.js ng/tests/medication-finance.test.js ng/tests/medication-rx-concurrency.test.js ng/tests/medication-production-guards.test.js ng/tests/medication-pharmacy-wallet.test.js ng/tests/medication-delivery-client.test.js ng/tests/medication-delivery-ui-state.test.js server/tests/medication-migration-safety.test.js",
+    "test:ng:medication-delivery:db": "node --test --test-concurrency=1 ng/tests/medication-delivery-workflow-db.test.js ng/tests/medication-delivery-http-db.test.js ng/tests/medication-delivery-settlement-db.test.js",
+    "e2e:ng:medication-delivery": "node scripts/e2e-medication-delivery.cjs",
+    "test:fixture-safety": "node --test ng/tests/fixture-target-safety.test.js server/tests/agent-activity-startup-safety.test.js server/tests/financial-startup-safety.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
@@ -81,7 +100,7 @@
     "@sentry/node": "^10.32.1",
     "axios": "^1.18.1",
     "bcryptjs": "^3.0.3",
-    "brace-expansion": "5.0.9",
+    "brace-expansion": "5.0.12",
     "bullmq": "^5.30.0",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.0",
@@ -102,10 +121,11 @@
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^4.2.1",
     "livekit-client": "^2.19.1",
+    "livekit-server-sdk": "^2.19.1",
     "lucide-react": "^0.562.0",
     "multer": "^2.0.2",
-    "next": "^15.5.23",
-    "nodemailer": "^9.0.3",
+    "next": "^15.5.27",
+    "nodemailer": "^10.1.0",
     "pdf-parse": "^2.4.5",
     "pg": "^8.13.1",
     "qrcode": "^1.5.4",
@@ -114,6 +134,7 @@
     "react-ga4": "^2.1.0",
     "react-hook-form": "^7.53.1",
     "recharts": "^2.13.3",
+    "sharp": "0.35.5",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "speakeasy": "^2.0.0",
@@ -131,7 +152,7 @@
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.0",
     "eslint": "^8.57.1",
-    "eslint-config-next": "15.5.23",
+    "eslint-config-next": "15.5.27",
     "nodemon": "^3.1.7",
     "postcss": "8.5.26",
     "tailwindcss": "^3.4.14",
@@ -144,21 +165,22 @@
   "overrides": {
     "uuid": "$uuid",
     "postcss": "8.5.26",
-    "body-parser": "1.20.6",
-    "dompurify": "3.4.13",
-    "sharp": "0.35.3",
-    "ip-address": "10.5.0",
+    "body-parser": "1.20.8",
+    "dompurify": "3.4.17",
+    "sharp": "0.35.5",
+    "ip-address": "10.7.4",
     "nanoid": "3.3.18",
     "socket.io-parser": "4.2.7",
-    "undici": "7.29.0",
+    "undici": "7.30.0",
     "minimatch@10.2.6": {
-      "brace-expansion": "5.0.9"
+      "brace-expansion": "5.0.12"
     },
     "minimatch@3.1.5": {
-      "brace-expansion": "1.1.18"
+      "brace-expansion": "1.1.21"
     },
-    "js-yaml": "5.3.0",
-    "shell-quote": "1.10.0"
+    "js-yaml": "5.4.3",
+    "shell-quote": "1.12.0",
+    "postcss-selector-parser": "7.1.6"
   },
   "main": "next.config.js",
   "directories": {

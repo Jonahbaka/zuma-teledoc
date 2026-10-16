@@ -5,6 +5,10 @@
 
 // Load environment variables first so PORT and all secrets are available immediately
 require('dotenv').config();
+// Preserve existing cookie defaults; reject an unknown explicit deployment mode
+// before listening instead of failing individual authentication requests.
+require('./utils/authCookiePolicy').authCookieDomain();
+if (require('../lib/deploymentProfile.cjs').resolveDeploymentProfile().careops) throw new Error('CareOps is a frontend-only profile. Use careops:start and the existing shared backend.');
 
 // STEP 1: Minimal imports that cannot crash
 const express = require('express');
@@ -594,7 +598,12 @@ async function initializeApp() {
   app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
   
   // Body parsing
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({
+    limit: '10mb',
+    verify: (req, _res, buffer) => {
+      if (['/api/ng/webhooks/paystack', '/api/ng/webhooks/livekit', '/api/ng/webhooks/delivery/uber_direct'].includes(req.originalUrl.split('?')[0])) req.rawBody = Buffer.from(buffer);
+    },
+  }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(cookieParser(process.env.SESSION_SECRET));
   
@@ -624,7 +633,7 @@ async function initializeApp() {
     res.on('finish', () => {
       const duration = Date.now() - start;
       if (process.env.NODE_ENV !== 'production' || res.statusCode >= 400) {
-        console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`);
+        console.log(`${req.method} ${req.originalUrl.split('?')[0]} ${res.statusCode} ${duration}ms`);
       }
     });
     next();
@@ -675,6 +684,7 @@ async function initializeApp() {
   loadRoute('/api/triage', './routes/triage');
   loadRoute('/api/prescriptions', './routes/prescriptions');
   loadRoute('/api/pharmacy', './routes/pharmacy');
+  loadRoute('/api/directory', './routes/publicDirectory');
   loadRoute('/api/triage-queue', './routes/triageQueue');
   loadRoute('/api/invitations', './routes/invitations');
   loadRoute('/api/stripe', './routes/stripe');
@@ -886,7 +896,7 @@ async function initializeApp() {
     // Feed error to The Debugger for analysis
     try {
       const orchestrator = require('./services/agent-orchestrator');
-      orchestrator.captureError(err, `${req.method} ${req.originalUrl}`);
+      orchestrator.captureError(err, `${req.method} ${req.originalUrl.split('?')[0]}`);
     } catch (e) { /* orchestrator not ready yet */ }
 
     const statusCode = err.status || err.statusCode || 500;

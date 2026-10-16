@@ -67,16 +67,16 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: doctarx
+          POSTGRES_DB: doctarx_recovery_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d doctarx"
+          --health-cmd "pg_isready -U postgres -d doctarx_recovery_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/doctarx
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/doctarx_recovery_test
       JWT_ACCESS_SECRET: fictional-ci-access-secret-at-least-32-characters
       JWT_REFRESH_SECRET: fictional-ci-refresh-secret-at-least-32-characters
       SESSION_SECRET: fictional-ci-session-secret-at-least-32-characters
@@ -113,6 +113,9 @@ jobs:
       - name: Run PHC PostgreSQL workflow tests
         run: npm run test:ng:phc:db
 
+      - name: Run medication delivery PostgreSQL and authenticated HTTP tests
+        run: SIMULATION_DATABASE_URL="$DATABASE_URL" npm run test:ng:medication-delivery:db
+
       - name: Back up populated database
         run: |
           pg_dump --format=custom --no-owner --no-acl --file=artifacts/database/10-post-tests.dump "$DATABASE_URL"
@@ -120,20 +123,20 @@ jobs:
 
       - name: Restore to a separate database
         run: |
-          createdb --host=localhost --username=postgres doctarx_restore
-          pg_restore --host=localhost --username=postgres --dbname=doctarx_restore --no-owner --no-acl artifacts/database/10-post-tests.dump
+          createdb --host=localhost --username=postgres doctarx_restore_test
+          pg_restore --host=localhost --username=postgres --dbname=doctarx_restore_test --no-owner --no-acl artifacts/database/10-post-tests.dump
 
       - name: Reconcile source and restored database
         run: |
           SOURCE_COUNTS=$(psql "$DATABASE_URL" -Atc "SELECT json_build_object('batches',(SELECT count(*) FROM ng_government_import_batches),'records',(SELECT count(*) FROM ng_government_records),'lineage',(SELECT count(*) FROM ng_government_import_lineage),'audit',(SELECT count(*) FROM ng_audit_lineage));")
-          RESTORE_URL=postgresql://postgres:postgres@localhost:5432/doctarx_restore
+          RESTORE_URL=postgresql://postgres:postgres@localhost:5432/doctarx_restore_test
           RESTORE_COUNTS=$(psql "$RESTORE_URL" -Atc "SELECT json_build_object('batches',(SELECT count(*) FROM ng_government_import_batches),'records',(SELECT count(*) FROM ng_government_records),'lineage',(SELECT count(*) FROM ng_government_import_lineage),'audit',(SELECT count(*) FROM ng_audit_lineage));")
           printf 'source=%s\nrestored=%s\n' "$SOURCE_COUNTS" "$RESTORE_COUNTS" | tee artifacts/database/20-reconciliation.txt
           test "$SOURCE_COUNTS" = "$RESTORE_COUNTS"
 
       - name: Rerun migrations and workflow tests on restored database
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/doctarx_restore
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/doctarx_restore_test
         run: |
           npm run migrate
           npm run ng:migrate
@@ -145,8 +148,8 @@ jobs:
         run: |
           {
             echo "run_id=${GITHUB_RUN_ID}"
-            echo "source_database=doctarx"
-            echo "restore_database=doctarx_restore"
+            echo "source_database=doctarx_recovery_test"
+            echo "restore_database=doctarx_restore_test"
             echo "pre_migration_backup=00-pre-migration.dump"
             echo "post_test_backup=10-post-tests.dump"
             echo "result=${{ job.status }}"
@@ -170,16 +173,16 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: doctarx_browser
+          POSTGRES_DB: doctarx_browser_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d doctarx_browser"
+          --health-cmd "pg_isready -U postgres -d doctarx_browser_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/doctarx_browser
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/doctarx_browser_test
       JWT_ACCESS_SECRET: fictional-ci-access-secret-at-least-32-characters
       JWT_REFRESH_SECRET: fictional-ci-refresh-secret-at-least-32-characters
       SESSION_SECRET: fictional-ci-session-secret-at-least-32-characters

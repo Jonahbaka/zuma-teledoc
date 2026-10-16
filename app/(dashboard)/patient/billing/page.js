@@ -21,7 +21,7 @@ export default function PatientBillingPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <CreditCard className="w-6 h-6 text-purple-500" />
+          <CreditCard className="w-6 h-6 text-blue-500" />
           Billing & Payments
         </h1>
         <p className="text-slate-500 mt-1">View your billing history and manage payments</p>

@@ -16,6 +16,20 @@ const db = require('../db');
 const nodemailer = require('nodemailer');
 const logger = require('../middleware/logger');
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const crmFailure = (statusCode, message) => Object.assign(new Error(message), { statusCode });
+
+async function auditCRMWrite(client, actorId, resourceType, resource, values, action = 'create') {
+  if (actorId) {
+    if (!UUID.test(actorId)) throw crmFailure(403, 'Current administrator access is required.');
+    const current = await client.query('SELECT role,is_active FROM users WHERE id=$1 FOR SHARE', [actorId]);
+    if (!current.rows[0]?.is_active || !['admin', 'super_admin'].includes(current.rows[0].role)) throw crmFailure(403, 'Current administrator access is required.');
+  }
+  await client.query(`INSERT INTO audit_logs (user_id,action,resource_type,resource_id,phi_accessed,success,description,new_values)
+    VALUES ($1,$2,$3,$4,FALSE,TRUE,$5,$6::jsonb)`, [actorId || null, action, resourceType, resource.id,
+    `DoctaRx ${resourceType} ${action}`, JSON.stringify(values)]);
+}
+
 // ─── ZOHO MAIL TRANSPORT ────────────────────────────────────────
 let transporter = null;
 function getTransporter() {
@@ -64,104 +78,27 @@ class CRMService {
 
   async initialize() {
     try {
-      // Run migration
-      const fs = require('fs');
-      const path = require('path');
-      const migrationPath = path.join(__dirname, '../db/migrations/300_crm_schema.sql');
-      if (fs.existsSync(migrationPath)) {
-        const sql = fs.readFileSync(migrationPath, 'utf8');
-        await db.query(sql);
-      }
+      // Schema changes belong to the explicit deployment migration job.
+      // Replaying migration 300 here also replayed template inserts and
+      // deduplication deletes against existing records on every server start.
+      await db.query('SELECT id FROM crm_campaigns LIMIT 0');
+      await db.query('SELECT id FROM crm_email_templates LIMIT 0');
+      await db.query('SELECT id FROM crm_contacts LIMIT 0');
       this.initialized = true;
-
-      // Seed templates + scrape sources if empty
-      await this._seedDefaults();
-
-      // Auto-import any provider leads from agent web missions into CRM
       await this._importAgentLeads();
-
       return true;
-    } catch (err) {
-      logger.error('CRM init error:', err.message);
+    } catch (error) {
+      logger.error('CRM schema is unavailable', { code: error.code || 'CRM_SCHEMA_UNAVAILABLE' });
       this.initialized = false;
       return false;
     }
   }
 
   async _seedDefaults() {
-    try {
-      // Seed email templates if none exist
-      const { rows: tplCheck } = await db.query('SELECT COUNT(*) FROM crm_email_templates');
-      if (parseInt(tplCheck[0].count) === 0) {
-        const templates = [
-          {
-            name: 'Provider Cold Outreach',
-            category: 'cold_outreach',
-            subject: 'Earn more seeing patients from anywhere — DoctaRx',
-            body: `Hi {{first_name}},\n\nI noticed you practice {{specialty}} in {{organization}}. DoctaRx is a new AI-powered telehealth platform that lets you see patients remotely with:\n\n• AI-assisted triage that routes the right patients to you\n• Built-in e-prescribing (EPCS-ready)\n• HIPAA-compliant video visits\n• No platform fees for the first 90 days\n\nWould you be open to a 10-minute demo this week?\n\nBest,\nDoctaRx Team`
-          },
-          {
-            name: 'Investor Intro',
-            category: 'investor_pitch',
-            subject: 'DoctaRx — AI telehealth disrupting $250B market',
-            body: `Hi {{first_name}},\n\nDoctaRx is building the AI-first telehealth operating system. We combine:\n\n• 12-agent AI orchestra (compliance, growth, operations)\n• Real-time e-prescribing + insurance verification\n• Automated provider recruitment via NPI scraping\n• Zero-commission model for providers\n\nWe're bootstrapping and generating early revenue. Would love 15 minutes to share our traction.\n\nBest,\nJonah — Founder, DoctaRx`
-          },
-          {
-            name: 'Partnership Proposal',
-            category: 'partnership',
-            subject: 'Partnership opportunity — DoctaRx + {{organization}}',
-            body: `Hi {{first_name}},\n\nI'm reaching out from DoctaRx, an AI-powered telehealth platform. We think there's a strong synergy between our platforms.\n\nWe'd love to explore:\n• Patient referral pathways\n• Co-branded telehealth services\n• Technology integration\n\nWould you have 15 minutes this week for a quick call?\n\nBest,\nDoctaRx Team`
-          },
-          {
-            name: 'Follow-Up (No Reply)',
-            category: 'follow_up',
-            subject: 'Re: Quick question about telehealth at {{organization}}',
-            body: `Hi {{first_name}},\n\nJust circling back on my earlier note. I know you're busy — would a 5-minute call work better?\n\nWe're helping {{specialty}} practices see 30% more patients through AI triage. Happy to share specifics.\n\nBest,\nDoctaRx Team`
-          },
-          {
-            name: 'Nurse Practitioner Recruitment',
-            category: 'cold_outreach',
-            subject: 'Practice telehealth independently — DoctaRx platform',
-            body: `Hi {{first_name}},\n\nDoctaRx is building a network of independent NPs and PAs who want to practice telehealth on their own terms.\n\n• Set your own schedule\n• AI handles triage + scheduling\n• Built-in e-prescribing\n• Keep 100% of your consultation fees\n\nInterested in learning more?\n\nBest,\nDoctaRx Team`
-          }
-        ];
-
-        for (const t of templates) {
-          await db.query(`
-            INSERT INTO crm_email_templates (name, category, subject, body, created_by)
-            VALUES ($1, $2, $3, $4, 'system')
-            ON CONFLICT (name) DO NOTHING
-          `, [t.name, t.category, t.subject, t.body]).catch(() => {});
-        }
-        console.log('  📧 CRM: Seeded', templates.length, 'email templates');
-      }
-
-      // Seed scrape sources if none exist
-      const { rows: srcCheck } = await db.query('SELECT COUNT(*) FROM crm_scrape_sources');
-      if (parseInt(srcCheck[0].count) === 0) {
-        const sources = [
-          { name: 'NPI Registry (CMS)', url: 'https://npiregistry.cms.hhs.gov/', type: 'provider_directory', freq: 'daily' },
-          { name: 'Psychology Today', url: 'https://www.psychologytoday.com/us/therapists', type: 'provider_directory', freq: 'weekly' },
-          { name: 'Zocdoc Providers', url: 'https://www.zocdoc.com/', type: 'provider_directory', freq: 'weekly' },
-          { name: 'LinkedIn Healthcare', url: 'https://www.linkedin.com/search/results/people/?keywords=telehealth%20physician', type: 'social_scrape', freq: 'weekly' },
-          { name: 'Crunchbase HealthTech', url: 'https://www.crunchbase.com/search/organizations/field/organizations/categories/health-care', type: 'investor_research', freq: 'monthly' },
-          { name: 'AngelList Health', url: 'https://angel.co/health-care', type: 'investor_research', freq: 'monthly' },
-          { name: 'Fierce Healthcare', url: 'https://www.fiercehealthcare.com/', type: 'news_source', freq: 'daily' },
-          { name: 'Becker Hospital Review', url: 'https://www.beckershospitalreview.com/', type: 'news_source', freq: 'daily' },
-        ];
-
-        for (const s of sources) {
-          await db.query(`
-            INSERT INTO crm_scrape_sources (name, url, source_type, scrape_frequency, is_active)
-            VALUES ($1, $2, $3, $4, true)
-            ON CONFLICT (url) DO NOTHING
-          `, [s.name, s.url, s.type, s.freq]).catch(() => {});
-        }
-        console.log('  🌐 CRM: Seeded', sources.length, 'scrape sources');
-      }
-    } catch (err) {
-      logger.error('CRM seed error:', err.message);
-    }
+    // Retain the legacy helper interface without importing marketing claims,
+    // template records or scrape-source defaults. Templates are authored by
+    // an authenticated operator through the audited template endpoint.
+    return { templatesInserted: 0, sourcesInserted: 0 };
   }
 
   async _importAgentLeads() {
@@ -437,16 +374,16 @@ class CRMService {
     const rateCheck = checkRateLimit();
     if (!rateCheck.allowed) {
       logger.warn(`CRM email rate limited: ${rateCheck.reason}`);
-      return { success: false, error: rateCheck.reason };
+      return { success: false, statusCode: 429, error: rateCheck.reason };
     }
 
     try {
       // Get contact
       const { rows } = await db.query('SELECT * FROM crm_contacts WHERE id = $1', [contactId]);
       const contact = rows[0];
-      if (!contact) return { success: false, error: 'Contact not found' };
-      if (contact.opt_out) return { success: false, error: 'Contact opted out' };
-      if (!contact.email) return { success: false, error: 'No email address' };
+      if (!contact) return { success: false, statusCode: 404, error: 'Contact not found' };
+      if (contact.opt_out) return { success: false, statusCode: 409, error: 'Contact opted out' };
+      if (!contact.email) return { success: false, statusCode: 409, error: 'No email address' };
 
       // Personalize the email
       const personalizedSubject = this._personalize(subject, contact);
@@ -454,8 +391,7 @@ class CRMService {
 
       const transport = getTransporter();
       if (!transport) {
-        logger.info('CRM email (no transport):', { to: contact.email, subject: personalizedSubject });
-        return { success: true, simulated: true };
+        return { success: false, statusCode: 503, status: 'unavailable', code: 'EMAIL_TRANSPORT_NOT_CONNECTED', error: 'Email delivery is not connected. No message was sent.' };
       }
 
       // Send via Zoho
@@ -472,11 +408,19 @@ class CRMService {
         }
       });
 
+      if (!result?.messageId || !Array.isArray(result.accepted) ||
+          !result.accepted.some(address => String(address).toLowerCase() === String(contact.email).toLowerCase())) {
+        return { success: false, statusCode: 502, code: 'EMAIL_ACCEPTANCE_UNCONFIRMED', error: 'The mail server did not confirm acceptance for this recipient. No sent state was recorded.' };
+      }
+
       emailsSentToday++;
       emailsSentThisHour++;
 
-      // Log interaction
-      await db.query(`
+      // SMTP acceptance is irreversible. Its interaction and contact update
+      // are committed together; persistence failure requires reconciliation.
+      try {
+        await db.transaction(async client => {
+          await client.query(`
         INSERT INTO crm_interactions (
           contact_id, campaign_id, interaction_type, subject, content,
           message_id, email_status, agent_type
@@ -484,36 +428,34 @@ class CRMService {
       `, [contactId, campaignId, personalizedSubject, personalizedBody, result.messageId, agentType]);
 
       // Update contact
-      await db.query(`
+          await client.query(`
         UPDATE crm_contacts SET last_contacted_at = NOW(), 
           pipeline_stage = CASE WHEN pipeline_stage = 'new' OR pipeline_stage = 'outreach_queued' THEN 'contacted' ELSE pipeline_stage END,
           updated_at = NOW()
         WHERE id = $1
       `, [contactId]);
-
-      return { success: true, messageId: result.messageId };
-    } catch (err) {
-      logger.error('CRM sendEmail error:', err.message);
-
-      // Log bounced
-      if (contactId) {
-        await db.query(`
-          INSERT INTO crm_interactions (contact_id, campaign_id, interaction_type, content, email_status, agent_type)
-          VALUES ($1, $2, 'email_bounced', $3, 'bounced', $4)
-        `, [contactId, campaignId, err.message, agentType]).catch(() => {});
+        });
+      } catch (_) {
+        return { success: false, statusCode: 503, status: 'reconciliation_required', code: 'EMAIL_RECORDING_FAILED',
+          messageId: result.messageId, error: 'The mail server accepted the message, but its record could not be saved. Reconcile before retrying delivery.' };
       }
 
-      return { success: false, error: err.message };
+      return { success: true, status: 'accepted', messageId: result.messageId };
+    } catch (err) {
+      logger.error('CRM email operation failed', { code: err.code || 'EMAIL_DELIVERY_FAILED' });
+      return { success: false, statusCode: 503, code: 'EMAIL_DELIVERY_FAILED', error: 'Email delivery could not be confirmed. Review recorded outcomes before retrying.' };
     }
   }
 
   async sendCampaignEmails(campaignId, limit = 10) {
     try {
+      if (!getTransporter()) return { success: false, statusCode: 503, status: 'unavailable', code: 'EMAIL_TRANSPORT_NOT_CONNECTED',
+        error: 'Email delivery is not connected. No campaign messages were sent.', sent: 0, failed: 0, skipped: 0 };
       // Get campaign
       const { rows: campaigns } = await db.query('SELECT * FROM crm_campaigns WHERE id = $1', [campaignId]);
       const campaign = campaigns[0];
-      if (!campaign) return { error: 'Campaign not found' };
-      if (campaign.status !== 'approved' && campaign.status !== 'running') return { error: 'Campaign not approved' };
+      if (!campaign) return { success: false, statusCode: 404, error: 'Campaign not found' };
+      if (campaign.status !== 'approved' && campaign.status !== 'running') return { success: false, statusCode: 409, error: 'Campaign not approved' };
 
       // Get contacts that haven't been emailed in this campaign
       let contactQuery = `
@@ -533,10 +475,12 @@ class CRMService {
 
       const { rows: contacts } = await db.query(contactQuery, params);
 
+      if (!contacts.length) return { success: true, status: 'empty', sent: 0, failed: 0, skipped: 0 };
+
       // Update campaign status
       await db.query("UPDATE crm_campaigns SET status = 'running', updated_at = NOW() WHERE id = $1", [campaignId]);
 
-      const results = { sent: 0, failed: 0, skipped: 0 };
+      const results = { success: true, sent: 0, failed: 0, skipped: 0 };
       for (const contact of contacts) {
         const rateCheck = checkRateLimit();
         if (!rateCheck.allowed) { results.skipped += contacts.length - results.sent - results.failed; break; }
@@ -568,7 +512,7 @@ class CRMService {
       return results;
     } catch (err) {
       logger.error('CRM sendCampaignEmails error:', err.message);
-      return { error: err.message };
+      return { success: false, statusCode: 503, error: 'Campaign delivery could not be completed. Review recorded outcomes before retrying.' };
     }
   }
 
@@ -577,7 +521,6 @@ class CRMService {
   // ═══════════════════════════════════════════════════════════════
 
   async createCampaign(data) {
-    try {
       const campaignType = data.campaignType || data.campaign_type || 'cold_email';
       const targetContactType = data.targetContactType || data.target_contact_type || null;
       const targetSpecialty = data.targetSpecialty || data.target_specialty || null;
@@ -586,12 +529,13 @@ class CRMService {
       const sendTime = data.sendTime || data.send_time || 'optimal';
       const dailyLimit = data.dailyLimit || data.daily_limit || 50;
       const createdBy = data.createdBy || data.created_by || 'growth-agent';
-      const { rows } = await db.query(`
+      return db.transaction(async client => {
+      const { rows } = await client.query(`
         INSERT INTO crm_campaigns (
           name, description, campaign_type, target_contact_type,
           target_specialty, subject_line, email_template,
-          send_time, daily_limit, created_by
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+          send_time, daily_limit, created_by, status
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'draft') RETURNING *
       `, [
         data.name, data.description, campaignType,
         targetContactType, targetSpecialty,
@@ -599,11 +543,10 @@ class CRMService {
         sendTime, dailyLimit,
         createdBy
       ]);
+      if (!rows[0]?.id || rows[0].status !== 'draft') throw crmFailure(503, 'The campaign draft was not recorded.');
+      await auditCRMWrite(client, data.auditActorId, 'crm_campaign', rows[0], { name: rows[0].name, status: 'draft', createdBy });
       return rows[0];
-    } catch (err) {
-      logger.error('CRM createCampaign error:', err.message);
-      return null;
-    }
+      });
   }
 
   async getCampaigns(options = {}) {
@@ -614,17 +557,22 @@ class CRMService {
       query += ' ORDER BY created_at DESC LIMIT 50';
       const { rows } = await db.query(query, params);
       return rows;
-    } catch (err) { return []; }
+    } catch (err) { throw err; }
   }
 
   async approveCampaign(campaignId, approvedBy) {
-    try {
-      const { rows } = await db.query(`
+    return db.transaction(async client => {
+      const existing = await client.query('SELECT id,status FROM crm_campaigns WHERE id=$1 FOR UPDATE', [campaignId]);
+      if (!existing.rows[0]) throw crmFailure(404, 'Campaign not found.');
+      if (existing.rows[0].status !== 'draft') throw crmFailure(409, 'Only a current campaign draft can be approved.');
+      const { rows } = await client.query(`
         UPDATE crm_campaigns SET status = 'approved', approved_by = $2, updated_at = NOW()
-        WHERE id = $1 RETURNING *
+        WHERE id = $1 AND status = 'draft' RETURNING *
       `, [campaignId, approvedBy]);
+      if (!rows[0]?.id) throw crmFailure(404, 'Campaign not found.');
+      await auditCRMWrite(client, approvedBy, 'crm_campaign', rows[0], { previousStatus: 'draft', status: 'approved', approvedBy }, 'update');
       return rows[0];
-    } catch (err) { return null; }
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -639,17 +587,24 @@ class CRMService {
       query += ' ORDER BY reply_rate DESC, times_used DESC';
       const { rows } = await db.query(query, params);
       return rows;
-    } catch (err) { return []; }
+    } catch (err) { throw err; }
   }
 
   async createTemplate(data) {
     try {
-      const { rows } = await db.query(`
+      return await db.transaction(async client => {
+      const { rows } = await client.query(`
         INSERT INTO crm_email_templates (name, category, subject, body, created_by)
         VALUES ($1, $2, $3, $4, $5) RETURNING *
-      `, [data.name, data.category, data.subject, data.body, data.createdBy || 'system']);
+      `, [data.name, data.category, data.subject, data.body, data.createdBy || data.created_by || 'system']);
+      if (!rows[0]?.id) throw crmFailure(503, 'The email template was not recorded.');
+      await auditCRMWrite(client, data.auditActorId, 'crm_template', rows[0], { name: rows[0].name, category: rows[0].category, createdBy: data.createdBy || data.created_by || 'system' });
       return rows[0];
-    } catch (err) { return null; }
+      });
+    } catch (err) {
+      if (err.code === '23505') throw crmFailure(409, 'An email template with this name already exists.');
+      throw err;
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════

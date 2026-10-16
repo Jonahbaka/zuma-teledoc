@@ -89,7 +89,7 @@ const BUILTIN_FLAGS = [
 ];
 
 const STATUS_STYLES = {
-  active:      { label: 'Active',      dot: 'bg-green-500', badge: 'bg-green-500/10 text-green-600 border-green-500/20' },
+  active:      { label: 'Active',      dot: 'bg-blue-500', badge: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
   sandbox:     { label: 'Sandbox',     dot: 'bg-blue-500',  badge: 'bg-blue-500/10 text-blue-600 border-blue-500/20'   },
   pending:     { label: 'Pending',     dot: 'bg-amber-500', badge: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
   unavailable: { label: 'Coming Soon', dot: 'bg-muted-foreground', badge: 'bg-accent text-muted-foreground border-border' },
@@ -235,7 +235,7 @@ export default function AdminFeatureFlags() {
                     {isSaving ? (
                       <RefreshCw size={28} className="text-muted-foreground animate-spin" />
                     ) : flag.enabled ? (
-                      <ToggleRight size={32} className="text-green-600" />
+                      <ToggleRight size={32} className="text-blue-600" />
                     ) : (
                       <ToggleLeft size={32} className="text-muted-foreground" />
                     )}

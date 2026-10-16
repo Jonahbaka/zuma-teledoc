@@ -19,16 +19,16 @@ const STATUS_CONFIG = {
   not_started: { label: 'Not Started', color: 'bg-gray-500', textColor: 'text-gray-500' },
   pending_payment: { label: 'Pending Payment', color: 'bg-amber-500', textColor: 'text-amber-500' },
   documents_required: { label: 'Documents Required', color: 'bg-blue-500', textColor: 'text-blue-500' },
-  documents_under_review: { label: 'Under Review', color: 'bg-purple-500', textColor: 'text-purple-500' },
-  license_verification: { label: 'License Verification', color: 'bg-indigo-500', textColor: 'text-indigo-500' },
-  dea_verification: { label: 'DEA Verification', color: 'bg-indigo-500', textColor: 'text-indigo-500' },
-  npi_verification: { label: 'NPI Verification', color: 'bg-indigo-500', textColor: 'text-indigo-500' },
+  documents_under_review: { label: 'Under Review', color: 'bg-blue-500', textColor: 'text-blue-500' },
+  license_verification: { label: 'License Verification', color: 'bg-blue-500', textColor: 'text-blue-500' },
+  dea_verification: { label: 'DEA Verification', color: 'bg-blue-500', textColor: 'text-blue-500' },
+  npi_verification: { label: 'NPI Verification', color: 'bg-blue-500', textColor: 'text-blue-500' },
   background_check: { label: 'Background Check', color: 'bg-orange-500', textColor: 'text-orange-500' },
-  malpractice_verification: { label: 'Malpractice Verification', color: 'bg-indigo-500', textColor: 'text-indigo-500' },
-  education_verification: { label: 'Education Verification', color: 'bg-indigo-500', textColor: 'text-indigo-500' },
+  malpractice_verification: { label: 'Malpractice Verification', color: 'bg-blue-500', textColor: 'text-blue-500' },
+  education_verification: { label: 'Education Verification', color: 'bg-blue-500', textColor: 'text-blue-500' },
   references_check: { label: 'References Check', color: 'bg-cyan-500', textColor: 'text-cyan-500' },
   committee_review: { label: 'Committee Review', color: 'bg-pink-500', textColor: 'text-pink-500' },
-  approved: { label: 'Approved', color: 'bg-green-500', textColor: 'text-green-500' },
+  approved: { label: 'Approved', color: 'bg-blue-500', textColor: 'text-blue-500' },
   rejected: { label: 'Rejected', color: 'bg-red-500', textColor: 'text-red-500' },
   suspended: { label: 'Suspended', color: 'bg-red-400', textColor: 'text-red-400' },
   expired: { label: 'Expired', color: 'bg-gray-400', textColor: 'text-gray-400' }
@@ -157,16 +157,16 @@ export default function AdminCredentialingPage() {
               <p className="text-2xl font-bold text-blue-500">{stats.documentsRequired}</p>
             </CardContent>
           </Card>
-          <Card className="border-purple-500/30">
+          <Card className="border-blue-500/30">
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">Under Review</p>
-              <p className="text-2xl font-bold text-purple-500">{stats.underReview}</p>
+              <p className="text-2xl font-bold text-blue-500">{stats.underReview}</p>
             </CardContent>
           </Card>
-          <Card className="border-green-500/30">
+          <Card className="border-blue-500/30">
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">Approved</p>
-              <p className="text-2xl font-bold text-green-500">{stats.approved}</p>
+              <p className="text-2xl font-bold text-blue-500">{stats.approved}</p>
             </CardContent>
           </Card>
           <Card className="border-red-500/30">
@@ -196,7 +196,7 @@ export default function AdminCredentialingPage() {
               variant={statusFilter === status ? 'default' : 'outline'}
               size="sm"
               onClick={() => setStatusFilter(status)}
-              className={statusFilter === status ? 'bg-purple-600' : ''}
+              className={statusFilter === status ? 'bg-blue-600' : ''}
             >
               {status === 'all' ? 'All' : STATUS_CONFIG[status]?.label || status}
             </Button>
@@ -209,7 +209,7 @@ export default function AdminCredentialingPage() {
         <CardContent className="p-0">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
             </div>
           ) : filteredApplications.length === 0 ? (
             <div className="text-center py-12">
@@ -226,8 +226,8 @@ export default function AdminCredentialingPage() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                        <span className="text-lg font-bold text-purple-600">
+                      <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                        <span className="text-lg font-bold text-blue-600">
                           {app.firstName?.[0]}{app.lastName?.[0]}
                         </span>
                       </div>

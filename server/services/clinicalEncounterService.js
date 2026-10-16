@@ -10,13 +10,95 @@
  */
 
 const crypto = require('crypto');
-const db = require('../db');
+const database = require('../db');
+const { AsyncLocalStorage } = require('node:async_hooks');
+const clinicalReadContext = new AsyncLocalStorage();
+const db = { query(...args) {
+  const context = clinicalReadContext.getStore();
+  if (!context) throw clinicalError(403, 'CLINICAL_ACCESS_DENIED', 'A current clinical read transaction is required.');
+  return context.client.query(...args);
+}, getPool: () => database.getPool() };
 const logger = require('../middleware/logger');
-const { encrypt, decrypt } = require('../../lib/encryption');
+const { encrypt } = require('../../lib/encryption');
+const { readClinicalField } = require('./clinicalContentService');
 const { keysToCamel } = require('../../lib/utils');
-const { createAuditLog } = require('../middleware/audit');
+const clinicalError = (statusCode, code, message) => Object.assign(new Error(message), { statusCode, code });
+const uuid = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
+const readableContext = `JOIN users patient ON patient.id=ce.patient_id AND patient.role='patient' AND patient.is_active=TRUE
+  JOIN users author ON author.id=ce.provider_id AND author.role='provider'
+  JOIN users actor ON actor.id=$2 AND actor.role=$3 AND actor.is_active=TRUE AND actor.market_scope=$4
+  WHERE patient.market_scope=actor.market_scope AND author.market_scope=actor.market_scope
+    AND (actor.role='patient' AND ce.patient_id=actor.id OR actor.role='provider' AND actor.provider_status='approved'
+      AND (actor.market_scope='US' OR EXISTS(SELECT 1 FROM ng_providers np WHERE np.user_id=actor.id AND np.status='verified'))
+      AND (ce.provider_id=actor.id OR EXISTS(SELECT 1 FROM provider_patient_relationships rel WHERE rel.provider_id=actor.id AND rel.patient_id=ce.patient_id AND rel.is_active=TRUE)))`;
 
 class ClinicalEncounterService {
+  _references(...values) {
+    if (!values.every(value => typeof value === 'string' && uuid.test(value))) throw clinicalError(400, 'CLINICAL_REFERENCE_INVALID', 'Valid clinical record and account references are required.');
+  }
+
+  async _reader(userId, userRole) {
+    this._references(userId);
+    if (!['patient', 'provider'].includes(userRole)) throw clinicalError(403, 'CLINICAL_ACCESS_DENIED', 'Clinical record access denied.');
+    const user = (await db.query('SELECT id,role,is_active,market_scope,provider_status FROM users WHERE id=$1 FOR SHARE', [userId])).rows[0];
+    if (!user?.is_active || user.role !== userRole || !['US', 'NG'].includes(user.market_scope) || userRole === 'provider' && user.provider_status !== 'approved') throw clinicalError(403, 'CLINICAL_ACCESS_DENIED', 'Clinical record access denied.');
+    return user;
+  }
+
+  async _lockAccounts(client, patientId, providerId) {
+    const row = (await client.query(`SELECT patient.id,actor.market_scope FROM users patient JOIN users actor ON actor.id=$2
+      WHERE patient.id=$1 AND patient.role='patient' AND patient.is_active=TRUE
+        AND actor.role='provider' AND actor.is_active=TRUE AND actor.provider_status='approved'
+        AND actor.market_scope IN ('US','NG') AND patient.market_scope=actor.market_scope FOR SHARE OF patient,actor`, [patientId, providerId])).rows[0];
+    if (!row) throw clinicalError(403, 'CLINICAL_CONTEXT_DENIED', 'The current patient and clinician context is unavailable.');
+    if (row.market_scope === 'NG' && !(await client.query("SELECT id FROM ng_providers WHERE user_id=$1 AND status='verified' FOR SHARE", [providerId])).rows.length) throw clinicalError(403, 'CLINICAL_CONTEXT_DENIED', 'Verified clinician authority is required.');
+    return row;
+  }
+
+  async _lockAppointment(client, appointmentId, patientId, providerId, { allowCompleted = false } = {}) {
+    const row = (await client.query(`SELECT id,status FROM appointments WHERE id=$1 AND patient_id=$2 AND provider_id=$3
+      AND status NOT IN ('cancelled','no_show') ${allowCompleted ? '' : "AND status<>'completed'"} FOR UPDATE`, [appointmentId, patientId, providerId])).rows[0];
+    if (!row) throw clinicalError(403, 'CLINICAL_APPOINTMENT_MISMATCH', 'The consultation is unavailable for this patient and clinician.');
+    return row;
+  }
+
+  async _lockEncounter(client, encounterId, providerId, { allowCompleted = false } = {}) {
+    this._references(encounterId, providerId);
+    const encounter = (await client.query('SELECT * FROM clinical_encounters WHERE id=$1 FOR UPDATE', [encounterId])).rows[0];
+    if (!encounter || encounter.provider_id !== providerId) throw clinicalError(403, 'CLINICAL_CONTEXT_DENIED', 'This encounter is not available to the current clinician.');
+    await this._lockAccounts(client, encounter.patient_id, providerId);
+    if (!(allowCompleted ? ['in_progress', 'completed'] : ['in_progress']).includes(encounter.status)) throw clinicalError(409, 'CLINICAL_ENCOUNTER_IMMUTABLE', 'This encounter no longer accepts draft changes.');
+    if (encounter.appointment_id) await this._lockAppointment(client, encounter.appointment_id, encounter.patient_id, providerId, { allowCompleted });
+    return encounter;
+  }
+
+  async _lockNote(client, noteId, providerId, options) {
+    this._references(noteId, providerId);
+    const hint = (await client.query('SELECT encounter_id FROM clinical_notes WHERE id=$1', [noteId])).rows[0];
+    if (!hint) throw clinicalError(403, 'CLINICAL_CONTEXT_DENIED', 'This note is not available to the current clinician.');
+    const encounter = await this._lockEncounter(client, hint.encounter_id, providerId, { allowCompleted: true });
+    const note = (await client.query('SELECT * FROM clinical_notes WHERE id=$1 AND encounter_id=$2 AND patient_id=$3 AND provider_id=$4 FOR UPDATE', [noteId, encounter.id, encounter.patient_id, providerId])).rows[0];
+    if (!note) throw clinicalError(403, 'CLINICAL_CONTEXT_DENIED', 'This note does not match its clinical encounter.');
+    if (encounter.status === 'completed' && !options?.allowCompleted && !note.is_signed && !note.is_locked) {
+      const root = note.is_amendment && note.parent_note_id && (await client.query(`SELECT id FROM clinical_notes
+        WHERE id=$1 AND parent_note_id IS NULL AND encounter_id=$2 AND patient_id=$3 AND provider_id=$4 AND is_signed=TRUE FOR SHARE`,
+      [note.parent_note_id, encounter.id, encounter.patient_id, providerId])).rows[0];
+      if (!root) throw clinicalError(409, 'CLINICAL_ENCOUNTER_IMMUTABLE', 'Only an append-only amendment to a signed note can be completed after this encounter closes.');
+    }
+    return note;
+  }
+
+  async _audit(client, providerId, type, row, action, metadata) {
+    await client.query(`INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,description,new_values,phi_accessed,success)
+      VALUES ($1,$2,$3,$4,$5,'Current authorized encounter-bound clinical record operation',$6::jsonb,TRUE,TRUE)`,
+    [providerId, action, type, row.id, row.patient_id, JSON.stringify(metadata)]);
+  }
+
+  _recordRead(rows, type) {
+    const context = clinicalReadContext.getStore();
+    if (!context) throw clinicalError(403, 'CLINICAL_ACCESS_DENIED', 'A current clinical read transaction is required.');
+    for (const row of rows) context.records.set(type + ':' + row.id, { type, id: row.id, patient_id: row.patient_id });
+  }
   
   // =========================================================================
   // ENCOUNTER MANAGEMENT
@@ -29,7 +111,10 @@ class ClinicalEncounterService {
    * @returns {Object} Created encounter
    */
   async createEncounter(data, providerId) {
-    const client = await db.pool.connect();
+    this._references(data?.patientId, providerId);
+    if (data.appointmentId) this._references(data.appointmentId);
+    if (data.telehealthConsentId) this._references(data.telehealthConsentId);
+    const client = await db.getPool().connect();
     
     try {
       await client.query('BEGIN');
@@ -45,27 +130,22 @@ class ClinicalEncounterService {
         telehealthConsentId
       } = data;
       
-      // Verify patient exists
-      const { rows: patients } = await client.query(
-        `SELECT id FROM users WHERE id = $1 AND role = 'patient'`,
-        [patientId]
-      );
-      
-      if (patients.length === 0) {
-        throw new Error('Patient not found');
-      }
+      await this._lockAccounts(client, patientId, providerId);
+      if (appointmentId) await this._lockAppointment(client, appointmentId, patientId, providerId);
+      else if (!(await client.query('SELECT id FROM provider_patient_relationships WHERE provider_id=$1 AND patient_id=$2 AND is_active=TRUE FOR SHARE', [providerId, patientId])).rows.length) throw clinicalError(403, 'CLINICAL_RELATIONSHIP_REQUIRED', 'An owned consultation or active care relationship is required.');
       
       // Verify valid telehealth consent if required for telehealth encounters
-      if (encounterType.startsWith('telehealth') && telehealthConsentId) {
+      if (encounterType.startsWith('telehealth')) {
+        if (!telehealthConsentId) throw clinicalError(400, 'CONSENT_REQUIRED', 'Valid recorded telehealth consent is required.');
         const { rows: consents } = await client.query(
           `SELECT id FROM telehealth_consents 
-           WHERE id = $1 AND patient_id = $2 AND is_valid = true
-           AND (expires_at IS NULL OR expires_at > NOW())`,
-          [telehealthConsentId, patientId]
+           WHERE id = $1 AND patient_id = $2 AND patient_state=$3 AND is_valid = true AND revoked_at IS NULL
+           AND (expires_at IS NULL OR expires_at > NOW()) FOR SHARE`,
+          [telehealthConsentId, patientId, patientState]
         );
         
         if (consents.length === 0) {
-          throw new Error('Valid telehealth consent required');
+          throw clinicalError(400, 'CONSENT_REQUIRED', 'Valid recorded telehealth consent is required.');
         }
       }
       
@@ -99,6 +179,7 @@ class ClinicalEncounterService {
       );
       
       const encounter = rows[0];
+      if (!encounter) throw clinicalError(503, 'CLINICAL_RECORDING_UNAVAILABLE', 'Encounter recording could not be confirmed.');
       
       // Create or update provider-patient relationship
       await client.query(
@@ -114,11 +195,12 @@ class ClinicalEncounterService {
       // Update appointment status if linked
       if (appointmentId) {
         await client.query(
-          `UPDATE appointments SET status = 'in_progress', started_at = NOW() WHERE id = $1`,
-          [appointmentId]
+          `UPDATE appointments SET status = 'in_progress', started_at = NOW() WHERE id = $1 AND patient_id=$2 AND provider_id=$3`,
+          [appointmentId, patientId, providerId]
         );
       }
       
+      await this._audit(client, providerId, 'clinical_encounter', encounter, 'create', { status: encounter.status, appointmentId: appointmentId || null, telehealthConsentId: telehealthConsentId || null });
       await client.query('COMMIT');
       
       logger.info('Clinical encounter created', {
@@ -143,38 +225,28 @@ class ClinicalEncounterService {
    * Complete a clinical encounter
    */
   async completeEncounter(encounterId, providerId) {
-    const { rows } = await db.query(
-      `UPDATE clinical_encounters SET
-        encounter_end = NOW(),
-        encounter_end_time = NOW(),
-        status = 'completed',
-        updated_at = NOW()
-       WHERE id = $1 AND provider_id = $2 AND status = 'in_progress'
-       RETURNING *`,
-      [encounterId, providerId]
-    );
-    
-    if (rows.length === 0) {
-      throw new Error('Encounter not found or already completed');
-    }
-    
-    // Update linked appointment
-    if (rows[0].appointment_id) {
-      await db.query(
-        `UPDATE appointments SET status = 'completed', completed_at = NOW() WHERE id = $1`,
-        [rows[0].appointment_id]
-      );
-    }
-    
-    logger.info('Clinical encounter completed', { encounterId, providerId });
-    
-    return this._formatEncounter(rows[0]);
+    this._references(encounterId, providerId);
+    const client = await db.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const encounter = await this._lockEncounter(client, encounterId, providerId);
+      const { rows } = await client.query(`UPDATE clinical_encounters SET encounter_end=NOW(),encounter_end_time=NOW(),status='completed',updated_at=NOW()
+        WHERE id=$1 AND provider_id=$2 AND status='in_progress' RETURNING *`, [encounterId, providerId]);
+      if (!rows[0]) throw clinicalError(409, 'CLINICAL_ENCOUNTER_IMMUTABLE', 'Encounter completion could not be confirmed.');
+      if (encounter.appointment_id) await client.query("UPDATE appointments SET status='completed',completed_at=NOW() WHERE id=$1 AND patient_id=$2 AND provider_id=$3", [encounter.appointment_id, encounter.patient_id, providerId]);
+      await this._audit(client, providerId, 'clinical_encounter', rows[0], 'update', { status: 'completed', appointmentId: encounter.appointment_id });
+      await client.query('COMMIT');
+      return this._formatEncounter(rows[0]);
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
   }
   
   /**
    * Get encounter by ID with full clinical context
    */
   async getEncounterById(encounterId, userId, userRole) {
+    this._references(encounterId);
+    const actor = await this._reader(userId, userRole);
     const { rows } = await db.query(
       `SELECT ce.*,
               p.first_name as patient_first_name, p.last_name as patient_last_name,
@@ -186,8 +258,8 @@ class ClinicalEncounterService {
        JOIN users p ON p.id = ce.patient_id
        JOIN users pr ON pr.id = ce.provider_id
        LEFT JOIN appointments a ON a.id = ce.appointment_id
-       WHERE ce.id = $1`,
-      [encounterId]
+       ${readableContext} AND ce.id = $1`,
+      [encounterId, userId, userRole, actor.market_scope]
     );
     
     if (rows.length === 0) {
@@ -195,25 +267,7 @@ class ClinicalEncounterService {
     }
     
     const encounter = rows[0];
-    
-    // Access control
-    if (userRole === 'patient' && encounter.patient_id !== userId) {
-      throw new Error('Access denied');
-    }
-    
-    if (userRole === 'provider') {
-      // Check provider-patient relationship
-      const { rows: rel } = await db.query(
-        `SELECT 1 FROM provider_patient_relationships 
-         WHERE provider_id = $1 AND patient_id = $2 AND is_active = true`,
-        [userId, encounter.patient_id]
-      );
-      
-      if (rel.length === 0 && encounter.provider_id !== userId) {
-        throw new Error('No provider-patient relationship found');
-      }
-    }
-    
+    this._recordRead(rows, 'clinical_encounter');
     return this._formatEncounter(encounter, true);
   }
   
@@ -221,7 +275,10 @@ class ClinicalEncounterService {
    * Get patient's encounter history
    */
   async getPatientEncounters(patientId, options = {}) {
-    const { limit = 50, offset = 0, status } = options;
+    this._references(patientId);
+    const { limit = 50, offset = 0, status, userId, userRole } = options;
+    const actor = await this._reader(userId, userRole);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200 || !Number.isInteger(offset) || offset < 0 || status !== undefined && (typeof status !== 'string' || status.length > 50)) throw clinicalError(400, 'CLINICAL_LIST_INVALID', 'Invalid clinical list controls.');
     
     let query = `
       SELECT ce.*,
@@ -229,10 +286,10 @@ class ClinicalEncounterService {
              pr.credentials as provider_credentials
       FROM clinical_encounters ce
       JOIN users pr ON pr.id = ce.provider_id
-      WHERE ce.patient_id = $1
+      ${readableContext} AND ce.patient_id = $1
     `;
-    const params = [patientId];
-    let paramIndex = 2;
+    const params = [patientId, userId, userRole, actor.market_scope];
+    let paramIndex = 5;
     
     if (status) {
       query += ` AND ce.status = $${paramIndex++}`;
@@ -243,7 +300,7 @@ class ClinicalEncounterService {
     params.push(limit, offset);
     
     const { rows } = await db.query(query, params);
-    
+    this._recordRead(rows, 'clinical_encounter');
     return rows.map(r => this._formatEncounter(r));
   }
   
@@ -256,25 +313,13 @@ class ClinicalEncounterService {
    * Notes are append-only - once signed, they cannot be modified
    */
   async createNote(encounterId, providerId, noteData) {
-    const client = await db.pool.connect();
+    this._references(encounterId, providerId);
+    const client = await db.getPool().connect();
     
     try {
       await client.query('BEGIN');
       
-      // Verify encounter exists and belongs to provider
-      const { rows: encounters } = await client.query(
-        `SELECT id, patient_id, provider_id, status FROM clinical_encounters WHERE id = $1`,
-        [encounterId]
-      );
-      
-      if (encounters.length === 0) {
-        throw new Error('Encounter not found');
-      }
-      
-      const encounter = encounters[0];
-      if (encounter.provider_id !== providerId) {
-        throw new Error('Encounter not found or access denied');
-      }
+      const encounter = await this._lockEncounter(client, encounterId, providerId);
       
       // Encrypt SOAP fields
       const subjective = noteData.subjective ? encrypt(noteData.subjective) : { encrypted: null, iv: null, tag: null };
@@ -316,8 +361,10 @@ class ClinicalEncounterService {
         ]
       );
       
+      if (!rows[0]) throw clinicalError(503, 'CLINICAL_RECORDING_UNAVAILABLE', 'Note recording could not be confirmed.');
+      await this._audit(client, providerId, 'clinical_note', rows[0], 'create', { encounterId, version: rows[0].version, signed: false });
       await client.query('COMMIT');
-      
+
       logger.info('Clinical note created', {
         noteId: rows[0].id,
         encounterId,
@@ -340,23 +387,12 @@ class ClinicalEncounterService {
    * Only allowed before signing
    */
   async updateNote(noteId, providerId, noteData) {
-    // First check if note is signed
-    const { rows: existing } = await db.query(
-      `SELECT id, is_signed, is_locked, provider_id FROM clinical_notes WHERE id = $1`,
-      [noteId]
-    );
-    
-    if (existing.length === 0) {
-      throw new Error('Note not found');
-    }
-    
-    if (existing[0].provider_id !== providerId) {
-      throw new Error('Only the authoring provider can update this note');
-    }
-    
-    if (existing[0].is_signed || existing[0].is_locked) {
-      throw new Error('Signed notes cannot be modified. Create an amendment instead.');
-    }
+    this._references(noteId, providerId);
+    const client = await db.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const existing = await this._lockNote(client, noteId, providerId);
+      if (existing.is_signed || existing.is_locked) throw clinicalError(409, 'CLINICAL_NOTE_IMMUTABLE', 'Signed or locked notes cannot be modified. Create an amendment instead.');
     
     // Build update
     const updates = [];
@@ -425,21 +461,26 @@ class ClinicalEncounterService {
     }
     
     if (updates.length === 0) {
-      throw new Error('No fields to update');
+      throw clinicalError(400, 'CLINICAL_NOTE_UPDATE_INVALID', 'No valid note changes were supplied.');
     }
     
-    values.push(noteId);
+    values.push(noteId, providerId);
     
-    const { rows } = await db.query(
+    const { rows } = await client.query(
       `UPDATE clinical_notes SET ${updates.join(', ')}, updated_at = NOW()
-       WHERE id = $${paramIndex}
+       WHERE id = $${paramIndex} AND provider_id=$${paramIndex + 1} AND is_signed IS NOT TRUE AND is_locked IS NOT TRUE
        RETURNING *`,
       values
     );
     
+    if (!rows[0]) throw clinicalError(409, 'CLINICAL_NOTE_IMMUTABLE', 'The note no longer accepts draft changes.');
+    await this._audit(client, providerId, 'clinical_note', rows[0], 'update', { encounterId: existing.encounter_id, version: existing.version, signed: false, changedFields: Object.keys(noteData) });
+    await client.query('COMMIT');
     logger.info('Clinical note updated', { noteId, providerId });
     
     return this._formatNote(rows[0]);
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
   }
   
   /**
@@ -447,30 +488,14 @@ class ClinicalEncounterService {
    * Creates a cryptographic hash of the note content for integrity verification
    */
   async signNote(noteId, providerId) {
-    const client = await db.pool.connect();
+    this._references(noteId, providerId);
+    const client = await db.getPool().connect();
     
     try {
       await client.query('BEGIN');
       
-      // Get note
-      const { rows: notes } = await client.query(
-        `SELECT * FROM clinical_notes WHERE id = $1 FOR UPDATE`,
-        [noteId]
-      );
-      
-      if (notes.length === 0) {
-        throw new Error('Note not found');
-      }
-      
-      const note = notes[0];
-      
-      if (note.provider_id !== providerId) {
-        throw new Error('Only the authoring provider can sign this note');
-      }
-      
-      if (note.is_signed) {
-        throw new Error('Note is already signed');
-      }
+      const note = await this._lockNote(client, noteId, providerId);
+      if (note.is_signed || note.is_locked) throw clinicalError(409, 'CLINICAL_NOTE_IMMUTABLE', 'This note is already signed or locked.');
       
       // Create signature hash of encrypted content
       const contentToHash = [
@@ -498,13 +523,15 @@ class ClinicalEncounterService {
           is_locked = true,
           locked_at = NOW(),
           locked_reason = 'signed'
-         WHERE id = $2
+         WHERE id = $2 AND provider_id=$3 AND is_signed IS NOT TRUE AND is_locked IS NOT TRUE
          RETURNING *`,
-        [signatureHash, noteId]
+        [signatureHash, noteId, providerId]
       );
       
+      if (!rows[0]) throw clinicalError(409, 'CLINICAL_NOTE_IMMUTABLE', 'The note no longer accepts a signature.');
+      await this._audit(client, providerId, 'clinical_note', rows[0], 'update', { encounterId: note.encounter_id, version: note.version, signed: true, signatureHash });
       await client.query('COMMIT');
-      
+
       logger.info('Clinical note signed', { noteId, providerId, signatureHash: signatureHash.substring(0, 16) + '...' });
       
       return this._formatNote(rows[0]);
@@ -523,39 +550,31 @@ class ClinicalEncounterService {
    * Amendments are new note versions, preserving the original
    */
   async createAmendment(originalNoteId, providerId, amendmentData) {
-    const client = await db.pool.connect();
+    this._references(originalNoteId, providerId);
+    if (typeof amendmentData?.reason !== 'string' || amendmentData.reason.trim().length < 3 || amendmentData.reason.trim().length > 2000) throw clinicalError(400, 'CLINICAL_AMENDMENT_REASON_INVALID', 'A reason of 3–2000 characters is required.');
+    const client = await db.getPool().connect();
     
     try {
       await client.query('BEGIN');
       
-      // Get original note
-      const { rows: originals } = await client.query(
-        `SELECT * FROM clinical_notes WHERE id = $1`,
-        [originalNoteId]
-      );
-      
-      if (originals.length === 0) {
-        throw new Error('Original note not found');
-      }
-      
-      const original = originals[0];
+      const original = await this._lockNote(client, originalNoteId, providerId, { allowCompleted: true });
       if (original.provider_id !== providerId) {
-        throw new Error('Only the authoring provider can amend this note');
+        throw clinicalError(403, 'CLINICAL_CONTEXT_DENIED', 'Only the authoring provider can amend this note');
       }
       
       if (!original.is_signed) {
-        throw new Error('Can only amend signed notes');
+        throw clinicalError(409, 'CLINICAL_NOTE_NOT_SIGNED', 'Only signed notes can be amended.');
       }
       
-      if (!amendmentData.reason) {
-        throw new Error('Amendment reason is required');
-      }
+      const rootId = original.parent_note_id || original.id;
+      const root = await this._lockNote(client, rootId, providerId, { allowCompleted: true });
+      if (root.parent_note_id || root.encounter_id !== original.encounter_id || !root.is_signed) throw clinicalError(409, 'CLINICAL_NOTE_CHAIN_INVALID', 'The signed note history requires reconciliation.');
       
       // Get current max version for this note chain
       const { rows: versionResult } = await client.query(
         `SELECT MAX(version) as max_version FROM clinical_notes 
          WHERE encounter_id = $1 AND (id = $2 OR parent_note_id = $2)`,
-        [original.encounter_id, originalNoteId]
+        [original.encounter_id, rootId]
       );
       
       const newVersion = (versionResult[0].max_version || 1) + 1;
@@ -582,8 +601,8 @@ class ClinicalEncounterService {
           original.patient_id,
           providerId,
           newVersion,
-          originalNoteId,
-          amendmentData.reason,
+          rootId,
+          amendmentData.reason.trim(),
           subjective.encrypted, subjective.iv, subjective.tag,
           objective.encrypted, objective.iv, objective.tag,
           assessment.encrypted, assessment.iv, assessment.tag,
@@ -593,8 +612,10 @@ class ClinicalEncounterService {
         ]
       );
       
+      if (!rows[0]) throw clinicalError(503, 'CLINICAL_RECORDING_UNAVAILABLE', 'Amendment recording could not be confirmed.');
+      await this._audit(client, providerId, 'clinical_note', rows[0], 'create', { encounterId: original.encounter_id, rootNoteId: rootId, amendedNoteId: original.id, version: newVersion, reasonEncrypted: encrypt(amendmentData.reason.trim()) });
       await client.query('COMMIT');
-      
+
       logger.info('Amendment created', {
         amendmentId: rows[0].id,
         originalNoteId,
@@ -617,40 +638,24 @@ class ClinicalEncounterService {
    * Get note by ID with decrypted content
    */
   async getNoteById(noteId, userId, userRole) {
-    const { rows } = await db.query(
-      `SELECT cn.*,
-              pr.first_name as provider_first_name, pr.last_name as provider_last_name,
-              pr.credentials as provider_credentials
-       FROM clinical_notes cn
-       JOIN users pr ON pr.id = cn.provider_id
-       WHERE cn.id = $1`,
-      [noteId]
-    );
-    
-    if (rows.length === 0) {
-      return null;
-    }
-    
-    const note = rows[0];
-    
-    // Access control
-    if (userRole === 'patient' && note.patient_id !== userId) {
-      throw new Error('Access denied');
-    }
-    
-    if (userRole === 'provider') {
-      const { rows: rel } = await db.query(
-        `SELECT 1 FROM provider_patient_relationships 
-         WHERE provider_id = $1 AND patient_id = $2 AND is_active = true`,
-        [userId, note.patient_id]
-      );
-      
-      if (rel.length === 0 && note.provider_id !== userId) {
-        throw new Error('Access denied');
-      }
-    }
-    
-    return this._formatNote(note, true);
+    this._references(noteId);
+    const rows = await this._readNotes(userId, userRole, { noteId });
+    return rows[0] ? this._formatNote(rows[0], true) : null;
+  }
+
+  async _readNotes(userId, userRole, { noteId, encounterId, rootId } = {}) {
+    const actor = await this._reader(userId, userRole);
+    // The canonical note schema has no approved patient-release fields or
+    // release workflow. A signature alone does not establish patient release.
+    if (userRole === 'patient') throw clinicalError(403, 'CLINICAL_NOTE_RELEASE_NOT_CONFIGURED', 'Clinical notes are not available through a configured patient-release workflow.');
+    const params = [noteId || encounterId, userId, userRole, actor.market_scope];
+    let constraint = noteId ? 'cn.id=$1' : 'cn.encounter_id=$1';
+    if (rootId) { this._references(rootId); params.push(rootId); constraint += ' AND (cn.id=$5 OR cn.parent_note_id=$5)'; }
+    const rows = (await db.query(`SELECT cn.*,author.first_name AS provider_first_name,author.last_name AS provider_last_name,author.credentials AS provider_credentials
+      FROM clinical_notes cn JOIN clinical_encounters ce ON ce.id=cn.encounter_id AND ce.patient_id=cn.patient_id AND ce.provider_id=cn.provider_id
+      ${readableContext} AND ${constraint} ORDER BY cn.version ASC,cn.created_at ASC`, params)).rows;
+    this._recordRead(rows, 'clinical_note');
+    return rows;
   }
   
   /**
@@ -659,59 +664,27 @@ class ClinicalEncounterService {
   async getNoteVersionHistory(noteId, userId, userRole) {
     const accessibleNote = await this.getNoteById(noteId, userId, userRole);
     if (!accessibleNote) {
-      throw new Error('Note not found');
+      throw clinicalError(404, 'CLINICAL_RECORD_NOT_FOUND', 'Note not found.');
     }
 
-    // Get the root note
-    const { rows: rootResult } = await db.query(
-      `SELECT COALESCE(parent_note_id, id) as root_id FROM clinical_notes WHERE id = $1`,
-      [noteId]
-    );
-    
-    if (rootResult.length === 0) {
-      throw new Error('Note not found');
-    }
-    
-    const rootId = rootResult[0].root_id;
-    
-    // Get all versions
-    const { rows } = await db.query(
-      `SELECT cn.id, cn.version, cn.is_amendment, cn.amendment_reason,
-              cn.is_signed, cn.signed_at, cn.created_at,
-              pr.first_name as provider_first_name, pr.last_name as provider_last_name,
-              pr.credentials as provider_credentials
-       FROM clinical_notes cn
-       JOIN users pr ON pr.id = cn.provider_id
-       WHERE cn.id = $1 OR cn.parent_note_id = $1
-       ORDER BY cn.version ASC`,
-      [rootId]
-    );
-    
-    return rows.map(keysToCamel);
+    const rows = await this._readNotes(userId, userRole, { encounterId: accessibleNote.encounterId, rootId: accessibleNote.parentNoteId || accessibleNote.id });
+    return rows.map(note => keysToCamel({ id: note.id, version: note.version, is_amendment: note.is_amendment, amendment_reason: note.amendment_reason,
+      is_signed: note.is_signed, signed_at: note.signed_at, created_at: note.created_at, provider_first_name: note.provider_first_name, provider_last_name: note.provider_last_name, provider_credentials: note.provider_credentials }));
   }
   
   /**
    * Get all notes for an encounter
    */
   async getEncounterNotes(encounterId, userId, userRole) {
+    this._references(encounterId);
     // First verify access to encounter
     const encounter = await this.getEncounterById(encounterId, userId, userRole);
     
     if (!encounter) {
-      throw new Error('Encounter not found');
+      throw clinicalError(404, 'CLINICAL_RECORD_NOT_FOUND', 'Encounter not found.');
     }
     
-    const { rows } = await db.query(
-      `SELECT cn.*,
-              pr.first_name as provider_first_name, pr.last_name as provider_last_name,
-              pr.credentials as provider_credentials
-       FROM clinical_notes cn
-       JOIN users pr ON pr.id = cn.provider_id
-       WHERE cn.encounter_id = $1
-       ORDER BY cn.version ASC, cn.created_at ASC`,
-      [encounterId]
-    );
-    
+    const rows = await this._readNotes(userId, userRole, { encounterId });
     return rows.map(r => this._formatNote(r, true));
   }
   
@@ -760,13 +733,7 @@ class ClinicalEncounterService {
     }
     
     // Decrypt chief complaint if requested
-    if (includeDecrypted && encounter.chief_complaint_encrypted) {
-      formatted.chiefComplaint = decrypt(
-        encounter.chief_complaint_encrypted,
-        encounter.chief_complaint_iv,
-        encounter.chief_complaint_tag
-      );
-    }
+    if (includeDecrypted) formatted.chiefComplaint = readClinicalField(encounter, 'chief_complaint', encounter.chief_complaint || null);
     
     return formatted;
   }
@@ -807,20 +774,52 @@ class ClinicalEncounterService {
     
     // Decrypt SOAP content if requested
     if (includeDecrypted) {
-      formatted.subjective = decrypt(note.subjective_encrypted, note.subjective_iv, note.subjective_tag);
-      formatted.objective = decrypt(note.objective_encrypted, note.objective_iv, note.objective_tag);
-      formatted.assessment = decrypt(note.assessment_encrypted, note.assessment_iv, note.assessment_tag);
-      formatted.plan = decrypt(note.plan_encrypted, note.plan_iv, note.plan_tag);
-      formatted.physicalExam = decrypt(note.physical_exam_encrypted, note.physical_exam_iv, note.physical_exam_tag);
-      
-      if (note.vitals_encrypted) {
-        const vitalsStr = decrypt(note.vitals_encrypted, note.vitals_iv, note.vitals_tag);
-        formatted.vitals = vitalsStr ? JSON.parse(vitalsStr) : null;
+      formatted.subjective = readClinicalField(note, 'subjective', note.subjective || null);
+      formatted.objective = readClinicalField(note, 'objective', note.objective || null);
+      formatted.assessment = readClinicalField(note, 'assessment', note.assessment || null);
+      formatted.plan = readClinicalField(note, 'plan', note.plan || null);
+      formatted.physicalExam = readClinicalField(note, 'physical_exam', note.physical_exam || null);
+      const vitalsStr = readClinicalField(note, 'vitals');
+      if (vitalsStr !== null) {
+        try { formatted.vitals = JSON.parse(vitalsStr); }
+        catch (_error) { throw clinicalError(503, 'CLINICAL_DECRYPTION_UNAVAILABLE', 'Protected clinical measurements could not be opened.'); }
       }
     }
     
     return formatted;
   }
+}
+
+// Every public read, including nested encounter/note history reads, uses one
+// connection and commits its clinical audit before any plaintext is returned.
+for (const method of ['getEncounterById', 'getPatientEncounters', 'getNoteById', 'getNoteVersionHistory', 'getEncounterNotes']) {
+  const original = ClinicalEncounterService.prototype[method];
+  ClinicalEncounterService.prototype[method] = async function auditedClinicalRead(...args) {
+    const userId = method === 'getPatientEncounters' ? args[1]?.userId : args[1];
+    const role = method === 'getPatientEncounters' ? args[1]?.userRole : args[2];
+    this._references(args[0], userId);
+    if (!['patient', 'provider'].includes(role)) throw clinicalError(403, 'CLINICAL_ACCESS_DENIED', 'Clinical record access denied.');
+    const inherited = clinicalReadContext.getStore();
+    if (inherited) {
+      if (inherited.userId !== userId || inherited.role !== role) throw clinicalError(403, 'CLINICAL_ACCESS_DENIED', 'Clinical read context changed.');
+      return original.apply(this, args);
+    }
+    const client = await database.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const context = { client, userId, role, records: new Map() };
+      const result = await clinicalReadContext.run(context, () => original.apply(this, args));
+      try {
+        const records = [...context.records.values()];
+        for (const row of records.length ? records : [{ type: method.includes('Note') ? 'clinical_note' : 'clinical_encounter', id: null, patient_id: null }]) {
+          await this._audit(client, userId, row.type, row, 'read', { operation: method });
+        }
+      } catch (_error) { throw clinicalError(503, 'CLINICAL_AUDIT_UNAVAILABLE', 'Clinical access could not be recorded.'); }
+      await client.query('COMMIT');
+      return result;
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
+  };
 }
 
 module.exports = new ClinicalEncounterService();

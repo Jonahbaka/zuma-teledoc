@@ -1,4 +1,8 @@
+import { resolveDeploymentProfile } from '@/lib/deploymentProfile.cjs';
+import careOpsManifest from './careops/manifest';
+
 export default function manifest() {
+  if (resolveDeploymentProfile().careops) return careOpsManifest();
   return {
     name: 'DoctaRx',
     short_name: 'DoctaRx',

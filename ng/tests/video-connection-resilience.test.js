@@ -4,6 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const fs = require('node:fs');
+const vm = require('node:vm');
 
 const MODULE_URL = pathToFileURL(
   path.join(__dirname, '..', '..', 'lib', 'ng', 'connectionResilience.js')
@@ -243,4 +245,143 @@ test('a second tab on the same call is detected and explained', async () => {
   assert.equal(otherDevice.duplicate, true);
   assert.equal(otherDevice.reason, 'CONCURRENT_SESSION');
   assert.ok(otherDevice.message.length > 0);
+});
+
+// Execute the shipped provider-room callback with controlled media and HTTP
+// dependencies. This checks resource/state behavior; live SFU acceptance is a
+// separate deployment test and is not implied by these mocked media sessions.
+function providerRoomHarness(options = {}) {
+  const source = fs.readFileSync(path.join(__dirname, '..', '..', 'components/ng/conference/NGVideoCall.jsx'), 'utf8');
+  const start = source.indexOf('  const handleJoin = useCallback(');
+  const end = source.indexOf('  const retryConnect = useCallback(', start);
+  assert.ok(start > 0 && end > start, 'provider connection callback is discoverable');
+  const callback = source.slice(start, end).replace("await import('livekit-client')", 'await loadLiveKit()');
+  const state = {};
+  const captured = { camera: 0, microphone: 0 };
+  const rooms = [];
+  const tracks = [];
+  const RoomEvent = Object.fromEntries(['TrackSubscribed', 'TrackUnsubscribed', 'ParticipantConnected', 'ParticipantDisconnected', 'TrackMuted', 'TrackUnmuted', 'LocalTrackPublished', 'LocalTrackUnpublished', 'AudioPlaybackStatusChanged', 'Reconnecting', 'Reconnected', 'Disconnected'].map(name => [name, name]));
+  const Track = { Source: { Camera: 'camera', Microphone: 'microphone', ScreenShare: 'screen_share' } };
+  const makeTrack = (kind) => {
+    const track = { kind, stopped: 0, stop() { this.stopped += 1; } };
+    tracks.push(track);
+    return track;
+  };
+  class Room {
+    constructor() {
+      this.listeners = new Map(); this.disconnects = 0; this.removedListeners = 0;
+      this.canPlaybackAudio = true;
+      this.remoteParticipants = new Map(options.remotes || []);
+      this.localParticipant = {
+        videoTrackPublications: new Map(), audioTrackPublications: new Map(), isScreenShareEnabled: false,
+        publishTrack: async track => {
+          if (options.failVideoPublish && track.kind === 'video') throw new Error('Camera publication failed');
+          const publications = track.kind === 'video' ? this.localParticipant.videoTrackPublications : this.localParticipant.audioTrackPublications;
+          publications.set(track.kind, { source: track.kind === 'video' ? 'camera' : 'microphone', track, isMuted: false });
+          this.listeners.get(RoomEvent.LocalTrackPublished)?.();
+        },
+      };
+      rooms.push(this);
+    }
+    on(event, listener) { this.listeners.set(event, listener); return this; }
+    removeAllListeners() { this.listeners.clear(); this.removedListeners += 1; }
+    async connect() { if (options.connect) await options.connect(this); }
+    async startAudio() {}
+    async disconnect(stopTracks) {
+      assert.equal(stopTracks, true, 'disconnect releases devices');
+      this.disconnects += 1;
+      this.listeners.get(RoomEvent.Disconnected)?.();
+    }
+  }
+  const context = {
+    state, rooms, tracks, captured, displayName: 'Doctor', useCallback: fn => fn,
+    mountedRef: { current: true }, joinAttemptRef: { current: 0 }, mediaRoomRef: { current: null },
+    lastDevices: { current: null }, lastRoomRef: { current: null },
+    api: {
+      getRoom: async () => ({ ok: true, room: { id: 'room-1', status: 'live' } }),
+      startRoom: async () => { throw new Error('A live room must not be restarted'); },
+      joinRoom: async () => ({ ok: true }),
+      getToken: async () => ({ ok: true, token: 'test-token', livekitUrl: 'wss://media.example.test' }),
+    },
+    loadLiveKit: async () => ({ Room, RoomEvent, Track,
+      createLocalVideoTrack: async () => { captured.camera += 1; return options.captureVideo ? options.captureVideo() : makeTrack('video'); },
+      createLocalAudioTrack: async () => { captured.microphone += 1; return makeTrack('audio'); },
+    }),
+    console: { warn() {}, error() {} },
+  };
+  const setters = callback.match(/\bset[A-Z]\w*/g) || [];
+  for (const name of new Set(setters)) context[name] = value => { state[name.slice(3)] = value; };
+  vm.runInNewContext(`${callback}\nglobalThis.join = handleJoin;`, context);
+  return context;
+}
+
+test('provider room honors camera-off preference and receives separate remote audio tracks', async () => {
+  const remoteAudio = { kind: 'audio' };
+  const remote = { identity: 'patient-1', videoTrackPublications: new Map(), audioTrackPublications: new Map([['mic', { trackSid: 'audio-1', track: remoteAudio }]]) };
+  const h = providerRoomHarness({ remotes: [['patient-1', remote]] });
+  await h.join({ id: 'room-1', status: 'live' }, { camera: false, microphone: true });
+  assert.deepEqual(h.captured, { camera: 0, microphone: 1 });
+  assert.equal(h.state.Phase, 'call');
+  assert.equal(h.state.IsVideoOff, true);
+  assert.equal(h.state.IsMuted, false);
+  assert.equal(h.state.RemoteAudioTracks[0].track, remoteAudio);
+});
+
+test('a failed camera publication stops the captured track and leaves microphone available', async () => {
+  const h = providerRoomHarness({ failVideoPublish: true });
+  await h.join({ id: 'room-1', status: 'live' });
+  assert.equal(h.tracks.find(track => track.kind === 'video').stopped, 1);
+  assert.equal(h.state.IsVideoOff, true);
+  assert.equal(h.state.IsMuted, false);
+  assert.equal(h.state.LocalCameraTrack, null);
+  assert.match(h.state.MediaError, /Camera publication failed/);
+  assert.equal(h.state.Phase, 'call', 'the surviving audio connection stays available');
+});
+
+test('provider room retry disconnects its previous media session before connecting another', async () => {
+  const h = providerRoomHarness();
+  await h.join({ id: 'room-1', status: 'live' }, { camera: false, microphone: false });
+  await h.join({ id: 'room-1', status: 'scheduled' }, { camera: false, microphone: false });
+  assert.equal(h.rooms.length, 2);
+  assert.equal(h.rooms[0].disconnects, 1);
+  assert.equal(h.rooms[0].removedListeners, 1);
+  assert.equal(h.mediaRoomRef.current, h.rooms[1]);
+  assert.equal(h.state.Phase, 'call');
+});
+
+test('a connection completing after navigation is disconnected and never captures devices', async () => {
+  let finish;
+  const h = providerRoomHarness({ connect: () => new Promise(resolve => { finish = resolve; }) });
+  const pending = h.join({ id: 'room-1', status: 'live' });
+  while (!finish) await new Promise(resolve => setImmediate(resolve));
+  h.mountedRef.current = false;
+  h.joinAttemptRef.current += 1;
+  finish(); await pending;
+  assert.equal(h.rooms[0].disconnects, 1);
+  assert.deepEqual(h.captured, { camera: 0, microphone: 0 });
+  assert.notEqual(h.state.Phase, 'call');
+});
+
+test('devices captured after navigation are stopped without publication', async () => {
+  let finish;
+  const video = { kind: 'video', stopped: 0, stop() { this.stopped += 1; } };
+  const h = providerRoomHarness({ captureVideo: () => new Promise(resolve => { finish = resolve; }) });
+  const pending = h.join({ id: 'room-1', status: 'live' });
+  while (!finish) await new Promise(resolve => setImmediate(resolve));
+  h.mountedRef.current = false; h.joinAttemptRef.current += 1;
+  finish(video); await pending;
+  assert.equal(video.stopped, 1);
+  assert.equal(h.tracks[0].stopped, 1);
+  assert.equal(h.rooms[0].localParticipant.videoTrackPublications.size, 0);
+  assert.equal(h.rooms[0].localParticipant.audioTrackPublications.size, 0);
+  assert.notEqual(h.state.Phase, 'call');
+});
+
+test('initial SFU failure returns to preflight even when the SDK emits disconnection first', async () => {
+  const h = providerRoomHarness({ connect: async room => { room.listeners.get('Disconnected')(); throw new Error('SFU unreachable'); } });
+  await h.join({ id: 'room-1', status: 'live' });
+  assert.equal(h.state.Phase, 'pre');
+  assert.equal(h.state.ConnState, 'failed');
+  assert.equal(h.state.SfuAvailable, false);
+  assert.match(h.state.ConnectError, /SFU unreachable/);
 });

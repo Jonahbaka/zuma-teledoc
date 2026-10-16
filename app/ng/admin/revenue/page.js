@@ -1,64 +1,15 @@
 'use client';
+import { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { AdminPageHeader, ResourceState, useAdminResource } from '@/components/ng/admin/AdminWorkspaceTools';
+import { formatCount, formatDate, formatMoney, requireRows } from '@/lib/ng/adminWorkspaceData';
 
-import { useEffect, useState } from 'react';
-import api from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-
-function formatNaira(amount) {
-  return `NGN ${Number(amount || 0).toLocaleString()}`;
-}
-
-export default function NigeriaAdminRevenuePage() {
-  const [rows, setRows] = useState([]);
-
-  useEffect(() => {
-    const loadRevenue = async () => {
-      const response = await api.get('/ng/admin/analytics/revenue').catch(() => ({ data: [] }));
-      setRows(Array.isArray(response.data) ? response.data : []);
-    };
-
-    loadRevenue();
-  }, []);
-
-  return (
-    <div className="space-y-6">
-      <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Revenue Operations</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Revenue trend and order economics</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Review daily Nigeria marketplace revenue, order counts, and GMV from the admin portal.</p>
-      </section>
-
-      <Card className="border-border/70">
-        <CardHeader>
-          <CardTitle>Revenue trend</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No revenue trend rows are available.</p>
-          ) : (
-            rows.map((row) => (
-              <div key={row.date} className="grid gap-3 rounded-2xl border border-border px-4 py-4 text-sm md:grid-cols-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Date</p>
-                  <p className="mt-1 font-semibold text-foreground">{row.date}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">RX Fees</p>
-                  <p className="mt-1 font-semibold text-foreground">{formatNaira(row.rx_fees)}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Orders</p>
-                  <p className="mt-1 font-semibold text-foreground">{row.orders || 0}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">GMV</p>
-                  <p className="mt-1 font-semibold text-foreground">{formatNaira(row.gmv)}</p>
-                </div>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+export default function AdminRevenue() {
+  const [period, setPeriod] = useState('30d');
+  const resource = useAdminResource('/ng/admin/analytics/revenue', { period }, data => requireRows(data));
+  return <div className="space-y-6">
+    <AdminPageHeader title="Revenue reporting" description="Review daily prescription fees, recorded order counts, and order values from the financial records." resource={resource} />
+    <label className="block max-w-sm font-medium text-slate-800">Reporting range<select value={period} onChange={event => setPeriod(event.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4"><option value="7d">7-day range</option><option value="30d">30-day range</option><option value="90d">90-day range</option></select></label>
+    <Card><CardHeader><CardTitle>Daily financial records</CardTitle><CardDescription>Amounts are reported in NGN. Missing values remain unavailable.</CardDescription></CardHeader><CardContent><ResourceState resource={resource} empty={resource.data?.length === 0} emptyMessage="No financial records were returned for this reporting range."><div className="space-y-4">{resource.data?.map(row => <article key={row.date} className="rounded-2xl border border-slate-200 p-5"><h2 className="font-semibold text-slate-950">{formatDate(row.date)}</h2><dl className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{[['Prescription fees', formatMoney(row.rx_fees)], ['Subscription records', formatMoney(row.subscriptions)], ['Delivery markup', formatMoney(row.delivery_markup)], ['Margin share', formatMoney(row.margin_share)], ['Recorded orders', formatCount(row.orders)], ['Recorded order value', formatMoney(row.gmv)]].map(([label, value]) => <div key={label}><dt className="text-slate-600">{label}</dt><dd className="mt-2 font-semibold text-slate-950">{value}</dd></div>)}</dl></article>)}</div></ResourceState></CardContent></Card>
+  </div>;
 }

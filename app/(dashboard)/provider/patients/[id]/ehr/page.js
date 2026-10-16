@@ -28,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
 import { formatDateTime } from '@/lib/utils';
 import { toProviderPortalPath } from '@/lib/providerPortal';
+import PatientPrescriptionSubmissions from '@/components/provider/PatientPrescriptionSubmissions';
 
 export default function ProviderPatientEhrPage() {
   const params = useParams();
@@ -122,7 +123,7 @@ export default function ProviderPatientEhrPage() {
 
   const identityBadge = useMemo(() => {
     const verified = summary?.profile?.identityVerified;
-    if (verified) return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Identity Verified</Badge>;
+    if (verified) return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Identity Verified</Badge>;
     return <Badge variant="secondary">Identity Not Verified</Badge>;
   }, [summary]);
 
@@ -207,7 +208,7 @@ export default function ProviderPatientEhrPage() {
   if (loading && !patient) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -223,7 +224,7 @@ export default function ProviderPatientEhrPage() {
           </Link>
           <div>
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-              <ClipboardList className="w-6 h-6 text-purple-600" />
+              <ClipboardList className="w-6 h-6 text-blue-600" />
               Clinical Chart: {patient?.firstName} {patient?.lastName}
             </h1>
             <div className="flex items-center gap-2 mt-1">
@@ -234,12 +235,13 @@ export default function ProviderPatientEhrPage() {
           </div>
         </div>
 
-        <Button onClick={() => setShowNewEncounter(true)} className="bg-purple-600 hover:bg-purple-700">
+        <Button onClick={() => setShowNewEncounter(true)} className="bg-blue-600 hover:bg-blue-700">
           <Plus className="w-4 h-4 mr-2" />
           New Encounter
         </Button>
       </div>
 
+      {pathname?.startsWith('/ng/') && <PatientPrescriptionSubmissions patientId={patientId} />}
       <Tabs defaultValue="encounters" className="w-full">
         <TabsList>
           <TabsTrigger value="encounters">Encounters</TabsTrigger>
@@ -316,7 +318,7 @@ export default function ProviderPatientEhrPage() {
                   <Input value={allergyForm.reaction} onChange={(e) => setAllergyForm({ ...allergyForm, reaction: e.target.value })} />
                 </div>
               </div>
-              <Button onClick={addAllergy} disabled={addingAllergy || !allergyForm.allergen} className="bg-purple-600 hover:bg-purple-700">
+              <Button onClick={addAllergy} disabled={addingAllergy || !allergyForm.allergen} className="bg-blue-600 hover:bg-blue-700">
                 {addingAllergy ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                 Add Allergy
               </Button>
@@ -345,7 +347,7 @@ export default function ProviderPatientEhrPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Pill className="w-5 h-5 text-purple-600" />
+                <Pill className="w-5 h-5 text-blue-600" />
                 Medication List (informational)
               </CardTitle>
             </CardHeader>
@@ -368,7 +370,7 @@ export default function ProviderPatientEhrPage() {
                   <Input value={medicationForm.route} onChange={(e) => setMedicationForm({ ...medicationForm, route: e.target.value })} />
                 </div>
               </div>
-              <Button onClick={addMedication} disabled={addingMedication || !medicationForm.medicationName} className="bg-purple-600 hover:bg-purple-700">
+              <Button onClick={addMedication} disabled={addingMedication || !medicationForm.medicationName} className="bg-blue-600 hover:bg-blue-700">
                 {addingMedication ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                 Add Medication
               </Button>
@@ -415,7 +417,7 @@ export default function ProviderPatientEhrPage() {
                   <Textarea value={problemForm.problemDescription} onChange={(e) => setProblemForm({ ...problemForm, problemDescription: e.target.value })} />
                 </div>
               </div>
-              <Button onClick={addProblem} disabled={addingProblem} className="bg-purple-600 hover:bg-purple-700">
+              <Button onClick={addProblem} disabled={addingProblem} className="bg-blue-600 hover:bg-blue-700">
                 {addingProblem ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                 Add Problem
               </Button>
@@ -444,7 +446,7 @@ export default function ProviderPatientEhrPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-green-600" />
+                <ShieldCheck className="w-5 h-5 text-blue-600" />
                 Telehealth Consent History
               </CardTitle>
             </CardHeader>
@@ -521,7 +523,7 @@ export default function ProviderPatientEhrPage() {
 
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setShowNewEncounter(false)}>Cancel</Button>
-            <Button onClick={createEncounter} disabled={creatingEncounter} className="bg-purple-600 hover:bg-purple-700">
+            <Button onClick={createEncounter} disabled={creatingEncounter} className="bg-blue-600 hover:bg-blue-700">
               {creatingEncounter ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Create
             </Button>

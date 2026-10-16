@@ -23,14 +23,15 @@ import {
 } from 'lucide-react';
 
 export const nigeriaPatientNavigation = [
-  { name: 'Dashboard', href: '/ng/patient', icon: LayoutDashboard },
-  { name: 'Book Consultation', href: '/ng/patient/appointments/book', icon: Stethoscope },
-  { name: 'Appointments', href: '/ng/patient/appointments', icon: Calendar },
+  { name: 'Home', href: '/ng/patient', icon: LayoutDashboard },
+  { name: 'Get care', href: '/ng/patient/appointments/book', icon: Stethoscope },
+  { name: 'Visits', href: '/ng/patient/appointments', icon: Calendar },
   { name: 'Video Visits', href: '/ng/patient/call', icon: Video },
   { name: 'Prescriptions', href: '/ng/patient/prescriptions', icon: Pill },
   { name: 'Orders', href: '/ng/patient/orders', icon: Package },
-  { name: 'Find Care', href: '/ng/patient/search', icon: Search },
-  { name: 'Records', href: '/ng/patient/records', icon: FileText },
+  { name: 'Billing', href: '/ng/patient/consultation-billing', icon: CreditCard },
+  { name: 'Medication search', href: '/ng/patient/search', icon: Search },
+  { name: 'Health records', href: '/ng/patient/records', icon: FileText },
   { name: 'Messages', href: '/ng/patient/messages', icon: MessageSquare },
   { name: 'Profile', href: '/ng/patient/profile', icon: User },
 ];
@@ -50,6 +51,7 @@ export const nigeriaAdminNavigation = [
   { name: 'Providers', href: '/ng/admin/providers', icon: Stethoscope },
   { name: 'Hospitals', href: '/ng/admin/hospitals', icon: Building2 },
   { name: 'Pharmacies', href: '/ng/admin/pharmacies', icon: Pill },
+  { name: 'Medication delivery', href: '/ng/admin/medication-delivery', icon: Package },
   { name: 'Organisations', href: '/ng/admin/organizations', icon: Users },
   { name: 'Subscriptions', href: '/ng/admin/subscriptions', icon: CreditCard },
   { name: 'Revenue', href: '/ng/admin/revenue', icon: Wallet },

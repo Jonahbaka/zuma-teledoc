@@ -258,10 +258,10 @@ export default function AnalyticsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Active users (5m)</p>
-                <p className="text-3xl font-bold mt-1 text-green-600">{realtime?.activeUsers5m || 0}</p>
+                <p className="text-3xl font-bold mt-1 text-blue-600">{realtime?.activeUsers5m || 0}</p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
-                <ActivityIcon className="w-6 h-6 text-green-600" />
+              <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                <ActivityIcon className="w-6 h-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -272,10 +272,10 @@ export default function AnalyticsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Users per minute</p>
-                <p className="text-3xl font-bold mt-1 text-purple-600">{realtime?.activeUsersPerMinute || 0}</p>
+                <p className="text-3xl font-bold mt-1 text-blue-600">{realtime?.activeUsersPerMinute || 0}</p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-purple-600" />
+              <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -288,8 +288,8 @@ export default function AnalyticsPage() {
                 <p className="text-sm text-gray-500">GrowthBot</p>
                 <p className="text-lg font-bold mt-1">{realtime?.growthBot?.status || 'Monitoring'}</p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
-                <Zap className="w-6 h-6 text-emerald-600" />
+              <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                <Zap className="w-6 h-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -313,7 +313,7 @@ export default function AnalyticsPage() {
             <CardDescription>Connected to orchestrator growth missions</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="rounded-lg border bg-black/90 p-3 text-xs text-emerald-400">
+            <div className="rounded-lg border bg-black/90 p-3 text-xs text-blue-400">
               {realtime?.growthBot?.status || 'Monitoring traffic...'}
             </div>
             <Button

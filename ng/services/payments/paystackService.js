@@ -6,6 +6,7 @@
 
 const https = require('https');
 const ngConfig = require('../../config');
+const { verifyPaystackSignature } = require('./paymentIntegrity');
 
 const PAYSTACK_BASE = ngConfig.paystack.baseUrl;
 const SECRET_KEY = ngConfig.paystack.secretKey;
@@ -70,9 +71,11 @@ class PaystackService {
     channels = ['card', 'bank', 'ussd', 'bank_transfer'],
     subaccountCode = null, platformFee = 0,
   }) {
+    if (!SECRET_KEY) throw new Error('Paystack is not configured');
+    if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('A positive integer kobo amount is required');
     const body = {
       email,
-      amount: Math.round(amount), // Must be in kobo
+      amount,
       reference,
       callback_url: callbackUrl,
       metadata: {
@@ -173,13 +176,8 @@ class PaystackService {
   /**
    * Verify webhook signature
    */
-  verifyWebhookSignature(body, signature) {
-    const crypto = require('crypto');
-    const hash = crypto
-      .createHmac('sha512', ngConfig.paystack.webhookSecret)
-      .update(JSON.stringify(body))
-      .digest('hex');
-    return hash === signature;
+  verifyWebhookSignature(rawBody, signature) {
+    return verifyPaystackSignature(rawBody, signature, SECRET_KEY);
   }
 
   /**
@@ -217,6 +215,32 @@ class PaystackService {
     if (amount) body.amount = Math.round(amount);
     if (reason) body.merchant_note = reason;
     return paystackRequest('POST', '/refund', body);
+  }
+
+  /** Fetch the authoritative status of an already initiated refund. */
+  async getRefund(refundId) {
+    // Official contract: https://paystack.com/docs/api/refund/#fetch
+    const id = String(refundId ?? '');
+    if (!/^[1-9]\d{0,19}$/.test(id)) throw new Error('A valid provider refund ID is required');
+    if (!SECRET_KEY) throw new Error('Paystack is not configured');
+    return paystackRequest('GET', `/refund/${encodeURIComponent(id)}`);
+  }
+
+  async verifyTransfer(reference) {
+    if (!/^[a-z0-9_-]{16,50}$/.test(reference || '')) throw new Error('A valid transfer reference is required');
+    if (!SECRET_KEY) throw new Error('Paystack is not configured');
+    return paystackRequest('GET', `/transfer/verify/${encodeURIComponent(reference)}`);
+  }
+
+  async getTransferRecipient(code) {
+    if (!/^RCP_[A-Za-z0-9]{5,100}$/.test(code || '')) throw new Error('An approved transfer recipient is required');
+    if (!SECRET_KEY) throw new Error('Paystack is not configured');
+    return paystackRequest('GET', `/transferrecipient/${encodeURIComponent(code)}`);
+  }
+
+  async getBalance() {
+    if (!SECRET_KEY) throw new Error('Paystack is not configured');
+    return paystackRequest('GET', '/balance');
   }
 
   /**

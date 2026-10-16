@@ -79,7 +79,7 @@ const MARKET_CONFIG = {
     phonePlaceholder: '+2348012345678',
     specialtyPlaceholder: 'e.g., Family Medicine, General Practice',
     warningTitle: 'Nigeria Testing Access Security',
-    createButtonClass: 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700',
+    createButtonClass: 'bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700',
   },
 };
 
@@ -503,13 +503,13 @@ export default function TestingLinksPage({ market = 'ALL' }) {
     if (link.status === 'revoked' || link.revoked_at || link.isRevoked || !link.is_active) return { label: 'Revoked', color: 'bg-red-100 text-red-700 hover:bg-red-100' };
     if (link.isExpired) return { label: 'Expired', color: 'bg-red-100 text-red-600' };
     if (link.isExhausted || link.status === 'used') return { label: 'Used', color: 'bg-orange-100 text-orange-600' };
-    return { label: 'Active', color: 'bg-green-100 text-green-600' };
+    return { label: 'Active', color: 'bg-blue-100 text-blue-600' };
   };
 
   const getRoleIcon = (role) => {
     if (role === 'provider') return <Stethoscope className="w-4 h-4 text-blue-500" />;
     if (role === 'patient') return <Heart className="w-4 h-4 text-pink-500" />;
-    return <Building2 className="w-4 h-4 text-emerald-600" />;
+    return <Building2 className="w-4 h-4 text-blue-600" />;
   };
 
   const getAccountStatus = (account) => {
@@ -517,7 +517,7 @@ export default function TestingLinksPage({ market = 'ALL' }) {
     if (account.status === 'revoked' || account.revokedAt || !account.isActive) return { label: 'Revoked', color: 'bg-red-100 text-red-700 hover:bg-red-100' };
     if (account.mustChangePassword) return { label: 'Password change required', color: 'bg-amber-100 text-amber-800 hover:bg-amber-100' };
     if (account.providerStatus === 'pending') return { label: 'Pending', color: 'bg-orange-100 text-orange-700 hover:bg-orange-100' };
-    return { label: 'Active', color: 'bg-green-100 text-green-700 hover:bg-green-100' };
+    return { label: 'Active', color: 'bg-blue-100 text-blue-700 hover:bg-blue-100' };
   };
 
   const stats = {
@@ -628,7 +628,7 @@ export default function TestingLinksPage({ market = 'ALL' }) {
                         </SelectItem>
                         <SelectItem value="pharmacy">
                           <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4 text-emerald-600" />
+                            <Building2 className="w-4 h-4 text-blue-600" />
                             Pharmacy
                           </div>
                         </SelectItem>
@@ -663,7 +663,7 @@ export default function TestingLinksPage({ market = 'ALL' }) {
                 </div>
 
                 {newAccount.role === 'pharmacy' ? (
-                  <div className="space-y-4 rounded-lg border bg-emerald-50/50 p-4 dark:bg-emerald-950/10">
+                  <div className="space-y-4 rounded-lg border bg-blue-50/50 p-4 dark:bg-blue-950/10">
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Pharmacy Business Name</Label>
@@ -874,7 +874,7 @@ export default function TestingLinksPage({ market = 'ALL' }) {
                       <Label className="cursor-default">Require New Password</Label>
                       <p className="text-xs text-muted-foreground">Blocks protected provider access until changed.</p>
                     </div>
-                    <Badge className="bg-green-100 text-green-700 hover:bg-green-100">On</Badge>
+                    <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">On</Badge>
                   </div>
 
                   <div className="flex items-center justify-between gap-4">
@@ -986,7 +986,7 @@ export default function TestingLinksPage({ market = 'ALL' }) {
                         </SelectItem>
                         <SelectItem value="pharmacy">
                           <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4 text-emerald-600" />
+                            <Building2 className="w-4 h-4 text-blue-600" />
                             Pharmacy
                           </div>
                         </SelectItem>
@@ -1182,7 +1182,7 @@ export default function TestingLinksPage({ market = 'ALL' }) {
             </div>
             <div className="rounded-lg border bg-muted/30 p-3">
               <p className="text-xs text-muted-foreground">Active</p>
-              <p className="text-xl font-semibold text-green-700">{accountStats.active}</p>
+              <p className="text-xl font-semibold text-blue-700">{accountStats.active}</p>
             </div>
             <div className="rounded-lg border bg-muted/30 p-3">
               <p className="text-xs text-muted-foreground">Providers</p>
@@ -1194,7 +1194,7 @@ export default function TestingLinksPage({ market = 'ALL' }) {
             </div>
             <div className="rounded-lg border bg-muted/30 p-3">
               <p className="text-xs text-muted-foreground">Pharmacies</p>
-              <p className="text-xl font-semibold text-emerald-700">{accountStats.pharmacies}</p>
+              <p className="text-xl font-semibold text-blue-700">{accountStats.pharmacies}</p>
             </div>
           </div>
 
@@ -1345,7 +1345,7 @@ export default function TestingLinksPage({ market = 'ALL' }) {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => restoreTestAccount(account)}
-                                className="text-green-700 hover:text-green-800"
+                                className="text-blue-700 hover:text-blue-800"
                                 title="Restore account"
                               >
                                 <RefreshCw className="mr-1 h-4 w-4" />
@@ -1382,9 +1382,9 @@ export default function TestingLinksPage({ market = 'ALL' }) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Active</p>
-                <p className="text-2xl font-bold text-green-600">{stats.active}</p>
+                <p className="text-2xl font-bold text-blue-600">{stats.active}</p>
               </div>
-              <CheckCircle className="w-8 h-8 text-green-500" />
+              <CheckCircle className="w-8 h-8 text-blue-500" />
             </div>
           </CardContent>
         </Card>
@@ -1415,9 +1415,9 @@ export default function TestingLinksPage({ market = 'ALL' }) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Pharmacy Links</p>
-                <p className="text-2xl font-bold text-emerald-600">{stats.pharmacy}</p>
+                <p className="text-2xl font-bold text-blue-600">{stats.pharmacy}</p>
               </div>
-              <Building2 className="w-8 h-8 text-emerald-500" />
+              <Building2 className="w-8 h-8 text-blue-500" />
             </div>
           </CardContent>
         </Card>
@@ -1426,9 +1426,9 @@ export default function TestingLinksPage({ market = 'ALL' }) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Activations</p>
-                <p className="text-2xl font-bold text-purple-600">{stats.totalActivations}</p>
+                <p className="text-2xl font-bold text-blue-600">{stats.totalActivations}</p>
               </div>
-              <Users className="w-8 h-8 text-purple-500" />
+              <Users className="w-8 h-8 text-blue-500" />
             </div>
           </CardContent>
         </Card>
@@ -1675,7 +1675,7 @@ export default function TestingLinksPage({ market = 'ALL' }) {
                               size="sm"
                               variant="ghost"
                               onClick={() => restoreLink(link)}
-                              className="text-green-700 hover:text-green-800"
+                              className="text-blue-700 hover:text-blue-800"
                               title="Restore"
                             >
                               <RefreshCw className="mr-1 h-4 w-4" />

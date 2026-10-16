@@ -5,11 +5,46 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { authenticate, requireRole, canAccessPatient } = require('../middleware/auth');
+const { authenticate, requireRole } = require('../middleware/auth');
 const { auditMiddleware } = require('../middleware/audit');
 const insuranceWalletService = require('../services/insuranceWalletService');
+const manualInsuranceService = require('../services/manualInsuranceService');
+const db = require('../db');
 const ocrService = require('../services/ocrService');
-const eligibilityService = require('../services/eligibilityService');
+const { scopedFinancialRecord, patientFinancialAccess } = require('../middleware/financialRecordScope');
+const insuranceScope = scopedFinancialRecord('patient_insurance', 'insurance');
+function integrationErrorResponse(res, error, fallback) {
+  const unavailable = error.statusCode === 503;
+  return res.status(unavailable ? 503 : 500).json({
+    success: false, ...(unavailable ? { status: 'unavailable', code: error.code } : {}),
+    error: unavailable ? error.message : fallback,
+  });
+}
+
+function ocrAccessAndReadiness(req, res, next) {
+  if (req.user.role !== 'patient') return res.status(403).json({ success: false, error: 'Only patients can upload insurance cards' });
+  try { ocrService.assertAvailable(); return next(); }
+  catch (error) { return integrationErrorResponse(res, error, 'Insurance card scanning could not be started.'); }
+}
+async function patientScope(req, res, next) {
+  try {
+    if (!await patientFinancialAccess(req.user, req.params.patientId)) return res.status(404).json({ success: false, error: 'Patient not found' });
+    next();
+  } catch (error) { next(error); }
+}
+
+router.post('/manual', authenticate, async (req, res) => {
+  try {
+    const result = await manualInsuranceService.saveManualInsurance(db.pool, req, req.body);
+    res.set('Cache-Control', 'private, no-store');
+    res.status(result.created ? 201 : 200).json({ success: true, insurance: result.insurance });
+  } catch (error) {
+    const status = [400, 403, 409, 503].includes(error.statusCode) ? error.statusCode : 503;
+    res.status(status).json({ success: false, ...(status === 503 ? { status: 'unavailable' } : {}),
+      code: error.code || 'INSURANCE_STORAGE_UNAVAILABLE',
+      error: error.statusCode ? error.message : 'Insurance details could not be saved securely. Try again later.' });
+  }
+});
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -20,7 +55,7 @@ const upload = multer({
 router.get('/patient/:patientId/wallet',
   authenticate,
   requireRole('provider', 'admin', 'super_admin'),
-  canAccessPatient,
+  patientScope,
   async (req, res) => {
     try {
       const wallet = await insuranceWalletService.getWallet(req.params.patientId);
@@ -36,9 +71,11 @@ router.get('/patient/:patientId/wallet',
 router.get('/patient/:patientId/:id',
   authenticate,
   requireRole('provider', 'admin', 'super_admin'),
-  canAccessPatient,
+  patientScope,
+  insuranceScope,
   async (req, res) => {
     try {
+      if (String(req.insurance.user_id || req.insurance.patient_id) !== String(req.params.patientId)) return res.status(404).json({ success: false, error: 'Insurance not found' });
       const insurance = await insuranceWalletService.getInsuranceById(
         req.params.id,
         req.user.id,
@@ -80,7 +117,7 @@ router.get('/wallet', authenticate, async (req, res) => {
 });
 
 // Get insurance by ID
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, insuranceScope, async (req, res) => {
   try {
     const insurance = await insuranceWalletService.getInsuranceById(
       req.params.id,
@@ -105,7 +142,7 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // Upload and OCR insurance card
-router.post('/ocr', authenticate, auditMiddleware('create', 'insurance', { phiAccessed: true }), upload.fields([
+router.post('/ocr', authenticate, ocrAccessAndReadiness, auditMiddleware('create', 'insurance', { phiAccessed: true }), upload.fields([
   { name: 'frontImage', maxCount: 1 },
   { name: 'backImage', maxCount: 1 }
 ]), async (req, res) => {
@@ -134,25 +171,14 @@ router.post('/ocr', authenticate, auditMiddleware('create', 'insurance', { phiAc
       ocrProvider
     );
     
-    // Auto-verify eligibility if high confidence
-    if (insurance.ocr_confidence_score >= 0.8) {
-      try {
-        await insuranceWalletService.verifyEligibility(insurance.id);
-      } catch (eligError) {
-        // Don't fail the request if eligibility check fails
-        console.warn('Auto-eligibility check failed:', eligError);
-      }
-    }
-    
     res.status(201).json({ success: true, insurance });
   } catch (error) {
-    console.error('Error processing OCR:', error);
-    res.status(500).json({ success: false, error: error.message });
+    integrationErrorResponse(res, error, 'Insurance card scanning could not be completed.');
   }
 });
 
 // Set primary insurance
-router.patch('/:id/primary', authenticate, auditMiddleware('update', 'insurance'), async (req, res) => {
+router.patch('/:id/primary', authenticate, insuranceScope, auditMiddleware('update', 'insurance'), async (req, res) => {
   try {
     if (req.user.role !== 'patient') {
       return res.status(403).json({ success: false, error: 'Only patients can set primary insurance' });
@@ -171,18 +197,17 @@ router.patch('/:id/primary', authenticate, auditMiddleware('update', 'insurance'
 });
 
 // Verify eligibility
-router.post('/:id/verify', authenticate, auditMiddleware('verify', 'insurance'), async (req, res) => {
+router.post('/:id/verify', authenticate, insuranceScope, auditMiddleware('verify', 'insurance'), async (req, res) => {
   try {
     const result = await insuranceWalletService.verifyEligibility(req.params.id);
     res.json({ success: true, ...result });
   } catch (error) {
-    console.error('Error verifying eligibility:', error);
-    res.status(500).json({ success: false, error: error.message });
+    integrationErrorResponse(res, error, 'Insurance eligibility could not be checked.');
   }
 });
 
 // Update insurance status
-router.patch('/:id/status', authenticate, auditMiddleware('update', 'insurance'), async (req, res) => {
+router.patch('/:id/status', authenticate, insuranceScope, auditMiddleware('update', 'insurance'), async (req, res) => {
   try {
     if (req.user.role !== 'patient') {
       return res.status(403).json({ success: false, error: 'Only patients can update status' });
@@ -201,7 +226,7 @@ router.patch('/:id/status', authenticate, auditMiddleware('update', 'insurance')
 });
 
 // Capture consent
-router.post('/:id/consent', authenticate, auditMiddleware('update', 'insurance', { phiAccessed: true }), async (req, res) => {
+router.post('/:id/consent', authenticate, insuranceScope, auditMiddleware('update', 'insurance', { phiAccessed: true }), async (req, res) => {
   try {
     if (req.user.role !== 'patient') {
       return res.status(403).json({ success: false, error: 'Only patients can give consent' });
@@ -220,7 +245,7 @@ router.post('/:id/consent', authenticate, auditMiddleware('update', 'insurance',
 });
 
 // Export insurance proof
-router.get('/:id/export', authenticate, auditMiddleware('export', 'insurance', { phiAccessed: true }), async (req, res) => {
+router.get('/:id/export', authenticate, insuranceScope, auditMiddleware('export', 'insurance', { phiAccessed: true }), async (req, res) => {
   try {
     const exportData = await insuranceWalletService.exportInsuranceProof(
       req.params.id,
@@ -235,7 +260,7 @@ router.get('/:id/export', authenticate, auditMiddleware('export', 'insurance', {
 });
 
 // Get audit log
-router.get('/:id/audit', authenticate, async (req, res) => {
+router.get('/:id/audit', authenticate, insuranceScope, async (req, res) => {
   try {
     const auditLog = await insuranceWalletService.getAuditLog(req.params.id);
     res.json({ success: true, auditLog });

@@ -252,7 +252,7 @@ export default function ProviderVideoCallPage() {
               {isStandalone ? 'Direct Care Session' : `Consultation with ${patientDisplayName}`}
             </div>
             <div className="flex items-center gap-1 text-xs text-slate-400">
-              <ShieldCheck size={10} className="text-emerald-400" /> {complianceLabel} | Secure visit
+              <ShieldCheck size={10} className="text-blue-400" /> {complianceLabel} | Secure visit
             </div>
           </div>
         </div>
@@ -375,7 +375,7 @@ const Lobby = ({
             </div>
           )}
           <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${micOn ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+            <div className={`w-2 h-2 rounded-full ${micOn ? 'bg-blue-400 animate-pulse' : 'bg-red-400'}`} />
             {micOn ? 'Mic on' : 'Muted'}
           </div>
         </div>
@@ -643,7 +643,7 @@ const ActiveCall = ({
               </div>
 
               <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200 backdrop-blur-xl">
-                <span className={`h-2 w-2 rounded-full ${connectionStatus === 'connected' ? 'bg-emerald-400' : callError ? 'bg-rose-400' : 'bg-amber-300 animate-pulse'}`} />
+                <span className={`h-2 w-2 rounded-full ${connectionStatus === 'connected' ? 'bg-blue-400' : callError ? 'bg-rose-400' : 'bg-amber-300 animate-pulse'}`} />
                 {callPhase === 'ended' ? 'Ended' : stageStatus}
               </div>
             </div>
@@ -828,7 +828,7 @@ const PatientVideoArea = ({ appointment, stream, participant, connectionStatus, 
     {/* Encryption badge */}
     <div className="absolute top-4 right-4">
       <div className="bg-black/40 backdrop-blur-md px-2 py-1 rounded-full flex items-center gap-1 border border-white/10">
-        <ShieldCheck size={10} className="text-emerald-500" />
+        <ShieldCheck size={10} className="text-blue-500" />
         <span className="text-[10px] text-gray-400">{connectionStatus === 'connected' ? 'Live' : 'Secure'}</span>
       </div>
       </div>
@@ -943,13 +943,13 @@ const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
       {/* Header */}
       <div className="p-4 border-b border-gray-800 flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-lg">
+          <div className="p-1.5 bg-gradient-to-tr from-blue-500 to-blue-600 rounded-lg">
             <Bot size={18} className="text-white" />
           </div>
           <div>
             <h3 className="text-white font-semibold text-sm">DoctaRx AI</h3>
-            <span className="text-xs text-green-400 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400" /> Available
+            <span className="text-xs text-blue-400 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" /> Available
             </span>
           </div>
         </div>
@@ -1017,9 +1017,9 @@ const AIAgentSidebar = ({ appointment, transcript, isOpen, onClose }) => {
               <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
                 <div className="flex justify-between items-center mb-3">
                   <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-                    <FileText size={14} className="text-purple-400" /> Auto-SOAP
+                    <FileText size={14} className="text-blue-400" /> Auto-SOAP
                   </h4>
-                  <button className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-1 rounded hover:bg-purple-500/30">
+                  <button className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-1 rounded hover:bg-blue-500/30">
                     Export to EHR
                   </button>
                 </div>
@@ -1287,7 +1287,7 @@ const ChatPanel = ({ messages = [], draft, setDraft, onSend }) => (
 const QualityBadge = ({ quality }) => {
   const level = quality?.level || 'idle';
   const classes = {
-    good: 'border-emerald-400/25 bg-emerald-500/12 text-emerald-100',
+    good: 'border-blue-400/25 bg-blue-500/12 text-blue-100',
     fair: 'border-amber-400/25 bg-amber-500/12 text-amber-100',
     poor: 'border-rose-400/25 bg-rose-500/12 text-rose-100',
     error: 'border-rose-400/25 bg-rose-500/12 text-rose-100',

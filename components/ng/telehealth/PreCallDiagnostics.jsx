@@ -22,7 +22,7 @@ import {
 const STATES = { idle: 'idle', running: 'running', ok: 'ok', warn: 'warn', fail: 'fail' };
 
 function StatusIcon({ state }) {
-  if (state === STATES.ok)      return <CheckCircle2 className="h-4 w-4 text-emerald-600" />;
+  if (state === STATES.ok)      return <CheckCircle2 className="h-4 w-4 text-blue-600" />;
   if (state === STATES.warn)    return <AlertTriangle className="h-4 w-4 text-amber-600" />;
   if (state === STATES.fail)    return <AlertTriangle className="h-4 w-4 text-rose-600" />;
   if (state === STATES.running) return <Loader2 className="h-4 w-4 animate-spin text-slate-400" />;
@@ -31,7 +31,7 @@ function StatusIcon({ state }) {
 
 function Step({ icon: Icon, title, state, detail, children }) {
   const tone = {
-    [STATES.ok]:      'border-emerald-200 bg-emerald-50',
+    [STATES.ok]:      'border-blue-200 bg-blue-50',
     [STATES.warn]:    'border-amber-200 bg-amber-50',
     [STATES.fail]:    'border-rose-200 bg-rose-50',
     [STATES.running]: 'border-slate-200 bg-white',
@@ -187,7 +187,7 @@ export default function PreCallDiagnostics({ probeUrl = '/ng/net-probe-256k.bin'
           <p className="text-xs text-slate-500">Check your device + connection before the consultation starts</p>
         </div>
         <button onClick={runAll}
-          className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">
+          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
           <RefreshCw className="h-4 w-4" />Run all checks
         </button>
       </header>
@@ -196,7 +196,7 @@ export default function PreCallDiagnostics({ probeUrl = '/ng/net-probe-256k.bin'
 
       <Step icon={Mic} title="Microphone" state={mic.state} detail={mic.detail}>
         <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-          <div className="h-full bg-emerald-500 transition-all"
+          <div className="h-full bg-blue-500 transition-all"
                style={{ width: `${Math.min(100, Math.round(mic.level * 220))}%` }} />
         </div>
       </Step>
@@ -221,7 +221,7 @@ export default function PreCallDiagnostics({ probeUrl = '/ng/net-probe-256k.bin'
           <button
             disabled={!allGood && !audioOnlyRecommended}
             onClick={() => onReady?.({ profile, audioOnly: audioOnlyRecommended })}
-            className="flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:opacity-50">
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
             <CheckCircle2 className="h-4 w-4" />
             {audioOnlyRecommended ? 'Join with audio only' : 'Join consultation'}
           </button>

@@ -90,7 +90,7 @@ function participantName(participant, fallback) {
 
 function networkTone(level) {
   const value = Number(level || 0);
-  if (value >= 4) return { label: 'good', icon: <Wifi className="h-3.5 w-3.5 text-emerald-400" /> };
+  if (value >= 4) return { label: 'good', icon: <Wifi className="h-3.5 w-3.5 text-blue-400" /> };
   if (value >= 2) return { label: 'fair', icon: <WifiLow className="h-3.5 w-3.5 text-amber-400" /> };
   if (value > 0) return { label: 'poor', icon: <WifiOff className="h-3.5 w-3.5 text-rose-400" /> };
   return { label: 'unknown', icon: <Wifi className="h-3.5 w-3.5 text-slate-500" /> };
@@ -155,7 +155,7 @@ function ControlButton({ label, active, danger, disabled, badge, onClick, childr
     >
       {children}
       {badge > 0 && (
-        <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold text-white">
+        <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white">
           {badge > 9 ? '9+' : badge}
         </span>
       )}
@@ -174,7 +174,7 @@ function MediaTile({ tile, pinned, onPin }) {
   return (
     <div
       className={`group relative min-h-[140px] overflow-hidden rounded-xl bg-slate-900 ${
-        pinned ? 'ring-2 ring-emerald-500' : ''
+        pinned ? 'ring-2 ring-blue-500' : ''
       }`}
     >
       {hasVideo ? (
@@ -192,7 +192,7 @@ function MediaTile({ tile, pinned, onPin }) {
       )}
 
       {type === 'screen' && (
-        <span className="absolute left-2 top-2 rounded-md bg-emerald-500/90 px-2 py-1 text-[10px] font-bold uppercase text-white">
+        <span className="absolute left-2 top-2 rounded-md bg-blue-500/90 px-2 py-1 text-[10px] font-bold uppercase text-white">
           Screen
         </span>
       )}
@@ -537,7 +537,7 @@ export default function LiveKitMediaPanel({
     <div className="flex h-full min-h-0 flex-col rounded-xl bg-slate-950" data-testid="livekit-media-panel">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-3 py-2 text-xs text-slate-400">
         <span className="inline-flex items-center gap-1">
-          <Radio className="h-3.5 w-3.5 text-emerald-400" />
+          <Radio className="h-3.5 w-3.5 text-blue-400" />
           Adaptive media
         </span>
         <span className="inline-flex items-center gap-1">
@@ -593,7 +593,7 @@ export default function LiveKitMediaPanel({
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 rounded-xl bg-slate-900 text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+            <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
             <div>
               <p className="font-semibold text-white">Preparing media room</p>
               <p className="mt-1 text-sm text-slate-400">Camera, microphone, and media subscription setup is in progress.</p>
@@ -609,7 +609,7 @@ export default function LiveKitMediaPanel({
 
       <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-800 bg-slate-950 px-4 py-3">
         <div className="hidden min-w-0 items-center gap-2 text-xs text-slate-400 sm:flex">
-          <span className={`h-2 w-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+          <span className={`h-2 w-2 rounded-full ${connected ? 'bg-blue-400' : 'bg-amber-400'}`} />
           <span className="truncate capitalize">{connectionState || status}</span>
           {waitingCount > 0 && (
             <button

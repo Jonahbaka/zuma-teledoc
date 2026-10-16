@@ -17,7 +17,7 @@ export default function NigeriaPatientLayout({ children }) {
       allowedRoles={['patient']}
       loginPath="/ng/patient/login"
       portalName="Patient"
-      portalColor="from-emerald-600 to-teal-700"
+      portalColor="from-blue-600 to-blue-700"
       portalHomeHref="/ng/patient"
     >
       {children}

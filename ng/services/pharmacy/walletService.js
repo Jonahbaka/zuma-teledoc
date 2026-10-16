@@ -6,6 +6,13 @@
 const { getPool } = require('../../../server/db');
 const paymentOrchestrator = require('../payments/paymentOrchestrator');
 
+function statementInteger(value) {
+  if (!/^(?:0|[1-9]\d*)$/.test(String(value)) || !Number.isSafeInteger(Number(value))) {
+    throw new Error('Medication statement requires financial reconciliation');
+  }
+  return Number(value);
+}
+
 class WalletService {
   /**
    * Get wallet balance and summary
@@ -45,11 +52,41 @@ class WalletService {
       [pharmacyId]
     );
 
+    // Medication funds use their own append-only ledger and explicitly approved
+    // settlements. These read-only totals must never credit the legacy wallet,
+    // whose automatic settlement path would otherwise pay the same funds twice.
+    const medication = await pool.query(
+      `WITH pharmacy_liability AS (
+         SELECT COALESCE(SUM(l.credit_minor-l.debit_minor),0)::text AS outstanding_minor,
+                COUNT(DISTINCT l.order_id)::text AS order_count
+         FROM ng_medication_ledger l
+         JOIN ng_orders o ON o.id=l.order_id
+         WHERE o.pharmacy_id=$1 AND l.account='pharmacy_payable' AND l.currency='NGN'
+       ), pharmacy_settlements AS (
+         SELECT COALESCE(SUM(s.amount_minor),0)::text AS settled_minor
+         FROM ng_medication_settlements s
+         JOIN ng_orders o ON o.id=s.order_id
+         WHERE o.pharmacy_id=$1 AND s.payee='pharmacy' AND s.status='verified'
+       )
+       SELECT outstanding_minor,settled_minor,order_count
+       FROM pharmacy_liability CROSS JOIN pharmacy_settlements`,
+      [pharmacyId]
+    );
+    const statement = medication.rows[0];
+    if (!statement) throw new Error('Medication statement is unavailable');
+
     return {
       ...wallet.rows[0],
       todayEarnings: parseFloat(todayEarnings.rows[0].total),
       monthEarnings: parseFloat(monthEarnings.rows[0].total),
       recentTransactions: transactions.rows,
+      medicationStatement: {
+        currency: 'NGN',
+        outstandingMinor: statementInteger(statement.outstanding_minor),
+        settledMinor: statementInteger(statement.settled_minor),
+        orderCount: statementInteger(statement.order_count),
+        processingCostsBorneBy: 'DoctaRx',
+      },
     };
   }
 

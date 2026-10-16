@@ -253,7 +253,7 @@ export default function AdminCommunicationsPage() {
                         <p className="text-sm text-muted-foreground">{user.email}</p>
                       </div>
                       <span className={`text-xs px-2 py-1 rounded-full ${
-                        user.role === 'provider' ? 'bg-purple-100 text-purple-700' :
+                        user.role === 'provider' ? 'bg-blue-100 text-blue-700' :
                         user.role === 'patient' ? 'bg-blue-100 text-blue-700' :
                         'bg-amber-100 text-amber-700'
                       }`}>
@@ -487,7 +487,7 @@ export default function AdminCommunicationsPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-medium text-foreground">{comm.title}</span>
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          comm.recipient.role === 'provider' ? 'bg-purple-100 text-purple-700' :
+                          comm.recipient.role === 'provider' ? 'bg-blue-100 text-blue-700' :
                           comm.recipient.role === 'patient' ? 'bg-blue-100 text-blue-700' :
                           'bg-amber-100 text-amber-700'
                         }`}>

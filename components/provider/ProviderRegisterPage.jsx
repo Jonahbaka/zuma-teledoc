@@ -46,9 +46,9 @@ const SPECIALTY_OPTIONS = [
 
 const MARKET_COPY = {
   US: {
-    icon: 'from-purple-500 to-indigo-600',
-    button: 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700',
-    link: 'text-purple-400 hover:text-purple-300',
+    icon: 'from-blue-500 to-blue-600',
+    button: 'from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700',
+    link: 'text-blue-400 hover:text-blue-300',
     title: 'Provider Registration',
     subtitle: 'Simple onboarding with compliant credential review and activation',
     complianceTitle: 'Credential Verification Required',
@@ -62,9 +62,9 @@ const MARKET_COPY = {
     badge: 'Secure Platform • Healthcare-grade encryption • HIPAA-aligned workflows',
   },
   NG: {
-    icon: 'from-emerald-500 to-teal-600',
-    button: 'from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700',
-    link: 'text-emerald-400 hover:text-emerald-300',
+    icon: 'from-blue-500 to-blue-600',
+    button: 'from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700',
+    link: 'text-blue-400 hover:text-blue-300',
     title: 'Nigeria Provider Registration',
     subtitle: 'Launch a Nigeria care workspace for doctors, clinics, and hospital-affiliated provider teams',
     complianceTitle: 'Nigeria Credential Review',
@@ -252,9 +252,9 @@ function ProviderRegisterContent({ market = 'US' }) {
 
   if (validatingToken) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-purple-400 mx-auto mb-4" />
+          <Loader2 className="w-8 h-8 animate-spin text-blue-400 mx-auto mb-4" />
           <p className="text-slate-400">Loading...</p>
         </div>
       </div>
@@ -262,7 +262,7 @@ function ProviderRegisterContent({ market = 'US' }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       <header className="px-4 py-5 sm:p-6">
         <Link href={homeHref} className="flex items-center gap-2">
           <DoctaRxLogo className="h-9 w-auto" />
@@ -281,12 +281,12 @@ function ProviderRegisterContent({ market = 'US' }) {
             </div>
 
             {inviteData && (
-              <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4 mb-6">
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-6">
                 <div className="flex items-center gap-3">
-                  <BadgeCheck className="w-5 h-5 text-purple-400" />
+                  <BadgeCheck className="w-5 h-5 text-blue-400" />
                   <div>
-                    <p className="text-sm text-purple-200">Invited by {inviteData.invitedByName || 'Administrator'}</p>
-                    <p className="text-xs text-purple-300/70">{inviteData.organizationName || 'DoctaRx'}</p>
+                    <p className="text-sm text-blue-200">Invited by {inviteData.invitedByName || 'Administrator'}</p>
+                    <p className="text-xs text-blue-300/70">{inviteData.organizationName || 'DoctaRx'}</p>
                   </div>
                 </div>
               </div>
@@ -510,9 +510,9 @@ function ProviderRegisterContent({ market = 'US' }) {
 
 function ProviderRegisterFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       <div className="flex items-center gap-2">
-        <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+        <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
         <span className="text-slate-400">Loading...</span>
       </div>
     </div>

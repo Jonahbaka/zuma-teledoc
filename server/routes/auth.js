@@ -4,13 +4,16 @@
  */
 
 const express = require('express');
+const { authCookieDomain, legacyAuthCookieDomain } = require('../utils/authCookiePolicy');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
+const { issueMfaAttestation, rotateMfaAttestation } = require('../utils/mfaAttestation');
 const { v4: uuidv4 } = require('uuid');
 
 const db = require('../db');
+const consumerMembership = require('../services/consumerMembershipService');
 const logger = require('../middleware/logger');
 const { authenticate, requireMfa } = require('../middleware/auth');
 const { auditLogin, auditLogout, logAuditEvent } = require('../middleware/audit');
@@ -107,7 +110,7 @@ const generateTokens = (userId, role) => {
  */
 const setAuthCookies = (res, accessToken, refreshToken) => {
   const isProd = process.env.NODE_ENV === 'production';
-  const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.doctarx.com' : undefined);
+  const cookieDomain = authCookieDomain();
   const cookieOptions = {
     httpOnly: true,
     secure: isProd,
@@ -117,6 +120,8 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
     path: '/',
     ...(cookieDomain ? { domain: cookieDomain } : {})
   };
+  const legacyDomain = legacyAuthCookieDomain();
+  if (legacyDomain) for (const name of ['accessToken', 'refreshToken', 'mfaVerified']) res.clearCookie(name, { ...cookieOptions, domain: legacyDomain });
   
   res.cookie('accessToken', accessToken, {
     ...cookieOptions,
@@ -134,7 +139,7 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
  */
 const clearAuthCookies = (res) => {
   const isProd = process.env.NODE_ENV === 'production';
-  const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.doctarx.com' : undefined);
+  const cookieDomain = authCookieDomain();
   const cookieOptions = {
     httpOnly: true,
     secure: isProd,
@@ -146,6 +151,8 @@ const clearAuthCookies = (res) => {
   res.clearCookie('accessToken', cookieOptions);
   res.clearCookie('refreshToken', cookieOptions);
   res.clearCookie('mfaVerified', cookieOptions);
+  const legacyDomain = legacyAuthCookieDomain();
+  if (legacyDomain) for (const name of ['accessToken', 'refreshToken', 'mfaVerified']) res.clearCookie(name, { ...cookieOptions, domain: legacyDomain });
 };
 
 /**
@@ -153,8 +160,11 @@ const clearAuthCookies = (res) => {
  * Register a new user
  */
 router.post('/register', async (req, res) => {
+  clearAuthCookies(res);
   try {
     const data = validate(registerSchema, req.body);
+    if (!['patient','provider','pharmacy'].includes(data.role)) return res.status(403).json({ success: false,
+      code: 'PUBLIC_ROLE_NOT_ALLOWED', error: 'Staff accounts must be created through authorized administration.' });
     
     // Check if email already exists for this role
     const { rows: existingUsers } = await db.query(
@@ -230,6 +240,8 @@ router.post('/register', async (req, res) => {
         });
       });
     }
+    const currentRegistration = await db.query('SELECT market_scope FROM users WHERE id=$1', [user.id]);
+    user.market_scope = currentRegistration.rows[0]?.market_scope;
     
     // Create subscription record (free tier by default)
     await db.query(
@@ -326,6 +338,7 @@ router.post('/register', async (req, res) => {
         id: user.id,
         email: user.email,
         role: user.role,
+        marketScope: ['US','NG'].includes(user.market_scope) ? user.market_scope : null,
         firstName: user.first_name,
         lastName: user.last_name
       },
@@ -354,6 +367,9 @@ router.post('/register', async (req, res) => {
  * endpoints that still submit credentials to DoctaRx.
  */
 const loginHandler = async (req, res) => {
+  // A replacement sign-in must retire the prior browser session even when the
+  // new credentials are denied or require a second factor.
+  clearAuthCookies(res);
   try {
     const data = validate(loginSchema, req.body);
     
@@ -372,7 +388,7 @@ const loginHandler = async (req, res) => {
 
     const { rows } = await db.query(
       `SELECT id, email, password_hash, role, first_name, last_name,
-              is_active, mfa_enabled, mfa_secret, failed_login_attempts,
+              is_active, market_scope, mfa_enabled, mfa_secret, failed_login_attempts,
               locked_until, provider_status, access_level, must_change_password, is_verified,
               testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
        FROM users ${whereClause}
@@ -518,8 +534,8 @@ const loginHandler = async (req, res) => {
     // Set MFA verified cookie if MFA was passed
     if (user.mfa_enabled) {
       const isProd = process.env.NODE_ENV === 'production';
-      const cookieDomain = process.env.COOKIE_DOMAIN || (isProd ? '.doctarx.com' : undefined);
-      res.cookie('mfaVerified', 'true', {
+  const cookieDomain = authCookieDomain();
+      res.cookie('mfaVerified', issueMfaAttestation(user.id, accessToken), {
         httpOnly: true,
         secure: isProd,
         sameSite: isProd ? 'lax' : 'strict',
@@ -540,13 +556,14 @@ const loginHandler = async (req, res) => {
         id: user.id,
         email: user.email,
         role: user.role,
+        marketScope: ['US','NG'].includes(user.market_scope) ? user.market_scope : null,
         firstName: user.first_name,
         lastName: user.last_name,
         mfaEnabled: user.mfa_enabled,
         isVerified: user.is_verified,
         providerStatus: user.provider_status,
         mustChangePassword: user.must_change_password === true,
-        accessLevel: getEffectiveAccessLevel(user),
+        accessLevel: (await consumerMembership.readAuthority(user.id, { knownUser: user })).accessLevel,
         ...getTestingBypassPayload(user)
       },
       accessToken,
@@ -582,8 +599,10 @@ router.post('/login', loginHandler);
  */
 router.post('/refresh', async (req, res) => {
   try {
-    // Get refresh token from cookie or body
-    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+    // An explicit session token must never be replaced by another account's
+    // shared-domain cookie. Cookie-only clients retain the existing fallback.
+    const explicit = Object.prototype.hasOwnProperty.call(req.body || {}, 'refreshToken');
+    const refreshToken = explicit ? req.body.refreshToken : req.cookies.refreshToken;
     
     if (!refreshToken) {
       return res.status(401).json({
@@ -594,6 +613,12 @@ router.post('/refresh', async (req, res) => {
     
     // Verify token
     const decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
+    const authorization = req.headers.authorization;
+    if (authorization) {
+      if (!authorization.startsWith('Bearer ')) return res.status(401).json({success:false,error:'Account session could not be confirmed'});
+      const intended = jwt.verify(authorization.slice(7), ACCESS_TOKEN_SECRET, {ignoreExpiration:true});
+      if (intended.userId !== decoded.userId) return res.status(401).json({success:false,error:'Account session could not be confirmed'});
+    }
     
     if (decoded.type !== 'refresh') {
       return res.status(401).json({
@@ -610,7 +635,7 @@ router.post('/refresh', async (req, res) => {
       [tokenHash]
     );
     
-    if (tokens.length === 0) {
+    if (tokens.length === 0 || tokens[0].user_id !== decoded.userId) {
       return res.status(401).json({
         success: false,
         error: 'Invalid or expired refresh token'
@@ -619,7 +644,7 @@ router.post('/refresh', async (req, res) => {
     
     // Get user
     const { rows: users } = await db.query(
-      `SELECT id, email, role, first_name, last_name, is_active
+      `SELECT id, email, role, first_name, last_name, is_active, mfa_enabled
        FROM users WHERE id = $1`,
       [decoded.userId]
     );
@@ -652,6 +677,12 @@ router.post('/refresh', async (req, res) => {
     
     // Set cookies
     setAuthCookies(res, accessToken, newRefreshToken);
+    const rotatedMfa = user.mfa_enabled ? rotateMfaAttestation(req, user.id, accessToken) : null;
+    if (rotatedMfa) {
+      const isProd = process.env.NODE_ENV === 'production';
+  const cookieDomain = authCookieDomain();
+      res.cookie('mfaVerified', rotatedMfa.value, { httpOnly: true, secure: isProd, sameSite: isProd ? 'lax' : 'strict', ...(cookieDomain ? { domain: cookieDomain } : {}), maxAge: rotatedMfa.maxAge });
+    }
     
     res.json({
       success: true,
@@ -680,15 +711,15 @@ router.post('/refresh', async (req, res) => {
  */
 router.post('/logout', authenticate, async (req, res) => {
   try {
-    // Get refresh token
-    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+    const explicit = Object.prototype.hasOwnProperty.call(req.body || {}, 'refreshToken');
+    const refreshToken = explicit ? req.body.refreshToken : req.cookies.refreshToken;
     
     if (refreshToken) {
       // Revoke refresh token
       const tokenHash = hash(refreshToken);
       await db.query(
-        'UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1',
-        [tokenHash]
+        'UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1 AND user_id = $2',
+        [tokenHash, req.user.id]
       );
     }
     
@@ -722,15 +753,13 @@ router.get('/me', authenticate, async (req, res) => {
     const { rows } = await db.query(
       `SELECT u.id, u.email, u.role, u.first_name, u.last_name,
               u.date_of_birth, u.phone, u.address_line1, u.address_line2,
-              u.city, u.state, u.zip_code, u.country,
+              u.city, u.state, u.zip_code, u.country, u.market_scope,
               u.mfa_enabled, u.is_verified, u.provider_status,
               u.license_number, u.license_state, u.specialty,
               u.credentials, u.bio, u.created_at, u.access_level,
               u.must_change_password,
-              u.testing_bypass_active, u.testing_bypass_expires_at, u.testing_bypass_tier,
-              s.tier as subscription_tier, s.status as subscription_status
+              u.testing_bypass_active, u.testing_bypass_expires_at, u.testing_bypass_tier
        FROM users u
-      LEFT JOIN subscriptions s ON s.user_id = u.id
        WHERE u.id = $1`,
       [req.user.id]
     );
@@ -750,6 +779,7 @@ router.get('/me', authenticate, async (req, res) => {
         id: user.id,
         email: user.email,
         role: user.role,
+        marketScope: ['US','NG'].includes(user.market_scope) ? user.market_scope : null,
         firstName: user.first_name,
         lastName: user.last_name,
         dateOfBirth: user.date_of_birth,
@@ -773,12 +803,9 @@ router.get('/me', authenticate, async (req, res) => {
           credentials: user.credentials,
           bio: user.bio
         } : null,
-        accessLevel: getEffectiveAccessLevel(user),
+        accessLevel: (await consumerMembership.readAuthority(user.id, { knownUser: user })).accessLevel,
         ...getTestingBypassPayload(user),
-        subscription: {
-          tier: user.subscription_tier,
-          status: user.subscription_status
-        },
+        subscription: req.financialAccess?.paymentVerified ? { tier: req.financialAccess.subscription.tier, status: req.financialAccess.subscription.status, paymentVerified: true } : null,
         createdAt: user.created_at
       }
     });
@@ -1025,7 +1052,7 @@ router.post('/password/change', authenticate, async (req, res) => {
     
     // Get user
     const { rows } = await db.query(
-      `SELECT password_hash, email, role, first_name, last_name, mfa_enabled,
+      `SELECT id, password_hash, email, role, market_scope, first_name, last_name, mfa_enabled,
               is_verified, provider_status, access_level, must_change_password,
               testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
          FROM users WHERE id = $1`,
@@ -1133,13 +1160,14 @@ router.post('/password/change', authenticate, async (req, res) => {
           id: req.user.id,
           email: user.email,
           role: user.role,
+          marketScope: ['US','NG'].includes(user.market_scope) ? user.market_scope : null,
           firstName: user.first_name,
           lastName: user.last_name,
           mfaEnabled: user.mfa_enabled,
           isVerified: user.is_verified,
           providerStatus: user.provider_status,
           mustChangePassword: false,
-          accessLevel: getEffectiveAccessLevel(user),
+          accessLevel: (await consumerMembership.readAuthority(user.id, { knownUser: user })).accessLevel,
           ...getTestingBypassPayload(user)
         },
         accessToken,

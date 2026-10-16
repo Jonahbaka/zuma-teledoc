@@ -8,7 +8,7 @@ export const metadata = {
 
 function NigeriaAdminLoginFallback() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-emerald-50 text-sm font-semibold text-emerald-900">
+    <div className="flex min-h-screen items-center justify-center bg-blue-50 text-sm font-semibold text-blue-900">
       Loading Nigeria admin login...
     </div>
   );

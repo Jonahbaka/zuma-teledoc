@@ -28,7 +28,7 @@ function getRoleLabel(role) {
 function getProviderStatusTone(status) {
   const normalized = String(status || '').toLowerCase();
 
-  if (normalized === 'approved') return 'bg-emerald-100 text-emerald-700';
+  if (normalized === 'approved') return 'bg-blue-100 text-blue-700';
   if (normalized === 'pending') return 'bg-amber-100 text-amber-700';
   if (normalized === 'rejected' || normalized === 'suspended') return 'bg-rose-100 text-rose-700';
   return 'bg-slate-100 text-slate-700';
@@ -131,7 +131,7 @@ export default function AdminUserDetailPage() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
       </div>
     );
   }

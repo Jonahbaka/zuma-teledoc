@@ -10,7 +10,7 @@ export default function NigeriaPharmacyPortalShell({ children }) {
       allowedRoles={['pharmacy']}
       loginPath="/ng/pharmacy/login"
       portalName="Pharmacy"
-      portalColor="from-emerald-600 to-teal-700"
+      portalColor="from-blue-600 to-blue-700"
       portalHomeHref="/ng/pharmacy/dashboard"
     >
       {children}

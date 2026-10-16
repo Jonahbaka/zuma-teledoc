@@ -6,6 +6,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const db = require('../db');
+const consumerMembership = require('../services/consumerMembershipService');
 const logger = require('./logger');
 const {
   getEffectiveAccessLevel,
@@ -95,7 +96,8 @@ const authenticate = async (req, res, next) => {
     // Get user from database
     const { rows } = await db.query(
       `SELECT id, email, role, first_name, last_name, is_active, mfa_enabled, provider_status, access_level,
-              must_change_password, testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier
+              must_change_password, testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier,
+              market_scope, region, country
        FROM users WHERE id = $1`,
       [decoded.userId]
     );
@@ -128,17 +130,22 @@ const authenticate = async (req, res, next) => {
       });
     }
     
-    // Attach user to request
+    const financialAccess = await consumerMembership.readAuthority(user.id, { knownUser: user });
+    req.financialAccess = financialAccess;
+    // Attach current financial authority without promoting a cached paid tier.
     req.user = {
       id: user.id,
       email: user.email,
       role: canonicalRole(user.role),
+      marketScope: ['US','NG'].includes(user.market_scope) ? user.market_scope : null,
       firstName: user.first_name,
       lastName: user.last_name,
       mfaEnabled: user.mfa_enabled,
       providerStatus: user.provider_status,
       mustChangePassword: user.must_change_password === true,
-      accessLevel: getEffectiveAccessLevel(user),
+      accessLevel: financialAccess.accessLevel,
+      financialAccessAvailable: financialAccess.financialAccessAvailable,
+      paymentVerified: financialAccess.paymentVerified,
       ...getTestingBypassPayload(user)
     };
 
@@ -238,7 +245,7 @@ const requireMfa = async (req, res, next) => {
   
   // If user has MFA enabled, check if session has been MFA verified
   if (req.user.mfaEnabled) {
-    const mfaVerified = req.cookies.mfaVerified === 'true';
+    const mfaVerified = require('../utils/mfaAttestation').hasVerifiedMfa(req);
     
     if (!mfaVerified) {
       return res.status(403).json({
@@ -300,56 +307,15 @@ const optionalAuth = async (req, res, next) => {
  * @param {string} patientId - Patient ID to check access for
  */
 const canAccessPatient = async (req, res, next) => {
-  const patientId = req.params.patientId || req.body.patientId || req.query.patientId;
-  
-  if (!patientId) {
-    return res.status(400).json({
-      success: false,
-      error: 'Patient ID required'
-    });
-  }
-  
-  const { user } = req;
-  
-  // Admin can access all patients
-  if (user.role === 'admin') {
+  try {
+    const patientId = req.params.patientId || req.body?.patientId || req.query.patientId;
+    await require('../services/clinicalPatientAccessService').assertClinicalPatientAccess(db, patientId, req.user);
     return next();
+  } catch (error) {
+    const status = [400,403,404].includes(error.statusCode) ? error.statusCode : 503;
+    return res.status(status).json({ success: false, code: status === 503 ? 'CLINICAL_AUTHORIZATION_UNAVAILABLE' : error.code,
+      error: status === 400 ? 'A valid patient reference is required.' : status === 503 ? 'Current clinical access could not be verified.' : 'Clinical access denied in the current patient and market context.' });
   }
-  
-  // Patient can only access their own data
-  if (user.role === 'patient') {
-    if (user.id !== patientId) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      });
-    }
-    return next();
-  }
-  
-  // Provider can access patients they have appointments with
-  if (user.role === 'provider') {
-    const { rows } = await db.query(
-      `SELECT 1 FROM appointments 
-       WHERE provider_id = $1 AND patient_id = $2 
-       LIMIT 1`,
-      [user.id, patientId]
-    );
-    
-    if (rows.length === 0) {
-      return res.status(403).json({
-        success: false,
-        error: 'No provider-patient relationship found'
-      });
-    }
-    
-    return next();
-  }
-  
-  return res.status(403).json({
-    success: false,
-    error: 'Access denied'
-  });
 };
 
 module.exports = {

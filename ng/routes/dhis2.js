@@ -2,6 +2,7 @@ const express = require('express');
 const service = require('../services/public-health/publicHealthProgrammeService');
 const governanceService = require('../services/public-health/governanceService');
 const rbac = require('../middleware/rbac');
+const { requireReportScope, requireReportApproval, requireReportExport, canAccessReport } = require('../middleware/reportScope');
 
 const router = express.Router();
 
@@ -13,6 +14,7 @@ function asyncHandler(handler) {
       const status = error.status || error.statusCode || 500;
       res.status(status).json({
         error: status === 500 ? 'DHIS2 readiness request failed.' : error.message,
+        code: error.code || (status >= 500 ? 'DHIS2_UNAVAILABLE' : undefined),
         details: status === 500 ? undefined : error.blockers,
         preview: error.preview,
       });
@@ -46,7 +48,7 @@ router.post('/test-connection', rbac.requireNgRole('programme_admin', 'platform_
   res.json(await service.testConnection());
 }));
 
-router.post('/dry-run/:reportId', rbac.requireExportAuthority(), asyncHandler(async (req, res) => {
+router.post('/dry-run/:reportId', rbac.requireExportAuthority(), requireReportExport, asyncHandler(async (req, res) => {
   const actorUserId = actor(req);
   const preview = await service.dryRunDhis2(req.params.reportId, actorUserId);
   await governanceService.writeAuditLineage({
@@ -61,7 +63,7 @@ router.post('/dry-run/:reportId', rbac.requireExportAuthority(), asyncHandler(as
   res.json(preview);
 }));
 
-router.post('/sync/:reportId', rbac.requireApprovalAuthority(), asyncHandler(async (req, res) => {
+router.post('/sync/:reportId', rbac.requireApprovalAuthority(), requireReportApproval, requireReportExport, asyncHandler(async (req, res) => {
   const actorUserId = actor(req);
   try {
     const result = await service.syncDhis2(req.params.reportId, actorUserId);
@@ -73,7 +75,7 @@ router.post('/sync/:reportId', rbac.requireApprovalAuthority(), asyncHandler(asy
       exportFormat: 'dhis2',
       ip: req.ip,
       userAgent: req.get('user-agent'),
-      metadata: { outcome: result.ok ? 'submitted' : 'failed', responseStatus: result.status },
+      metadata: { outcome: result.delivery.status, responseStatus: result.status },
     });
     res.json(result);
   } catch (error) {
@@ -91,8 +93,17 @@ router.post('/sync/:reportId', rbac.requireApprovalAuthority(), asyncHandler(asy
   }
 }));
 
+router.post('/deliveries/:jobId/commands', rbac.requireApprovalAuthority(), asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  const { getPool } = require('../../server/db');
+  const operations = require('../services/public-health/dhis2DeliveryOperationsService');
+  res.json(await operations.applyCommand(getPool(), req.user, req.params.jobId, req.get('Idempotency-Key'), req.body));
+}));
+
 router.get('/sync-logs', rbac.requireReviewer, rbac.auditRequest('view', 'dhis2_sync_logs'), asyncHandler(async (req, res) => {
-  res.json(await service.getSyncLogs(req.query));
+  const result = await service.getSyncLogs(req.query);
+  const permitted = await Promise.all(result.logs.map(async (entry) => entry.report_id && await canAccessReport(req.user, entry.report_id) ? entry : null));
+  res.json({ logs: permitted.filter(Boolean) });
 }));
 
 module.exports = router;

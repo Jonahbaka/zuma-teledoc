@@ -25,7 +25,7 @@ const activeStatuses = ['scheduled', 'confirmed', 'pharmacy_reviewing', 'provide
 
 const getStatusTone = (status) => {
   const value = String(status || '').toLowerCase();
-  if (value === 'confirmed') return 'bg-emerald-100 text-emerald-800';
+  if (value === 'confirmed') return 'bg-blue-100 text-blue-800';
   if (value === 'scheduled') return 'bg-blue-100 text-blue-800';
   if (value === 'completed') return 'bg-slate-100 text-slate-800';
   if (value === 'cancelled') return 'bg-red-100 text-red-800';
@@ -96,7 +96,7 @@ export default function NigeriaAppointmentDetailPage() {
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -114,7 +114,7 @@ export default function NigeriaAppointmentDetailPage() {
             <Button variant="outline">Back to Appointments</Button>
           </Link>
           <Link href="/ng/patient/messages">
-            <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Contact Care Team</Button>
+            <Button className="bg-blue-600 text-white hover:bg-blue-500">Contact Care Team</Button>
           </Link>
         </div>
       </div>
@@ -135,7 +135,7 @@ export default function NigeriaAppointmentDetailPage() {
             </Button>
           </Link>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Patient Portal</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">Nigeria Patient Portal</p>
             <h1 className="mt-2 text-2xl font-bold text-foreground">Consultation Details</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Review your visit, provider, video access, and care instructions.
@@ -152,7 +152,7 @@ export default function NigeriaAppointmentDetailPage() {
           <Card className="border-border/70">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-emerald-600" />
+                <Calendar className="h-5 w-5 text-blue-600" />
                 Consultation Information
               </CardTitle>
             </CardHeader>
@@ -198,13 +198,13 @@ export default function NigeriaAppointmentDetailPage() {
           <Card className="border-border/70">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5 text-emerald-600" />
+                <User className="h-5 w-5 text-blue-600" />
                 Provider
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 text-xl font-bold text-white">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-xl font-bold text-white">
                   {appointment.providerFirstName?.[0] || 'D'}{appointment.providerLastName?.[0] || 'R'}
                 </div>
                 <div>
@@ -233,7 +233,7 @@ export default function NigeriaAppointmentDetailPage() {
                     Join when your provider is ready. Your browser will ask for camera and microphone permission.
                   </p>
                   <Link href={`/ng/patient/appointments/${appointmentId}/call`} className="block">
-                    <Button className="w-full bg-emerald-600 text-white hover:bg-emerald-500">
+                    <Button className="w-full bg-blue-600 text-white hover:bg-blue-500">
                       <Video className="mr-2 h-4 w-4" />
                       Join Video Visit
                     </Button>
@@ -255,7 +255,7 @@ export default function NigeriaAppointmentDetailPage() {
               <p className="text-sm leading-6 text-muted-foreground">
                 Nigeria consultation fee and any HMO or organisation coverage are handled through DoctaRx Nigeria confirmation flows.
               </p>
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
                 <CheckCircle2 className="mr-2 inline h-4 w-4" />
                 Nigeria-specific payment confirmation is used for this visit.
               </div>

@@ -152,7 +152,7 @@ export default function AdminManagementPage() {
         </div>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white">
+            <Button className="bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900 text-white">
               <UserPlus className="w-4 h-4 mr-2" />
               Create Admin
             </Button>
@@ -220,7 +220,7 @@ export default function AdminManagementPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreateAdmin} className="bg-purple-600 hover:bg-purple-700 text-white">
+              <Button onClick={handleCreateAdmin} className="bg-blue-600 hover:bg-blue-700 text-white">
                 Create Admin
               </Button>
             </DialogFooter>
@@ -259,8 +259,8 @@ export default function AdminManagementPage() {
                   <div className="flex items-center gap-4">
                     <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
                       admin.role === 'super_admin' 
-                        ? 'bg-gradient-to-br from-purple-600 to-purple-800' 
-                        : 'bg-gradient-to-br from-purple-400 to-purple-600'
+                        ? 'bg-gradient-to-br from-blue-600 to-blue-800'
+                        : 'bg-gradient-to-br from-blue-400 to-blue-600'
                     }`}>
                       <Shield className="w-6 h-6 text-white" />
                     </div>

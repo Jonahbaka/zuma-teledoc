@@ -87,8 +87,8 @@ export default function NigeriaPortalShell({
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 text-center">
-        <div className="max-w-sm rounded-2xl border border-emerald-100 bg-white p-6 shadow-sm">
-          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-emerald-500" />
+        <div className="max-w-sm rounded-2xl border border-blue-100 bg-white p-6 shadow-sm">
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-blue-500" />
           <p className="mt-4 text-base font-semibold text-slate-900">Checking secure access...</p>
           {authCheckElapsed ? (
             <>
@@ -98,7 +98,7 @@ export default function NigeriaPortalShell({
               <button
                 type="button"
                 onClick={() => router.replace(loginPath)}
-                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-emerald-700 px-5 text-sm font-semibold text-white hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 Continue to login
               </button>

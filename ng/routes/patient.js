@@ -6,10 +6,20 @@
 const express = require('express');
 const router = express.Router();
 const rxRouter = require('../services/rx-engine/rxRouter');
-const prescriptionParser = require('../services/rx-engine/prescriptionParser');
+const privateUpload = require('../services/rx-engine/privatePrescriptionUploadService');
+const multer = require('multer');
+const { requireRole } = require('../../server/middleware/auth');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: privateUpload.MAX_IMAGE_BYTES, files: 1, fields: 0, parts: 1 } }).single('image');
 const orderService = require('../services/pharmacy/orderService');
-const deliveryService = require('../services/logistics/deliveryService');
+const medicationDelivery = require('../services/logistics/medicationDeliveryWorkflowService');
 const { getPool } = require('../../server/db');
+
+function handleMedicationOrderError(res, error) {
+  const explicitStatus = error.status ?? error.statusCode;
+  const hasSafeStatus = Number.isInteger(explicitStatus) && explicitStatus >= 400 && explicitStatus <= 599;
+  const status = hasSafeStatus ? explicitStatus : ['42P01', '42703'].includes(error.code) ? 503 : 500;
+  res.status(status).json({ error: hasSafeStatus ? error.message : 'Medication order service is temporarily unavailable.' });
+}
 
 // --- DRUG SEARCH ---
 
@@ -58,28 +68,33 @@ router.get('/drugs/:drugId/availability/:pharmacyId', async (req, res) => {
 // --- PRESCRIPTIONS ---
 
 // Upload prescription image
-router.post('/prescriptions/upload', async (req, res) => {
+router.post('/prescriptions/upload', requireRole('patient'), (req, res, next) => upload(req, res, (error) => error ? res.status(400).json({ error: 'Choose one JPEG or PNG image up to 5 MB.' }) : next()), async (req, res) => {
   try {
-    const { imageUrl } = req.body;
-    if (!imageUrl) return res.status(400).json({ error: 'Image URL required' });
-
-    const result = await prescriptionParser.parseFromImage(imageUrl, req.user.id);
-    res.json(result);
+    const result = await privateUpload.saveSubmission(getPool(), req, { image: req.file });
+    res.status(201).json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(err.status || (['42P01','42703'].includes(err.code) ? 503 : 500)).json({ error: err.status ? err.message : 'Prescription submission is temporarily unavailable.' });
   }
 });
 
+router.get('/prescriptions/:id/image', requireRole('patient'), async (req, res) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) return res.status(400).json({ error: 'Invalid prescription.' });
+  try {
+    const image = await privateUpload.readOwnedImage(getPool(), req, req.params.id);
+    res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline; filename="prescription.png"' }).send(image);
+  } catch (err) { res.status(err.status || 503).json({ error: err.status ? err.message : 'This image could not be opened.' }); }
+});
+
 // Submit prescription as text
-router.post('/prescriptions/text', async (req, res) => {
+router.post('/prescriptions/text', requireRole('patient'), async (req, res) => {
   try {
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: 'Prescription text required' });
 
-    const result = await prescriptionParser.parseFromText(text, req.user.id);
-    res.json(result);
+    const result = await privateUpload.saveSubmission(getPool(), req, { text });
+    res.status(201).json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 503).json({ error: err.status ? err.message : 'Prescription submission is temporarily unavailable.' });
   }
 });
 
@@ -93,6 +108,7 @@ router.post('/prescriptions/:prescriptionId/route', async (req, res) => {
     );
 
     if (!rx.rows.length) return res.status(404).json({ error: 'Prescription not found' });
+    if (!['verified','matched','dispensing'].includes(rx.rows[0].status)) return res.status(409).json({ error: 'Prescription review is required before pharmacy routing.' });
 
     const items = typeof rx.rows[0].items === 'string'
       ? JSON.parse(rx.rows[0].items) : rx.rows[0].items;
@@ -154,7 +170,7 @@ router.get('/prescriptions', async (req, res) => {
         ORDER BY rx.created_at DESC
         LIMIT $2 OFFSET $3`,
       [req.user.id, limit, offset]
-    ).catch(() => ({ rows: [] }));
+    );
 
     res.json([
       ...digital.rows.map((row) => ({ ...row, source_type: 'provider_digital_prescription' })),
@@ -167,26 +183,86 @@ router.get('/prescriptions', async (req, res) => {
 
 // --- ORDERS ---
 
+// The patient identity always comes from the authenticated session. Order and
+// tracking payloads must never become shared browser/proxy cache entries.
+router.use(['/orders', '/order-options', '/tracking'], requireRole('patient'), (_req, res, next) => {
+  res.set('Cache-Control', 'private, no-store');
+  next();
+});
+
+router.get('/order-options', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.getOrderOptions(req.user));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
 // Create order
 router.post('/orders', async (req, res) => {
   try {
-    const result = await orderService.createOrder({
-      patientUserId: req.user.id,
-      ...req.body,
-    });
+    const result = await medicationDelivery.createOrder(req.body, req.user);
     res.status(201).json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.get('/orders/:orderId/checkout', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.getCheckout(req.params.orderId, req.user));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/orders/:orderId/fulfillment', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.setFulfillment(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/orders/:orderId/approve', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.approve(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/orders/:orderId/delivery-quote', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.requestQuote(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
   }
 });
 
 // Pay for order
 router.post('/orders/:orderId/pay', async (req, res) => {
   try {
-    const result = await orderService.initiatePayment(req.params.orderId, req.user.id);
+    const result = await medicationDelivery.initiatePayment(req.params.orderId, req.user, req.body);
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/orders/:orderId/payments/:reference/verify', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.verifyPayment(req.params.orderId, req.user, req.params.reference));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
+  }
+});
+
+router.post('/orders/:orderId/delivery/refresh', async (req, res) => {
+  try {
+    res.json(await medicationDelivery.refresh(req.params.orderId, req.user, req.body));
+  } catch (err) {
+    handleMedicationOrderError(res, err);
   }
 });
 
@@ -218,12 +294,10 @@ router.get('/orders', async (req, res) => {
 // Cancel order
 router.post('/orders/:orderId/cancel', async (req, res) => {
   try {
-    const result = await orderService.cancelOrder(
-      req.params.orderId, req.user.id, req.body.reason || 'Patient cancelled'
-    );
+    const result = await medicationDelivery.cancel(req.params.orderId, req.user, req.body);
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    handleMedicationOrderError(res, err);
   }
 });
 
@@ -232,11 +306,11 @@ router.post('/orders/:orderId/cancel', async (req, res) => {
 // Get delivery tracking
 router.get('/tracking/:trackingId', async (req, res) => {
   try {
-    const result = await deliveryService.getTracking(req.params.trackingId);
+    const result = await medicationDelivery.getTracking(req.params.trackingId, req.user);
     if (!result) return res.status(404).json({ error: 'Tracking not found' });
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleMedicationOrderError(res, err);
   }
 });
 

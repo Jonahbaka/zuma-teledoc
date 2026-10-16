@@ -327,7 +327,7 @@ export default function AdminSettingsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -336,7 +336,7 @@ export default function AdminSettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <Settings className="w-6 h-6 text-purple-500" />
+          <Settings className="w-6 h-6 text-blue-500" />
           Settings
         </h1>
         <p className="text-slate-500 mt-1">Manage your account settings and preferences</p>
@@ -355,7 +355,7 @@ export default function AdminSettingsPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === tab.id
-                  ? 'border-purple-500 text-purple-600'
+                  ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
               }`}
             >
@@ -382,7 +382,7 @@ export default function AdminSettingsPage() {
                     <p className="font-medium text-slate-900">{user?.email}</p>
                     <p className="text-sm text-slate-500">
                       {user?.isVerified ? (
-                        <span className="flex items-center gap-1 text-purple-700">
+                        <span className="flex items-center gap-1 text-blue-700">
                           <CheckCircle className="w-4 h-4" />
                           Verified
                         </span>
@@ -399,7 +399,7 @@ export default function AdminSettingsPage() {
                   <Button
                     onClick={handleResendVerification}
                     variant="outline"
-                    className="bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200"
+                    className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
                   >
                     Resend Verification
                   </Button>
@@ -466,7 +466,7 @@ export default function AdminSettingsPage() {
                                 ? 'bg-red-500'
                                 : level <= 3
                                 ? 'bg-yellow-500'
-                                : 'bg-green-500'
+                                : 'bg-blue-500'
                               : 'bg-gray-200'
                           }`}
                         />
@@ -483,7 +483,7 @@ export default function AdminSettingsPage() {
                       </div>
                     )}
                     {passwordStrength.score >= 4 && (
-                      <p className="text-xs text-green-600 font-medium">✓ Strong password</p>
+                      <p className="text-xs text-blue-600 font-medium">✓ Strong password</p>
                     )}
                   </div>
                 )}
@@ -514,7 +514,7 @@ export default function AdminSettingsPage() {
                 <Button
                   onClick={handlePasswordChange}
                   disabled={saving}
-                  className="bg-purple-500 hover:bg-purple-600"
+                  className="bg-blue-500 hover:bg-blue-600"
                 >
                   {saving ? (
                     <>
@@ -551,7 +551,7 @@ export default function AdminSettingsPage() {
                 <button
                   onClick={() => setNotifications({ ...notifications, emailNotifications: !notifications.emailNotifications })}
                   className={`w-11 h-6 flex items-center rounded-full transition-colors ${
-                    notifications.emailNotifications ? 'bg-purple-500' : 'bg-slate-300'
+                    notifications.emailNotifications ? 'bg-blue-500' : 'bg-slate-300'
                   }`}
                 >
                   <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
@@ -568,7 +568,7 @@ export default function AdminSettingsPage() {
                 <button
                   onClick={() => setNotifications({ ...notifications, smsNotifications: !notifications.smsNotifications })}
                   className={`w-11 h-6 flex items-center rounded-full transition-colors ${
-                    notifications.smsNotifications ? 'bg-purple-500' : 'bg-slate-300'
+                    notifications.smsNotifications ? 'bg-blue-500' : 'bg-slate-300'
                   }`}
                 >
                   <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
@@ -585,7 +585,7 @@ export default function AdminSettingsPage() {
                 <button
                   onClick={() => setNotifications({ ...notifications, systemAlerts: !notifications.systemAlerts })}
                   className={`w-11 h-6 flex items-center rounded-full transition-colors ${
-                    notifications.systemAlerts ? 'bg-purple-500' : 'bg-slate-300'
+                    notifications.systemAlerts ? 'bg-blue-500' : 'bg-slate-300'
                   }`}
                 >
                   <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
@@ -602,7 +602,7 @@ export default function AdminSettingsPage() {
                 <button
                   onClick={() => setNotifications({ ...notifications, userActivity: !notifications.userActivity })}
                   className={`w-11 h-6 flex items-center rounded-full transition-colors ${
-                    notifications.userActivity ? 'bg-purple-500' : 'bg-slate-300'
+                    notifications.userActivity ? 'bg-blue-500' : 'bg-slate-300'
                   }`}
                 >
                   <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
@@ -616,7 +616,7 @@ export default function AdminSettingsPage() {
               <Button
                 onClick={handleNotificationSave}
                 disabled={saving}
-                className="bg-purple-500 hover:bg-purple-600"
+                className="bg-blue-500 hover:bg-blue-600"
               >
                 {saving ? (
                   <>
@@ -656,7 +656,7 @@ export default function AdminSettingsPage() {
                       : 'Add an extra layer of security to your account'}
                   </p>
                   {user?.mfaEnabled && (
-                    <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                    <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
                       <CheckCircle className="w-4 h-4" />
                       Protected by two-factor authentication
                     </p>
@@ -665,7 +665,7 @@ export default function AdminSettingsPage() {
                 <Button 
                   variant={user?.mfaEnabled ? "outline" : "default"}
                   onClick={() => user?.mfaEnabled ? setMfaDisableDialog(true) : setMfaSetupDialog(true)}
-                  className={user?.mfaEnabled ? "" : "bg-purple-600 hover:bg-purple-700"}
+                  className={user?.mfaEnabled ? "" : "bg-blue-600 hover:bg-blue-700"}
                 >
                   {user?.mfaEnabled ? 'Disable 2FA' : 'Enable 2FA'}
                 </Button>
@@ -711,7 +711,7 @@ export default function AdminSettingsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setMfaSetupDialog(false)}>Cancel</Button>
-            <Button onClick={handleMfaSetup} disabled={saving} className="bg-purple-600 hover:bg-purple-700">
+            <Button onClick={handleMfaSetup} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               Continue
             </Button>
@@ -788,7 +788,7 @@ export default function AdminSettingsPage() {
             <Button 
               onClick={handleMfaVerify} 
               disabled={saving || mfaData.code.length !== 6}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-blue-600 hover:bg-blue-700"
             >
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               Verify & Enable

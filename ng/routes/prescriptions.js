@@ -257,7 +257,8 @@ router.post('/:id/items/:itemId/dispense', requireRole(PHARMACIST), express.json
   try {
     const rx = await getScopedPrescription(req, pool, [PHARMACIST]);
     if (!rx) return res.status(404).json({ ok: false, error: 'Not found' });
-    res.json({ ok: true, prescription: await svc.dispenseItem(req.params.id, req.params.itemId, actor(req), req.body || {}, pool) });
+    const { quantity, substitute_drug_id, substitute_reason } = req.body || {};
+    res.json({ ok: true, prescription: await svc.dispenseItem(req.params.id, req.params.itemId, actor(req), { quantity, substitute_drug_id, substitute_reason, pharmacy_id: rx.routed_pharmacy_id }, pool) });
   } catch (e) { handleError(res, e); }
 });
 

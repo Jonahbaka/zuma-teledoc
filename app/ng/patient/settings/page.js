@@ -83,7 +83,7 @@ export default function NigeriaPatientSettingsPage() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -91,19 +91,19 @@ export default function NigeriaPatientSettingsPage() {
   return (
     <div className="space-y-6">
       <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Patient Settings</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">Nigeria Patient Settings</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Account security and alerts</h1>
         <p className="mt-2 text-sm text-muted-foreground">Manage your password, email verification, and how the portal updates you.</p>
       </section>
 
       {message ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</div>
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{message}</div>
       ) : null}
 
       <Card className="border-border/70">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-emerald-600" />
+            <Mail className="h-5 w-5 text-blue-600" />
             Email verification
           </CardTitle>
         </CardHeader>
@@ -126,7 +126,7 @@ export default function NigeriaPatientSettingsPage() {
       <Card className="border-border/70">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-emerald-600" />
+            <KeyRound className="h-5 w-5 text-blue-600" />
             Change password
           </CardTitle>
         </CardHeader>
@@ -144,7 +144,7 @@ export default function NigeriaPatientSettingsPage() {
             <Input id="confirmPassword" type="password" value={passwordForm.confirmPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))} />
           </div>
           <div className="md:col-span-2 flex justify-end">
-            <Button onClick={handlePasswordChange} disabled={savingPassword} className="bg-emerald-600 text-white hover:bg-emerald-500">
+            <Button onClick={handlePasswordChange} disabled={savingPassword} className="bg-blue-600 text-white hover:bg-blue-500">
               {savingPassword ? 'Updating...' : 'Update Password'}
             </Button>
           </div>
@@ -154,7 +154,7 @@ export default function NigeriaPatientSettingsPage() {
       <Card className="border-border/70">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5 text-emerald-600" />
+            <Bell className="h-5 w-5 text-blue-600" />
             Alert preferences
           </CardTitle>
         </CardHeader>
@@ -173,7 +173,7 @@ export default function NigeriaPatientSettingsPage() {
               <button
                 type="button"
                 onClick={() => setPreferences((current) => ({ ...current, [key]: !current[key] }))}
-                className={`flex h-6 w-11 items-center rounded-full transition-colors ${preferences[key] ? 'bg-emerald-600' : 'bg-slate-300'}`}
+                className={`flex h-6 w-11 items-center rounded-full transition-colors ${preferences[key] ? 'bg-blue-600' : 'bg-slate-300'}`}
               >
                 <span className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${preferences[key] ? 'translate-x-5' : 'translate-x-1'}`} />
               </button>
@@ -190,7 +190,7 @@ export default function NigeriaPatientSettingsPage() {
       <Card className="border-border/70">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-emerald-600" />
+            <ShieldCheck className="h-5 w-5 text-blue-600" />
             Security
           </CardTitle>
         </CardHeader>

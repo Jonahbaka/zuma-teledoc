@@ -94,11 +94,11 @@ export const KIND_OPTIONS = [
 
 export function roleBadge(role) {
   const map = {
-    host:       'bg-purple-100 text-purple-800',
-    consultant: 'bg-indigo-100 text-indigo-800',
+    host:       'bg-blue-100 text-blue-800',
+    consultant: 'bg-blue-100 text-blue-800',
     doctor:     'bg-blue-100 text-blue-800',
     nurse:      'bg-cyan-100 text-cyan-800',
-    pharmacist: 'bg-emerald-100 text-emerald-800',
+    pharmacist: 'bg-blue-100 text-blue-800',
     patient:    'bg-amber-100 text-amber-800',
     family:     'bg-orange-100 text-orange-800',
     observer:   'bg-slate-100 text-slate-700',
@@ -109,12 +109,12 @@ export function roleBadge(role) {
 export function statusBadge(status) {
   const map = {
     scheduled: 'bg-slate-100 text-slate-700',
-    live:      'bg-emerald-100 text-emerald-800',
+    live:      'bg-blue-100 text-blue-800',
     ended:     'bg-slate-200 text-slate-600',
     cancelled: 'bg-rose-100 text-rose-700',
     waiting:   'bg-amber-100 text-amber-800',
     invited:   'bg-blue-100 text-blue-800',
-    admitted:  'bg-emerald-100 text-emerald-800',
+    admitted:  'bg-blue-100 text-blue-800',
     denied:    'bg-rose-100 text-rose-700',
     left:      'bg-slate-200 text-slate-600',
     removed:   'bg-rose-100 text-rose-700',

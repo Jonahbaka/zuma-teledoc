@@ -51,7 +51,7 @@ export default function NigeriaPatientNotificationsPage() {
     <div className="space-y-6">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Patient Alerts</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">Nigeria Patient Alerts</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Notifications</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}` : 'Your portal alerts are up to date.'}
@@ -68,13 +68,13 @@ export default function NigeriaPatientNotificationsPage() {
       {loading ? (
         <Card className="border-border/70">
           <CardContent className="p-8 text-center">
-            <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
+            <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
           </CardContent>
         </Card>
       ) : notifications.length === 0 ? (
         <Card className="border-border/70">
           <CardContent className="p-10 text-center">
-            <Bell className="mx-auto h-10 w-10 text-emerald-500/60" />
+            <Bell className="mx-auto h-10 w-10 text-blue-500/60" />
             <p className="mt-4 font-semibold text-foreground">No patient notifications yet.</p>
             <p className="mt-2 text-sm text-muted-foreground">Prescription updates, appointment alerts, and message notifications will appear here.</p>
           </CardContent>
@@ -82,13 +82,13 @@ export default function NigeriaPatientNotificationsPage() {
       ) : (
         <div className="space-y-3">
           {notifications.map((notification) => (
-            <Card key={notification.id} className={`border-border/70 ${notification.isRead ? '' : 'border-emerald-200 bg-emerald-50/40'}`}>
+            <Card key={notification.id} className={`border-border/70 ${notification.isRead ? '' : 'border-blue-200 bg-blue-50/40'}`}>
               <CardContent className="p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <h2 className="font-semibold text-foreground">{notification.title}</h2>
-                      {!notification.isRead ? <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> : null}
+                      {!notification.isRead ? <span className="h-2.5 w-2.5 rounded-full bg-blue-500" /> : null}
                     </div>
                     <p className="mt-2 text-sm leading-6 text-slate-600">{notification.message}</p>
                     <p className="mt-3 text-xs text-muted-foreground">{formatRelativeTime(notification.createdAt)}</p>

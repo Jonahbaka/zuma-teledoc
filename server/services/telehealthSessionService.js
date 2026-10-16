@@ -2,6 +2,7 @@ const db = require('../db');
 const logger = require('../middleware/logger');
 const { generateRoomId, keysToCamel } = require('../../lib/utils');
 const { getUserTestingAccess } = require('./testingAccessService');
+const consumerMembership = require('./consumerMembershipService');
 
 const DEFAULT_ICE_SERVERS = [
   {
@@ -177,7 +178,8 @@ const getAuthorizedVideoAppointment = async (appointmentId, user) => {
        FROM appointments a
        JOIN users p ON p.id = a.patient_id
        JOIN users pr ON pr.id = a.provider_id
-      WHERE a.id = $1
+      WHERE a.id = $1 AND p.role='patient' AND pr.role='provider'
+        AND p.is_active=TRUE AND pr.is_active=TRUE AND p.market_scope=pr.market_scope
       LIMIT 1`,
     [appointmentId]
   );
@@ -188,8 +190,8 @@ const getAuthorizedVideoAppointment = async (appointmentId, user) => {
 
   const appointment = keysToCamel(rows[0]);
   const isParticipant =
-    appointment.patientId === user.id ||
-    appointment.providerId === user.id;
+    (user.role === 'patient' && appointment.patientId === user.id) ||
+    (user.role === 'provider' && appointment.providerId === user.id);
 
   if (!isParticipant) {
     throw createHttpError(403, 'Access denied');
@@ -204,11 +206,8 @@ const getAuthorizedVideoAppointment = async (appointmentId, user) => {
   }
 
   if (String(user.role || '').trim().toLowerCase() === 'patient') {
-    const testingAccess = await getUserTestingAccess(user.id);
-    const paymentBypassed = Boolean(testingAccess?.testingBypassActive);
-    if (!paymentBypassed && appointment.paymentRequired && !appointment.paymentCompleted) {
-      throw createHttpError(402, 'Payment required before joining video appointment');
-    }
+    const funding = await consumerMembership.appointmentFunding(user.id, appointmentId);
+    if (!funding.covered) throw createHttpError(funding.source === 'financial_verification_unavailable' ? 503 : 402, 'Verified payment or current approved coverage is required before joining this appointment');
   }
 
   return appointment;

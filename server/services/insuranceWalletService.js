@@ -7,6 +7,8 @@ const db = require('../db');
 const logger = require('../middleware/logger');
 const { encrypt, decrypt } = require('../../lib/encryption');
 const eligibilityService = require('./eligibilityService');
+const { integrationUnavailable } = require('../utils/integrationReadiness');
+const { presentInsurance } = require('./manualInsuranceService');
 
 class InsuranceWalletService {
   /**
@@ -15,24 +17,22 @@ class InsuranceWalletService {
   async getWallet(patientId) {
     const result = await db.pool.query(
       `SELECT 
-        id, patient_id, insurance_provider, policy_number, group_number,
+        id, user_id, insurance_provider, member_id, group_number, plan_name, manual_identity_encrypted, manual_submission_key,
         subscriber_name, subscriber_dob, relationship_to_subscriber,
         is_primary, is_verified, eligibility_status, eligibility_last_checked,
-        effective_date, expiration_date,
+        effective_date, termination_date, verified_at, eligibility_response,
         ocr_provider, ocr_confidence_score,
         tokenized_member_id,
         created_at, updated_at
       FROM patient_insurance 
-      WHERE patient_id = $1 
+      WHERE user_id = $1
       ORDER BY is_primary DESC, created_at DESC`,
       [patientId]
     );
     
-    // Don't return encrypted images or raw PHI in list
-    return result.rows.map(insurance => ({
-      ...insurance,
-      policyNumber: this.maskSensitiveData(insurance.policy_number)
-    }));
+    // Only the owned wallet's display fields are returned. Full member/group
+    // identity, ciphertext, retry keys and stored audit data stay out of lists.
+    return result.rows.map(insurance => presentInsurance(insurance));
   }
   
   /**
@@ -78,7 +78,7 @@ class InsuranceWalletService {
       }
       
       return {
-        ...insurance,
+        ...presentInsurance(insurance, { revealMemberId: true }),
         frontImageDecrypted,
         backImageDecrypted
       };
@@ -94,16 +94,19 @@ class InsuranceWalletService {
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
+
+      const owned = await client.query('SELECT id FROM patient_insurance WHERE id=$1 AND user_id=$2 FOR UPDATE', [insuranceId, patientId]);
+      if (!owned.rows.length) throw Object.assign(new Error('Insurance not found'), { statusCode: 404 });
       
       // Unset all primary flags
       await client.query(
-        'UPDATE patient_insurance SET is_primary = false WHERE patient_id = $1',
+        'UPDATE patient_insurance SET is_primary = false WHERE user_id = $1',
         [patientId]
       );
       
       // Set new primary
       const result = await client.query(
-        'UPDATE patient_insurance SET is_primary = true WHERE id = $1 AND patient_id = $2 RETURNING *',
+        'UPDATE patient_insurance SET is_primary = true WHERE id = $1 AND user_id = $2 RETURNING *',
         [insuranceId, patientId]
       );
       
@@ -111,7 +114,7 @@ class InsuranceWalletService {
       await this.logAuditEvent(insuranceId, 'primary_changed', { newPrimary: insuranceId });
       
       await client.query('COMMIT');
-      return result.rows[0];
+      return presentInsurance(result.rows[0]);
     } catch (error) {
       await client.query('ROLLBACK');
       logger.error('Error setting primary insurance:', error);
@@ -137,12 +140,22 @@ class InsuranceWalletService {
       }
       
       const insurance = insuranceResult.rows[0];
+      const identity = presentInsurance(insurance, { revealMemberId: true });
       
       // Call eligibility service
       const eligibilityResult = await eligibilityService.verifyRealTime(
-        insurance.policy_number,
-        insurance.insurance_provider
+        identity.memberId,
+        identity.payerName
       );
+
+      // An unavailable transport or development result must not overwrite a
+      // previously recorded coverage decision or emit a verification audit.
+      if (!eligibilityResult || eligibilityResult.synthetic === true
+        || eligibilityResult.verificationSource === 'unavailable'
+        || eligibilityResult.verified !== true
+        || !['ACTIVE', 'INACTIVE'].includes(eligibilityResult.status)) {
+        throw integrationUnavailable('Live insurance eligibility');
+      }
       
       // Update insurance record
       const updateQuery = `
@@ -157,8 +170,8 @@ class InsuranceWalletService {
         RETURNING *
       `;
       
-      const isActive = eligibilityResult.status === 'ACTIVE';
-      const status = isActive ? 'active' : 'inactive';
+      const isActive = eligibilityResult.status === 'ACTIVE' && eligibilityResult.synthetic !== true;
+      const status = isActive ? 'active' : eligibilityResult.status === 'INACTIVE' ? 'inactive' : 'unknown';
       
       const result = await client.query(updateQuery, [
         isActive,
@@ -174,7 +187,7 @@ class InsuranceWalletService {
       });
       
       return {
-        insurance: result.rows[0],
+        insurance: presentInsurance(result.rows[0]),
         eligibility: eligibilityResult
       };
     } catch (error) {
@@ -201,7 +214,7 @@ class InsuranceWalletService {
       await this.logAuditEvent(insuranceId, 'status_changed', { newStatus: status });
       
       await client.query('COMMIT');
-      return result.rows[0];
+      return presentInsurance(result.rows[0]);
     } catch (error) {
       await client.query('ROLLBACK');
       logger.error('Error setting insurance status:', error);
@@ -229,7 +242,7 @@ class InsuranceWalletService {
       
       await this.logAuditEvent(insuranceId, 'consent_updated', { consentGiven });
       
-      return result.rows[0];
+      return presentInsurance(result.rows[0]);
     } catch (error) {
       logger.error('Error capturing consent:', error);
       throw error;

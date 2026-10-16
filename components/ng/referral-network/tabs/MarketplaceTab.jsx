@@ -63,7 +63,7 @@ export default function MarketplaceTab() {
             Emergency-capable only
           </label>
           <button onClick={load} disabled={loading}
-            className="ml-auto flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+            className="ml-auto flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
             <Search className="h-4 w-4" />
             {loading ? 'Searching…' : 'Search'}
           </button>

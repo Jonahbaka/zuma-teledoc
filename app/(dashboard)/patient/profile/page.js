@@ -85,7 +85,7 @@ export default function PatientProfilePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -94,7 +94,7 @@ export default function PatientProfilePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <User className="w-6 h-6 text-purple-500" />
+          <User className="w-6 h-6 text-blue-500" />
           My Profile
         </h1>
         <p className="text-slate-500 mt-1">Manage your personal information</p>
@@ -210,7 +210,7 @@ export default function PatientProfilePage() {
           </div>
 
           <div className="flex justify-end pt-4">
-            <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white">
+            <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white">
               {saving ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />

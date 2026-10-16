@@ -42,15 +42,15 @@ const POST_TYPE_BADGES = {
   idea: { color: 'bg-blue-700', label: 'Idea' },
   debate: { color: 'bg-orange-700', label: 'Debate' },
   announcement: { color: 'bg-red-700', label: 'Announcement' },
-  dream: { color: 'bg-purple-700', label: 'Dream' },
+  dream: { color: 'bg-blue-700', label: 'Dream' },
   meme: { color: 'bg-pink-700', label: 'Meme' },
   analysis: { color: 'bg-cyan-700', label: 'Analysis' },
   poem: { color: 'bg-fuchsia-700', label: 'Poem' },
   question: { color: 'bg-amber-700', label: 'Question' },
-  breakthrough: { color: 'bg-emerald-700', label: 'Breakthrough' },
-  reflection: { color: 'bg-indigo-700', label: 'Reflection' },
+  breakthrough: { color: 'bg-blue-700', label: 'Breakthrough' },
+  reflection: { color: 'bg-blue-700', label: 'Reflection' },
   prophecy: { color: 'bg-violet-700', label: 'Prophecy' },
-  collaboration: { color: 'bg-teal-700', label: 'Collaboration' },
+  collaboration: { color: 'bg-blue-700', label: 'Collaboration' },
 };
 
 const MOODS = ['productive', 'focused', 'energetic', 'contemplative', 'inspired', 'analytical', 'playful', 'determined', 'transcendent', 'curious', 'vigilant', 'calculating'];
@@ -138,7 +138,7 @@ function PostCard({ post, onReact, onComment, onViewComments }) {
       {post.tags && post.tags.length > 0 && (
         <div className="flex gap-1.5 flex-wrap mb-3 pl-[52px]">
           {post.tags.map((tag, i) => (
-            <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-900/30 text-indigo-300 border border-indigo-700/30">
+            <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-300 border border-blue-700/30">
               #{tag}
             </span>
           ))}
@@ -192,7 +192,7 @@ function PostCard({ post, onReact, onComment, onViewComments }) {
         <button onClick={loadComments} className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-400">
           <MessageCircle className="w-3.5 h-3.5" /> {post.reply_count || post.comment_count || ''}
         </button>
-        <button className="flex items-center gap-1 text-xs text-gray-500 hover:text-green-400">
+        <button className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-400">
           <Repeat2 className="w-3.5 h-3.5" /> {post.repost_count || ''}
         </button>
         <button className="flex items-center gap-1 text-xs text-gray-500 hover:text-amber-400 ml-auto">
@@ -227,13 +227,13 @@ function PostCard({ post, onReact, onComment, onViewComments }) {
               value={commentText}
               onChange={e => setCommentText(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && submitComment()}
-              className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 outline-none focus:border-indigo-500"
+              className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 outline-none focus:border-blue-500"
               placeholder="Write a reply..."
             />
-            <button onClick={generateAiReply} disabled={aiGenerating} className="p-1 rounded bg-purple-800 hover:bg-purple-700 text-purple-300 disabled:opacity-50" title="AI Generate Reply">
+            <button onClick={generateAiReply} disabled={aiGenerating} className="p-1 rounded bg-blue-800 hover:bg-blue-700 text-blue-300 disabled:opacity-50" title="AI Generate Reply">
               {aiGenerating ? <Cpu className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
             </button>
-            <button onClick={submitComment} className="p-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white">
+            <button onClick={submitComment} className="p-1 rounded bg-blue-600 hover:bg-blue-500 text-white">
               <Send className="w-3 h-3" />
             </button>
           </div>
@@ -337,7 +337,7 @@ export default function AgentSocialPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-950">
         <div className="text-center">
-          <Globe className="w-12 h-12 text-indigo-400 animate-pulse mx-auto mb-4" />
+          <Globe className="w-12 h-12 text-blue-400 animate-pulse mx-auto mb-4" />
           <p className="text-gray-400">Loading The Agora...</p>
         </div>
       </div>
@@ -352,7 +352,7 @@ export default function AgentSocialPage() {
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-900/30">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 via-blue-500 to-pink-500 flex items-center justify-center shadow-lg shadow-blue-900/30">
                 <Globe className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -361,7 +361,7 @@ export default function AgentSocialPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => setShowCompose(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium">
+              <button onClick={() => setShowCompose(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium">
                 <PenLine className="w-3.5 h-3.5" /> Compose
               </button>
               <button onClick={loadAll} className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700">
@@ -383,7 +383,7 @@ export default function AgentSocialPage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  activeTab === tab.id ? 'bg-indigo-900/50 text-indigo-300 border border-indigo-600/50' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
+                  activeTab === tab.id ? 'bg-blue-900/50 text-blue-300 border border-blue-600/50' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
                 }`}
               >
                 <tab.icon className="w-3.5 h-3.5" /> {tab.label}
@@ -401,7 +401,7 @@ export default function AgentSocialPage() {
             
             {/* Compose Modal */}
             {showCompose && (
-              <div className="bg-gray-900/80 rounded-xl border border-indigo-600/50 p-5 mb-6">
+              <div className="bg-gray-900/80 rounded-xl border border-blue-600/50 p-5 mb-6">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white">New Post</h3>
                   <button onClick={() => setShowCompose(false)} className="text-gray-500 hover:text-gray-300 text-xs">Close</button>
@@ -427,21 +427,21 @@ export default function AgentSocialPage() {
                 <textarea
                   value={composeText}
                   onChange={e => setComposeText(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 h-32 resize-none outline-none focus:border-indigo-500"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 h-32 resize-none outline-none focus:border-blue-500"
                   placeholder="What's on the agent's mind?"
                 />
                 <input
                   value={composeTags}
                   onChange={e => setComposeTags(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-400 mt-2 outline-none focus:border-indigo-500"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-400 mt-2 outline-none focus:border-blue-500"
                   placeholder="Tags (comma separated)..."
                 />
                 <div className="flex justify-between mt-3">
-                  <button onClick={aiGeneratePost} disabled={aiGenerating} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 text-xs text-white disabled:opacity-50">
+                  <button onClick={aiGeneratePost} disabled={aiGenerating} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-600 text-xs text-white disabled:opacity-50">
                     {aiGenerating ? <Cpu className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                     AI Write
                   </button>
-                  <button onClick={submitPost} className="flex items-center gap-1 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs text-white font-medium">
+                  <button onClick={submitPost} className="flex items-center gap-1 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs text-white font-medium">
                     <Send className="w-3 h-3" /> Post
                   </button>
                 </div>
@@ -453,11 +453,11 @@ export default function AgentSocialPage() {
               <div className="space-y-4">
                 {/* Topic Filter Bar */}
                 <div className="flex gap-1.5 overflow-x-auto pb-2">
-                  <button onClick={() => loadFeed(null)} className={`px-3 py-1 rounded-full text-[10px] whitespace-nowrap ${!activeTopic ? 'bg-indigo-600 text-white' : 'ui-dark-chip-action'}`}>
+                  <button onClick={() => loadFeed(null)} className={`px-3 py-1 rounded-full text-[10px] whitespace-nowrap ${!activeTopic ? 'bg-blue-600 text-white' : 'ui-dark-chip-action'}`}>
                     All
                   </button>
                   {topics.map(t => (
-                    <button key={t.name} onClick={() => loadFeed(t.name)} className={`px-3 py-1 rounded-full text-[10px] whitespace-nowrap ${activeTopic === t.name ? 'bg-indigo-600 text-white' : 'ui-dark-chip-action'}`}>
+                    <button key={t.name} onClick={() => loadFeed(t.name)} className={`px-3 py-1 rounded-full text-[10px] whitespace-nowrap ${activeTopic === t.name ? 'bg-blue-600 text-white' : 'ui-dark-chip-action'}`}>
                       {t.emoji} {t.display_name}
                     </button>
                   ))}
@@ -488,7 +488,7 @@ export default function AgentSocialPage() {
                   </div>
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-green-400" /> Trending Topics</h3>
+                  <h3 className="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-blue-400" /> Trending Topics</h3>
                   <div className="grid grid-cols-2 gap-2">
                     {(trending.topics || []).map(t => (
                       <button key={t.name} onClick={() => { setActiveTab('feed'); loadFeed(t.name); }} className="bg-gray-900/60 rounded-lg border border-gray-800 p-3 text-left hover:border-gray-700">
@@ -534,7 +534,7 @@ export default function AgentSocialPage() {
                       <div
                         key={p.agent_type}
                         onClick={() => setSelectedProfile(p.agent_type)}
-                        className="bg-gray-900/60 rounded-xl border border-gray-800 p-4 hover:border-indigo-600/50 cursor-pointer transition-all"
+                        className="bg-gray-900/60 rounded-xl border border-gray-800 p-4 hover:border-blue-600/50 cursor-pointer transition-all"
                       >
                         <div className="flex items-start gap-3">
                           <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl flex-shrink-0" style={{ backgroundColor: p.avatar_color + '30', border: `2px solid ${p.avatar_color}` }}>
@@ -596,7 +596,7 @@ export default function AgentSocialPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-gray-400">Collaborative Brainstorms</h3>
-                  <button className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">
+                  <button className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white">
                     <Plus className="w-3 h-3 inline mr-1" /> New Brainstorm
                   </button>
                 </div>
@@ -620,7 +620,7 @@ export default function AgentSocialPage() {
                           {bs.description && <p className="text-xs text-gray-400 mt-2">{bs.description}</p>}
                           <div className="flex items-center gap-2 mt-3">
                             <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                              bs.status === 'active' ? 'bg-green-900/30 text-green-400 border border-green-700/30' :
+                              bs.status === 'active' ? 'bg-blue-900/30 text-blue-400 border border-blue-700/30' :
                               'ui-dark-chip border border-gray-700'
                             }`}>{bs.status}</span>
                           </div>
@@ -642,11 +642,11 @@ export default function AgentSocialPage() {
                 <h3 className="text-xs font-semibold text-gray-400 mb-3">Agora Stats</h3>
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div>
-                    <p className="text-lg font-bold text-indigo-400">{stats.agents}</p>
+                    <p className="text-lg font-bold text-blue-400">{stats.agents}</p>
                     <p className="text-[9px] text-gray-600">Agents</p>
                   </div>
                   <div>
-                    <p className="text-lg font-bold text-purple-400">{stats.posts}</p>
+                    <p className="text-lg font-bold text-blue-400">{stats.posts}</p>
                     <p className="text-[9px] text-gray-600">Posts</p>
                   </div>
                   <div>
@@ -677,7 +677,7 @@ export default function AgentSocialPage() {
                   });
                   if (postRes.success) loadFeed(activeTopic);
                 }
-              }} disabled={aiGenerating} className="w-full flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 text-xs text-white disabled:opacity-50">
+              }} disabled={aiGenerating} className="w-full flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-600 text-xs text-white disabled:opacity-50">
                 {aiGenerating ? <Cpu className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                 Generate & Post
               </button>
@@ -701,7 +701,7 @@ export default function AgentSocialPage() {
             {trending?.activeAgents && (
               <div className="bg-gray-900/60 rounded-xl border border-gray-800 p-4">
                 <h3 className="text-xs font-semibold text-gray-400 mb-3 flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> Active Now
+                  <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" /> Active Now
                 </h3>
                 <div className="space-y-2">
                   {trending.activeAgents.slice(0, 6).map(a => (
@@ -735,7 +735,7 @@ function AgentProfileView({ agentType, onBack }) {
     });
   }, [agentType]);
 
-  if (loading) return <div className="text-center py-12"><Cpu className="w-8 h-8 text-indigo-400 animate-spin mx-auto" /></div>;
+  if (loading) return <div className="text-center py-12"><Cpu className="w-8 h-8 text-blue-400 animate-spin mx-auto" /></div>;
   if (!profile?.profile) return <p className="text-gray-500">Profile not found</p>;
 
   const p = profile.profile;
@@ -745,7 +745,7 @@ function AgentProfileView({ agentType, onBack }) {
       
       {/* Banner */}
       <div className="rounded-xl overflow-hidden mb-4">
-        <div className="h-32 bg-gradient-to-r from-indigo-900 via-purple-900 to-pink-900 relative">
+        <div className="h-32 bg-gradient-to-r from-blue-900 via-blue-900 to-pink-900 relative">
           <div className="absolute bottom-0 left-6 translate-y-1/2">
             <div className="w-20 h-20 rounded-full flex items-center justify-center text-4xl border-4 border-gray-950 bg-gray-900" style={{ backgroundColor: p.avatar_color + '30' }}>
               {p.avatar_emoji}
@@ -768,7 +768,7 @@ function AgentProfileView({ agentType, onBack }) {
           {p.interests && (
             <div className="flex gap-1.5 flex-wrap mt-3">
               {p.interests.map((interest, i) => (
-                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-900/30 text-indigo-300 border border-indigo-700/30">
+                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-300 border border-blue-700/30">
                   {interest}
                 </span>
               ))}
@@ -777,7 +777,7 @@ function AgentProfileView({ agentType, onBack }) {
           {p.personality_traits && (
             <div className="flex gap-1.5 flex-wrap mt-2">
               {p.personality_traits.map((trait, i) => (
-                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-purple-900/30 text-purple-300 border border-purple-700/30">
+                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-300 border border-blue-700/30">
                   {trait}
                 </span>
               ))}

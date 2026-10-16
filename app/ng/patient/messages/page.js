@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, MessageSquare, Plus, Send } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -18,14 +18,25 @@ export default function NigeriaPatientMessagesPage() {
   const [showComposer, setShowComposer] = useState(false);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [conversationError, setConversationError] = useState('');
+  const [conversationLoading, setConversationLoading] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const selectedRecipient = useRef(null);
+  const sendAttempt = useRef(null);
+  selectedRecipient.current = selectedConversation?.recipientId || null;
 
   useEffect(() => {
+    let cancelled = false;
     const loadPortalMessaging = async () => {
+      setLoading(true); setLoadError('');
       try {
         const [conversationsResponse, appointmentsResponse] = await Promise.all([
-          api.get('/messages/conversations').catch(() => ({ data: { success: false, conversations: [] } })),
-          api.get('/appointments').catch(() => ({ data: { success: false, appointments: [] } })),
+          api.get('/messages/conversations'),
+          api.get('/appointments'),
         ]);
+        if (!conversationsResponse.data?.success || !appointmentsResponse.data?.success) throw new Error();
+        if (cancelled) return;
 
         const nextConversations = conversationsResponse.data?.success ? conversationsResponse.data.conversations || [] : [];
         setConversations(nextConversations);
@@ -56,53 +67,73 @@ export default function NigeriaPatientMessagesPage() {
           });
         }
         setProviders(Array.from(appointmentProviders.values()));
+      } catch {
+        if (!cancelled) setLoadError('Messages could not be loaded. Please try again.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     loadPortalMessaging();
-  }, []);
+    return () => { cancelled = true; };
+  }, [revision]);
 
   useEffect(() => {
+    let cancelled = false;
+    setMessages([]); setDraft(''); setConversationError('');
     const loadConversation = async () => {
       if (!selectedConversation?.recipientId) {
         setMessages([]);
         return;
       }
 
-      const response = await api.get(`/messages/conversation/${selectedConversation.recipientId}`).catch(() => ({ data: { success: false, messages: [] } }));
-      setMessages(response.data?.success ? response.data.messages || [] : []);
+      setConversationLoading(true);
+      try {
+        const response = await api.get(`/messages/conversation/${selectedConversation.recipientId}`);
+        if (!response.data?.success) throw new Error();
+        if (!cancelled) setMessages(response.data.messages || []);
+      } catch { if (!cancelled) setConversationError('This conversation could not be loaded.'); }
+      finally { if (!cancelled) setConversationLoading(false); }
     };
 
     loadConversation();
+    return () => { cancelled = true; };
   }, [selectedConversation]);
 
   const refreshConversations = async () => {
-    const response = await api.get('/messages/conversations').catch(() => ({ data: { success: false, conversations: [] } }));
-    setConversations(response.data?.success ? response.data.conversations || [] : []);
+    try {
+      const response = await api.get('/messages/conversations');
+      if (!response.data?.success) throw new Error();
+      setConversations(response.data.conversations || []);
+    } catch { setLoadError('Your inbox could not be refreshed. A successfully sent message remains saved.'); }
   };
 
   const sendMessage = async ({ recipientId, content, resetComposer = false }) => {
     if (!recipientId || !content.trim()) return;
 
     setSending(true);
+    const openedRecipient = selectedRecipient.current;
     setNotice('');
     try {
+      if (sendAttempt.current?.recipientId !== recipientId || sendAttempt.current?.content !== content.trim()) sendAttempt.current = { recipientId, content: content.trim(), id: crypto.randomUUID() };
       const response = await api.post('/messages', {
         recipientId,
         content: content.trim(),
         isUrgent: false,
+        clientMessageId: sendAttempt.current.id,
       });
 
       if (response.data?.success) {
+        await refreshConversations();
+        if (selectedRecipient.current !== openedRecipient) return;
+        sendAttempt.current = null;
+        if (selectedRecipient.current === recipientId && response.data.message?.id) setMessages((current) => current.some((item) => item.id === response.data.message.id) ? current : [...current, { ...response.data.message, sentByMe: true }]);
         if (resetComposer) {
           setShowComposer(false);
           setProviderId('');
         }
         setDraft('');
         setNotice('Message sent.');
-        await refreshConversations();
         setSelectedConversation((current) =>
           current?.recipientId === recipientId
             ? current
@@ -122,7 +153,7 @@ export default function NigeriaPatientMessagesPage() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -131,18 +162,20 @@ export default function NigeriaPatientMessagesPage() {
     <div className="space-y-6">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Care Messaging</p>
+          <p className="font-medium text-blue-800">DoctaRx · Your care team</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Messages and support</h1>
           <p className="mt-2 text-sm text-muted-foreground">Stay connected with providers and care operations without leaving the patient portal.</p>
         </div>
-        <Button onClick={() => setShowComposer((current) => !current)} className="bg-emerald-600 text-white hover:bg-emerald-500">
+        <Button onClick={() => setShowComposer((current) => !current)} className="bg-blue-600 text-white hover:bg-blue-500">
           <Plus className="mr-2 h-4 w-4" />
           New Message
         </Button>
       </section>
 
+      {loadError && <div className="portal-error"><p role="alert">{loadError}</p><Button variant="outline" className="mt-3" onClick={() => setRevision((value) => value + 1)}>Try again</Button></div>}
+
       {notice ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div>
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{notice}</div>
       ) : null}
 
       {showComposer ? (
@@ -152,6 +185,7 @@ export default function NigeriaPatientMessagesPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <select
+              aria-label="Care-team provider"
               value={providerId}
               onChange={(event) => setProviderId(event.target.value)}
               className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
@@ -164,6 +198,7 @@ export default function NigeriaPatientMessagesPage() {
               ))}
             </select>
             <textarea
+              aria-label="New message"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               rows={4}
@@ -171,7 +206,7 @@ export default function NigeriaPatientMessagesPage() {
               placeholder="Describe your follow-up question, prescription issue, or support need."
             />
             <div className="flex justify-end">
-              <Button onClick={() => sendMessage({ recipientId: providerId, content: draft, resetComposer: true })} disabled={sending || !providerId || !draft.trim()} className="bg-emerald-600 text-white hover:bg-emerald-500">
+              <Button onClick={() => sendMessage({ recipientId: providerId, content: draft, resetComposer: true })} disabled={sending || !providerId || !draft.trim()} className="bg-blue-600 text-white hover:bg-blue-500">
                 {sending ? 'Sending...' : 'Send Message'}
               </Button>
             </div>
@@ -185,9 +220,9 @@ export default function NigeriaPatientMessagesPage() {
             <CardTitle>Conversations</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {conversations.length === 0 ? (
+            {loadError ? null : conversations.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border px-4 py-8 text-center">
-                <MessageSquare className="mx-auto h-10 w-10 text-emerald-500/60" />
+                <MessageSquare className="mx-auto h-10 w-10 text-blue-500/60" />
                 <p className="mt-4 font-semibold text-foreground">No conversations yet.</p>
                 <p className="mt-2 text-sm text-muted-foreground">Start a message from the button above once you have an appointment provider.</p>
               </div>
@@ -205,7 +240,7 @@ export default function NigeriaPatientMessagesPage() {
                     type="button"
                     onClick={() => setSelectedConversation({ recipientId, recipientName })}
                     className={`w-full rounded-2xl border px-4 py-4 text-left transition-colors ${
-                      isActive ? 'border-emerald-300 bg-emerald-50' : 'border-border hover:border-emerald-200 hover:bg-emerald-50/40'
+                      isActive ? 'border-blue-300 bg-blue-50' : 'border-border hover:border-blue-200 hover:bg-blue-50/40'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -216,7 +251,7 @@ export default function NigeriaPatientMessagesPage() {
                         </p>
                       </div>
                       {conversation.unreadCount ? (
-                        <span className="rounded-full bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">{conversation.unreadCount}</span>
+                        <span className="rounded-full bg-blue-600 px-2 py-1 text-xs font-semibold text-white">{conversation.unreadCount}</span>
                       ) : null}
                     </div>
                   </button>
@@ -238,16 +273,16 @@ export default function NigeriaPatientMessagesPage() {
             ) : (
               <>
                 <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
-                  {messages.length === 0 ? (
+                  {conversationLoading ? <p role="status">Loading conversation…</p> : conversationError ? <p role="alert" className="portal-error">{conversationError}</p> : messages.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
                       No messages in this conversation yet.
                     </div>
                   ) : (
                     messages.map((message) => (
                       <div key={message.id} className={`flex ${message.sentByMe ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${message.sentByMe ? 'bg-emerald-600 text-white' : 'bg-muted text-foreground'}`}>
+                        <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${message.sentByMe ? 'bg-blue-600 text-white' : 'bg-muted text-foreground'}`}>
                           <p className="whitespace-pre-wrap">{message.content}</p>
-                          <p className={`mt-2 text-xs ${message.sentByMe ? 'text-emerald-100' : 'text-muted-foreground'}`}>
+                          <p className={`mt-2 text-xs ${message.sentByMe ? 'text-blue-100' : 'text-muted-foreground'}`}>
                             {formatRelativeTime(message.createdAt)}
                           </p>
                         </div>
@@ -258,6 +293,7 @@ export default function NigeriaPatientMessagesPage() {
 
                 <div className="space-y-3 border-t border-border pt-4">
                   <textarea
+                    aria-label="Message to care team"
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     rows={4}
@@ -265,7 +301,7 @@ export default function NigeriaPatientMessagesPage() {
                     placeholder="Type your message to the care team."
                   />
                   <div className="flex justify-end">
-                    <Button onClick={() => sendMessage({ recipientId: selectedConversation.recipientId, content: draft })} disabled={sending || !draft.trim()} className="bg-emerald-600 text-white hover:bg-emerald-500">
+                    <Button onClick={() => sendMessage({ recipientId: selectedConversation.recipientId, content: draft })} disabled={sending || !draft.trim()} className="bg-blue-600 text-white hover:bg-blue-500">
                       <Send className="mr-2 h-4 w-4" />
                       {sending ? 'Sending...' : 'Send'}
                     </Button>

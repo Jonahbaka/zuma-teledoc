@@ -1,92 +1,69 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { CAREOPS_PROFILE } from '@/lib/careopsProfile';
 
-/**
- * DeploymentVersionCheck
- *
- * Polls /api/health every 5 seconds to detect deployment changes.
- * When the reported build id changes:
- * 1. Clears localStorage, sessionStorage, and IndexedDB
- * 2. Unregisters service workers
- * 3. Reloads the page without relying on cached assets
- */
+// Backend deployment and service-worker updates must not discard account
+// sessions, clinical drafts, saved locations, or interrupt an active visit.
 export function DeploymentVersionCheck() {
-  const lastVersionRef = useRef(null);
-  const checkIntervalRef = useRef(null);
+  const lastVersion = useRef(null);
+  const [available, setAvailable] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
+    let stopped = false;
+    let checking = false;
+    let request;
+    const endpoint = CAREOPS_PROFILE ? '/careops/release' : (process.env.NEXT_PUBLIC_API_URL || '/api').replace(/\/$/, '') + '/health';
+    const announce = () => { if (!stopped) setAvailable(true); };
     const checkDeployment = async () => {
+      if (checking || stopped || document.visibilityState !== 'visible') return;
+      checking = true;
+      request = new AbortController();
+      const timeout = setTimeout(() => request.abort(), 8000);
       try {
-        const response = await fetch('/api/health', {
-          method: 'GET',
-          cache: 'no-store',
-          headers: { Pragma: 'no-cache', 'Cache-Control': 'no-cache' }
-        });
-
+        const response = await fetch(endpoint, { cache: 'no-store', signal: request.signal });
         if (!response.ok) return;
-
         const data = await response.json();
-        const currentVersion = data.buildId || data.version || 'unknown';
-        const timestamp = data.timestamp;
-
-        if (lastVersionRef.current === null) {
-          lastVersionRef.current = { version: currentVersion, timestamp };
-          return;
-        }
-
-        if (currentVersion !== lastVersionRef.current.version) {
-          console.warn(
-            `Deployment detected. Version changed from ${lastVersionRef.current.version} to ${currentVersion}. Clearing cache and reloading.`
-          );
-
-          try {
-            localStorage.clear();
-            sessionStorage.clear();
-
-            if ('serviceWorker' in navigator) {
-              const registrations = await navigator.serviceWorker.getRegistrations();
-              for (const registration of registrations) {
-                await registration.unregister();
-              }
-            }
-
-            const databases = await indexedDB.databases?.() || [];
-            for (const database of databases) {
-              indexedDB.deleteDatabase(database.name);
-            }
-          } catch (error) {
-            console.error('Error clearing cached client state:', error);
-          }
-
-          setTimeout(() => {
-            window.location.reload();
-          }, 500);
-        }
-
-        lastVersionRef.current = { version: currentVersion, timestamp };
+        const version = data.buildId || data.version;
+        if (typeof version !== 'string' || !version.trim() || version === 'unknown') return;
+        if (!stopped && lastVersion.current && version !== lastVersion.current) announce();
+        if (!stopped) lastVersion.current = version;
       } catch {
-        // Ignore transient network failures.
-      }
+        // An unavailable health check does not establish a deployment change.
+      } finally { clearTimeout(timeout); checking = false; }
     };
-
-    const scheduleCheck = () => {
-      if (document.visibilityState === 'visible') {
-        checkDeployment();
-      }
-    };
-
-    scheduleCheck();
-    checkIntervalRef.current = setInterval(scheduleCheck, 60000);
-    document.addEventListener('visibilitychange', scheduleCheck);
-
+    void checkDeployment();
+    const interval = setInterval(checkDeployment, 60000);
+    document.addEventListener('visibilitychange', checkDeployment);
+    window.addEventListener('doctarx:application-update', announce);
     return () => {
-      if (checkIntervalRef.current) {
-        clearInterval(checkIntervalRef.current);
-      }
-      document.removeEventListener('visibilitychange', scheduleCheck);
+      stopped = true; request?.abort(); clearInterval(interval);
+      document.removeEventListener('visibilitychange', checkDeployment);
+      window.removeEventListener('doctarx:application-update', announce);
     };
   }, []);
 
-  return null;
+  function refreshApplication() {
+    if (refreshing) return;
+    setRefreshing(true);
+    const waiting = window.__doctarxPwaRuntime?.registration?.waiting;
+    if (!waiting || !navigator.serviceWorker) { window.location.reload(); return; }
+    let finished = false;
+    const reload = () => {
+      if (finished) return;
+      finished = true;
+      navigator.serviceWorker.removeEventListener('controllerchange', reload);
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', reload, { once: true });
+    waiting.postMessage({ type: 'SKIP_WAITING' });
+    setTimeout(reload, 3000);
+  }
+
+  if (!available) return null;
+  return <aside aria-label="DoctaRx application update" className="fixed inset-x-4 bottom-24 z-50 mx-auto flex max-w-2xl flex-wrap items-center gap-4 rounded-2xl border border-blue-200 bg-white p-5 text-base text-slate-950 shadow-xl sm:bottom-6">
+    <div className="min-w-0 flex-1" role="status"><p className="font-semibold">A DoctaRx update is available</p><p className="mt-1 leading-6 text-slate-600">Save your work and finish any active visit before refreshing.</p></div>
+    <button onClick={refreshApplication} disabled={refreshing} className="min-h-12 rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white disabled:opacity-60">{refreshing ? 'Refreshing…' : 'Refresh application'}</button>
+  </aside>;
 }

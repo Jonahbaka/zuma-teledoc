@@ -14,8 +14,8 @@ class ComplianceService {
     actorUserId, actorType, action, resourceType, resourceId,
     details = {}, complianceFlags = [], severity = 'info',
     pharmacyId = null, actorIp = null,
-  }) {
-    const pool = getPool();
+  }, queryable = getPool()) {
+    const pool = queryable;
 
     await pool.query(
       `INSERT INTO ng_compliance_audit_log (

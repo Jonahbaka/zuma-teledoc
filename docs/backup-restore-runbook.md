@@ -1,5 +1,7 @@
 # Backup, Restore, and Migration Runbook (Nigeria PHC)
 
+> Use the current server and NG migration manifests rather than historical counts below. This document is a procedure; a witnessed restore, key-recovery and external-event reconciliation rehearsal is still required by [the current scope ledger](DOCTARX_SCOPE_LEDGER.md).
+
 Date: 2026-09-26
 Scope: the existing EC2 deployment (`.github/workflows/deploy.yml` against the running instance).
 Purpose: make recovery a rehearsable procedure rather than an improvisation during an incident.

@@ -13,6 +13,8 @@ const {
   requireActiveProviderToolAccess,
 } = require('../services/providers/providerAccessService');
 const whatsappDispenseService = require('../services/whatsapp/whatsappDispenseService');
+const { validatePrescriptionInput, assertProviderPrescriptionContext } = require('../services/rx-engine/providerPrescriptionGuardService');
+const adminDecisions = require('../services/adminVerificationService');
 
 const SPECIALTY_MAP = {
   'family medicine': 'general_practice',
@@ -220,43 +222,29 @@ router.post('/prescriptions',
         diagnosis,
         notes,
         fulfillmentPreference,
-      } = req.body;
-
-      if (!patientUserId || !Array.isArray(items) || items.length === 0) {
-        return res.status(400).json({ error: 'Patient and at least one medication item are required.' });
-      }
+      } = validatePrescriptionInput(req.body);
 
       await client.query('BEGIN');
 
-      const provider = await client.query('SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1', [req.user.id]);
-      if (!provider.rows.length) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Nigeria provider profile is not completed.' });
-      }
-
+      const access = await assertProviderPrescriptionContext(client, req, {
+        patientUserId, appointmentId, preferredPharmacyId, routedPharmacyId, fulfillmentPreference,
+      });
       const pharmacyId = routedPharmacyId || preferredPharmacyId || null;
-      if (pharmacyId) {
-        const pharmacy = await client.query('SELECT id FROM ng_pharmacies WHERE id = $1 LIMIT 1', [pharmacyId]);
-        if (!pharmacy.rows.length) {
-          await client.query('ROLLBACK');
-          return res.status(404).json({ error: 'Selected pharmacy was not found.' });
-        }
-      }
 
       const prescriptionResult = await client.query(
         `INSERT INTO ng_digital_prescriptions (
            provider_id, patient_user_id, appointment_id, prescription_number,
            items, preferred_pharmacy_id, routed_pharmacy_id, routed_at,
            status, dispense_status, pharmacy_response_status,
-           diagnosis, notes, fulfillment_preference, is_controlled
+           diagnosis, notes, fulfillment_preference, is_controlled, provider_user_id
          ) VALUES (
-           $1,$2,$3,$4,$5,$6,$7,CASE WHEN $7 IS NOT NULL THEN NOW() ELSE NULL END,
+           $1,$2,$3,$4,$5,$6,$7,CASE WHEN $7::uuid IS NOT NULL THEN NOW() ELSE NULL END,
            $8,'pending','pending_pharmacy_confirmation',
-           $9,$10,$11,$12
+           $9,$10,$11,$12,$13
          )
          RETURNING *`,
         [
-          provider.rows[0].id,
+          access.providerId,
           patientUserId,
           appointmentId || null,
           buildPrescriptionNumber(),
@@ -268,9 +256,15 @@ router.post('/prescriptions',
           notes || null,
           fulfillmentPreference || 'pickup_or_delivery',
           items.some((item) => item.isControlled === true || item.controlledOrSpecialHandling === true),
+          access.providerUserId,
         ]
       );
 
+      await client.query(
+        `INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,phi_accessed,success,description)
+         VALUES ($1,'create','digital_prescription',$2,$3,true,true,'Provider created a prescription for an authorized patient')`,
+        [access.providerUserId, prescriptionResult.rows[0].id, patientUserId]
+      );
       await client.query('COMMIT');
       await recordProviderUsage(req.user.id, 'prescription_issued', {
         metadata: { prescriptionId: prescriptionResult.rows[0].id, routed: Boolean(pharmacyId) },
@@ -300,7 +294,8 @@ router.post('/prescriptions',
       } catch (_) {
         // no-op
       }
-      res.status(500).json({ error: err.message });
+      const status = err.status || err.statusCode || 503;
+      res.status(status).json({ error: status < 500 ? err.message : 'Prescription creation is temporarily unavailable.' });
     } finally {
       client.release();
     }
@@ -379,7 +374,7 @@ router.get('/:providerId/appointments', authenticate, requireProviderOwnerOrAdmi
 
     const result = await pool.query(`
       SELECT a.*, u.email as patient_email,
-        COALESCE(u.full_name, u.email) as patient_name
+        COALESCE(NULLIF(CONCAT_WS(' ',u.first_name,u.last_name),''), u.email) as patient_name
       FROM ng_appointments a
       JOIN users u ON a.patient_user_id = u.id
       WHERE ${where.join(' AND ')}
@@ -400,14 +395,14 @@ router.get('/:providerId/patients', authenticate, requireProviderOwnerOrAdmin, a
   try {
     const result = await pool.query(`
       SELECT DISTINCT u.id, u.email,
-        COALESCE(u.full_name, u.email) as full_name,
-        u.phone_number,
+        COALESCE(NULLIF(CONCAT_WS(' ',u.first_name,u.last_name),''), u.email) as full_name,
+        u.phone AS phone_number,
         COUNT(a.id) as total_visits,
         MAX(a.scheduled_at) as last_visit
       FROM ng_appointments a
       JOIN users u ON a.patient_user_id = u.id
       WHERE a.provider_id = $1 AND a.status = 'completed'
-      GROUP BY u.id, u.email, u.phone_number
+      GROUP BY u.id, u.email, u.first_name, u.last_name, u.phone
       ORDER BY last_visit DESC
       LIMIT 100
     `, [req.params.providerId]);
@@ -448,45 +443,52 @@ router.get('/', authenticate, requireRole(['admin']), async (req, res) => {
 });
 
 router.post('/:providerId/verify', authenticate, requireRole(['admin']), async (req, res) => {
-  const pool = getPool();
   try {
-    const { action, reason } = req.body;
-    if (!['approve', 'reject', 'suspend'].includes(action)) {
-      return res.status(400).json({ error: 'Invalid action' });
-    }
-    const statusMap = { approve: 'verified', reject: 'rejected', suspend: 'suspended' };
-    await pool.query(`
-      UPDATE ng_providers SET
-        status = $1,
-        rejection_reason = $2,
-        verified_at = CASE WHEN $1 = 'verified' THEN NOW() ELSE verified_at END,
-        verified_by = $3,
-        access_status = CASE
-          WHEN $1 = 'verified' THEN 'trial_not_started'
-          WHEN $1 = 'suspended' THEN 'suspended'
-          WHEN $1 = 'rejected' THEN 'rejected'
-          ELSE access_status
-        END,
-        updated_at = NOW()
-      WHERE id = $4
-    `, [statusMap[action], reason || null, req.user.id, req.params.providerId]);
-    await pool.query(
-      `UPDATE users u
-          SET provider_status = CASE
-                WHEN $1 = 'verified' THEN 'approved'
-                WHEN $1 = 'suspended' THEN 'suspended'
-                WHEN $1 = 'rejected' THEN 'rejected'
-                ELSE provider_status
-              END,
-              updated_at = NOW()
-         FROM ng_providers p
-        WHERE p.user_id = u.id
-          AND p.id = $2`,
-      [statusMap[action], req.params.providerId]
-    );
-    res.json({ success: true, status: statusMap[action] });
+    const decision = adminDecisions.validateDecision(req.params.providerId, req.body, {
+      approve: 'verified', reject: 'rejected', suspend: 'suspended',
+    });
+    const provider = await adminDecisions.withActionTransaction(getPool(), async (client) => {
+      await adminDecisions.requireCurrentNGActor(client, req.user.id);
+      const current = await client.query(
+        `SELECT p.*, u.provider_status AS account_provider_status
+           FROM ng_providers p JOIN users u ON u.id = p.user_id
+          WHERE p.id = $1 AND u.role = 'provider' AND u.market_scope = 'NG'
+          FOR UPDATE OF p, u`, [req.params.providerId]
+      );
+      if (!current.rowCount) throw adminDecisions.actionError(404, 'Provider not found in this market.');
+      const before = current.rows[0];
+      const accountStatus = { approve: 'approved', reject: 'rejected', suspend: 'suspended' }[decision.action];
+      const result = await client.query(
+        `UPDATE ng_providers SET status = $1::text::ng_provider_status, rejection_reason = $2,
+          verified_at = CASE WHEN $1::text = 'verified' THEN COALESCE(verified_at, NOW()) ELSE verified_at END,
+          verified_by = $3,
+          access_status = CASE
+            WHEN $1::text = 'suspended' THEN 'suspended'
+            WHEN $1::text = 'rejected' THEN 'rejected'
+            WHEN subscription_status IN ('active','trialing') AND (subscription_end_at IS NULL OR subscription_end_at > NOW()) THEN 'subscribed'
+            WHEN trial_start_at IS NOT NULL AND trial_end_at > NOW() THEN 'trial_access'
+            WHEN trial_start_at IS NOT NULL AND trial_end_at <= NOW() THEN 'trial_expired'
+            ELSE 'trial_not_started' END,
+          updated_at = NOW() WHERE id = $4
+          RETURNING id, user_id, status, verified_at, verified_by, access_status`,
+        [decision.status, decision.reason, req.user.id, req.params.providerId]
+      );
+      const account = await client.query(
+        `UPDATE users SET provider_status = $1, updated_at = NOW()
+          WHERE id = $2 AND role = 'provider' AND market_scope = 'NG' RETURNING id`,
+        [accountStatus, before.user_id]
+      );
+      if (result.rowCount !== 1 || account.rowCount !== 1) throw adminDecisions.actionError(404, 'Provider not found in this market.');
+      await adminDecisions.auditDecision(client, {
+        actorId: req.user.id, resourceType: 'ng_provider', resourceId: before.id,
+        ...decision, before: { status: before.status, provider_status: before.account_provider_status, access_status: before.access_status },
+        after: { status: result.rows[0].status, provider_status: accountStatus, access_status: result.rows[0].access_status },
+      });
+      return result.rows[0];
+    });
+    res.json({ success: true, status: provider.status, provider });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    adminDecisions.sendActionError(res, err);
   }
 });
 

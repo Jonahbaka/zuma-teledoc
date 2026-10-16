@@ -191,7 +191,7 @@ export default function ProviderEncounterChartPage() {
   if (loading && !encounter) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -206,7 +206,7 @@ export default function ProviderEncounterChartPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <FileText className="w-6 h-6 text-purple-600" />
+            <FileText className="w-6 h-6 text-blue-600" />
             Encounter Chart
           </h1>
           <p className="text-slate-500">
@@ -235,7 +235,7 @@ export default function ProviderEncounterChartPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-green-600" />
+                <ShieldCheck className="w-5 h-5 text-blue-600" />
                 External eRx (iPrescribe)
               </CardTitle>
             </CardHeader>
@@ -243,7 +243,7 @@ export default function ProviderEncounterChartPage() {
               <p className="text-sm text-slate-600">
                 This platform stores **prescription intent** only. Prescriptions are completed in an external eRx system.
               </p>
-              <Button onClick={() => setShowRx(true)} className="w-full bg-purple-600 hover:bg-purple-700">
+              <Button onClick={() => setShowRx(true)} className="w-full bg-blue-600 hover:bg-blue-700">
                 <Plus className="w-4 h-4 mr-2" />
                 Create Rx Intent
               </Button>
@@ -284,14 +284,14 @@ export default function ProviderEncounterChartPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {latestNote.isSigned ? (
-                      <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Signed</Badge>
+                      <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Signed</Badge>
                     ) : (
                       <Badge variant="secondary">Unsigned</Badge>
                     )}
                     {latestNote.isSigned ? (
                       <Button variant="outline" onClick={() => setShowAmend(true)}>Amend</Button>
                     ) : (
-                      <Button onClick={signNote} className="bg-purple-600 hover:bg-purple-700">
+                      <Button onClick={signNote} className="bg-blue-600 hover:bg-blue-700">
                         <ClipboardSignature className="w-4 h-4 mr-2" />
                         Sign
                       </Button>
@@ -321,7 +321,7 @@ export default function ProviderEncounterChartPage() {
                 </div>
               </div>
 
-              <Button onClick={createOrUpdateNote} disabled={savingNote} className="bg-purple-600 hover:bg-purple-700">
+              <Button onClick={createOrUpdateNote} disabled={savingNote} className="bg-blue-600 hover:bg-blue-700">
                 {savingNote ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                 Save Note
               </Button>
@@ -352,7 +352,7 @@ export default function ProviderEncounterChartPage() {
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setShowAmend(false)}>Cancel</Button>
-            <Button onClick={submitAmendment} disabled={amending || !amendment.reason} className="bg-purple-600 hover:bg-purple-700">
+            <Button onClick={submitAmendment} disabled={amending || !amendment.reason} className="bg-blue-600 hover:bg-blue-700">
               {amending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Create Amendment
             </Button>
@@ -399,7 +399,7 @@ export default function ProviderEncounterChartPage() {
             <Button
               onClick={createPrescriptionIntent}
               disabled={creatingIntent || !rxIntent.medicationName || !rxIntent.dosageStrength || !rxIntent.dosageForm || !rxIntent.sigDirections || !rxIntent.indication}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-blue-600 hover:bg-blue-700"
             >
               {creatingIntent ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Create Intent

@@ -1,76 +1,25 @@
 'use client';
-
-import { useEffect, useState } from 'react';
 import { Bell, Check, Trash2 } from 'lucide-react';
 import { notificationsAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatRelativeTime } from '@/lib/utils';
+import { ActionNotice, AdminPageHeader, ResourceState, useAdminAction, useAdminResource } from '@/components/ng/admin/AdminWorkspaceTools';
+import { formatDate, requireRows, requireSuccess } from '@/lib/ng/adminWorkspaceData';
 
-export default function NigeriaAdminNotificationsPage() {
-  const [notifications, setNotifications] = useState([]);
-
-  useEffect(() => {
-    const loadNotifications = async () => {
-      const response = await notificationsAPI.getAll().catch(() => ({ data: { success: false, notifications: [] } }));
-      setNotifications(response.data?.success ? response.data.notifications || [] : []);
-    };
-
-    loadNotifications();
-  }, []);
-
-  const markRead = async (id) => {
-    await notificationsAPI.markRead(id).catch(() => null);
-    setNotifications((current) => current.map((item) => (item.id === id ? { ...item, isRead: true } : item)));
-  };
-
-  const removeNotification = async (id) => {
-    await notificationsAPI.delete(id).catch(() => null);
-    setNotifications((current) => current.filter((item) => item.id !== id));
-  };
-
-  return (
-    <div className="space-y-6">
-      <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Admin Notifications</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Platform alerts</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Operational alerts for Nigeria admin and operations staff.</p>
-      </section>
-
-      {notifications.length === 0 ? (
-        <Card className="border-border/70">
-          <CardContent className="p-10 text-center">
-            <Bell className="mx-auto h-10 w-10 text-emerald-500/60" />
-            <p className="mt-4 font-semibold text-foreground">No admin notifications yet.</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {notifications.map((notification) => (
-            <Card key={notification.id} className={`border-border/70 ${notification.isRead ? '' : 'border-emerald-200 bg-emerald-50/40'}`}>
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="font-semibold text-foreground">{notification.title}</p>
-                    <p className="mt-2 text-sm text-slate-600">{notification.message}</p>
-                    <p className="mt-3 text-xs text-muted-foreground">{formatRelativeTime(notification.createdAt)}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    {!notification.isRead ? (
-                      <Button variant="ghost" size="icon" onClick={() => markRead(notification.id)}>
-                        <Check className="h-4 w-4" />
-                      </Button>
-                    ) : null}
-                    <Button variant="ghost" size="icon" onClick={() => removeNotification(notification.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+export default function AdminNotifications() {
+  const resource = useAdminResource('/notifications', { limit: 50 }, data => { requireSuccess(data); return requireRows(data, 'notifications'); });
+  const action = useAdminAction(resource.key);
+  const update = (id, remove) => action.run(id, async isCurrent => {
+    const { data } = remove ? await notificationsAPI.delete(id) : await notificationsAPI.markRead(id);
+    requireSuccess(data);
+    if (!isCurrent()) return { message: 'Notification updated.' };
+    const refreshed = await resource.refresh();
+    if (!refreshed.ok) throw new Error('The notification was updated. The current list could not be refreshed; try again.');
+    return { message: remove ? 'Notification removed.' : 'Notification marked as read.' };
+  });
+  return <div className="space-y-6">
+    <AdminPageHeader title="Administrative notifications" description="Review notifications addressed to your account and manage their read status." resource={resource} />
+    <ActionNotice action={action} />
+    <ResourceState resource={resource} empty={resource.data?.length === 0} emptyMessage="No notifications were returned for your account."><div className="space-y-4">{resource.data?.map(item => <Card key={item.id} className={item.isRead ? '' : 'border-blue-200 bg-blue-50/40'}><CardContent className="p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div className="min-w-0 flex-1"><h2 className="break-words font-semibold text-slate-950">{item.title || 'Title not recorded'}</h2><p className="mt-3 break-words leading-7 text-slate-600">{item.message}</p><p className="mt-3 text-slate-600">{formatDate(item.createdAt)}</p></div><div className="flex gap-2">{!item.isRead && <Button disabled={action.pending} variant="outline" onClick={() => update(item.id, false)} aria-label="Mark notification as read"><Check className="h-5 w-5" aria-hidden="true" /></Button>}<Button disabled={action.pending} variant="outline" onClick={() => update(item.id, true)} aria-label="Remove notification"><Trash2 className="h-5 w-5" aria-hidden="true" /></Button></div></div></CardContent></Card>)}</div></ResourceState>
+  </div>;
 }

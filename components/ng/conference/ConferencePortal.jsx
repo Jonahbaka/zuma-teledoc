@@ -24,11 +24,11 @@ export default function ConferencePortal({ initialTab = 'rooms' }) {
   const [tab, setTab] = useState(initialTab);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-green-50/30">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-green-600/10 p-2 text-green-700">
+            <div className="rounded-xl bg-blue-600/10 p-2 text-blue-700">
               <Video className="h-5 w-5" />
             </div>
             <div>
@@ -46,7 +46,7 @@ export default function ConferencePortal({ initialTab = 'rooms' }) {
               onClick={() => setTab(id)}
               className={`flex shrink-0 items-center gap-2 rounded-t-lg border-b-2 px-3 py-2 text-sm font-semibold transition ${
                 tab === id
-                  ? 'border-green-600 text-green-700'
+                  ? 'border-blue-600 text-blue-700'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >

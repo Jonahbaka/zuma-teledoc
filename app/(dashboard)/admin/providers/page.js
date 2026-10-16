@@ -148,7 +148,7 @@ export default function ProviderApprovalsPage() {
                   {/* Provider Info */}
                   <div className="flex-1 space-y-4">
                     <div className="flex items-start gap-4">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white text-xl font-bold">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-xl font-bold">
                         {provider.firstName?.[0]}{provider.lastName?.[0]}
                       </div>
                       <div className="flex-1">
@@ -200,7 +200,7 @@ export default function ProviderApprovalsPage() {
                   <div className="flex flex-col gap-3 md:w-48">
                     <Button
                       onClick={() => handleApprove(provider.id)}
-                      className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
+                      className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
                     >
                       <CheckCircle2 className="w-4 h-4 mr-2" />
                       Approve

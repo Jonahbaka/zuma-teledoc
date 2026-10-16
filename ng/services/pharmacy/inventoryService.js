@@ -36,7 +36,7 @@ class InventoryService {
       sql += ` AND i.quantity_available <= i.reorder_level`;
     }
 
-    const countSql = sql.replace(/SELECT .* FROM/, 'SELECT COUNT(*) as count FROM');
+    const countSql = 'SELECT COUNT(*) AS count ' + sql.slice(sql.indexOf('FROM ng_pharmacy_inventory'));
 
     sql += ` ORDER BY d.name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);

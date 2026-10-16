@@ -111,9 +111,9 @@ export default function NigeriaDiscoverySpotlight({ embeddedInPortal = false }) 
                 <Link
                   key={item.category}
                   href={embeddedInPortal ? '/ng/patient/search' : '/ng/medicines'}
-                  className="rounded-2xl border border-border px-4 py-4 transition-colors hover:border-emerald-300 hover:bg-emerald-50/60"
+                  className="rounded-2xl border border-border px-4 py-4 transition-colors hover:border-blue-300 hover:bg-blue-50/60"
                 >
-                  <div className="inline-flex rounded-xl bg-emerald-500/10 p-2 text-emerald-600">
+                  <div className="inline-flex rounded-xl bg-blue-500/10 p-2 text-blue-600">
                     <Pill className="h-5 w-5" />
                   </div>
                   <p className="mt-3 font-semibold text-foreground">{item.category}</p>
@@ -147,7 +147,7 @@ export default function NigeriaDiscoverySpotlight({ embeddedInPortal = false }) 
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     {(provider.sourceBadges || []).map((badge) => (
-                      <span key={badge} className="rounded-full bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-700">
+                      <span key={badge} className="rounded-full bg-blue-500/10 px-2.5 py-1 font-semibold text-blue-700">
                         {badge}
                       </span>
                     ))}
@@ -159,7 +159,7 @@ export default function NigeriaDiscoverySpotlight({ embeddedInPortal = false }) 
                 </div>
               ))}
 
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm text-blue-900">
             <div className="flex items-center gap-2 font-semibold">
               <ShieldCheck className="h-4 w-4" />
               Manual fallback remains available
@@ -170,7 +170,7 @@ export default function NigeriaDiscoverySpotlight({ embeddedInPortal = false }) 
           </div>
 
           <Link href={embeddedInPortal ? '/ng/patient/search' : '/ng/find-care'}>
-            <Button className="w-full bg-emerald-600 text-white hover:bg-emerald-500">
+            <Button className="w-full bg-blue-600 text-white hover:bg-blue-500">
               Explore care discovery
             </Button>
           </Link>

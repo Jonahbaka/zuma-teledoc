@@ -92,8 +92,8 @@ export default function FinancialToolsPage() {
                   <p className="text-2xl font-bold mt-1">{formatCurrency(forecast.current.mrr)}</p>
                   <p className="text-xs text-gray-500 mt-1">Monthly Recurring Revenue</p>
                 </div>
-                <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
-                  <DollarSign className="w-6 h-6 text-purple-600" />
+                <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                  <DollarSign className="w-6 h-6 text-blue-600" />
                 </div>
               </div>
             </CardContent>
@@ -107,8 +107,8 @@ export default function FinancialToolsPage() {
                   <p className="text-2xl font-bold mt-1">{formatCurrency(forecast.current.arr)}</p>
                   <p className="text-xs text-gray-500 mt-1">Annual Recurring Revenue</p>
                 </div>
-                <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
-                  <TrendingUp className="w-6 h-6 text-green-600" />
+                <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                  <TrendingUp className="w-6 h-6 text-blue-600" />
                 </div>
               </div>
             </CardContent>
@@ -187,7 +187,7 @@ export default function FinancialToolsPage() {
                       <td className="p-3 font-medium">{new Date(month.month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</td>
                       <td className="text-right p-3">{formatCurrency(month.projectedMRR)}</td>
                       <td className="text-right p-3 text-red-600">{formatCurrency(month.projectedExpenses)}</td>
-                      <td className="text-right p-3 text-green-600 font-semibold">{formatCurrency(month.projectedProfit)}</td>
+                      <td className="text-right p-3 text-blue-600 font-semibold">{formatCurrency(month.projectedProfit)}</td>
                       <td className="text-right p-3">{formatCurrency(month.projectedARR)}</td>
                     </tr>
                   ))}
@@ -210,7 +210,7 @@ export default function FinancialToolsPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <span className="font-medium">Total Revenue</span>
-                  <span className="text-2xl font-bold text-green-600">{formatCurrency(accounting.revenue.total)}</span>
+                  <span className="text-2xl font-bold text-blue-600">{formatCurrency(accounting.revenue.total)}</span>
                 </div>
                 {accounting.revenue.byType.map((type, index) => (
                   <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
@@ -247,7 +247,7 @@ export default function FinancialToolsPage() {
                   </div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium">Net Income</span>
-                    <span className={`text-2xl font-bold ${parseFloat(accounting.netIncome) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <span className={`text-2xl font-bold ${parseFloat(accounting.netIncome) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
                       {formatCurrency(accounting.netIncome)}
                     </span>
                   </div>

@@ -20,6 +20,9 @@ const db = require('../db');
 const logger = require('../middleware/logger');
 const { encrypt, decrypt } = require('../../lib/encryption');
 const { keysToCamel } = require('../../lib/utils');
+const { assertEncounterWriteOwnership } = require('../../ng/services/clinical/clinicalRecordIntegrityService');
+const uuidPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const intentAccessError = (status, message, code) => Object.assign(new Error(message), { status, statusCode: status, code });
 
 // Configuration for supported e-prescribing systems
 const ERX_SYSTEMS = {
@@ -79,22 +82,46 @@ class ERxIntegrationService {
       scheduleClass
     } = data;
     
-    // Verify encounter exists
-    const { rows: encounters } = await db.query(
-      `SELECT id, patient_id FROM clinical_encounters WHERE id = $1 AND provider_id = $2`,
-      [encounterId, providerId]
-    );
-    
-    if (encounters.length === 0) {
-      throw new Error('Encounter not found or access denied');
+    if (![encounterId, patientId, providerId].every(value => typeof value === 'string' && uuidPattern.test(value))) {
+      throw intentAccessError(400, 'Valid patient, encounter and clinician references are required.', 'PRESCRIPTION_REFERENCE_INVALID');
     }
-    
+    const client = await db.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      // This is an owned clinical encounter, not a caller-supplied care link.
+      // Lock both current accounts and the encounter until insert/audit commit.
+      const { rows: encounters } = await client.query(
+        `SELECT ce.id,ce.patient_id,ce.provider_id AS provider_user_id,ce.appointment_id
+           FROM clinical_encounters ce
+           JOIN users actor ON actor.id=ce.provider_id
+           JOIN users patient ON patient.id=ce.patient_id
+          WHERE ce.id=$1 AND ce.patient_id=$2 AND ce.provider_id=$3
+            AND actor.role='provider' AND actor.is_active=TRUE AND actor.provider_status='approved'
+            AND patient.role='patient' AND patient.is_active=TRUE
+            AND actor.market_scope IN ('US','NG') AND actor.market_scope=patient.market_scope
+            AND (actor.market_scope='US' OR EXISTS (SELECT 1 FROM ng_providers profile WHERE profile.user_id=actor.id AND profile.status='verified'))
+            AND ce.status::text NOT IN ('cancelled','voided','entered_in_error')
+          FOR SHARE OF ce,actor,patient`,
+        [encounterId, patientId, providerId]
+      );
+      const encounter = encounters[0];
+      if (!encounter) throw intentAccessError(403, 'This patient and encounter are not available to this clinician.', 'PRESCRIPTION_CONTEXT_DENIED');
+      assertEncounterWriteOwnership({ encounter, actorUserId: providerId });
+      if (encounter.appointment_id) {
+        const appointment = await client.query(
+          `SELECT id FROM appointments WHERE id=$1 AND patient_id=$2 AND provider_id=$3
+             AND status NOT IN ('cancelled','no_show') FOR SHARE`,
+          [encounter.appointment_id, patientId, providerId]
+        );
+        if (!appointment.rows.length) throw intentAccessError(403, 'The encounter consultation does not match this patient and clinician.', 'PRESCRIPTION_APPOINTMENT_MISMATCH');
+      }
+
     // Encrypt clinical rationale
     const rationaleEncrypted = rationale 
       ? encrypt(rationale) 
       : { encrypted: null, iv: null, tag: null };
     
-    const { rows } = await db.query(
+    const { rows } = await client.query(
       `INSERT INTO prescription_intents (
         encounter_id, patient_id, provider_id,
         medication_name, generic_name, dosage_strength, dosage_form, route,
@@ -134,36 +161,34 @@ class ERxIntegrationService {
       ]
     );
     
-    logger.info('Prescription intent created', {
-      intentId: rows[0].id,
-      encounterId,
-      providerId,
-      medication: medicationName
-    });
-    
-    return this._formatPrescriptionIntent(rows[0]);
+      const intent = rows[0];
+      if (!intent) throw intentAccessError(503, 'Prescription intent recording could not be confirmed.', 'PRESCRIPTION_RECORDING_UNAVAILABLE');
+      await client.query(
+        `INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,description,new_values,phi_accessed,success)
+         VALUES ($1,'create','prescription_intent',$2,$3,'Clinician recorded an encounter-bound prescription draft',$4::jsonb,TRUE,TRUE)`,
+        [providerId, intent.id, patientId, JSON.stringify({ encounterId, status: 'draft' })]
+      );
+      await client.query('COMMIT');
+      logger.info('Prescription intent created', { intentId: intent.id, encounterId, providerId });
+      return this._formatPrescriptionIntent(intent);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
   }
   
   /**
    * Update a prescription intent (before handoff)
    */
   async updatePrescriptionIntent(intentId, providerId, data) {
-    // Verify ownership and status
-    const { rows: existing } = await db.query(
-      `SELECT * FROM prescription_intents WHERE id = $1 AND provider_id = $2`,
-      [intentId, providerId]
-    );
-    
-    if (existing.length === 0) {
-      throw new Error('Prescription intent not found or access denied');
+    this._assertIntentReferences(intentId, providerId);
+    if (!data || typeof data !== 'object' || Array.isArray(data) ||
+        (data.rationale !== undefined && data.rationale !== null && typeof data.rationale !== 'string')) {
+      throw intentAccessError(400, 'Valid prescription draft changes are required.', 'PRESCRIPTION_UPDATE_INVALID');
     }
-    
-    if (existing[0].status !== 'draft') {
-      throw new Error('Cannot modify prescription intent after handoff');
-    }
-    
     const updates = [];
     const values = [];
+    const changedFields = [];
     let paramIndex = 1;
     
     const allowedFields = [
@@ -177,6 +202,7 @@ class ERxIntegrationService {
         const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
         updates.push(`${snakeKey} = $${paramIndex++}`);
         values.push(value);
+        changedFields.push(key);
       }
     }
     
@@ -188,137 +214,129 @@ class ERxIntegrationService {
       values.push(enc.iv);
       updates.push(`rationale_tag = $${paramIndex++}`);
       values.push(enc.tag);
+      changedFields.push('rationale');
     }
     
     if (updates.length === 0) {
-      throw new Error('No valid fields to update');
+      throw intentAccessError(400, 'No valid prescription draft changes were supplied.', 'PRESCRIPTION_UPDATE_INVALID');
     }
-    
-    values.push(intentId);
-    
-    const { rows } = await db.query(
-      `UPDATE prescription_intents SET ${updates.join(', ')}, updated_at = NOW()
-       WHERE id = $${paramIndex}
-       RETURNING *`,
-      values
-    );
-    
-    return this._formatPrescriptionIntent(rows[0]);
+    const client = await db.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const existing = await this._lockWritablePrescriptionIntent(client, intentId, providerId);
+      this._assertLocalMutableIntent(existing, ['draft']);
+      values.push(intentId, providerId);
+      const { rows } = await client.query(
+        `UPDATE prescription_intents SET ${updates.join(', ')}, updated_at = NOW()
+         WHERE id=$${paramIndex} AND provider_id=$${paramIndex + 1} AND status='draft'
+         RETURNING *`, values
+      );
+      if (!rows[0]) throw intentAccessError(503, 'Prescription draft changes could not be confirmed.', 'PRESCRIPTION_RECORDING_UNAVAILABLE');
+      await client.query(
+        `INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,description,new_values,phi_accessed,success)
+         VALUES ($1,'update','prescription_intent',$2,$3,'Clinician updated an encounter-bound prescription draft',$4::jsonb,TRUE,TRUE)`,
+        [providerId, intentId, existing.patient_id, JSON.stringify({ encounterId: existing.encounter_id, status: 'draft', changedFields })]
+      );
+      await client.query('COMMIT');
+      return this._formatPrescriptionIntent(rows[0]);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
   }
-  
+
+  _assertIntentReferences(intentId, providerId) {
+    if (![intentId, providerId].every(value => typeof value === 'string' && uuidPattern.test(value))) {
+      throw intentAccessError(400, 'Valid prescription and clinician references are required.', 'PRESCRIPTION_REFERENCE_INVALID');
+    }
+  }
+
+  async _lockWritablePrescriptionIntent(client, intentId, providerId) {
+    // Ownership alone does not authorize returning or changing a clinical row.
+    // Keep its current patient, encounter, accounts and consultation bound until audit commit.
+    const { rows } = await client.query(
+      `SELECT pi.*,ce.appointment_id AS bound_appointment_id,ce.provider_id AS provider_user_id,actor.market_scope AS actor_market
+         FROM prescription_intents pi
+         JOIN clinical_encounters ce ON ce.id=pi.encounter_id AND ce.patient_id=pi.patient_id AND ce.provider_id=pi.provider_id
+         JOIN users actor ON actor.id=pi.provider_id
+         JOIN users patient ON patient.id=pi.patient_id
+        WHERE pi.id=$1 AND pi.provider_id=$2
+          AND actor.role='provider' AND actor.is_active=TRUE AND actor.provider_status='approved'
+          AND patient.role='patient' AND patient.is_active=TRUE
+          AND actor.market_scope IN ('US','NG') AND actor.market_scope=patient.market_scope
+          AND ce.status::text NOT IN ('cancelled','voided','entered_in_error')
+        FOR UPDATE OF pi FOR SHARE OF ce,actor,patient`, [intentId, providerId]
+    );
+    const intent = rows[0];
+    if (!intent) throw intentAccessError(403, 'This prescription and encounter are not available to this clinician.', 'PRESCRIPTION_CONTEXT_DENIED');
+    assertEncounterWriteOwnership({ encounter: intent, actorUserId: providerId });
+    if (intent.actor_market === 'NG') {
+      const profile = await client.query("SELECT id FROM ng_providers WHERE user_id=$1 AND status='verified' FOR SHARE", [providerId]);
+      if (!profile.rows.length) throw intentAccessError(403, 'This prescription and encounter are not available to this clinician.', 'PRESCRIPTION_CONTEXT_DENIED');
+    }
+    if (intent.bound_appointment_id) {
+      const appointment = await client.query(
+        `SELECT id FROM appointments WHERE id=$1 AND patient_id=$2 AND provider_id=$3
+           AND status NOT IN ('cancelled','no_show') FOR SHARE`,
+        [intent.bound_appointment_id, intent.patient_id, providerId]
+      );
+      if (!appointment.rows.length) throw intentAccessError(403, 'The encounter consultation does not match this patient and clinician.', 'PRESCRIPTION_APPOINTMENT_MISMATCH');
+    }
+    return intent;
+  }
+
+  _assertLocalMutableIntent(intent, allowedStatuses) {
+    if (!allowedStatuses.includes(intent.status) || intent.external_erx_id || intent.external_erx_sent_at ||
+        intent.external_erx_status || intent.external_erx_status_updated_at) {
+      throw intentAccessError(409, 'This prescription is no longer a mutable local draft. External prescription changes require a verified prescribing service.', 'PRESCRIPTION_IMMUTABLE');
+    }
+  }
+
   /**
    * Get prescription intent by ID
    */
+  async _listOwnedIntents(userId, expectedRole, { intentId, encounterId, status, limit = 50, offset = 0, includeRationale = false } = {}) {
+    if (!uuidPattern.test(String(userId || '')) || !['patient', 'provider'].includes(expectedRole)) throw intentAccessError(403, 'Prescription record access denied.', 'PRESCRIPTION_READER_DENIED');
+    const actor = (await db.query(
+      `SELECT id,role,market_scope,is_active,provider_status FROM users WHERE id=$1`, [userId]
+    )).rows[0];
+    if (!actor?.is_active || actor.role !== expectedRole || !['US', 'NG'].includes(actor.market_scope) ||
+      (actor.role === 'provider' && actor.provider_status !== 'approved')) throw intentAccessError(403, 'Prescription record access denied.', 'PRESCRIPTION_READER_DENIED');
+    if ((intentId && !uuidPattern.test(String(intentId))) || (encounterId && !uuidPattern.test(String(encounterId)))) throw intentAccessError(400, 'A valid prescription or encounter reference is required.', 'PRESCRIPTION_REFERENCE_INVALID');
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200 || !Number.isInteger(offset) || offset < 0 ||
+      (status !== undefined && (typeof status !== 'string' || status.length > 50))) throw intentAccessError(400, 'Invalid prescription list controls.', 'PRESCRIPTION_LIST_INVALID');
+    const params = [userId, actor.market_scope, actor.role];
+    let query = `SELECT pi.*,p.first_name AS patient_first_name,p.last_name AS patient_last_name,
+        pr.first_name AS provider_first_name,pr.last_name AS provider_last_name,pr.credentials AS provider_credentials
+      FROM prescription_intents pi
+      JOIN clinical_encounters ce ON ce.id=pi.encounter_id AND ce.patient_id=pi.patient_id AND ce.provider_id=pi.provider_id
+      JOIN users p ON p.id=pi.patient_id AND p.role='patient'
+      JOIN users pr ON pr.id=pi.provider_id AND pr.role='provider'
+      JOIN users actor ON actor.id=$1
+      WHERE actor.is_active=TRUE AND actor.role=$3 AND actor.market_scope=$2 AND p.market_scope=$2 AND pr.market_scope=$2
+        AND (actor.role='patient' AND pi.patient_id=actor.id OR actor.role='provider' AND pi.provider_id=actor.id AND actor.provider_status='approved')`;
+    if (intentId) { params.push(intentId); query += ' AND pi.id=$' + params.length; }
+    if (encounterId) { params.push(encounterId); query += ' AND pi.encounter_id=$' + params.length; }
+    if (status) { params.push(status); query += ' AND pi.status=$' + params.length; }
+    params.push(limit, offset); query += ' ORDER BY pi.created_at DESC,pi.id DESC LIMIT $' + (params.length - 1) + ' OFFSET $' + params.length;
+    const result = await db.query(query, params);
+    return result.rows.map(row => this._formatPrescriptionIntent(row, includeRationale));
+  }
+
   async getPrescriptionIntent(intentId, userId, userRole) {
-    const { rows } = await db.query(
-      `SELECT pi.*,
-              p.first_name as patient_first_name, p.last_name as patient_last_name,
-              pr.first_name as provider_first_name, pr.last_name as provider_last_name,
-              pr.credentials as provider_credentials
-       FROM prescription_intents pi
-       JOIN users p ON p.id = pi.patient_id
-       JOIN users pr ON pr.id = pi.provider_id
-       WHERE pi.id = $1`,
-      [intentId]
-    );
-    
-    if (rows.length === 0) {
-      return null;
-    }
-    
-    const intent = rows[0];
-    
-    // Access control
-    if (userRole === 'patient' && intent.patient_id !== userId) {
-      throw new Error('Access denied');
-    }
-    
-    if (userRole === 'provider' && intent.provider_id !== userId) {
-      throw new Error('Access denied');
-    }
-    
-    return this._formatPrescriptionIntent(intent, true);
+    return (await this._listOwnedIntents(userId, userRole, { intentId, limit: 1, includeRationale: true }))[0] || null;
   }
-  
-  /**
-   * Get prescription intents for an encounter
-   */
+
   async getEncounterPrescriptionIntents(encounterId, userId, userRole) {
-    let query = `
-      SELECT pi.*,
-             p.first_name as patient_first_name, p.last_name as patient_last_name
-      FROM prescription_intents pi
-      JOIN users p ON p.id = pi.patient_id
-      WHERE pi.encounter_id = $1
-    `;
-    const params = [encounterId];
-    
-    if (userRole === 'patient') {
-      query += ` AND pi.patient_id = $2`;
-      params.push(userId);
-    } else if (userRole === 'provider') {
-      query += ` AND pi.provider_id = $2`;
-      params.push(userId);
-    }
-    
-    query += ` ORDER BY pi.created_at DESC`;
-    
-    const { rows } = await db.query(query, params);
-    
-    return rows.map(r => this._formatPrescriptionIntent(r));
+    return this._listOwnedIntents(userId, userRole, { encounterId, limit: 200 });
   }
 
-  /**
-   * List prescription intents for a provider (across encounters)
-   */
-  async getProviderPrescriptionIntents(providerId, { status, limit = 50, offset = 0 } = {}) {
-    let query = `
-      SELECT pi.*,
-             p.first_name as patient_first_name, p.last_name as patient_last_name
-      FROM prescription_intents pi
-      JOIN users p ON p.id = pi.patient_id
-      WHERE pi.provider_id = $1
-    `;
-    const params = [providerId];
-    let paramIndex = 2;
-
-    if (status) {
-      query += ` AND pi.status = $${paramIndex++}`;
-      params.push(status);
-    }
-
-    query += ` ORDER BY pi.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
-    params.push(limit, offset);
-
-    const { rows } = await db.query(query, params);
-    return rows.map(r => this._formatPrescriptionIntent(r));
+  async getProviderPrescriptionIntents(providerId, options = {}) {
+    return this._listOwnedIntents(providerId, 'provider', options);
   }
 
-  /**
-   * List prescription intents for a patient (across encounters)
-   */
-  async getPatientPrescriptionIntents(patientId, { status, limit = 50, offset = 0 } = {}) {
-    let query = `
-      SELECT pi.*,
-             pr.first_name as provider_first_name, pr.last_name as provider_last_name,
-             pr.credentials as provider_credentials
-      FROM prescription_intents pi
-      JOIN users pr ON pr.id = pi.provider_id
-      WHERE pi.patient_id = $1
-    `;
-    const params = [patientId];
-    let paramIndex = 2;
-
-    if (status) {
-      query += ` AND pi.status = $${paramIndex++}`;
-      params.push(status);
-    }
-
-    query += ` ORDER BY pi.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
-    params.push(limit, offset);
-
-    const { rows } = await db.query(query, params);
-    return rows.map(r => this._formatPrescriptionIntent(r));
+  async getPatientPrescriptionIntents(patientId, options = {}) {
+    return this._listOwnedIntents(patientId, 'patient', options);
   }
   
   // =========================================================================
@@ -329,159 +347,20 @@ class ERxIntegrationService {
    * Generate handoff URL/context for external e-prescribing
    * This prepares the context for the provider to complete prescribing in iPrescribe
    */
-  async initiateERxHandoff(intentId, providerId, eRxSystem = null) {
-    const system = eRxSystem || this.defaultSystem;
-    const config = ERX_SYSTEMS[system];
-    
-    if (!config) {
-      throw new Error(`Unsupported e-prescribing system: ${system}`);
-    }
-    
-    // Get prescription intent
-    const { rows } = await db.query(
-      `SELECT pi.*, 
-              p.first_name as patient_first_name, p.last_name as patient_last_name,
-              p.date_of_birth as patient_dob, p.phone as patient_phone,
-              pr.npi_number, pr.license_number, pr.license_state
-       FROM prescription_intents pi
-       JOIN users p ON p.id = pi.patient_id
-       JOIN users pr ON pr.id = pi.provider_id
-       WHERE pi.id = $1 AND pi.provider_id = $2`,
-      [intentId, providerId]
-    );
-    
-    if (rows.length === 0) {
-      throw new Error('Prescription intent not found');
-    }
-    
-    const intent = rows[0];
-    
-    // Check if controlled and if EPCS is supported
-    if (intent.is_controlled && !config.supportsEpcs) {
-      throw new Error(`${config.name} does not support electronic prescribing for controlled substances`);
-    }
-    
-    // Update status to pending
-    await db.query(
-      `UPDATE prescription_intents SET 
-        status = 'pending_erx',
-        external_erx_system = $1,
-        updated_at = NOW()
-       WHERE id = $2`,
-      [system, intentId]
-    );
-    
-    // Generate handoff context
-    // In production, this would create an OAuth state, generate JWT, etc.
-    const handoffContext = {
-      intentId,
-      system,
-      systemName: config.name,
-      
-      // Patient context (to be passed to external system)
-      patient: {
-        firstName: intent.patient_first_name,
-        lastName: intent.patient_last_name,
-        dateOfBirth: intent.patient_dob,
-        phone: intent.patient_phone
-      },
-      
-      // Provider context
-      provider: {
-        npi: intent.npi_number,
-        licenseNumber: intent.license_number,
-        licenseState: intent.license_state
-      },
-      
-      // Medication context
-      medication: {
-        name: intent.medication_name,
-        genericName: intent.generic_name,
-        dosageStrength: intent.dosage_strength,
-        dosageForm: intent.dosage_form,
-        quantity: intent.quantity,
-        daysSupply: intent.days_supply,
-        refills: intent.refills_authorized,
-        sig: intent.sig_directions,
-        isControlled: intent.is_controlled,
-        schedule: intent.schedule_class
-      },
-      
-      // Pharmacy context
-      pharmacy: intent.pharmacy_npi ? {
-        name: intent.pharmacy_name,
-        npi: intent.pharmacy_npi,
-        address: intent.pharmacy_address
-      } : null,
-      
-      // Handoff URL (in production, this would be the actual SSO/OAuth URL)
-      handoffUrl: this._generateHandoffUrl(config, intentId),
-      
-      // Callback URL for status updates
-      callbackUrl: `${process.env.NEXT_PUBLIC_API_URL}/api/erx/callback/${intentId}`
-    };
-    
-    logger.info('eRx handoff initiated', {
-      intentId,
-      system,
-      providerId
-    });
-    
-    return handoffContext;
+  async initiateERxHandoff(_intentId, _providerId, _eRxSystem = null) {
+    // A URL assembled from configuration is not an authenticated partner
+    // handoff. Preserve the draft until an actual adapter can confirm it.
+    throw intentAccessError(503, 'External prescribing handoff is not activated. The recorded draft has not been transmitted.', 'ERX_ADAPTER_NOT_ACTIVATED');
   }
   
   /**
    * Process callback from external e-prescribing system
    * This would be called via webhook when the prescription is sent/updated
    */
-  async processERxCallback(intentId, callbackData) {
-    const {
-      externalRxId,
-      status,
-      sentAt,
-      pharmacyResponse,
-      error
-    } = callbackData;
-    
-    // Validate the callback (in production, verify signature/token)
-    
-    const statusMap = {
-      'sent': 'sent_to_erx',
-      'confirmed': 'erx_confirmed',
-      'dispensed': 'erx_confirmed',
-      'cancelled': 'cancelled',
-      'error': 'erx_error',
-      'denied': 'erx_error'
-    };
-    
-    const internalStatus = statusMap[status] || 'pending_erx';
-    
-    const { rows } = await db.query(
-      `UPDATE prescription_intents SET
-        external_erx_id = COALESCE($1, external_erx_id),
-        external_erx_status = $2,
-        external_erx_sent_at = COALESCE($3, external_erx_sent_at),
-        external_erx_status_updated_at = NOW(),
-        status = $4,
-        updated_at = NOW()
-       WHERE id = $5
-       RETURNING *`,
-      [externalRxId, status, sentAt, internalStatus, intentId]
-    );
-    
-    if (rows.length === 0) {
-      logger.warn('eRx callback for unknown intent', { intentId, status });
-      return null;
-    }
-    
-    logger.info('eRx callback processed', {
-      intentId,
-      externalRxId,
-      status,
-      internalStatus
-    });
-    
-    return this._formatPrescriptionIntent(rows[0]);
+  async processERxCallback(_intentId, _callbackData) {
+    // No authenticated provider callback/receipt verifier is implemented.
+    // Caller-supplied status can never attest to transmission or dispensing.
+    throw intentAccessError(503, 'External prescribing callback verification is not activated.', 'ERX_CALLBACK_NOT_ACTIVATED');
   }
   
   /**
@@ -521,22 +400,33 @@ class ERxIntegrationService {
    * Cancel a prescription intent
    */
   async cancelPrescriptionIntent(intentId, providerId, reason) {
-    const { rows } = await db.query(
-      `UPDATE prescription_intents SET
-        status = 'cancelled',
-        updated_at = NOW()
-       WHERE id = $1 AND provider_id = $2 AND status IN ('draft', 'pending_erx')
-       RETURNING *`,
-      [intentId, providerId]
-    );
-    
-    if (rows.length === 0) {
-      throw new Error('Prescription intent not found or cannot be cancelled');
+    this._assertIntentReferences(intentId, providerId);
+    if (typeof reason !== 'string' || !reason.trim() || reason.trim().length > 2000) {
+      throw intentAccessError(400, 'A cancellation reason of at most 2000 characters is required.', 'PRESCRIPTION_CANCELLATION_REASON_INVALID');
     }
-    
-    logger.info('Prescription intent cancelled', { intentId, providerId, reason });
-    
-    return this._formatPrescriptionIntent(rows[0]);
+    const client = await db.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const existing = await this._lockWritablePrescriptionIntent(client, intentId, providerId);
+      this._assertLocalMutableIntent(existing, ['draft', 'pending_erx']);
+      const { rows } = await client.query(
+        `UPDATE prescription_intents SET status='cancelled',updated_at=NOW()
+         WHERE id=$1 AND provider_id=$2 AND status IN ('draft','pending_erx') RETURNING *`,
+        [intentId, providerId]
+      );
+      if (!rows[0]) throw intentAccessError(503, 'Prescription draft cancellation could not be confirmed.', 'PRESCRIPTION_RECORDING_UNAVAILABLE');
+      await client.query(
+        `INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,description,new_values,phi_accessed,success)
+         VALUES ($1,'update','prescription_intent',$2,$3,'Clinician cancelled a local encounter-bound prescription draft',$4::jsonb,TRUE,TRUE)`,
+        [providerId, intentId, existing.patient_id, JSON.stringify({ encounterId: existing.encounter_id, status: 'cancelled', cancellationReasonEncrypted: encrypt(reason.trim()) })]
+      );
+      await client.query('COMMIT');
+      logger.info('Prescription intent cancelled', { intentId, providerId });
+      return this._formatPrescriptionIntent(rows[0]);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
   }
   
   // =========================================================================

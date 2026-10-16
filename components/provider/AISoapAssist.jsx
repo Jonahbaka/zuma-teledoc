@@ -195,7 +195,7 @@ export default function AISoapAssist({
             <Button
               onClick={generateSoapSuggestion}
               disabled={isLoading || !symptoms.trim()}
-              className="flex-1 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700"
+              className="flex-1 bg-gradient-to-r from-violet-500 to-blue-600 hover:from-violet-600 hover:to-blue-700"
             >
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
               Generate SOAP
@@ -228,8 +228,8 @@ export default function AISoapAssist({
               <CardHeader className="py-2 px-4 bg-slate-50 border-b flex flex-row items-center justify-between">
                 <div className="flex items-center gap-2">
                   {section === 'subjective' && <Activity className="w-4 h-4 text-blue-500" />}
-                  {section === 'objective' && <Stethoscope className="w-4 h-4 text-green-500" />}
-                  {section === 'assessment' && <Brain className="w-4 h-4 text-purple-500" />}
+                  {section === 'objective' && <Stethoscope className="w-4 h-4 text-blue-500" />}
+                  {section === 'assessment' && <Brain className="w-4 h-4 text-blue-500" />}
                   {section === 'plan' && <ClipboardList className="w-4 h-4 text-orange-500" />}
                   <span className="font-medium text-sm capitalize">{section}</span>
                   {suggestion.confidenceScores?.[section] && (
@@ -248,10 +248,10 @@ export default function AISoapAssist({
                   </button>
                   <button
                     onClick={() => applySuggestion(section, suggestion[section])}
-                    className="p-1 hover:bg-green-100 rounded"
+                    className="p-1 hover:bg-blue-100 rounded"
                     title="Apply to notes"
                   >
-                    <CheckCircle2 className="w-3 h-3 text-green-500" />
+                    <CheckCircle2 className="w-3 h-3 text-blue-500" />
                   </button>
                 </div>
               </CardHeader>
@@ -298,7 +298,7 @@ export default function AISoapAssist({
                       <div className="flex items-center gap-2">
                         <div className="w-20 h-2 bg-slate-200 rounded-full overflow-hidden">
                           <div 
-                            className="h-full bg-gradient-to-r from-violet-500 to-purple-500"
+                            className="h-full bg-gradient-to-r from-violet-500 to-blue-500"
                             style={{ width: `${dx.probability * 100}%` }}
                           />
                         </div>
@@ -314,8 +314,8 @@ export default function AISoapAssist({
           {/* Feedback */}
           <div className="flex items-center justify-center gap-4 pt-2">
             <span className="text-xs text-slate-400">Was this helpful?</span>
-            <button onClick={() => provideFeedback('accepted')} className="p-2 hover:bg-green-50 rounded-lg">
-              <ThumbsUp className="w-4 h-4 text-green-500" />
+            <button onClick={() => provideFeedback('accepted')} className="p-2 hover:bg-blue-50 rounded-lg">
+              <ThumbsUp className="w-4 h-4 text-blue-500" />
             </button>
             <button onClick={() => provideFeedback('rejected')} className="p-2 hover:bg-red-50 rounded-lg">
               <ThumbsDown className="w-4 h-4 text-red-500" />
@@ -339,7 +339,7 @@ export default function AISoapAssist({
               ? 'bg-red-50 border border-red-200 text-red-700'
               : diagnosticResult.urgencyLevel === 'soon'
               ? 'bg-amber-50 border border-amber-200 text-amber-700'
-              : 'bg-green-50 border border-green-200 text-green-700'
+              : 'bg-blue-50 border border-blue-200 text-blue-700'
           }`}>
             <Heart className="w-4 h-4" />
             <span className="text-sm font-medium">Urgency: {diagnosticResult.urgencyLevel?.toUpperCase()}</span>
@@ -408,7 +408,7 @@ export default function AISoapAssist({
             <Card className="border-slate-200">
               <CardHeader className="py-2 px-4 bg-slate-50 border-b">
                 <span className="font-medium text-sm flex items-center gap-2">
-                  <Pill className="w-4 h-4 text-green-500" />
+                  <Pill className="w-4 h-4 text-blue-500" />
                   Treatment Considerations
                 </span>
               </CardHeader>

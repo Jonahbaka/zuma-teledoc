@@ -5,12 +5,14 @@
 
 const db = require('../db');
 const logger = require('../middleware/logger');
+const { requireSyntheticIntegration } = require('../utils/integrationReadiness');
 
 class ClaimsService {
   /**
    * Scrub claim using Change Healthcare ClaimXchange
    */
   async scrubClaimViaChangeHealthcare(claimData) {
+    requireSyntheticIntegration('Claims validation');
     try {
       const apiKey = process.env.CHANGE_HEALTHCARE_API_KEY;
       const apiUrl = process.env.CHANGE_HEALTHCARE_API_URL || 'https://api.changehealthcare.com';
@@ -37,6 +39,7 @@ class ClaimsService {
    * Scrub claim using Waystar
    */
   async scrubClaimViaWaystar(claimData) {
+    requireSyntheticIntegration('Claims validation');
     try {
       const apiKey = process.env.WAYSTAR_API_KEY;
       const apiUrl = process.env.WAYSTAR_API_URL || 'https://api.waystar.com';
@@ -425,24 +428,28 @@ class ClaimsService {
   }
   
   async submitToChangeHealthcare(claim) {
+    requireSyntheticIntegration('Claim submission');
     return new Promise((resolve) => {
       setTimeout(() => {
         resolve({
           transactionId: `EDI837-${Date.now()}`,
           status: 'accepted',
-          message: 'Claim submitted successfully'
+          message: 'Synthetic demo acknowledgement; no external claim submitted',
+          synthetic: true
         });
       }, 800);
     });
   }
   
   async submitToWaystar(claim) {
+    requireSyntheticIntegration('Claim submission');
     return new Promise((resolve) => {
       setTimeout(() => {
         resolve({
           transactionId: `WAY-${Date.now()}`,
           status: 'accepted',
-          message: 'Claim submitted successfully'
+          message: 'Synthetic demo acknowledgement; no external claim submitted',
+          synthetic: true
         });
       }, 800);
     });

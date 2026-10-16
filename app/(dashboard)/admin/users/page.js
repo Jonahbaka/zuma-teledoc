@@ -140,7 +140,7 @@ export default function AdminUsers() {
               <select
                 value={filters.role}
                 onChange={(e) => updateFilter('role', e.target.value)}
-                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Roles</option>
                 <option value="patient">Patients</option>
@@ -152,7 +152,7 @@ export default function AdminUsers() {
               <select
                 value={filters.isActive}
                 onChange={(e) => updateFilter('isActive', e.target.value)}
-                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Status</option>
                 <option value="true">Active</option>
@@ -162,7 +162,7 @@ export default function AdminUsers() {
               <select
                 value={filters.market}
                 onChange={(e) => updateFilter('market', e.target.value)}
-                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Markets</option>
                 <option value="US">US</option>
@@ -172,7 +172,7 @@ export default function AdminUsers() {
               <select
                 value={filters.isTestAccount}
                 onChange={(e) => updateFilter('isTestAccount', e.target.value)}
-                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Accounts</option>
                 <option value="true">Test Accounts</option>
@@ -235,7 +235,7 @@ export default function AdminUsers() {
                     <tr key={user.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center text-white font-medium">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-pink-500 flex items-center justify-center text-white font-medium">
                             {user.firstName?.[0]}{user.lastName?.[0]}
                           </div>
                           <div>
@@ -275,7 +275,7 @@ export default function AdminUsers() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
                           user.isActive 
-                            ? 'bg-green-100 text-green-800' 
+                            ? 'bg-blue-100 text-blue-800'
                             : 'bg-red-100 text-red-800'
                         }`}>
                           {user.isActive ? (
@@ -315,7 +315,7 @@ export default function AdminUsers() {
                             <Button 
                               variant="ghost" 
                               size="sm"
-                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                               onClick={() => handleStatusUpdate(user.id, true)}
                             >
                               Activate

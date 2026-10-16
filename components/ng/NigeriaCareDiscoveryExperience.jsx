@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Activity,
@@ -15,6 +15,8 @@ import {
   Waves,
 } from 'lucide-react';
 import api from '@/lib/api';
+import useCareLocation from '@/lib/useCareLocation';
+import CareLocationPicker from '@/components/discovery/CareLocationPicker';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -148,7 +150,7 @@ function ResultCard({ provider, onRequestCallback, onTrackEvent, registerHref })
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-lg font-semibold text-foreground">{provider.canonicalName}</p>
               {(provider.sourceBadges || []).map((badge) => (
-                <span key={badge} className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                <span key={badge} className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-700">
                   {badge}
                 </span>
               ))}
@@ -165,7 +167,7 @@ function ResultCard({ provider, onRequestCallback, onTrackEvent, registerHref })
             <p className="font-semibold text-foreground">
               {provider.distanceKm !== null && provider.distanceKm !== undefined
                 ? `${provider.distanceKm.toFixed(1)} km away`
-                : 'Location match by city/state'}
+                : 'Distance is unavailable'}
             </p>
             <p className="mt-1 text-muted-foreground">
               {provider.etaMinutes ? `ETA ${provider.etaMinutes} min` : 'ETA shown after confirmation'}
@@ -195,7 +197,7 @@ function ResultCard({ provider, onRequestCallback, onTrackEvent, registerHref })
         <div className="flex flex-wrap gap-3">
           <Link href={registerHref}>
             <Button
-              className="bg-emerald-600 text-white hover:bg-emerald-500"
+              className="bg-blue-600 text-white hover:bg-blue-500"
               onClick={() =>
                 onTrackEvent('provider_selected', {
                   providerReference: provider.id,
@@ -238,7 +240,7 @@ function MedicineCard({ medicine, onTrackEvent }) {
               ? 'bg-rose-100 text-rose-700'
               : medicine.requiresPrescription
                 ? 'bg-amber-100 text-amber-700'
-                : 'bg-emerald-100 text-emerald-700'
+                : 'bg-blue-100 text-blue-700'
           }`}>
             {medicine.controlled
               ? 'Controlled / restricted'
@@ -287,11 +289,15 @@ export default function NigeriaCareDiscoveryExperience({
   const [symptom, setSymptom] = useState('');
   const [providerType, setProviderType] = useState('all');
   const [payer, setPayer] = useState('');
-  const [manualState, setManualState] = useState('');
-  const [manualCity, setManualCity] = useState('');
   const [landmark, setLandmark] = useState('');
-  const [location, setLocation] = useState(null);
-  const [locationStatus, setLocationStatus] = useState('detecting');
+  const careLocation = useCareLocation('NG');
+  const { location } = careLocation;
+  const { latitude, longitude, city, state, postalCode } = careLocation.params;
+  const homeRequest = useRef(null);
+  const providerRequest = useRef(null);
+  const medicineRequest = useRef(null);
+  const initialMedicineSearch = useRef(null);
+  const [homeError, setHomeError] = useState('');
   const [lowBandwidthMode, setLowBandwidthMode] = useState(false);
   const [providers, setProviders] = useState([]);
   const [medicines, setMedicines] = useState([]);
@@ -322,6 +328,7 @@ export default function NigeriaCareDiscoveryExperience({
 
   async function trackEvent(eventType, details = {}) {
     try {
+      const eventDetails = Object.fromEntries(Object.entries(details.payload || {}).filter(([key, value]) => ['providerType', 'sourceType', 'accessMode', 'category', 'resultCount', 'mode'].includes(key) && ['string', 'number', 'boolean'].includes(typeof value)));
       await api.post('/api/ng/discovery/events', {
         eventType,
         sessionId,
@@ -334,9 +341,9 @@ export default function NigeriaCareDiscoveryExperience({
           providerType,
           payer,
           lowBandwidthMode,
-          manualState,
-          manualCity,
-          ...details.payload,
+          locationMode: location.mode,
+          locationStatus: location.status,
+          ...eventDetails,
         },
       });
     } catch (error) {
@@ -344,18 +351,20 @@ export default function NigeriaCareDiscoveryExperience({
     }
   }
 
-  async function loadHome(overrides = {}) {
+  const loadHome = useCallback(async () => {
+    homeRequest.current?.abort();
+    const controller = new AbortController();
+    homeRequest.current = controller;
     setLoadingHome(true);
+    setHomeError('');
+    if (location.mode === 'manual' && !city && !state) { setProviders([]); setLoadingHome(false); setHomeError('Enter a city or region in Change location. Postal-only care matching is not available for this directory.'); return; }
 
     try {
       const response = await api.get('/api/ng/discovery/home', {
-        params: {
-          latitude: overrides.latitude ?? location?.latitude ?? undefined,
-          longitude: overrides.longitude ?? location?.longitude ?? undefined,
-          state: overrides.state ?? (manualState || undefined),
-          city: overrides.city ?? (manualCity || undefined),
-        },
+        params: { latitude, longitude, state, city, postalCode },
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
 
       setFeaturedCategories(response.data?.featuredCategories || []);
       setProviders(visiblePublicProviders(response.data?.nearestProviders || []));
@@ -363,13 +372,19 @@ export default function NigeriaCareDiscoveryExperience({
       setSupport(response.data?.support || { whatsappNumber: '', callbackNumber: '', callbackLabel: 'Request a phone callback' });
       setPayers(response.data?.payers || { hmos: [], stateSchemes: [] });
     } catch (error) {
-      console.error('[NG Discovery] Failed to load home', error);
+      if (!controller.signal.aborted) setHomeError('Care discovery could not be loaded. Try again or contact the care team.');
     } finally {
-      setLoadingHome(false);
+      if (!controller.signal.aborted) setLoadingHome(false);
     }
-  }
+  }, [latitude, longitude, state, city, postalCode, location.mode]);
 
   async function runProviderSearch(modeOverride = activeTab) {
+    if (location.mode === 'manual' && !city && !state) { setProviders([]); setFeedbackMessage('Enter a city or region in Change location. Postal-only care matching is not available for this directory.'); return; }
+    homeRequest.current?.abort();
+    setLoadingHome(false);
+    providerRequest.current?.abort();
+    const controller = new AbortController();
+    providerRequest.current = controller;
     setLoadingProviders(true);
     setFeedbackMessage('');
 
@@ -381,29 +396,34 @@ export default function NigeriaCareDiscoveryExperience({
           providerType: providerType === 'all' ? undefined : providerType,
           payer: payer || undefined,
           mode: modeOverride,
-          state: manualState || undefined,
-          city: manualCity || undefined,
+          state,
+          city,
+          postalCode,
           lga: landmark || undefined,
-          latitude: location?.latitude,
-          longitude: location?.longitude,
+          latitude,
+          longitude,
           medicine: modeOverride === 'pharmacy' ? query || undefined : undefined,
           sessionId,
         },
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
 
       setProviders(visiblePublicProviders(response.data?.providers || []));
       await trackEvent('provider_search_performed', {
         payload: { resultCount: response.data?.total || 0, mode: modeOverride },
       });
     } catch (error) {
-      console.error('[NG Discovery] Failed to search providers', error);
-      setFeedbackMessage('Provider discovery is temporarily unavailable. Use manual fallback below.');
+      if (!controller.signal.aborted) { setProviders([]); setFeedbackMessage('Provider discovery is temporarily unavailable. Use the care-team contact options below.'); }
     } finally {
-      setLoadingProviders(false);
+      if (!controller.signal.aborted) setLoadingProviders(false);
     }
   }
 
   async function runMedicineSearch() {
+    medicineRequest.current?.abort();
+    const controller = new AbortController();
+    medicineRequest.current = controller;
     setLoadingMedicines(true);
     setFeedbackMessage('');
 
@@ -414,17 +434,18 @@ export default function NigeriaCareDiscoveryExperience({
           symptom: symptom || undefined,
           category: undefined,
         },
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
 
       setMedicines(response.data?.medicines || []);
       await trackEvent('medicine_search_performed', {
         payload: { resultCount: response.data?.total || 0 },
       });
     } catch (error) {
-      console.error('[NG Discovery] Failed to search medicines', error);
-      setFeedbackMessage('Medicine search is temporarily unavailable. Use callback or WhatsApp fallback.');
+      if (!controller.signal.aborted) { setMedicines([]); setFeedbackMessage('Medicine search is temporarily unavailable. Use callback or WhatsApp support.'); }
     } finally {
-      setLoadingMedicines(false);
+      if (!controller.signal.aborted) setLoadingMedicines(false);
     }
   }
 
@@ -442,35 +463,6 @@ export default function NigeriaCareDiscoveryExperience({
     await runProviderSearch(activeTab);
   }
 
-  function requestDeviceLocation() {
-    if (typeof window === 'undefined' || !window.navigator?.geolocation) {
-      setLocationStatus('manual');
-      setFeedbackMessage('Device location is unavailable. Use state, city, and landmark search instead.');
-      return;
-    }
-
-    setLocationStatus('detecting');
-    window.navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const nextLocation = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        };
-        setLocation(nextLocation);
-        setLocationStatus('granted');
-        setFeedbackMessage('Location added. Search again to rank nearby providers first.');
-        trackEvent('location_permission_granted', { payload: nextLocation });
-        loadHome(nextLocation);
-      },
-      () => {
-        setLocationStatus('manual');
-        setFeedbackMessage('Location permission was not available. Manual state, city, and LGA search still works.');
-        trackEvent('location_permission_denied');
-      },
-      { enableHighAccuracy: false, timeout: 6000, maximumAge: 300000 }
-    );
-  }
-
   function persistState() {
     if (typeof window === 'undefined') {
       return;
@@ -482,8 +474,6 @@ export default function NigeriaCareDiscoveryExperience({
       symptom,
       providerType,
       payer,
-      manualState,
-      manualCity,
       landmark,
       lowBandwidthMode,
     };
@@ -514,10 +504,10 @@ export default function NigeriaCareDiscoveryExperience({
         query,
         symptom,
         careNeed: activeTab,
-        state: manualState || location?.state || null,
-        city: manualCity || location?.city || null,
+        state: state || null,
+        city: city || null,
         landmark,
-        connection: { lowBandwidthMode, locationStatus },
+        connection: { lowBandwidthMode, locationMode: location.mode, locationStatus: location.status },
       });
 
       setFeedbackMessage(response.data?.message || 'Fallback request submitted.');
@@ -546,8 +536,6 @@ export default function NigeriaCareDiscoveryExperience({
           setSymptom(parsed.symptom || '');
           setProviderType(parsed.providerType || 'all');
           setPayer(parsed.payer || '');
-          setManualState(parsed.manualState || '');
-          setManualCity(parsed.manualCity || '');
           setLandmark(parsed.landmark || '');
           setLowBandwidthMode(Boolean(parsed.lowBandwidthMode));
         } catch (error) {
@@ -563,28 +551,30 @@ export default function NigeriaCareDiscoveryExperience({
   }, [initialTab]);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.navigator?.geolocation) {
-      setLocationStatus('manual');
-      loadHome();
-      return;
-    }
-
+    providerRequest.current?.abort();
+    setProviders([]);
+    setLoadingProviders(false);
+    if (['idle', 'locating'].includes(location.status)) { setLoadingHome(true); return undefined; }
+    if (location.mode === 'manual' && !city && !state) { setLoadingHome(false); setHomeError('Enter a city or region in Change location. Postal-only care matching is not available for this directory.'); return undefined; }
     loadHome();
-  }, []);
+    return () => { homeRequest.current?.abort(); providerRequest.current?.abort(); };
+  }, [loadHome, location.status, location.mode, city, state]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => medicineRequest.current?.abort(), []);
+
+  initialMedicineSearch.current = runMedicineSearch;
   useEffect(() => {
     if (activeTab === 'pharmacy') {
-      runMedicineSearch();
+      initialMedicineSearch.current();
     }
   }, [activeTab]);
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] border border-emerald-200/70 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.18),transparent_38%),linear-gradient(145deg,rgba(255,255,255,0.96),rgba(236,253,245,0.92))] px-5 py-6 shadow-sm sm:px-6">
+      <section className="rounded-[2rem] border border-blue-200/70 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.18),transparent_38%),linear-gradient(145deg,rgba(255,255,255,0.96),rgba(239,246,255,0.92))] px-5 py-6 shadow-sm sm:px-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
               <ShieldCheck className="h-4 w-4" />
               Nigeria care discovery
             </div>
@@ -593,11 +583,11 @@ export default function NigeriaCareDiscoveryExperience({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Button variant="outline" onClick={persistState} className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+            <Button variant="outline" onClick={persistState} className="border-blue-200 text-blue-700 hover:bg-blue-50">
               Save and Resume
             </Button>
             <Button
-              className={lowBandwidthMode ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-emerald-600 text-white hover:bg-emerald-500'}
+              className={lowBandwidthMode ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-blue-600 text-white hover:bg-blue-500'}
               onClick={() => setLowBandwidthMode((current) => !current)}
             >
               {lowBandwidthMode ? 'Low-bandwidth mode on' : 'Enable low-bandwidth mode'}
@@ -616,10 +606,10 @@ export default function NigeriaCareDiscoveryExperience({
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search by symptom, medicine, specialty, provider, or HMO"
-                className="h-12 w-full rounded-2xl border border-border bg-background pl-10 pr-4 text-sm outline-none focus:border-emerald-500"
+                className="h-12 w-full rounded-2xl border border-border bg-background pl-10 pr-4 text-sm outline-none focus:border-blue-500"
               />
             </div>
-            <Button onClick={handleSearch} className="bg-emerald-600 text-white hover:bg-emerald-500">
+            <Button onClick={handleSearch} className="bg-blue-600 text-white hover:bg-blue-500">
               Search
             </Button>
           </div>
@@ -632,7 +622,7 @@ export default function NigeriaCareDiscoveryExperience({
                 onClick={() => setActiveTab(tab.id)}
                 className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
                   activeTab === tab.id
-                    ? 'bg-emerald-600 text-white'
+                    ? 'bg-blue-600 text-white'
                     : 'border border-border bg-background text-foreground hover:bg-accent'
                 }`}
               >
@@ -680,22 +670,6 @@ export default function NigeriaCareDiscoveryExperience({
               ))}
             </select>
 
-            <div className="grid grid-cols-2 gap-3">
-              <input
-                type="text"
-                value={manualState}
-                onChange={(event) => setManualState(event.target.value)}
-                placeholder="State"
-                className="h-11 rounded-2xl border border-border bg-background px-3 text-sm"
-              />
-              <input
-                type="text"
-                value={manualCity}
-                onChange={(event) => setManualCity(event.target.value)}
-                placeholder="City / Area"
-                className="h-11 rounded-2xl border border-border bg-background px-3 text-sm"
-              />
-            </div>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
@@ -706,20 +680,9 @@ export default function NigeriaCareDiscoveryExperience({
               placeholder="Landmark or LGA for manual fallback"
               className="h-11 rounded-2xl border border-border bg-background px-3 text-sm"
             />
-            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border px-3 py-2 text-sm text-muted-foreground">
-              <div className="inline-flex flex-1 items-center gap-2">
-                <MapPin className="h-4 w-4" />
-                {locationStatus === 'granted'
-                  ? 'Location ready'
-                  : locationStatus === 'manual'
-                    ? 'Using manual location fallback'
-                    : 'Location not requested yet'}
-              </div>
-              <Button type="button" variant="outline" size="sm" onClick={requestDeviceLocation}>
-                Use my location
-              </Button>
-            </div>
           </div>
+          <CareLocationPicker careLocation={careLocation} />
+          {homeError && <p role="alert" className="portal-error">{homeError} <button type="button" onClick={loadHome} className="font-medium underline">Retry</button></p>}
         </CardContent>
       </Card>
 
@@ -744,11 +707,11 @@ export default function NigeriaCareDiscoveryExperience({
                             setQuery(item.medicineExamples?.[0] || item.category);
                             setFeedbackMessage(`Loaded ${item.category} guidance. Run search to see medicines and nearby options.`);
                           }}
-                          className="rounded-2xl border border-border px-4 py-4 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-50/60"
+                          className="rounded-2xl border border-border px-4 py-4 text-left transition-colors hover:border-blue-300 hover:bg-blue-50/60"
                         >
                           <p className="text-base font-semibold text-foreground">{item.category}</p>
                           <p className="mt-2 text-sm text-muted-foreground">{item.medicineExamples?.slice(0, 3).join(', ')}</p>
-                          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
                             {item.medCount} tracked medicines
                           </p>
                         </button>
@@ -813,12 +776,12 @@ export default function NigeriaCareDiscoveryExperience({
               <CardTitle>Low-bandwidth fallback</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                <div className="flex items-center gap-2 font-semibold text-emerald-900">
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
+                <div className="flex items-center gap-2 font-semibold text-blue-900">
                   <Waves className="h-4 w-4" />
                   {lowBandwidthMode ? 'Low-bandwidth mode active' : 'Graceful degradation ready'}
                 </div>
-                <p className="mt-2 text-emerald-800">
+                <p className="mt-2 text-blue-800">
                   Audio-first consults, photo and voice-note follow-up, and manual location keep the flow moving when connectivity is unreliable.
                 </p>
               </div>
@@ -877,7 +840,7 @@ export default function NigeriaCareDiscoveryExperience({
                     setActiveTab(item === 'hypertension' || item === 'diabetes' ? 'teleconsult' : 'pharmacy');
                     setQuery(item);
                   }}
-                  className="flex w-full items-center justify-between rounded-2xl border border-border px-4 py-3 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-50/60"
+                  className="flex w-full items-center justify-between rounded-2xl border border-border px-4 py-3 text-left transition-colors hover:border-blue-300 hover:bg-blue-50/60"
                 >
                   <div>
                     <p className="font-semibold text-foreground">{item.replace(/_/g, ' ')}</p>
@@ -892,8 +855,8 @@ export default function NigeriaCareDiscoveryExperience({
           </Card>
 
           {feedbackMessage ? (
-            <Card className="border-emerald-200 bg-emerald-50">
-              <CardContent className="p-4 text-sm text-emerald-900">{feedbackMessage}</CardContent>
+            <Card className="border-blue-200 bg-blue-50">
+              <CardContent className="p-4 text-sm text-blue-900">{feedbackMessage}</CardContent>
             </Card>
           ) : null}
         </div>
@@ -943,7 +906,7 @@ export default function NigeriaCareDiscoveryExperience({
                 className="min-h-[120px] rounded-2xl border border-border bg-background px-3 py-3 text-sm md:col-span-2"
               />
               <div className="flex flex-wrap gap-3 md:col-span-2">
-                <Button type="submit" disabled={submittingFallback} className="bg-emerald-600 text-white hover:bg-emerald-500">
+                <Button type="submit" disabled={submittingFallback} className="bg-blue-600 text-white hover:bg-blue-500">
                   {submittingFallback ? 'Submitting...' : 'Submit fallback request'}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => setFallbackOpen(false)}>
@@ -958,15 +921,15 @@ export default function NigeriaCareDiscoveryExperience({
       {embeddedInPortal ? (
         <Card className="border-border/70">
           <CardContent className="grid gap-3 p-5 md:grid-cols-3">
-            <Link href="/ng/patient/prescriptions" className="rounded-2xl border border-border px-4 py-4 transition-colors hover:border-emerald-300 hover:bg-emerald-50/60">
-              <div className="inline-flex rounded-xl bg-emerald-500/10 p-2 text-emerald-600">
+            <Link href="/ng/patient/prescriptions" className="rounded-2xl border border-border px-4 py-4 transition-colors hover:border-blue-300 hover:bg-blue-50/60">
+              <div className="inline-flex rounded-xl bg-blue-500/10 p-2 text-blue-600">
                 <Pill className="h-5 w-5" />
               </div>
               <p className="mt-3 font-semibold text-foreground">Prescription follow-through</p>
               <p className="mt-2 text-sm text-muted-foreground">Upload or review prescriptions before routing to pharmacies.</p>
             </Link>
-            <Link href="/ng/patient/orders" className="rounded-2xl border border-border px-4 py-4 transition-colors hover:border-emerald-300 hover:bg-emerald-50/60">
-              <div className="inline-flex rounded-xl bg-emerald-500/10 p-2 text-emerald-600">
+            <Link href="/ng/patient/orders" className="rounded-2xl border border-border px-4 py-4 transition-colors hover:border-blue-300 hover:bg-blue-50/60">
+              <div className="inline-flex rounded-xl bg-blue-500/10 p-2 text-blue-600">
                 <Building2 className="h-5 w-5" />
               </div>
               <p className="mt-3 font-semibold text-foreground">Continue last care plan</p>
@@ -978,9 +941,9 @@ export default function NigeriaCareDiscoveryExperience({
                 setFallbackOpen(true);
                 setActiveTab('teleconsult');
               }}
-              className="rounded-2xl border border-border px-4 py-4 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-50/60"
+              className="rounded-2xl border border-border px-4 py-4 text-left transition-colors hover:border-blue-300 hover:bg-blue-50/60"
             >
-              <div className="inline-flex rounded-xl bg-emerald-500/10 p-2 text-emerald-600">
+              <div className="inline-flex rounded-xl bg-blue-500/10 p-2 text-blue-600">
                 <Activity className="h-5 w-5" />
               </div>
               <p className="mt-3 font-semibold text-foreground">Request chronic care follow-up</p>

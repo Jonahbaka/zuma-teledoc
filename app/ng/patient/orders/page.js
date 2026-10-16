@@ -1,210 +1,72 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Package, RefreshCw, Truck } from 'lucide-react';
-import api from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ArrowRight, Package, RefreshCw, ShieldCheck, Truck } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import {
-  PRESENTATION_DEMO_LABEL,
-  buildPatientPortalDemoData,
-  shouldShowPresentationDemoData,
-} from '@/lib/ngPresentationDemoData';
+import { Button } from '@/components/ui/button';
+import PortalPageHeader from '@/components/branding/PortalPageHeader';
+import MedicationCheckout from '@/components/ng/delivery/MedicationCheckout';
+import MedicationOrderStart from '@/components/ng/delivery/MedicationOrderStart';
+import { DeliveryLoading, DeliveryNotice, DeliveryStatus, deliveryButtonClass, deliveryCardClass } from '@/components/ng/delivery/DeliveryPresentation';
+import { deliveryError, getPatientMedicationOrders, orderItems } from '@/lib/ngDeliveryApi';
 
-function formatNaira(amount) {
-  return `NGN ${Number(amount || 0).toLocaleString()}`;
-}
-
-function getStatusTone(status) {
-  const normalized = String(status || '').toLowerCase();
-
-  if (['delivered'].includes(normalized)) return 'bg-emerald-100 text-emerald-700';
-  if (['confirmed', 'preparing', 'ready_for_pickup'].includes(normalized)) return 'bg-sky-100 text-sky-700';
-  if (['pending'].includes(normalized)) return 'bg-amber-100 text-amber-700';
-  if (['cancelled'].includes(normalized)) return 'bg-rose-100 text-rose-700';
-  return 'bg-slate-100 text-slate-700';
-}
-
-export default function NigeriaPatientOrdersPage() {
-  const { user } = useAuth();
+function PatientOrdersWorkspace() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
-  const [notice, setNotice] = useState('');
-  const presentationDemoData = useMemo(() => buildPatientPortalDemoData(), []);
+  const [loadError, setLoadError] = useState('');
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const requestId = useRef(0);
+  const abort = useRef(null);
 
   const loadOrders = useCallback(async () => {
+    abort.current?.abort();
+    const controller = new AbortController(); abort.current = controller;
+    const current = ++requestId.current;
+    setLoading(true); setLoadError(''); setOrders([]);
     try {
-      const params = filter === 'all' ? undefined : { status: filter };
-      const response = await api.get('/ng/patient/orders', { params });
-      setOrders(Array.isArray(response.data) ? response.data : []);
+      const result = await getPatientMedicationOrders(filter === 'all' ? undefined : { status: filter }, controller.signal);
+      if (!controller.signal.aborted && current === requestId.current) setOrders(result);
+    } catch (error) {
+      if (!controller.signal.aborted && current === requestId.current) setLoadError(deliveryError(error, 'Your orders could not be loaded. Please try again.'));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && current === requestId.current) setLoading(false);
     }
   }, [filter]);
 
-  useEffect(() => {
-    loadOrders();
-  }, [loadOrders]);
+  useEffect(() => { loadOrders(); return () => { abort.current?.abort(); }; }, [loadOrders]);
 
-  const showDemoData = shouldShowPresentationDemoData(user);
-  const filteredDemoOrders = filter === 'all'
-    ? presentationDemoData.orders
-    : presentationDemoData.orders.filter((order) => String(order.status || '').toLowerCase() === filter);
-  const visibleOrders = showDemoData && orders.length === 0 ? filteredDemoOrders : orders;
-  const usingDemoData = showDemoData && orders.length === 0 && filteredDemoOrders.length > 0;
+  return <div className="space-y-6 text-base">
+    <PortalPageHeader title="Your pharmacy orders" description="Choose pharmacy collection or approved courier delivery. Review every charge before you pay.">
+      <Link href="/ng/patient/prescriptions"><Button variant="outline" className={deliveryButtonClass}>Prescriptions</Button></Link>
+      <Button variant="outline" className={deliveryButtonClass} onClick={loadOrders} disabled={loading}><RefreshCw className="mr-2 h-5 w-5" aria-hidden="true" />Refresh orders</Button>
+    </PortalPageHeader>
 
-  const payForOrder = async (orderId) => {
-    setNotice('');
-    try {
-      const response = await api.post(`/ng/patient/orders/${orderId}/pay`);
-      const authorizationUrl = response.data?.authorizationUrl || response.data?.checkoutUrl || response.data?.paymentUrl;
+    <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-cyan-50 p-5 text-base leading-7 text-blue-950"><ShieldCheck className="mt-1 h-6 w-6 shrink-0" aria-hidden="true" /><p>Your pharmacy confirms the medicines and final price. Delivery is paid separately after preparation, using a fresh approved courier quote.</p></div>
+    <MedicationOrderStart onCreated={orderId => { setSelectedOrder(orderId); loadOrders(); }} />
+    {selectedOrder && <MedicationCheckout key={selectedOrder} orderId={selectedOrder} onClose={() => setSelectedOrder(null)} onChanged={loadOrders} />}
 
-      if (authorizationUrl && typeof window !== 'undefined') {
-        window.location.href = authorizationUrl;
-        return;
-      }
+    <nav aria-label="Filter pharmacy orders" className="flex flex-wrap gap-2">
+      {[['all', 'All orders'], ['pending', 'Awaiting confirmation'], ['confirmed', 'Preparing'], ['ready_for_pickup', 'Ready'], ['dispatched', 'With courier'], ['delivered', 'Delivered'], ['cancelled', 'Cancelled']].map(([value, label]) => <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)} className={`min-h-12 rounded-full border px-5 py-3 text-base font-medium transition-colors ${filter === value ? 'border-blue-700 bg-blue-700 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-400'}`}>{label}</button>)}
+    </nav>
 
-      setNotice('Payment was initiated, but no redirect URL was returned.');
-    } catch (error) {
-      setNotice(error.response?.data?.error || 'Unable to start payment for this order.');
-    }
-  };
+    {loadError && <><DeliveryNotice error>{loadError}</DeliveryNotice><Button variant="outline" className={deliveryButtonClass} onClick={loadOrders}>Try again</Button></>}
+    {loading ? <DeliveryLoading>Loading your pharmacy orders…</DeliveryLoading> : !loadError && orders.length === 0 ? <div className={`${deliveryCardClass} py-12 text-center`}><Package className="mx-auto h-12 w-12 text-blue-700" aria-hidden="true" /><h2 className="mt-5 text-xl font-semibold text-slate-950">No orders in this view</h2><p className="mx-auto mt-3 max-w-lg leading-7 text-slate-600">Pharmacy orders linked to your prescriptions appear here. Your pharmacy must confirm availability before checkout.</p><Link href="/ng/patient/prescriptions" className="mt-5 inline-flex min-h-12 items-center gap-2 rounded-xl px-4 text-base font-semibold text-blue-800">Review prescriptions<ArrowRight className="h-5 w-5" aria-hidden="true" /></Link></div> : <div className="grid gap-5 lg:grid-cols-2">{orders.map(order => {
+      const items = orderItems(order.items);
+      return <article key={order.id} className={`${deliveryCardClass} flex min-w-0 flex-col`}>
+        <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="break-words text-xl font-semibold text-slate-950">{order.order_number || 'Pharmacy order'}</h2><DeliveryStatus status={order.status} deliveryType={order.delivery_type} /></div>
+        <p className="mt-3 font-medium text-slate-700">{order.pharmacy_name || 'Assigned pharmacy'}</p>
+        <ul className="mt-5 space-y-2 text-slate-700">{items.map((item, index) => <li key={item.drug_id || index} className="break-words">{item.drug_name || item.name || 'Medicine'} × {item.quantity}</li>)}</ul>
+        <p className="mt-5 border-t border-slate-200 pt-4 leading-7 text-slate-600">{order.delivery_type === 'pickup' ? 'Collect from pharmacy · no courier charge' : order.delivery_type === 'delivery' ? 'Delivery · courier price confirmed separately' : 'Collection or delivery choice pending'}</p>
+        <div className="mt-auto flex flex-wrap gap-3 pt-6"><Button onClick={() => setSelectedOrder(order.id)} className={`${deliveryButtonClass} bg-blue-700 text-white hover:bg-blue-800`}>Review order & checkout</Button>{order.delivery_tracking_id && <Link href={`/ng/patient/track/${encodeURIComponent(order.delivery_tracking_id)}`}><Button variant="outline" className={deliveryButtonClass}><Truck className="mr-2 h-5 w-5" aria-hidden="true" />Track delivery</Button></Link>}</div>
+      </article>;
+    })}</div>}
+  </div>;
+}
 
-  const cancelOrder = async (orderId) => {
-    setNotice('');
-    try {
-      await api.post(`/ng/patient/orders/${orderId}/cancel`, { reason: 'Patient cancelled from portal' });
-      setNotice('Order cancelled.');
-      await loadOrders();
-    } catch (error) {
-      setNotice(error.response?.data?.error || 'Unable to cancel this order.');
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <section className="rounded-[2rem] border border-emerald-200/70 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_35%),linear-gradient(145deg,rgba(255,255,255,0.96),rgba(236,253,245,0.92))] px-5 py-6 shadow-sm sm:px-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Pharmacy Orders</p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Track medication fulfillment and payment</h1>
-            <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-              Review routed pharmacy orders, open delivery tracking, and complete payment using the actual Nigeria order APIs already connected in the platform.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/ng/patient/search">
-              <Button className="bg-emerald-600 text-white hover:bg-emerald-500">Search Medication</Button>
-            </Link>
-            <Link href="/ng/patient/prescriptions">
-              <Button variant="outline">Open Prescriptions</Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {notice ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div>
-      ) : null}
-
-      {usingDemoData ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
-          {PRESENTATION_DEMO_LABEL}: sample pharmacy orders and tracking records are shown for this demo account.
-        </div>
-      ) : null}
-
-      <section className="flex flex-wrap gap-2">
-        {['all', 'pending', 'confirmed', 'preparing', 'dispatched', 'delivered', 'cancelled'].map((value) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setFilter(value)}
-            className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-              filter === value ? 'bg-emerald-600 text-white' : 'border border-border bg-card text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {value === 'all' ? 'All' : value.replace(/_/g, ' ')}
-          </button>
-        ))}
-      </section>
-
-      <Card className="border-border/70">
-        <CardHeader>
-          <CardTitle>Order tracker</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {loading ? (
-            <div className="py-8 text-center">
-              <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
-            </div>
-          ) : visibleOrders.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center">
-              <Package className="mx-auto h-10 w-10 text-emerald-500/60" />
-              <p className="mt-4 font-semibold text-foreground">No orders found.</p>
-              <p className="mt-2 text-sm text-muted-foreground">Once a pharmacy order has been created, it will appear here with payment and tracking status.</p>
-            </div>
-          ) : (
-            visibleOrders.map((order) => {
-              const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
-
-              return (
-                <div key={order.id} className="rounded-2xl border border-border px-4 py-4">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-foreground">{order.order_number}</p>
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusTone(order.status)}`}>
-                          {String(order.status || '').replace(/_/g, ' ')}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{order.pharmacy_name}</p>
-                      <div className="space-y-1 text-sm text-slate-600">
-                        {items.slice(0, 3).map((item, index) => (
-                          <p key={`${item.drug_name || 'item'}-${index}`}>
-                            {item.drug_name} × {item.quantity} • {formatNaira(item.total_price)}
-                          </p>
-                        ))}
-                        {items.length > 3 ? <p className="text-muted-foreground">+{items.length - 3} more item(s)</p> : null}
-                      </div>
-                    </div>
-
-                    <div className="flex min-w-[220px] flex-col gap-3">
-                      <div className="text-right">
-                        <p className="text-sm text-muted-foreground">Total</p>
-                        <p className="text-xl font-bold text-foreground">{formatNaira(order.total_amount)}</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2 lg:justify-end">
-                        {order.payment_status !== 'completed' && order.status === 'pending' ? (
-                          <Button onClick={() => payForOrder(order.id)} className="bg-emerald-600 text-white hover:bg-emerald-500">
-                            Pay Now
-                          </Button>
-                        ) : null}
-                        {order.delivery_tracking_id ? (
-                          <Link href={`/ng/patient/track/${order.delivery_tracking_id}`}>
-                            <Button variant="outline">
-                              <Truck className="mr-2 h-4 w-4" />
-                              Track
-                            </Button>
-                          </Link>
-                        ) : null}
-                        {['pending', 'confirmed'].includes(String(order.status || '').toLowerCase()) ? (
-                          <Button variant="outline" onClick={() => cancelOrder(order.id)}>
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                            Cancel
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+export default function NigeriaPatientOrdersPage() {
+  const { user, loading, isAuthenticated } = useAuth();
+  if (loading || !isAuthenticated || !user?.id || user.role !== 'patient') return <DeliveryLoading>Checking your secure pharmacy access…</DeliveryLoading>;
+  return <PatientOrdersWorkspace key={`${user.id}:${user.role}:${user.marketScope || user.market_scope || ''}`} />;
 }

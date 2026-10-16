@@ -27,14 +27,14 @@ const INVITE_TYPE_CONFIG = {
   admin: {
     label: 'Admin',
     icon: Shield,
-    color: 'bg-purple-100 text-purple-800',
+    color: 'bg-blue-100 text-blue-800',
     description: 'Invite administrators'
   }
 };
 
 const STATUS_CONFIG = {
   pending: { label: 'Pending', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
-  accepted: { label: 'Accepted', color: 'bg-green-100 text-green-800', icon: CheckCircle },
+  accepted: { label: 'Accepted', color: 'bg-blue-100 text-blue-800', icon: CheckCircle },
   expired: { label: 'Expired', color: 'bg-red-100 text-red-800', icon: XCircle },
   revoked: { label: 'Revoked', color: 'bg-gray-100 text-gray-800', icon: XCircle }
 };
@@ -211,7 +211,7 @@ export default function AdminInvitesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
               <Mail className="w-6 h-6 text-white" />
             </div>
             Invitations
@@ -249,9 +249,9 @@ export default function AdminInvitesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Accepted</p>
-                <p className="text-2xl font-bold text-green-600">{stats.totalAccepted}</p>
+                <p className="text-2xl font-bold text-blue-600">{stats.totalAccepted}</p>
               </div>
-              <CheckCircle className="w-8 h-8 text-green-500 opacity-50" />
+              <CheckCircle className="w-8 h-8 text-blue-500 opacity-50" />
             </div>
           </CardContent>
         </Card>

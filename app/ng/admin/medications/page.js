@@ -169,7 +169,7 @@ export default function NigeriaAdminMedicationOpsPage() {
   return (
     <div className="space-y-6 text-slate-950">
       <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Medication Operations</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">Nigeria Medication Operations</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Medication requests, source quality, and verified pharmacy availability</h1>
         <p className="mt-2 max-w-4xl text-sm leading-7 text-slate-700">
           Review patient medication requests, audit catalog source quality, disable unsupported medication records, and mark pharmacy inventory as verified only after partner confirmation.
@@ -177,7 +177,7 @@ export default function NigeriaAdminMedicationOpsPage() {
       </section>
 
       {notice ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           {notice}
         </div>
       ) : null}
@@ -196,8 +196,8 @@ export default function NigeriaAdminMedicationOpsPage() {
                 onClick={() => setActiveView(item.id)}
                 className={`rounded-full px-4 py-2 text-sm font-semibold ${
                   activeView === item.id
-                    ? 'bg-emerald-600 text-white'
-                    : 'border border-slate-200 bg-white text-slate-800 hover:bg-emerald-50'
+                    ? 'bg-blue-600 text-white'
+                    : 'border border-slate-200 bg-white text-slate-800 hover:bg-blue-50'
                 }`}
               >
                 {item.label}
@@ -292,7 +292,7 @@ export default function NigeriaAdminMedicationOpsPage() {
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => updateRequestStatus(request.id, 'available')}>
+                  <Button size="sm" className="bg-blue-600 text-white hover:bg-blue-500" onClick={() => updateRequestStatus(request.id, 'available')}>
                     Mark Available
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => updateRequestStatus(request.id, 'pharmacy_reviewing')}>
@@ -335,7 +335,7 @@ export default function NigeriaAdminMedicationOpsPage() {
                     <p className="mt-1 text-xs text-slate-600">Reference: {medicine.source_reference || 'Reference missing'}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Badge variant={medicine.is_supported && !medicine.disabled_at ? 'default' : 'outline'} className={medicine.is_supported && !medicine.disabled_at ? 'bg-emerald-600 text-white hover:bg-emerald-600' : ''}>
+                    <Badge variant={medicine.is_supported && !medicine.disabled_at ? 'default' : 'outline'} className={medicine.is_supported && !medicine.disabled_at ? 'bg-blue-600 text-white hover:bg-blue-600' : ''}>
                       {medicine.is_supported && !medicine.disabled_at ? 'Supported reference' : 'Unsupported/disabled'}
                     </Badge>
                     <Badge variant="outline">{statusLabel(medicine.source_quality_status)}</Badge>
@@ -347,7 +347,7 @@ export default function NigeriaAdminMedicationOpsPage() {
                   <p>Review notes: {medicine.admin_review_notes || 'No notes'}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => updateMedicineSource(medicine.id, { sourceQualityStatus: 'approved', isSupported: true, disabled: false, adminReviewNotes: 'Approved from Nigeria medication source review.' })}>
+                  <Button size="sm" className="bg-blue-600 text-white hover:bg-blue-500" onClick={() => updateMedicineSource(medicine.id, { sourceQualityStatus: 'approved', isSupported: true, disabled: false, adminReviewNotes: 'Approved from Nigeria medication source review.' })}>
                     Approve Source
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => updateMedicineSource(medicine.id, { sourceQualityStatus: 'reference_only', isSupported: true, disabled: false, adminReviewNotes: 'Kept as catalog reference only. Pharmacy availability must be confirmed separately.' })}>
@@ -376,7 +376,7 @@ export default function NigeriaAdminMedicationOpsPage() {
                     <p className="mt-1 text-sm text-slate-700">{item.generic_name || 'Generic not recorded'}</p>
                     <p className="mt-1 text-sm text-slate-700">{item.pharmacy_name} | {[item.city, item.state].filter(Boolean).join(', ')}</p>
                   </div>
-                  <Badge className={item.availability_verification_status === 'verified' ? 'bg-emerald-600 text-white hover:bg-emerald-600' : 'bg-amber-100 text-amber-800 hover:bg-amber-100'}>
+                  <Badge className={item.availability_verification_status === 'verified' ? 'bg-blue-600 text-white hover:bg-blue-600' : 'bg-amber-100 text-amber-800 hover:bg-amber-100'}>
                     {statusLabel(item.availability_verification_status)}
                   </Badge>
                 </div>
@@ -387,7 +387,7 @@ export default function NigeriaAdminMedicationOpsPage() {
                   <p>Catalog source: {statusLabel(item.source_quality_status)}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => updateInventoryVerification(item.id, true)}>
+                  <Button size="sm" className="bg-blue-600 text-white hover:bg-blue-500" onClick={() => updateInventoryVerification(item.id, true)}>
                     Verify Availability
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => updateInventoryVerification(item.id, false)}>

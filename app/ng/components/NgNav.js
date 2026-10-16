@@ -30,8 +30,8 @@ const PORTALS = [
     key: 'patient',
     label: 'Patients',
     icon: Pill,
-    color: 'text-green-600',
-    bg: 'bg-green-500/10',
+    color: 'text-blue-600',
+    bg: 'bg-blue-500/10',
     desc: 'Consultations, prescriptions & records',
     links: [
       { label: 'Patient Dashboard', href: '/ng/patient/dashboard', icon: LayoutDashboard },
@@ -67,8 +67,8 @@ const PORTALS = [
     key: 'organization',
     label: 'Organisations',
     icon: Users,
-    color: 'text-indigo-600',
-    bg: 'bg-indigo-500/10',
+    color: 'text-blue-600',
+    bg: 'bg-blue-500/10',
     desc: 'Corporate & group health plans',
     links: [
       { label: 'Org Dashboard', href: '/ng/organization/dashboard', icon: LayoutDashboard },
@@ -97,8 +97,8 @@ const PORTALS = [
     key: 'pharmacy',
     label: 'Pharmacies',
     icon: Package,
-    color: 'text-teal-600',
-    bg: 'bg-teal-500/10',
+    color: 'text-blue-600',
+    bg: 'bg-blue-500/10',
     desc: 'Orders, inventory & dispensing',
     links: [
       { label: 'Pharmacy Dashboard', href: '/ng/pharmacy/dashboard', icon: LayoutDashboard },
@@ -139,7 +139,7 @@ export default function NgNav({ role, userName }) {
                 <button className={cn(
                   "flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                   isActive
-                    ? "bg-green-500/10 text-green-700 dark:text-green-400"
+                    ? "bg-blue-500/10 text-blue-700 dark:text-blue-400"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent"
                 )}>
                   <Icon size={14} />
@@ -190,7 +190,7 @@ export default function NgNav({ role, userName }) {
           <Link href="/ng/pricing" className={cn(
             "px-3 py-2 rounded-lg text-sm font-medium transition-colors",
             pathname === '/ng/pricing'
-              ? "bg-green-500/10 text-green-700"
+              ? "bg-blue-500/10 text-blue-700"
               : "text-muted-foreground hover:text-foreground hover:bg-accent"
           )}>
             Pricing
@@ -202,7 +202,7 @@ export default function NgNav({ role, userName }) {
           <Link href="/ng/auth/login" className="text-sm font-medium text-muted-foreground hover:text-foreground px-3 py-2 rounded-lg hover:bg-accent transition-colors">
             Sign In
           </Link>
-          <Link href="/ng/auth/register" className="text-sm font-semibold bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl shadow transition-colors">
+          <Link href="/ng/auth/register" className="text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl shadow transition-colors">
             Get Started
           </Link>
         </div>
@@ -245,7 +245,7 @@ export default function NgNav({ role, userName }) {
           })}
           <div className="pt-3 space-y-2">
             <Link href="/ng/pricing" onClick={() => setMobileOpen(false)} className="block text-center py-3 rounded-xl border border-border text-sm font-medium">Pricing</Link>
-            <Link href="/ng/auth/register" onClick={() => setMobileOpen(false)} className="block text-center py-3 rounded-xl bg-green-600 text-white text-sm font-bold">Get Started Free</Link>
+            <Link href="/ng/auth/register" onClick={() => setMobileOpen(false)} className="block text-center py-3 rounded-xl bg-blue-600 text-white text-sm font-bold">Get Started Free</Link>
           </div>
         </div>
       )}

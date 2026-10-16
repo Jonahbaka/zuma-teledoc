@@ -22,20 +22,20 @@ import {
 import { normalizeProviderMarket } from '@/lib/providerPortal';
 
 const PROVIDER_NAV_ITEMS = {
-  dashboard: { href: 'dashboard', icon: LayoutDashboard, labels: { US: 'Dashboard', NG: 'Command Center' } },
+  dashboard: { href: 'dashboard', icon: LayoutDashboard, labels: { US: 'Today', NG: 'Today' } },
   triageQueue: { href: 'triage-queue', icon: ListOrdered, labels: { US: 'Triage Queue', NG: 'Patient Queue' } },
-  call: { href: 'call', icon: Video, labels: { US: 'Clinical Video', NG: 'Clinical Video' } },
+  call: { href: 'call', icon: Video, labels: { US: 'Video consultations', NG: 'Video consultations' } },
   appointments: { href: 'appointments', icon: CalendarDays, labels: { US: 'Appointments', NG: 'Appointments' } },
-  prescriptions: { href: 'prescriptions', icon: Pill, labels: { US: 'External eRx', NG: 'Prescriptions' } },
+  prescriptions: { href: 'prescriptions', icon: Pill, labels: { US: 'Prescriptions', NG: 'Prescriptions' } },
   imaging: { href: 'imaging', icon: Eye, labels: { US: 'Medical Imaging', NG: 'Medical Imaging' } },
-  triage: { href: 'triage', icon: BrainCircuit, labels: { US: 'AI Triage Results', NG: 'AI Triage Results' } },
+  triage: { href: 'triage', icon: BrainCircuit, labels: { US: 'Clinical guidance', NG: 'Clinical guidance' } },
   schedule: { href: 'schedule', icon: Calendar, labels: { US: 'Schedule', NG: 'Schedule' } },
-  patients: { href: 'patients', icon: Users, labels: { US: 'Patients', NG: 'EMR' } },
-  visits: { href: 'visits', icon: ClipboardList, labels: { US: 'Visit Notes', NG: 'SOAP & Visits' } },
+  patients: { href: 'patients', icon: Users, labels: { US: 'Patients', NG: 'Patients' } },
+  visits: { href: 'visits', icon: ClipboardList, labels: { US: 'Clinical notes', NG: 'Clinical notes' } },
   claims: { href: 'claims', icon: Receipt, labels: { US: 'Claims', NG: 'Claims' } },
-  referrals: { href: 'referrals', icon: Share2, labels: { US: 'Smart Referrals', NG: 'Care Referrals' } },
+  referrals: { href: 'referrals', icon: Share2, labels: { US: 'Referrals', NG: 'Referrals' } },
   hospitalNetwork: { href: 'hospital-network', icon: Building2, labels: { US: 'Hospital Network', NG: 'Care Teams' } },
-  analytics: { href: 'analytics', icon: BarChart3, labels: { US: 'Outcomes Analytics', NG: 'Forecasts' } },
+  analytics: { href: 'analytics', icon: BarChart3, labels: { US: 'Analytics', NG: 'Analytics' } },
   earnings: { href: 'earnings', icon: Wallet, labels: { US: 'Earnings', NG: 'Earnings' } },
   billing: { href: 'billing', icon: CreditCard, labels: { US: 'Billing', NG: 'Billing' } },
   messages: { href: 'messages', icon: MessageSquare, labels: { US: 'Messages', NG: 'Messages' } },
@@ -79,7 +79,6 @@ const PROVIDER_NAV_ORDER = {
     'triage',
     'analytics',
     'earnings',
-    'billing',
     'messages',
     'notifications',
     'profile',
@@ -88,11 +87,11 @@ const PROVIDER_NAV_ORDER = {
 
 const PROVIDER_PORTAL_THEME = {
   US: {
-    portalColor: 'from-purple-600 to-purple-800',
+    portalColor: 'from-blue-600 to-blue-700',
     portalLabel: 'Provider',
   },
   NG: {
-    portalColor: 'from-emerald-600 to-teal-700',
+    portalColor: 'from-blue-600 to-blue-700',
     portalLabel: 'Nigeria Provider',
   },
 };

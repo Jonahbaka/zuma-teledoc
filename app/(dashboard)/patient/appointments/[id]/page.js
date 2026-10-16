@@ -129,7 +129,7 @@ export default function AppointmentDetailPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -165,7 +165,7 @@ export default function AppointmentDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-purple-500" />
+                <Calendar className="w-5 h-5 text-blue-500" />
                 Appointment Information
               </CardTitle>
             </CardHeader>
@@ -199,7 +199,7 @@ export default function AppointmentDetailPage() {
                 <div>
                   <p className="text-sm text-slate-500">Status</p>
                   <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${appointment.status === 'scheduled' ? 'bg-blue-100 text-blue-700' :
-                    appointment.status === 'confirmed' ? 'bg-purple-100 text-purple-700' :
+                    appointment.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
                       appointment.status === 'completed' ? 'bg-slate-100 text-slate-700' :
                         appointment.status === 'cancelled' ? 'bg-red-100 text-red-700' :
                           'bg-amber-100 text-amber-700'
@@ -228,13 +228,13 @@ export default function AppointmentDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <User className="w-5 h-5 text-purple-500" />
+                <User className="w-5 h-5 text-blue-500" />
                 Provider Information
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-xl font-bold">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-500 flex items-center justify-center text-white text-xl font-bold">
                   {appointment.providerFirstName?.[0]}{appointment.providerLastName?.[0]}
                 </div>
                 <div>
@@ -260,7 +260,7 @@ export default function AppointmentDetailPage() {
               <CardContent className="space-y-3">
                 {paymentStatus?.paymentCompleted ? (
                   <Link href={`/patient/appointments/${appointmentId}/call`}>
-                    <Button className="w-full bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white">
+                    <Button className="w-full bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900 text-white">
                       <Video className="w-4 h-4 mr-2" />
                       Join Video Call
                     </Button>

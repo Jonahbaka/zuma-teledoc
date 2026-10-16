@@ -6,12 +6,59 @@
 
 const express = require('express');
 const router = express.Router();
+const { z } = require('zod');
 const { authenticate, requireRole } = require('../middleware/auth');
 const crmService = require('../services/crmService');
 let orchestrator = null;
 try { orchestrator = require('../services/agent-orchestrator'); } catch (e) { /* optional */ }
 
 const adminOnly = [authenticate, requireRole('admin', 'super_admin')];
+const campaignDraft = z.object({
+  name: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(5000).optional(),
+  campaignType: z.enum(['cold_email', 'follow_up', 'newsletter', 'social_engage', 'investor_pitch', 'partnership']).default('cold_email'),
+  targetContactType: z.string().trim().max(50).nullable().optional(),
+  targetSpecialty: z.string().trim().max(255).nullable().optional(),
+  subjectLine: z.string().trim().min(1).max(500),
+  emailTemplate: z.string().trim().min(1).max(20000),
+  sendTime: z.enum(['immediate', 'optimal', 'scheduled']).default('optimal'),
+  dailyLimit: z.preprocess(value => typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
+    z.number().int().min(1).max(200).default(50)),
+});
+const templateDraft = z.object({
+  name: z.string().trim().min(1).max(255),
+  category: z.enum(['cold_outreach', 'follow_up', 'investor_pitch', 'partnership', 'provider_invite', 'nurse_invite', 'social_intro']),
+  subject: z.string().trim().min(1).max(500),
+  body: z.string().trim().min(1).max(20000),
+});
+
+function normalizeCampaignBody(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const normalized = { ...body };
+  for (const [camel, snake] of [['campaignType', 'campaign_type'], ['targetContactType', 'target_contact_type'],
+    ['targetSpecialty', 'target_specialty'], ['subjectLine', 'subject_line'], ['emailTemplate', 'email_template'],
+    ['sendTime', 'send_time'], ['dailyLimit', 'daily_limit']]) {
+    if (body[camel] !== undefined && body[snake] !== undefined && body[camel] !== body[snake]) {
+      throw Object.assign(new Error('Conflicting campaign field values.'), { statusCode: 400 });
+    }
+    if (normalized[camel] === undefined) normalized[camel] = body[snake];
+  }
+  return normalized;
+}
+
+function crmError(res, error) {
+  const known = [400, 403, 404, 409, 429].includes(error.statusCode);
+  return res.status(known ? error.statusCode : 503).json({ success: false,
+    error: known ? error.message : 'Relationship management is temporarily unavailable. No completed action was confirmed.' });
+}
+
+function deliveryResult(res, result) {
+  if (!result || result.success !== true) {
+    return res.status(result?.statusCode || (result?.status === 'unavailable' ? 503 : 409)).json({ success: false,
+      error: result?.error || 'The message was not confirmed as sent.', code: result?.code, data: result });
+  }
+  return res.json({ success: true, data: result });
+}
 
 // ─── DASHBOARD ──────────────────────────────────────────────────
 
@@ -160,10 +207,13 @@ router.get('/threads/:contactId/messages', ...adminOnly, async (req, res) => {
 router.post('/contacts/:id/email', ...adminOnly, async (req, res) => {
   try {
     const { subject, body } = req.body;
+    if (!z.string().uuid().safeParse(req.params.id).success || !templateDraft.pick({ subject: true, body: true }).safeParse({ subject, body }).success) {
+      return res.status(400).json({ success: false, error: 'A valid contact, subject and message are required.' });
+    }
     const result = await crmService.sendEmail(req.params.id, subject, body, 'operator');
-    res.json({ success: true, data: result });
+    deliveryResult(res, result);
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    crmError(res, err);
   }
 });
 
@@ -174,21 +224,25 @@ router.get('/campaigns', ...adminOnly, async (req, res) => {
     const campaigns = await crmService.getCampaigns({ status: req.query.status });
     res.json({ success: true, data: campaigns });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    crmError(res, err);
   }
 });
 
 router.post('/campaigns', ...adminOnly, async (req, res) => {
   try {
-    const campaign = await crmService.createCampaign(req.body);
+    const input = campaignDraft.safeParse(normalizeCampaignBody(req.body));
+    if (!input.success) return res.status(400).json({ success: false, error: 'Enter a valid campaign name, type, subject, and message.' });
+    const campaign = await crmService.createCampaign({ ...input.data, createdBy: req.user.id, auditActorId: req.user.id });
+    if (!campaign?.id || campaign.status !== 'draft') return res.status(503).json({ success: false, error: 'The campaign draft could not be saved. No messages were sent.' });
     res.json({ success: true, data: campaign });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    crmError(res, err);
   }
 });
 
 router.post('/campaigns/:id/approve', ...adminOnly, async (req, res) => {
   try {
+    if (!z.string().uuid().safeParse(req.params.id).success) return res.status(400).json({ success: false, error: 'Use a valid campaign ID.' });
     const campaign = await crmService.approveCampaign(req.params.id, req.user.id);
     if (orchestrator && campaign?.id) {
       await orchestrator.emitEvent('crm.campaign.approved', {
@@ -196,19 +250,21 @@ router.post('/campaigns/:id/approve', ...adminOnly, async (req, res) => {
         status: campaign.status
       });
     }
+    if (!campaign?.id || campaign.status !== 'approved') return res.status(404).json({ success: false, error: 'The campaign was not found or approval was not recorded.' });
     res.json({ success: true, data: campaign });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    crmError(res, err);
   }
 });
 
 router.post('/campaigns/:id/send', ...adminOnly, async (req, res) => {
   try {
-    const { limit } = req.body;
-    const results = await crmService.sendCampaignEmails(req.params.id, limit || 10);
-    res.json({ success: true, data: results });
+    const input = z.object({ limit: z.number().int().min(1).max(200).default(10) }).safeParse(req.body || {});
+    if (!input.success || !z.string().uuid().safeParse(req.params.id).success) return res.status(400).json({ success: false, error: 'Use a valid campaign and bounded batch size.' });
+    const results = await crmService.sendCampaignEmails(req.params.id, input.data.limit);
+    deliveryResult(res, results);
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    crmError(res, err);
   }
 });
 
@@ -219,16 +275,19 @@ router.get('/templates', ...adminOnly, async (req, res) => {
     const templates = await crmService.getTemplates(req.query.category);
     res.json({ success: true, data: templates });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    crmError(res, err);
   }
 });
 
 router.post('/templates', ...adminOnly, async (req, res) => {
   try {
-    const template = await crmService.createTemplate(req.body);
+    const input = templateDraft.safeParse(req.body);
+    if (!input.success) return res.status(400).json({ success: false, error: 'Enter a valid template name, category, subject, and message.' });
+    const template = await crmService.createTemplate({ ...input.data, createdBy: req.user.id, auditActorId: req.user.id });
+    if (!template?.id) return res.status(503).json({ success: false, error: 'The email template could not be saved.' });
     res.json({ success: true, data: template });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    crmError(res, err);
   }
 });
 

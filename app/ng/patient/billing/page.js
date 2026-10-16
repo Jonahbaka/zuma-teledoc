@@ -21,7 +21,7 @@ export default function PatientBilling() {
   }, []);
 
   const statusBadge = (s) => ({
-    paid: 'bg-green-500/10 text-green-600 border-green-500/20',
+    paid: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
     pending: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
     failed: 'bg-red-500/10 text-red-600 border-red-500/20',
     refunded: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
@@ -41,13 +41,13 @@ export default function PatientBilling() {
         </div>
 
         <div className="flex gap-3">
-          <Link href="/ng/patient/subscription" className="flex-1 bg-card border border-border rounded-2xl p-4 hover:border-green-500/30 transition-all">
-            <CreditCard size={20} className="text-green-500 mb-2" />
+          <Link href="/ng/patient/subscription" className="flex-1 bg-card border border-border rounded-2xl p-4 hover:border-blue-500/30 transition-all">
+            <CreditCard size={20} className="text-blue-500 mb-2" />
             <p className="font-bold text-foreground text-sm">Manage Subscription</p>
             <p className="text-xs text-muted-foreground mt-0.5">Upgrade, downgrade or cancel your plan</p>
           </Link>
-          <Link href="/ng/patient/appointments/book" className="flex-1 bg-card border border-border rounded-2xl p-4 hover:border-green-500/30 transition-all">
-            <Receipt size={20} className="text-green-500 mb-2" />
+          <Link href="/ng/patient/appointments/book" className="flex-1 bg-card border border-border rounded-2xl p-4 hover:border-blue-500/30 transition-all">
+            <Receipt size={20} className="text-blue-500 mb-2" />
             <p className="font-bold text-foreground text-sm">Pay-as-you-go</p>
             <p className="text-xs text-muted-foreground mt-0.5">Book a single consultation</p>
           </Link>
@@ -59,7 +59,7 @@ export default function PatientBilling() {
           </div>
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : billing.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">

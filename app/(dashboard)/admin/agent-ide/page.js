@@ -55,7 +55,7 @@ function highlightJS(code) {
   
   // Order matters — comments last to override
   html = html.replace(STRINGS, '<span class="text-amber-300">$&</span>');
-  html = html.replace(NUMBERS, '<span class="text-purple-300">$&</span>');
+  html = html.replace(NUMBERS, '<span class="text-blue-300">$&</span>');
   html = html.replace(FUNCTIONS, '<span class="text-blue-300">$1</span>(');
   html = html.replace(KEYWORDS_JS, '<span class="text-pink-400">$&</span>');
   html = html.replace(COMMENTS_SINGLE, '<span class="text-gray-500 italic">$&</span>');
@@ -77,9 +77,9 @@ function FileTreeNode({ node, depth = 0, onSelect, selectedPath }) {
     const ext = node.ext || '';
     if (['.js', '.jsx'].includes(ext)) return <Braces className={`${iconClass} text-yellow-400`} />;
     if (['.ts', '.tsx'].includes(ext)) return <Braces className={`${iconClass} text-blue-400`} />;
-    if (['.json'].includes(ext)) return <Braces className={`${iconClass} text-green-400`} />;
+    if (['.json'].includes(ext)) return <Braces className={`${iconClass} text-blue-400`} />;
     if (['.sql'].includes(ext)) return <Database className={`${iconClass} text-orange-400`} />;
-    if (['.css'].includes(ext)) return <Globe className={`${iconClass} text-purple-400`} />;
+    if (['.css'].includes(ext)) return <Globe className={`${iconClass} text-blue-400`} />;
     if (['.md'].includes(ext)) return <FileText className={`${iconClass} text-gray-400`} />;
     return <File className={`${iconClass} text-gray-500`} />;
   };
@@ -92,7 +92,7 @@ function FileTreeNode({ node, depth = 0, onSelect, selectedPath }) {
           else onSelect(node.path);
         }}
         className={`flex items-center gap-1 py-0.5 px-1 rounded cursor-pointer text-xs hover:bg-gray-800 ${
-          isSelected ? 'bg-indigo-900/40 text-indigo-300' : 'text-gray-400'
+          isSelected ? 'bg-blue-900/40 text-blue-300' : 'text-gray-400'
         }`}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
       >
@@ -357,7 +357,7 @@ export default function AgentIdePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0d1117]">
         <div className="text-center">
-          <Code2 className="w-12 h-12 text-indigo-400 animate-pulse mx-auto mb-4" />
+          <Code2 className="w-12 h-12 text-blue-400 animate-pulse mx-auto mb-4" />
           <p className="text-gray-400">Initializing Agent IDE...</p>
         </div>
       </div>
@@ -374,11 +374,11 @@ export default function AgentIdePage() {
       {/* ═══ TOP BAR ═══ */}
       <div className="h-10 bg-[#161b22] border-b border-gray-800 flex items-center justify-between px-3 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+          <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
             <Code2 className="w-3.5 h-3.5 text-white" />
           </div>
           <span className="text-sm font-semibold text-white">DoctaRx Agent IDE</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-900/50 text-indigo-300 border border-indigo-700/30">v1.0</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-300 border border-blue-700/30">v1.0</span>
         </div>
         <div className="flex items-center gap-1">
           {gitInfo && (
@@ -420,7 +420,7 @@ export default function AgentIdePage() {
                   key={tab.id}
                   onClick={() => setActivePanel(tab.id)}
                   className={`flex-1 p-2 flex items-center justify-center ${
-                    activePanel === tab.id ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-600 hover:text-gray-400'
+                    activePanel === tab.id ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-600 hover:text-gray-400'
                   }`}
                   title={tab.label}
                 >
@@ -455,10 +455,10 @@ export default function AgentIdePage() {
                       value={searchQuery}
                       onChange={e => setSearchQuery(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && runSearch()}
-                      className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs focus:border-indigo-500 outline-none"
+                      className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs focus:border-blue-500 outline-none"
                       placeholder="Search codebase..."
                     />
-                    <button onClick={runSearch} className="p-1 rounded bg-indigo-600 hover:bg-indigo-500">
+                    <button onClick={runSearch} className="p-1 rounded bg-blue-600 hover:bg-blue-500">
                       <Search className="w-3 h-3" />
                     </button>
                   </div>
@@ -467,7 +467,7 @@ export default function AgentIdePage() {
                       <p className="text-gray-500">{searchResults.length} files found</p>
                       {searchResults.map((r, i) => (
                         <div key={i} className="border border-gray-800 rounded p-2">
-                          <button onClick={() => openFile(r.file)} className="text-indigo-400 hover:underline text-left w-full truncate">
+                          <button onClick={() => openFile(r.file)} className="text-blue-400 hover:underline text-left w-full truncate">
                             {r.file}
                           </button>
                           <span className="text-gray-600 ml-1">({r.totalMatches} matches)</span>
@@ -487,7 +487,7 @@ export default function AgentIdePage() {
               {activePanel === 'ai' && (
                 <div className="p-2 space-y-3">
                   <div className="text-center py-2">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center mx-auto mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-blue-600 flex items-center justify-center mx-auto mb-2">
                       <Sparkles className="w-5 h-5 text-white" />
                     </div>
                     <p className="text-xs text-gray-400">AI Engineering Agent</p>
@@ -496,15 +496,15 @@ export default function AgentIdePage() {
                   <textarea
                     value={aiPrompt}
                     onChange={e => setAiPrompt(e.target.value)}
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs h-24 resize-none focus:border-indigo-500 outline-none"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs h-24 resize-none focus:border-blue-500 outline-none"
                     placeholder="Describe what you need...&#10;e.g., 'Create a rate limiter middleware'&#10;or 'Fix the authentication bug'"
                   />
 
                   <div className="grid grid-cols-2 gap-1">
-                    <button onClick={aiGenerate} disabled={aiLoading} className="flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50">
+                    <button onClick={aiGenerate} disabled={aiLoading} className="flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[10px] bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50">
                       <Wand2 className="w-3 h-3" /> Generate
                     </button>
-                    <button onClick={aiCreateTool} disabled={aiLoading} className="flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[10px] bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50">
+                    <button onClick={aiCreateTool} disabled={aiLoading} className="flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[10px] bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50">
                       <Zap className="w-3 h-3" /> Create Tool
                     </button>
                   </div>
@@ -536,7 +536,7 @@ export default function AgentIdePage() {
 
                   {aiLoading && (
                     <div className="text-center py-3">
-                      <Cpu className="w-5 h-5 text-indigo-400 animate-spin mx-auto" />
+                      <Cpu className="w-5 h-5 text-blue-400 animate-spin mx-auto" />
                       <p className="text-[10px] text-gray-500 mt-1">AI thinking...</p>
                     </div>
                   )}
@@ -553,7 +553,7 @@ export default function AgentIdePage() {
                             <span className="text-[10px] text-gray-500">AI Output</span>
                             <div className="flex gap-1">
                               {activeFile && (
-                                <button onClick={applyAiCode} className="text-[10px] px-2 py-0.5 rounded bg-green-700 hover:bg-green-600 text-white">
+                                <button onClick={applyAiCode} className="text-[10px] px-2 py-0.5 rounded bg-blue-700 hover:bg-blue-600 text-white">
                                   Apply
                                 </button>
                               )}
@@ -588,8 +588,8 @@ export default function AgentIdePage() {
                     <>
                       <div className="bg-gray-900 rounded p-2 text-xs">
                         <div className="flex items-center gap-1 mb-1">
-                          <GitBranch className="w-3 h-3 text-indigo-400" />
-                          <span className="text-indigo-300">{gitInfo.branch}</span>
+                          <GitBranch className="w-3 h-3 text-blue-400" />
+                          <span className="text-blue-300">{gitInfo.branch}</span>
                         </div>
                         <p className="text-gray-500 text-[10px] truncate">{gitInfo.lastCommit}</p>
                       </div>
@@ -602,7 +602,7 @@ export default function AgentIdePage() {
                             return (
                               <div key={i} className="flex items-center gap-1 py-0.5 text-[10px]">
                                 <span className={`w-3 text-center font-mono ${
-                                  status === 'M' ? 'text-amber-400' : status === '?' ? 'text-green-400' : status === 'D' ? 'text-red-400' : 'text-gray-400'
+                                  status === 'M' ? 'text-amber-400' : status === '?' ? 'text-blue-400' : status === 'D' ? 'text-red-400' : 'text-gray-400'
                                 }`}>{status}</span>
                                 <button onClick={() => openFile(file)} className="text-gray-400 hover:text-white truncate">
                                   {file}
@@ -655,7 +655,7 @@ export default function AgentIdePage() {
                   {/* Editor Toolbar */}
                   <div className="h-8 bg-[#161b22] border-b border-gray-800 flex items-center justify-between px-3 flex-shrink-0">
                     <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <span className="text-indigo-400 font-mono">{activeFile}</span>
+                      <span className="text-blue-400 font-mono">{activeFile}</span>
                       <span className="text-gray-600">&bull;</span>
                       <span>{fileExt.toUpperCase()}</span>
                       <span className="text-gray-600">&bull;</span>
@@ -666,10 +666,10 @@ export default function AgentIdePage() {
                       <button onClick={() => saveFile(activeFile)} disabled={!isModified} className="ui-dark-chip-action flex items-center gap-1 px-2 py-0.5 rounded text-[10px] disabled:opacity-30" title="Save (Ctrl+S)">
                         <Save className="w-3 h-3" /> Save
                       </button>
-                      <button onClick={runCode} className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-green-800 hover:bg-green-700 text-green-300" title="Run">
+                      <button onClick={runCode} className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-blue-800 hover:bg-blue-700 text-blue-300" title="Run">
                         <Play className="w-3 h-3" /> Run
                       </button>
-                      <button onClick={() => { setActivePanel('ai'); setShowSidebar(true); }} className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-purple-800 hover:bg-purple-700 text-purple-300">
+                      <button onClick={() => { setActivePanel('ai'); setShowSidebar(true); }} className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-blue-800 hover:bg-blue-700 text-blue-300">
                         <Bot className="w-3 h-3" /> AI
                       </button>
                     </div>
@@ -698,7 +698,7 @@ export default function AgentIdePage() {
                 /* Welcome Screen */
                 <div className="h-full flex items-center justify-center">
                   <div className="text-center max-w-lg">
-                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-indigo-900/30">
+                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-blue-900/30">
                       <Code2 className="w-10 h-10 text-white" />
                     </div>
                     <h2 className="text-2xl font-bold text-white mb-2">DoctaRx Agent IDE</h2>
@@ -709,8 +709,8 @@ export default function AgentIdePage() {
                     <div className="grid grid-cols-2 gap-3 text-left mb-6">
                       {[
                         { icon: FolderTree, title: 'File Explorer', desc: 'Browse and edit any project file', color: 'text-amber-400' },
-                        { icon: Bot, title: 'AI Code Generation', desc: 'Generate code with Gemini AI', color: 'text-purple-400' },
-                        { icon: Terminal, title: 'Integrated Terminal', desc: 'Run commands and scripts', color: 'text-green-400' },
+                        { icon: Bot, title: 'AI Code Generation', desc: 'Generate code with Gemini AI', color: 'text-blue-400' },
+                        { icon: Terminal, title: 'Integrated Terminal', desc: 'Run commands and scripts', color: 'text-blue-400' },
                         { icon: Shield, title: 'Security Audits', desc: 'HIPAA compliance scanning', color: 'text-red-400' },
                         { icon: Bug, title: 'Auto Bug Fix', desc: 'AI-powered error resolution', color: 'text-orange-400' },
                         { icon: Zap, title: 'Tool Creator', desc: 'Build new tools and utilities', color: 'text-cyan-400' },
@@ -737,15 +737,15 @@ export default function AgentIdePage() {
                         <h3 className="text-gray-400 font-semibold mb-2">Project Overview</h3>
                         <div className="grid grid-cols-4 gap-3 text-center">
                           <div>
-                            <p className="text-lg font-bold text-indigo-400">{projectStats.totalFiles}</p>
+                            <p className="text-lg font-bold text-blue-400">{projectStats.totalFiles}</p>
                             <p className="text-gray-600">Files</p>
                           </div>
                           <div>
-                            <p className="text-lg font-bold text-green-400">{(projectStats.totalLines || 0).toLocaleString()}</p>
+                            <p className="text-lg font-bold text-blue-400">{(projectStats.totalLines || 0).toLocaleString()}</p>
                             <p className="text-gray-600">Lines</p>
                           </div>
                           <div>
-                            <p className="text-lg font-bold text-purple-400">{projectStats.architecture?.routes?.length || 0}</p>
+                            <p className="text-lg font-bold text-blue-400">{projectStats.architecture?.routes?.length || 0}</p>
                             <p className="text-gray-600">API Routes</p>
                           </div>
                           <div>
@@ -778,10 +778,10 @@ export default function AgentIdePage() {
                   {terminalOutput.map((line, i) => (
                     <div key={i} className={`whitespace-pre-wrap ${
                       line.type === 'error' ? 'text-red-400' :
-                      line.type === 'success' ? 'text-green-400' :
+                      line.type === 'success' ? 'text-blue-400' :
                       line.type === 'system' ? 'text-gray-500' :
                       line.type === 'input' ? 'text-cyan-300' :
-                      line.type === 'ai' ? 'text-purple-300' :
+                      line.type === 'ai' ? 'text-blue-300' :
                       'text-gray-300'
                     }`}>
                       {line.time && <span className="text-gray-700 text-[9px] mr-1">[{line.time}]</span>}
@@ -790,7 +790,7 @@ export default function AgentIdePage() {
                   ))}
                 </div>
                 <div className="flex items-center border-t border-gray-800 px-2 flex-shrink-0">
-                  <span className="text-green-400 text-xs mr-1">$</span>
+                  <span className="text-blue-400 text-xs mr-1">$</span>
                   <input
                     value={terminalInput}
                     onChange={e => setTerminalInput(e.target.value)}

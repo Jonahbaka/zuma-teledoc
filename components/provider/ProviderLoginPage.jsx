@@ -14,20 +14,20 @@ import { setPreferredProviderMarket } from '@/lib/providerPortal';
 
 const MARKET_THEMES = {
   US: {
-    icon: 'from-purple-500 to-indigo-600',
-    button: 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700',
-    link: 'text-purple-400 hover:text-purple-300',
-    focus: 'focus:border-purple-500',
-    badge: 'HIPAA compliant • Healthcare-grade security',
+    icon: 'from-blue-500 to-blue-600',
+    button: 'from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700',
+    link: 'text-blue-400 hover:text-blue-300',
+    focus: 'focus:border-blue-500',
+    badge: 'DoctaRx · Clinical access',
     subtitle: 'Access your clinical dashboard',
   },
   NG: {
-    icon: 'from-emerald-500 to-teal-600',
-    button: 'from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700',
-    link: 'text-emerald-400 hover:text-emerald-300',
-    focus: 'focus:border-emerald-500',
-    badge: 'NDPA aligned • Encrypted clinical sessions',
-    subtitle: 'Access your Nigeria doctor, clinic, and hospital operations portal',
+    icon: 'from-blue-500 to-blue-600',
+    button: 'from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700',
+    link: 'text-blue-400 hover:text-blue-300',
+    focus: 'focus:border-blue-500',
+    badge: 'DoctaRx · Clinical access',
+    subtitle: 'Access your clinical workspace',
   },
 };
 
@@ -174,7 +174,7 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       <header className="px-4 py-5 sm:p-6">
         <Link href={homeHref} className="flex items-center gap-2">
           <DoctaRxLogo className="h-9 w-auto" />
@@ -207,12 +207,12 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
             </div>
 
             {(fromInvite || justRegistered) && (
-              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 mb-6">
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-6">
                 <div className="flex items-start gap-3">
-                  <Shield className="w-5 h-5 text-emerald-400 mt-0.5" />
+                  <Shield className="w-5 h-5 text-blue-400 mt-0.5" />
                   <div>
-                    <p className="text-sm text-emerald-200 font-medium">Registration Complete</p>
-                    <p className="text-xs text-emerald-300/70 mt-1">
+                    <p className="text-sm text-blue-200 font-medium">Registration Complete</p>
+                    <p className="text-xs text-blue-300/70 mt-1">
                       {market === 'NG'
                         ? 'Sign in to continue credential review and configure your Nigeria care workspace.'
                         : 'Sign in to complete your credentialing. Credential review typically takes 1-2 business days.'}

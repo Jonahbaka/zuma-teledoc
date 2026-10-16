@@ -20,7 +20,7 @@ function StatusPill({ status }) {
     submitted:           'bg-slate-100 text-slate-700',
     area_council_review: 'bg-amber-100 text-amber-700',
     fcta_review:         'bg-blue-100 text-blue-700',
-    approved:            'bg-emerald-100 text-emerald-700',
+    approved:            'bg-blue-100 text-blue-700',
     rejected:            'bg-rose-100 text-rose-700',
   };
   return (
@@ -100,7 +100,7 @@ export default function AmacPortal() {
           {[
             { label: 'New submissions',  value: submitted.length,   color: 'text-amber-600',   hl: submitted.length > 0 },
             { label: 'Under review',     value: underReview.length, color: 'text-blue-600' },
-            { label: 'Forwarded / done', value: forwarded.length,   color: 'text-emerald-600' },
+            { label: 'Forwarded / done', value: forwarded.length,   color: 'text-blue-600' },
           ].map((item) => (
             <div key={item.label} className={`rounded-2xl border p-4 ${item.hl ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
               <p className="text-xs text-slate-500">{item.label}</p>

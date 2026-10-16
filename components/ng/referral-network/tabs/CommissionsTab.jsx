@@ -5,15 +5,15 @@ import { AlertCircle, RefreshCw, Wallet } from 'lucide-react';
 import { drn, fmtNaira } from '../drnApi';
 
 const KIND_BADGE = {
-  agent:                'bg-emerald-100 text-emerald-800',
+  agent:                'bg-blue-100 text-blue-800',
   originating_provider: 'bg-blue-100 text-blue-800',
-  originating_org:      'bg-indigo-100 text-indigo-800',
+  originating_org:      'bg-blue-100 text-blue-800',
   platform:             'bg-slate-200 text-slate-700',
 };
 const STATUS_BADGE = {
   accrued:     'bg-amber-100 text-amber-800',
   approved:    'bg-blue-100 text-blue-800',
-  paid:        'bg-emerald-100 text-emerald-800',
+  paid:        'bg-blue-100 text-blue-800',
   clawed_back: 'bg-rose-100 text-rose-800',
   void:        'bg-slate-200 text-slate-700',
 };
@@ -102,7 +102,7 @@ export default function CommissionsTab() {
 function Tile({ label, value, tone = 'slate', icon: Icon }) {
   const tones = {
     slate:  'bg-white border-slate-200',
-    green:  'bg-emerald-50 border-emerald-200',
+    green:  'bg-blue-50 border-blue-200',
     amber:  'bg-amber-50 border-amber-200',
     blue:   'bg-blue-50 border-blue-200',
   };

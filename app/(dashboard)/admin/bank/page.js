@@ -119,7 +119,7 @@ export default function BankPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-950">
         <div className="text-center">
-          <Landmark className="w-12 h-12 text-emerald-400 animate-pulse mx-auto mb-4" />
+          <Landmark className="w-12 h-12 text-blue-400 animate-pulse mx-auto mb-4" />
           <p className="text-gray-400">Loading Corporate Treasury...</p>
         </div>
       </div>
@@ -132,7 +132,7 @@ export default function BankPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
               <Landmark className="w-5 h-5 text-white" />
             </div>
             DoctaRx Corporate Treasury
@@ -152,7 +152,7 @@ export default function BankPage() {
             onClick={() => loadTab(tab.id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all ${
               activeTab === tab.id
-                ? 'bg-emerald-600 text-white'
+                ? 'bg-blue-600 text-white'
                 : 'ui-dark-chip-action-soft'
             }`}
           >
@@ -182,14 +182,14 @@ export default function BankPage() {
           {/* Bank Accounts Overview */}
           <div className="bg-gray-900/50 rounded-xl border border-gray-800 p-5">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-emerald-400" /> Bank Accounts
+              <Building2 className="w-5 h-5 text-blue-400" /> Bank Accounts
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
               {(dashboard.cash?.accounts || []).map((acc, i) => (
                 <div key={i} className="bg-gray-800/60 rounded-lg p-4 border border-gray-700/50">
                   <p className="text-xs text-gray-500 truncate">{acc.account_number}</p>
                   <p className="text-sm font-medium text-gray-300 mt-1">{acc.account_name?.replace('DoctaRx ', '')}</p>
-                  <p className={`text-lg font-bold mt-2 ${parseFloat(acc.current_balance) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <p className={`text-lg font-bold mt-2 ${parseFloat(acc.current_balance) >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
                     {fmt(acc.current_balance)}
                   </p>
                   <span className="ui-dark-chip text-[10px] px-2 py-0.5 mt-2 inline-block rounded uppercase">{acc.account_type}</span>
@@ -241,7 +241,7 @@ export default function BankPage() {
                   <div key={i} className="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        ['deposit', 'stripe_charge', 'interest'].includes(txn.transaction_type) ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400'
+                        ['deposit', 'stripe_charge', 'interest'].includes(txn.transaction_type) ? 'bg-blue-900/40 text-blue-400' : 'bg-red-900/40 text-red-400'
                       }`}>
                         {['deposit', 'stripe_charge', 'interest'].includes(txn.transaction_type) ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
                       </div>
@@ -251,7 +251,7 @@ export default function BankPage() {
                       </div>
                     </div>
                     <span className={`font-mono text-sm font-semibold ${
-                      ['deposit', 'stripe_charge', 'interest'].includes(txn.transaction_type) ? 'text-emerald-400' : 'text-red-400'
+                      ['deposit', 'stripe_charge', 'interest'].includes(txn.transaction_type) ? 'text-blue-400' : 'text-red-400'
                     }`}>
                       {['deposit', 'stripe_charge', 'interest'].includes(txn.transaction_type) ? '+' : '-'}{fmt(txn.amount)}
                     </span>
@@ -263,38 +263,38 @@ export default function BankPage() {
 
           {/* ═══ REAL STRIPE ACCOUNT (Live) ═══ */}
           {dashboard.stripe_live && (
-            <div className="bg-gradient-to-r from-indigo-900/40 via-violet-900/30 to-purple-900/40 rounded-xl border border-indigo-500/40 p-5 relative overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-900/40 via-violet-900/30 to-blue-900/40 rounded-xl border border-blue-500/40 p-5 relative overflow-hidden">
               <div className="absolute top-3 right-4 flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${dashboard.stripe_live?.live ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+                <span className={`w-2 h-2 rounded-full ${dashboard.stripe_live?.live ? 'bg-blue-400 animate-pulse' : 'bg-red-400'}`} />
                 <span className="text-[10px] font-mono text-gray-400">
                   {dashboard.stripe_live?.live ? (dashboard.stripe_live?.test_mode ? 'TEST MODE' : 'LIVE') : 'OFFLINE'}
                 </span>
               </div>
               <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-indigo-400" /> Stripe Account — Real Balance
+                <CreditCard className="w-5 h-5 text-blue-400" /> Stripe Account — Real Balance
               </h3>
               <p className="text-xs text-gray-400 mb-4">Live data from Stripe API &bull; Not simulated</p>
 
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-5">
-                <div className="bg-black/30 rounded-lg p-3 border border-indigo-700/30">
+                <div className="bg-black/30 rounded-lg p-3 border border-blue-700/30">
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider">Available</p>
-                  <p className="text-xl font-bold text-green-400">{fmt(dashboard.stripe_live?.available_balance)}</p>
+                  <p className="text-xl font-bold text-blue-400">{fmt(dashboard.stripe_live?.available_balance)}</p>
                 </div>
-                <div className="bg-black/30 rounded-lg p-3 border border-indigo-700/30">
+                <div className="bg-black/30 rounded-lg p-3 border border-blue-700/30">
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider">Pending</p>
                   <p className="text-xl font-bold text-yellow-400">{fmt(dashboard.stripe_live?.pending_balance)}</p>
                 </div>
-                <div className="bg-black/30 rounded-lg p-3 border border-indigo-700/30">
+                <div className="bg-black/30 rounded-lg p-3 border border-blue-700/30">
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider">Total Balance</p>
-                  <p className="text-xl font-bold text-indigo-300">{fmt(dashboard.stripe_live?.total_balance)}</p>
+                  <p className="text-xl font-bold text-blue-300">{fmt(dashboard.stripe_live?.total_balance)}</p>
                 </div>
-                <div className="bg-black/30 rounded-lg p-3 border border-indigo-700/30">
+                <div className="bg-black/30 rounded-lg p-3 border border-blue-700/30">
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider">MRR</p>
                   <p className="text-xl font-bold text-blue-400">{fmt(dashboard.stripe_live?.mrr)}</p>
                 </div>
-                <div className="bg-black/30 rounded-lg p-3 border border-indigo-700/30">
+                <div className="bg-black/30 rounded-lg p-3 border border-blue-700/30">
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider">ARR</p>
-                  <p className="text-xl font-bold text-purple-400">{fmt(dashboard.stripe_live?.arr)}</p>
+                  <p className="text-xl font-bold text-blue-400">{fmt(dashboard.stripe_live?.arr)}</p>
                 </div>
               </div>
 
@@ -321,12 +321,12 @@ export default function BankPage() {
                     {dashboard.stripe_live.recent_charges.map((charge, i) => (
                       <div key={i} className="flex items-center justify-between py-1.5 px-3 rounded bg-black/20 border border-gray-800/50 text-sm">
                         <div className="flex items-center gap-2">
-                          <span className={`w-1.5 h-1.5 rounded-full ${charge.status === 'succeeded' ? 'bg-green-400' : charge.status === 'pending' ? 'bg-yellow-400' : 'bg-red-400'}`} />
+                          <span className={`w-1.5 h-1.5 rounded-full ${charge.status === 'succeeded' ? 'bg-blue-400' : charge.status === 'pending' ? 'bg-yellow-400' : 'bg-red-400'}`} />
                           <span className="text-gray-300 truncate max-w-[200px]">{charge.description}</span>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-xs text-gray-500">{new Date(charge.created).toLocaleDateString()}</span>
-                          <span className="font-mono font-semibold text-green-400">{fmt(charge.amount)}</span>
+                          <span className="font-mono font-semibold text-blue-400">{fmt(charge.amount)}</span>
                         </div>
                       </div>
                     ))}
@@ -343,23 +343,23 @@ export default function BankPage() {
           )}
 
           {/* Stripe Revenue Bridge (Ledger) */}
-          <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 rounded-xl border border-purple-700/30 p-5">
+          <div className="bg-gradient-to-r from-blue-900/30 to-blue-900/30 rounded-xl border border-blue-700/30 p-5">
             <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-              <ArrowRightLeft className="w-4 h-4 text-purple-400" /> Stripe Revenue Bridge (Ledger)
+              <ArrowRightLeft className="w-4 h-4 text-blue-400" /> Stripe Revenue Bridge (Ledger)
             </h3>
             <p className="text-xs text-gray-400 mb-3">Links Stripe payments to our double-entry accounting ledger</p>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <p className="text-xs text-gray-500">Total Processed</p>
-                <p className="text-xl font-bold text-purple-300">{fmt(dashboard.stripe?.total_processed)}</p>
+                <p className="text-xl font-bold text-blue-300">{fmt(dashboard.stripe?.total_processed)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Net (After Fees)</p>
-                <p className="text-xl font-bold text-purple-300">{fmt(dashboard.stripe?.total_net)}</p>
+                <p className="text-xl font-bold text-blue-300">{fmt(dashboard.stripe?.total_net)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Transactions</p>
-                <p className="text-xl font-bold text-purple-300">{dashboard.stripe?.transaction_count || 0}</p>
+                <p className="text-xl font-bold text-blue-300">{dashboard.stripe?.transaction_count || 0}</p>
               </div>
             </div>
           </div>
@@ -374,23 +374,23 @@ export default function BankPage() {
               <div 
                 key={acc.id}
                 onClick={() => loadTransactions(acc.id)}
-                className={`bg-gray-900/50 rounded-xl border p-5 cursor-pointer transition-all hover:border-emerald-600/50 ${
-                  selectedAccount === acc.id ? 'border-emerald-500' : 'border-gray-800'
+                className={`bg-gray-900/50 rounded-xl border p-5 cursor-pointer transition-all hover:border-blue-600/50 ${
+                  selectedAccount === acc.id ? 'border-blue-500' : 'border-gray-800'
                 }`}
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <Landmark className="w-5 h-5 text-emerald-400" />
+                    <Landmark className="w-5 h-5 text-blue-400" />
                     <span className="text-sm font-medium">{acc.account_name}</span>
                   </div>
-                  {acc.stripe_connected && <span className="text-[10px] px-2 py-0.5 rounded bg-purple-900/40 text-purple-400 border border-purple-700/30">STRIPE</span>}
+                  {acc.stripe_connected && <span className="text-[10px] px-2 py-0.5 rounded bg-blue-900/40 text-blue-400 border border-blue-700/30">STRIPE</span>}
                 </div>
                 <p className="text-xs text-gray-500 font-mono">{acc.account_number}</p>
                 <p className="text-xs text-gray-500 mt-1">Routing: {acc.routing_number}</p>
                 <div className="mt-4 pt-3 border-t border-gray-800">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Current Balance</span>
-                    <span className={`font-bold font-mono ${parseFloat(acc.current_balance) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(acc.current_balance)}</span>
+                    <span className={`font-bold font-mono ${parseFloat(acc.current_balance) >= 0 ? 'text-blue-400' : 'text-red-400'}`}>{fmt(acc.current_balance)}</span>
                   </div>
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-gray-500">Available</span>
@@ -437,7 +437,7 @@ export default function BankPage() {
                           </td>
                           <td className="py-2 text-gray-300 max-w-xs truncate">{txn.description}</td>
                           <td className="py-2 text-gray-400">{txn.counterparty || '—'}</td>
-                          <td className={`py-2 text-right font-mono ${['deposit', 'stripe_charge', 'interest'].includes(txn.transaction_type) ? 'text-emerald-400' : 'text-red-400'}`}>
+                          <td className={`py-2 text-right font-mono ${['deposit', 'stripe_charge', 'interest'].includes(txn.transaction_type) ? 'text-blue-400' : 'text-red-400'}`}>
                             {['deposit', 'stripe_charge', 'interest'].includes(txn.transaction_type) ? '+' : '-'}{fmt(txn.amount)}
                           </td>
                           <td className="py-2 text-right font-mono text-gray-300">{fmt(txn.running_balance)}</td>
@@ -470,7 +470,7 @@ export default function BankPage() {
                       <span className="text-xs text-gray-400 ml-2">{new Date(je.entry_date).toLocaleDateString()}</span>
                       <span className="ui-dark-chip text-xs px-2 py-0.5 rounded ml-2">{je.source}</span>
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded ${je.is_posted ? 'bg-emerald-900/40 text-emerald-400' : 'bg-amber-900/40 text-amber-400'}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded ${je.is_posted ? 'bg-blue-900/40 text-blue-400' : 'bg-amber-900/40 text-amber-400'}`}>
                       {je.is_posted ? 'Posted' : 'Draft'}
                     </span>
                   </div>
@@ -482,7 +482,7 @@ export default function BankPage() {
                     {(je.lines || []).map((line, li) => (
                       <React.Fragment key={li}>
                         <span className="text-gray-400">{line.account_number}</span>
-                        <span className="text-right font-mono text-emerald-400">{parseFloat(line.debit) > 0 ? fmt(line.debit) : ''}</span>
+                        <span className="text-right font-mono text-blue-400">{parseFloat(line.debit) > 0 ? fmt(line.debit) : ''}</span>
                         <span className="text-right font-mono text-blue-400">{parseFloat(line.credit) > 0 ? fmt(line.credit) : ''}</span>
                       </React.Fragment>
                     ))}
@@ -524,12 +524,12 @@ export default function BankPage() {
                       <td className="py-2 text-gray-300">{inv.customer_name}</td>
                       <td className="py-2"><span className="ui-dark-chip text-xs px-2 py-0.5 rounded capitalize">{inv.customer_type}</span></td>
                       <td className="py-2 text-right font-mono">{fmt(inv.amount)}</td>
-                      <td className="py-2 text-right font-mono text-emerald-400">{fmt(inv.amount_paid)}</td>
+                      <td className="py-2 text-right font-mono text-blue-400">{fmt(inv.amount_paid)}</td>
                       <td className="py-2 text-right font-mono text-amber-400">{fmt(inv.balance_due)}</td>
                       <td className="py-2 text-gray-400">{new Date(inv.due_date).toLocaleDateString()}</td>
                       <td className="py-2">
                         <span className={`text-xs px-2 py-0.5 rounded ${
-                          inv.status === 'paid' ? 'bg-emerald-900/40 text-emerald-400' :
+                          inv.status === 'paid' ? 'bg-blue-900/40 text-blue-400' :
                           inv.status === 'overdue' ? 'bg-red-900/40 text-red-400' :
                           'bg-amber-900/40 text-amber-400'
                         }`}>{inv.status}</span>
@@ -576,7 +576,7 @@ export default function BankPage() {
                       <td className="py-2 text-gray-400">{new Date(bill.due_date).toLocaleDateString()}</td>
                       <td className="py-2">
                         <span className={`text-xs px-2 py-0.5 rounded ${
-                          bill.status === 'paid' ? 'bg-emerald-900/40 text-emerald-400' :
+                          bill.status === 'paid' ? 'bg-blue-900/40 text-blue-400' :
                           bill.status === 'overdue' ? 'bg-red-900/40 text-red-400' :
                           'bg-amber-900/40 text-amber-400'
                         }`}>{bill.status}</span>
@@ -596,9 +596,9 @@ export default function BankPage() {
           {/* Balance Sheet */}
           <div className="bg-gray-900/50 rounded-xl border border-gray-800 p-5">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Scale className="w-5 h-5 text-emerald-400" /> Balance Sheet
+              <Scale className="w-5 h-5 text-blue-400" /> Balance Sheet
               {balanceSheet && (
-                <span className={`text-xs px-2 py-0.5 rounded ml-2 ${balanceSheet.is_balanced ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400'}`}>
+                <span className={`text-xs px-2 py-0.5 rounded ml-2 ${balanceSheet.is_balanced ? 'bg-blue-900/40 text-blue-400' : 'bg-red-900/40 text-red-400'}`}>
                   {balanceSheet.is_balanced ? 'BALANCED' : 'OUT OF BALANCE'}
                 </span>
               )}
@@ -606,7 +606,7 @@ export default function BankPage() {
             {balanceSheet ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
-                  <h4 className="text-sm font-medium text-emerald-400 mb-2">Assets</h4>
+                  <h4 className="text-sm font-medium text-blue-400 mb-2">Assets</h4>
                   {(balanceSheet.assets?.items || []).map((a, i) => (
                     <div key={i} className="flex justify-between text-sm py-1">
                       <span className="text-gray-400">{a.account_name}</span>
@@ -614,8 +614,8 @@ export default function BankPage() {
                     </div>
                   ))}
                   <div className="flex justify-between text-sm py-2 border-t border-gray-700 mt-2 font-bold">
-                    <span className="text-emerald-400">Total Assets</span>
-                    <span className="font-mono text-emerald-400">{fmt(balanceSheet.assets?.total)}</span>
+                    <span className="text-blue-400">Total Assets</span>
+                    <span className="font-mono text-blue-400">{fmt(balanceSheet.assets?.total)}</span>
                   </div>
                 </div>
                 <div>
@@ -658,7 +658,7 @@ export default function BankPage() {
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <div className="text-center p-3 bg-gray-800/40 rounded-lg">
                     <p className="text-xs text-gray-500">Net Revenue</p>
-                    <p className="text-lg font-bold text-emerald-400">{fmt(incomeStatement.net_revenue)}</p>
+                    <p className="text-lg font-bold text-blue-400">{fmt(incomeStatement.net_revenue)}</p>
                   </div>
                   <div className="text-center p-3 bg-gray-800/40 rounded-lg">
                     <p className="text-xs text-gray-500">Gross Profit</p>
@@ -671,11 +671,11 @@ export default function BankPage() {
                   </div>
                   <div className="text-center p-3 bg-gray-800/40 rounded-lg">
                     <p className="text-xs text-gray-500">Operating Income</p>
-                    <p className="text-lg font-bold text-purple-400">{fmt(incomeStatement.operating_income)}</p>
+                    <p className="text-lg font-bold text-blue-400">{fmt(incomeStatement.operating_income)}</p>
                   </div>
                   <div className="text-center p-3 bg-gray-800/40 rounded-lg">
                     <p className="text-xs text-gray-500">Net Income</p>
-                    <p className={`text-lg font-bold ${incomeStatement.net_income >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(incomeStatement.net_income)}</p>
+                    <p className={`text-lg font-bold ${incomeStatement.net_income >= 0 ? 'text-blue-400' : 'text-red-400'}`}>{fmt(incomeStatement.net_income)}</p>
                     <p className="text-xs text-gray-600">{incomeStatement.net_margin}% margin</p>
                   </div>
                 </div>
@@ -708,11 +708,11 @@ export default function BankPage() {
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">Revenue</p>
-                      <p className="text-sm font-bold text-emerald-400">{fmt(r.revenue_generated)}</p>
+                      <p className="text-sm font-bold text-blue-400">{fmt(r.revenue_generated)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">ROI</p>
-                      <p className={`text-sm font-bold ${parseFloat(r.calculated_roi || r.roi_percentage) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      <p className={`text-sm font-bold ${parseFloat(r.calculated_roi || r.roi_percentage) >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
                         {(parseFloat(r.calculated_roi || r.roi_percentage) || 0).toFixed(1)}%
                       </p>
                     </div>
@@ -751,10 +751,10 @@ export default function BankPage() {
                       <td className="py-2 text-gray-300">{acc.account_name}</td>
                       <td className="py-2">
                         <span className={`text-xs px-2 py-0.5 rounded ${
-                          acc.account_type === 'asset' ? 'bg-emerald-900/30 text-emerald-400' :
+                          acc.account_type === 'asset' ? 'bg-blue-900/30 text-blue-400' :
                           acc.account_type === 'liability' ? 'bg-red-900/30 text-red-400' :
                           acc.account_type === 'equity' ? 'bg-blue-900/30 text-blue-400' :
-                          acc.account_type === 'revenue' ? 'bg-purple-900/30 text-purple-400' :
+                          acc.account_type === 'revenue' ? 'bg-blue-900/30 text-blue-400' :
                           'bg-amber-900/30 text-amber-400'
                         }`}>{acc.account_type}</span>
                       </td>
@@ -775,13 +775,13 @@ export default function BankPage() {
 // ═══ Metric Card Component ═══
 function MetricCard({ icon: Icon, label, value, color = 'gray' }) {
   const colors = {
-    emerald: 'from-emerald-900/30 to-emerald-900/10 border-emerald-700/30 text-emerald-400',
+    emerald: 'from-blue-900/30 to-blue-900/10 border-blue-700/30 text-blue-400',
     blue: 'from-blue-900/30 to-blue-900/10 border-blue-700/30 text-blue-400',
     red: 'from-red-900/30 to-red-900/10 border-red-700/30 text-red-400',
-    green: 'from-green-900/30 to-green-900/10 border-green-700/30 text-green-400',
+    green: 'from-blue-900/30 to-blue-900/10 border-blue-700/30 text-blue-400',
     amber: 'from-amber-900/30 to-amber-900/10 border-amber-700/30 text-amber-400',
     orange: 'from-orange-900/30 to-orange-900/10 border-orange-700/30 text-orange-400',
-    purple: 'from-purple-900/30 to-purple-900/10 border-purple-700/30 text-purple-400',
+    purple: 'from-blue-900/30 to-blue-900/10 border-blue-700/30 text-blue-400',
     cyan: 'from-cyan-900/30 to-cyan-900/10 border-cyan-700/30 text-cyan-400',
     gray: 'from-gray-900/30 to-gray-900/10 border-gray-700/30 text-gray-400'
   };

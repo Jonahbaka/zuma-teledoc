@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Calendar, Clock, MessageSquare, Plus, Video } from 'lucide-react';
 import { appointmentsAPI } from '@/lib/api';
+import PortalPageHeader from '@/components/branding/PortalPageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/utils';
@@ -12,7 +13,7 @@ function getStatusTone(status) {
   const normalized = String(status || '').toLowerCase();
 
   if (['scheduled', 'confirmed'].includes(normalized)) {
-    return 'bg-emerald-100 text-emerald-700';
+    return 'bg-blue-100 text-blue-700';
   }
 
   if (normalized === 'completed') {
@@ -30,20 +31,28 @@ export default function NigeriaPatientAppointmentsPage() {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [error, setError] = useState('');
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     const loadAppointments = async () => {
+      setLoading(true); setError(''); setAppointments([]);
       try {
-        const params = filter === 'all' ? undefined : { status: filter };
+        const params = ['all','upcoming'].includes(filter) ? undefined : { status: filter };
         const response = await appointmentsAPI.getAll(params);
-        setAppointments(response.data?.success ? response.data.appointments || [] : []);
+        if (!response.data?.success || !Array.isArray(response.data.appointments)) throw new Error();
+        if (!cancelled) setAppointments(filter === 'upcoming' ? response.data.appointments.filter((item) => ['scheduled','confirmed','in_progress'].includes(item.status)) : response.data.appointments);
+      } catch {
+        if (!cancelled) setError('Visits could not be loaded. Please try again.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     loadAppointments();
-  }, [filter]);
+    return () => { cancelled = true; };
+  }, [filter, revision]);
 
   const summary = useMemo(() => {
     const upcoming = appointments.filter((item) => ['scheduled', 'confirmed'].includes(String(item.status || '').toLowerCase())).length;
@@ -54,32 +63,7 @@ export default function NigeriaPatientAppointmentsPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] border border-emerald-200/70 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_35%),linear-gradient(145deg,rgba(255,255,255,0.96),rgba(236,253,245,0.92))] px-5 py-6 shadow-sm sm:px-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Consultations</p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Appointments and live consultation access</h1>
-            <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-              Review upcoming bookings, completed visits, and video-call access without leaving the Nigeria patient workspace.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <Link href="/ng/patient/appointments/book">
-              <Button className="bg-emerald-700 text-white hover:bg-emerald-800">
-                <Plus className="mr-2 h-4 w-4" />
-                Book Consultation
-              </Button>
-            </Link>
-            <Link href="/ng/patient/messages">
-              <Button variant="outline">Request Consultation Support</Button>
-            </Link>
-            <Link href="/ng/patient/records">
-              <Button variant="outline">Open Visit History</Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+      <PortalPageHeader title="Visits" description="Review appointments, prepare for a consultation, and find your visit history."><Link href="/ng/patient/appointments/book"><Button className="bg-blue-600 text-white hover:bg-blue-700">Get care</Button></Link><Link href="/ng/patient/records"><Button variant="outline">Health records</Button></Link></PortalPageHeader>
 
       <section className="grid gap-4 sm:grid-cols-3">
         {[
@@ -90,7 +74,7 @@ export default function NigeriaPatientAppointmentsPage() {
           <Card key={item.label} className="border-border/70">
             <CardContent className="p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{item.label}</p>
-              <p className="mt-3 text-3xl font-bold text-foreground">{loading ? '...' : item.value}</p>
+              <p className="mt-3 text-3xl font-bold text-foreground">{loading || error ? '—' : item.value}</p>
             </CardContent>
           </Card>
         ))}
@@ -99,7 +83,7 @@ export default function NigeriaPatientAppointmentsPage() {
       <section className="flex flex-wrap gap-2">
         {[
           { label: 'All', value: 'all' },
-          { label: 'Upcoming', value: 'scheduled' },
+          { label: 'Upcoming', value: 'upcoming' },
           { label: 'Completed', value: 'completed' },
           { label: 'Cancelled', value: 'cancelled' },
         ].map((item) => (
@@ -108,7 +92,7 @@ export default function NigeriaPatientAppointmentsPage() {
             type="button"
             onClick={() => setFilter(item.value)}
             className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-              filter === item.value ? 'bg-emerald-700 text-white' : 'border border-border bg-card text-muted-foreground hover:text-foreground'
+              filter === item.value ? 'bg-blue-700 text-white' : 'border border-border bg-card text-muted-foreground hover:text-foreground'
             }`}
           >
             {item.label}
@@ -116,19 +100,21 @@ export default function NigeriaPatientAppointmentsPage() {
         ))}
       </section>
 
+      {error && <div className="portal-error"><p role="alert">{error}</p><Button variant="outline" className="mt-3" onClick={() => setRevision((value) => value + 1)}>Try again</Button></div>}
+
       <section className="space-y-4">
         {loading ? (
           <Card className="border-border/70">
             <CardContent className="p-8 text-center text-sm text-muted-foreground">Loading appointments...</CardContent>
           </Card>
-        ) : appointments.length === 0 ? (
+        ) : error ? null : appointments.length === 0 ? (
           <Card className="border-border/70">
             <CardContent className="p-8 text-center">
-              <Calendar className="mx-auto h-10 w-10 text-emerald-500/60" />
+              <Calendar className="mx-auto h-10 w-10 text-blue-500/60" />
               <p className="mt-4 font-semibold text-foreground">No consultations matched this view.</p>
               <p className="mt-2 text-sm text-muted-foreground">Book a Nigeria consultation to choose a type, provider, time, and care context.</p>
               <Link href="/ng/patient/appointments/book" className="mt-5 inline-flex">
-                <Button className="bg-emerald-700 text-white hover:bg-emerald-800">
+                <Button className="bg-blue-700 text-white hover:bg-blue-800">
                   <Plus className="mr-2 h-4 w-4" />
                   Book Consultation
                 </Button>
@@ -171,7 +157,7 @@ export default function NigeriaPatientAppointmentsPage() {
                     </Link>
                     {appointment.type === 'video' && ['scheduled', 'confirmed'].includes(String(appointment.status || '').toLowerCase()) ? (
                       <Link href={`/ng/patient/appointments/${appointment.id}/call`}>
-                        <Button className="bg-emerald-700 text-white hover:bg-emerald-800">Join Call</Button>
+                        <Button className="bg-blue-700 text-white hover:bg-blue-800">Join Call</Button>
                       </Link>
                     ) : null}
                     <Link href="/ng/patient/messages">

@@ -44,17 +44,17 @@ export default function NigeriaAdminSettingsPage() {
   return (
     <div className="space-y-6">
       <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Admin Settings</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">Nigeria Admin Settings</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Security and operational settings</h1>
         <p className="mt-2 text-sm text-muted-foreground">Manage account security for Nigeria operations users and review platform handling expectations.</p>
       </section>
 
-      {message ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</div> : null}
+      {message ? <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{message}</div> : null}
 
       <Card className="border-border/70">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-emerald-600" />
+            <KeyRound className="h-5 w-5 text-blue-600" />
             Change password
           </CardTitle>
         </CardHeader>
@@ -72,7 +72,7 @@ export default function NigeriaAdminSettingsPage() {
             <Input id="confirmPassword" type="password" value={form.confirmPassword} onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))} />
           </div>
           <div className="md:col-span-2 flex justify-end">
-            <Button onClick={handlePasswordChange} disabled={saving} className="bg-emerald-600 text-white hover:bg-emerald-500">
+            <Button onClick={handlePasswordChange} disabled={saving} className="bg-blue-600 text-white hover:bg-blue-500">
               {saving ? 'Updating...' : 'Update Password'}
             </Button>
           </div>
@@ -82,7 +82,7 @@ export default function NigeriaAdminSettingsPage() {
       <Card className="border-border/70">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-emerald-600" />
+            <Mail className="h-5 w-5 text-blue-600" />
             Admin operations notes
           </CardTitle>
         </CardHeader>
@@ -95,7 +95,7 @@ export default function NigeriaAdminSettingsPage() {
       <Card className="border-border/70">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-emerald-600" />
+            <ShieldCheck className="h-5 w-5 text-blue-600" />
             Security posture
           </CardTitle>
         </CardHeader>

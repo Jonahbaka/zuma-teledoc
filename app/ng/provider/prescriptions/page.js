@@ -1,228 +1,127 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, Send } from 'lucide-react';
-import api from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Plus, RefreshCw } from 'lucide-react';
+import api, { providersAPI } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
-import {
-  PRESENTATION_DEMO_LABEL,
-  buildProviderDemoData,
-  shouldShowPresentationDemoData,
-} from '@/lib/ngPresentationDemoData';
+import { Button } from '@/components/ui/button';
+import PortalPageHeader from '@/components/branding/PortalPageHeader';
 
-const emptyItem = { drug_name: '', dosage: '', quantity: '', instructions: '' };
+const blankItem = () => ({ drug_name: '', dosage: '', quantity: '', instructions: '' });
+const patientName = (row) => row.full_name || [row.firstName || row.first_name, row.lastName || row.last_name].filter(Boolean).join(' ') || 'Patient';
 
-export default function NigeriaProviderPrescriptionsPage() {
+function PrescriptionWorkspace() {
   const { user } = useAuth();
+  const query = useSearchParams();
+  const requestedPatient = query.get('patientId') || '';
+  const requestedAppointment = query.get('appointmentId') || '';
+  const [data, setData] = useState({});
   const [loading, setLoading] = useState(true);
-  const [pharmacies, setPharmacies] = useState([]);
-  const [prescriptions, setPrescriptions] = useState([]);
+  const [revision, setRevision] = useState(0);
   const [notice, setNotice] = useState('');
-  const [form, setForm] = useState({
-    patientUserId: '',
-    preferredPharmacyId: '',
-    diagnosis: '',
-    notes: '',
-    fulfillmentPreference: 'pickup_or_delivery',
-    items: [{ ...emptyItem }],
-  });
-  const presentationDemoData = useMemo(() => buildProviderDemoData(), []);
-
-  const loadData = async () => {
-    const [pharmacyResponse, prescriptionResponse] = await Promise.all([
-      api.get('/ng/providers/pharmacies').catch(() => ({ data: { pharmacies: [] } })),
-      api.get('/ng/providers/prescriptions').catch(() => ({ data: { prescriptions: [] } })),
-    ]);
-    setPharmacies(pharmacyResponse.data?.pharmacies || []);
-    setPrescriptions(prescriptionResponse.data?.prescriptions || []);
-    setLoading(false);
-  };
+  const [submitError, setSubmitError] = useState('');
+  const [contextError, setContextError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const generation = useRef(0);
+  const [form, setForm] = useState({ patientUserId: '', appointmentId: '', preferredPharmacyId: '', diagnosis: '', notes: '', fulfillmentPreference: 'pickup_or_delivery', items: [blankItem()] });
 
   useEffect(() => {
-    loadData();
-  }, []);
-
-  const showDemoData = shouldShowPresentationDemoData(user);
-  const visiblePharmacies = showDemoData && pharmacies.length === 0 ? presentationDemoData.pharmacies : pharmacies;
-  const visiblePrescriptions = showDemoData && prescriptions.length === 0 ? presentationDemoData.prescriptions : prescriptions;
-  const usingDemoData = showDemoData && (pharmacies.length === 0 || prescriptions.length === 0);
-
-  const updateItem = (index, field, value) => {
-    setForm((current) => ({
-      ...current,
-      items: current.items.map((item, itemIndex) => (
-        itemIndex === index ? { ...item, [field]: value } : item
-      )),
-    }));
-  };
-
-  const submitPrescription = async (event) => {
-    event.preventDefault();
-    setNotice('');
-    try {
-      const items = form.items
-        .map((item) => ({
-          ...item,
-          drug_name: item.drug_name.trim(),
-          dosage: item.dosage.trim(),
-          quantity: item.quantity.trim(),
-          instructions: item.instructions.trim(),
-        }))
-        .filter((item) => item.drug_name);
-
-      if (!form.patientUserId || items.length === 0) {
-        setNotice('Patient ID and at least one medication are required.');
-        return;
+    if (!user?.id) return undefined;
+    const current = ++generation.current;
+    setLoading(true); setSaving(false); setData({}); setContextError(''); setNotice(''); setSubmitError('');
+    const patients = async () => {
+      const [{ data: shared }, { data: access }] = await Promise.all([providersAPI.getPatients({ limit: 100 }), api.get('/ng/providers/me/access')]);
+      if (!shared.success || !Array.isArray(shared.patients)) throw new Error();
+      const providerId = access.providerAccess?.provider?.id || access.providerAccess?.providerId || access.providerAccess?.id;
+      if (!providerId) throw new Error();
+      const [{ data: native }, { data: appointments }] = await Promise.all([
+        api.get(`/ng/providers/${providerId}/patients`),
+        api.get(`/ng/providers/${providerId}/appointments`, { params: { limit: 100 } }),
+      ]);
+      if (!Array.isArray(native.patients) || !Array.isArray(appointments.appointments)) throw new Error();
+      const rows = new Map([...shared.patients, ...native.patients].map((row) => [row.id, row]));
+      for (const appointment of appointments.appointments) {
+        if (appointment.patient_user_id && !rows.has(appointment.patient_user_id)) rows.set(appointment.patient_user_id, { id: appointment.patient_user_id, full_name: appointment.patient_name });
       }
+      return { rows: [...rows.values()], appointments: appointments.appointments };
+    };
+    const requests = [
+      ['patients', patients],
+      ['pharmacies', async () => { const { data } = await api.get('/ng/providers/pharmacies'); if (!Array.isArray(data.pharmacies)) throw new Error(); return { rows: data.pharmacies.filter((row) => row.status === 'approved') }; }],
+      ['prescriptions', async () => { const { data } = await api.get('/ng/providers/prescriptions'); if (!Array.isArray(data.prescriptions)) throw new Error(); return { rows: data.prescriptions }; }],
+    ];
+    Promise.all(requests.map(async ([key, load]) => { try { return [key, await load()]; } catch { return [key, { error: true }]; } })).then((results) => {
+      if (generation.current !== current) return;
+      const next = Object.fromEntries(results); setData(next); setLoading(false);
+      const appointment = next.patients?.appointments?.find((row) => row.id === requestedAppointment);
+      const patientId = requestedPatient || appointment?.patient_user_id || '';
+      const linked = !requestedAppointment || (appointment && appointment.patient_user_id === patientId);
+      const knownPatient = next.patients?.rows?.some((row) => row.id === patientId);
+      if ((requestedPatient || requestedAppointment) && (!linked || !knownPatient)) {
+        setContextError('The consultation context could not be confirmed. Open the patient chart or select an assigned patient before prescribing.');
+        setForm((old) => ({ ...old, patientUserId: '', appointmentId: '' }));
+      } else if (patientId) {
+        setForm((old) => ({ ...old, patientUserId: patientId, appointmentId: requestedAppointment }));
+      }
+    });
+    return () => { generation.current = current + 1; };
+  }, [user?.id, requestedPatient, requestedAppointment, revision]);
 
-      await api.post('/ng/providers/prescriptions', {
-        patientUserId: form.patientUserId,
-        preferredPharmacyId: form.preferredPharmacyId || null,
-        routedPharmacyId: form.preferredPharmacyId || null,
-        diagnosis: form.diagnosis || null,
-        notes: form.notes || null,
-        fulfillmentPreference: form.fulfillmentPreference,
-        items,
-      });
+  function updateItem(index, field, value) {
+    setForm((old) => ({ ...old, items: old.items.map((item, position) => position === index ? { ...item, [field]: value } : item) }));
+  }
+  async function submit(event) {
+    event.preventDefault();
+    if (saving) return;
+    setNotice(''); setSubmitError('');
+    const items = form.items.map((item) => Object.fromEntries(Object.entries(item).map(([key,value]) => [key,value.trim()]))).filter((item) => item.drug_name);
+    if (!data.patients?.rows?.some((row) => row.id === form.patientUserId) || !items.length) { setSubmitError('Choose an assigned patient and enter at least one medication.'); return; }
+    const current = generation.current; setSaving(true);
+    try {
+      const { data: response } = await api.post('/ng/providers/prescriptions', { ...form, items, appointmentId: form.appointmentId || null, preferredPharmacyId: form.preferredPharmacyId || null, routedPharmacyId: form.preferredPharmacyId || null });
+      if (!response.prescription?.id) throw new Error();
+      if (generation.current !== current) return;
+      setData((old) => ({ ...old, prescriptions: { rows: [response.prescription, ...(old.prescriptions?.rows || [])] } }));
+      setNotice(response.prescription.status === 'routed' ? 'Prescription created. The selected pharmacy has not yet confirmed fulfillment.' : 'Prescription created. Pharmacy fulfillment has not been requested.');
+      setForm((old) => ({ ...old, items: [blankItem()], diagnosis: '', notes: '' }));
+    } catch (error) { if (generation.current === current) setSubmitError(error.response?.data?.error || 'The prescription could not be confirmed. Check prescription activity before submitting again.'); }
+    finally { if (generation.current === current) setSaving(false); }
+  }
+  const patients = data.patients?.rows || [];
+  const prescriptions = data.prescriptions?.rows || [];
+  const field = 'mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base';
+  return <div className="space-y-6">
+    <PortalPageHeader eyebrow="DoctaRx · Clinical workspace" title="Prescriptions" description="Prescribe for an assigned patient and follow the recorded pharmacy response.">
+      <Link href="/ng/provider/patients"><Button variant="outline">Patient charts</Button></Link>
+      <Button variant="outline" disabled={loading || saving} onClick={() => setRevision((value) => value + 1)}><RefreshCw className="mr-2 h-5 w-5" aria-hidden="true" />Refresh</Button>
+    </PortalPageHeader>
+    {notice && <p role="status" className="rounded-xl bg-blue-50 p-4 text-blue-900">{notice}</p>}
+    {(submitError || contextError) && <p role="alert" className="portal-error">{submitError || contextError}</p>}
+    {Object.entries(data).filter(([,value]) => value.error).map(([key]) => <p key={key} role="alert" className="portal-error">{key === 'patients' ? 'Assigned patients and consultation context' : key === 'pharmacies' ? 'Pharmacies' : 'Prescription activity'} could not be loaded. Select Refresh to try again.</p>)}
+    <div className="grid items-start gap-6 xl:grid-cols-[1.2fr_1fr]">
+      <section className="portal-surface">
+        <h2 className="text-xl font-semibold">New prescription</h2>
+        {loading ? <p role="status" className="mt-4">Loading prescribing workspace…</p> : <form className="mt-5" onSubmit={submit}><fieldset disabled={saving} className="space-y-5">
+          <label className="block font-medium" htmlFor="rx-patient">Patient<select id="rx-patient" className={field} value={form.patientUserId} required disabled={saving || data.patients?.error} onChange={(event) => { setContextError(''); setForm((old) => ({ ...old, patientUserId: event.target.value, appointmentId: '' })); }}><option value="">Choose an assigned patient</option>{patients.map((row) => <option key={row.id} value={row.id}>{patientName(row)}</option>)}</select></label>
+          {!data.patients?.error && !patients.length && <p className="text-slate-600">No assigned patients are available. Start from a patient encounter.</p>}
+          {form.appointmentId && <p className="text-slate-600">Linked to the selected consultation.</p>}
+          <label className="block font-medium" htmlFor="rx-pharmacy">Preferred pharmacy<select id="rx-pharmacy" className={field} value={form.preferredPharmacyId} disabled={saving || data.pharmacies?.error} onChange={(event) => setForm((old) => ({ ...old, preferredPharmacyId: event.target.value }))}><option value="">Choose later</option>{(data.pharmacies?.rows || []).map((row) => <option key={row.id} value={row.id}>{row.name} · {[row.city,row.state].filter(Boolean).join(', ')}</option>)}</select></label>
+          <label className="block font-medium" htmlFor="rx-diagnosis">Clinical indication<input id="rx-diagnosis" className={field} maxLength={255} value={form.diagnosis} onChange={(event) => setForm((old) => ({ ...old, diagnosis: event.target.value }))} /></label>
+          {form.items.map((item,index) => <fieldset key={index} className="rounded-xl border border-slate-200 p-4"><legend className="px-2 font-semibold">Medication {index + 1}</legend><div className="grid gap-4 sm:grid-cols-2">{[['drug_name','Medication name'],['dosage','Dose and strength'],['quantity','Quantity'],['instructions','Directions']].map(([key,label]) => <label key={key} className="block" htmlFor={`rx-${index}-${key}`}>{label}<input id={`rx-${index}-${key}`} className={field} maxLength={key === 'instructions' ? 1000 : 255} required={key === 'drug_name'} value={item[key]} onChange={(event) => updateItem(index,key,event.target.value)} /></label>)}</div>{form.items.length > 1 && <Button type="button" className="mt-3" variant="outline" disabled={saving} onClick={() => setForm((old) => ({ ...old, items: old.items.filter((_,position) => position !== index) }))}>Remove medication {index + 1}</Button>}</fieldset>)}
+          <Button type="button" variant="outline" disabled={saving || form.items.length >= 20} onClick={() => setForm((old) => ({ ...old, items: [...old.items, blankItem()] }))}><Plus className="mr-2 h-5 w-5" aria-hidden="true" />Add medication</Button>
+          <label className="block font-medium" htmlFor="rx-fulfillment">Fulfillment preference<select id="rx-fulfillment" className={field} value={form.fulfillmentPreference} onChange={(event) => setForm((old) => ({ ...old, fulfillmentPreference: event.target.value }))}><option value="pickup_or_delivery">Pickup or delivery</option><option value="pickup">Pickup</option><option value="delivery">Delivery</option></select></label>
+          <label className="block font-medium" htmlFor="rx-notes">Pharmacy instructions<textarea id="rx-notes" className={field} rows={3} maxLength={4000} value={form.notes} onChange={(event) => setForm((old) => ({ ...old, notes: event.target.value }))} /></label>
+          <p className="text-slate-600">Confirm the patient's medication and allergy history in the chart before prescribing. Pharmacy acceptance and dispensing are separate recorded steps.</p>
+          <Button type="submit" className="w-full bg-blue-600 text-white hover:bg-blue-700" disabled={saving || Boolean(data.patients?.error) || !form.patientUserId}>{saving ? 'Creating prescription…' : 'Create prescription'}</Button>
+        </fieldset></form>}
+      </section>
+      <section className="portal-surface"><h2 className="text-xl font-semibold">Prescription activity</h2>{loading ? <p role="status" className="mt-4">Loading prescriptions…</p> : data.prescriptions?.error ? <p className="mt-4 text-slate-600">Activity is temporarily unavailable.</p> : !prescriptions.length ? <p className="portal-empty mt-4">No prescriptions have been recorded.</p> : <ul className="mt-4 divide-y divide-slate-200">{prescriptions.map((row) => <li key={row.id} className="space-y-2 py-4"><p className="font-semibold">{row.prescription_number || 'Prescription'}</p><p>{[row.patient_first_name,row.patient_last_name].filter(Boolean).join(' ') || patientName(patients.find((patient) => patient.id === row.patient_user_id) || {})}</p><p className="text-slate-600">Pharmacy: {row.pharmacy_name || 'No confirmed pharmacy response'}</p><p className="text-slate-600">Status: {String(row.pharmacy_response_status || row.dispense_status || row.status || 'Unknown').replace(/_/g,' ')}</p></li>)}</ul>}</section>
+    </div>
+  </div>;
+}
 
-      setNotice('Prescription created and routed for pharmacy confirmation.');
-      setForm({
-        patientUserId: '',
-        preferredPharmacyId: '',
-        diagnosis: '',
-        notes: '',
-        fulfillmentPreference: 'pickup_or_delivery',
-        items: [{ ...emptyItem }],
-      });
-      await loadData();
-    } catch (error) {
-      setNotice(error.response?.data?.error || 'Unable to create prescription.');
-    }
-  };
-
-  return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-950 sm:px-6">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Provider Prescriptions</p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight">Send prescriptions to pharmacies</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-700">
-              Create a provider prescription and route it to a DoctaRx Nigeria pharmacy for availability, price, pickup, or delivery confirmation.
-            </p>
-          </div>
-          <Link href="/ng/provider/dashboard">
-            <Button variant="outline">Back to Dashboard</Button>
-          </Link>
-        </header>
-
-        {notice ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div> : null}
-
-        {usingDemoData ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
-            {PRESENTATION_DEMO_LABEL}: sample provider prescriptions and participating pharmacies are shown for this walkthrough.
-          </div>
-        ) : null}
-
-        <section className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>New prescription</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={submitPrescription} className="space-y-4">
-                <input
-                  value={form.patientUserId}
-                  onChange={(event) => setForm((current) => ({ ...current, patientUserId: event.target.value }))}
-                  placeholder="Patient user ID"
-                  className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm"
-                  required
-                />
-                <select
-                  value={form.preferredPharmacyId}
-                  onChange={(event) => setForm((current) => ({ ...current, preferredPharmacyId: event.target.value }))}
-                  className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm"
-                >
-                  <option value="">No pharmacy selected yet</option>
-                  {visiblePharmacies.map((pharmacy) => (
-                    <option key={pharmacy.id} value={pharmacy.id}>
-                      {pharmacy.name} - {[pharmacy.city, pharmacy.state].filter(Boolean).join(', ')}
-                    </option>
-                  ))}
-                </select>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input
-                    value={form.diagnosis}
-                    onChange={(event) => setForm((current) => ({ ...current, diagnosis: event.target.value }))}
-                    placeholder="Diagnosis or reason, if appropriate"
-                    className="h-11 rounded-2xl border border-slate-300 bg-white px-3 text-sm"
-                  />
-                  <select
-                    value={form.fulfillmentPreference}
-                    onChange={(event) => setForm((current) => ({ ...current, fulfillmentPreference: event.target.value }))}
-                    className="h-11 rounded-2xl border border-slate-300 bg-white px-3 text-sm"
-                  >
-                    <option value="pickup_or_delivery">Pickup or delivery</option>
-                    <option value="pickup">Pickup</option>
-                    <option value="delivery">Delivery</option>
-                  </select>
-                </div>
-
-                <div className="space-y-3">
-                  {form.items.map((item, index) => (
-                    <div key={index} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
-                      <input value={item.drug_name} onChange={(event) => updateItem(index, 'drug_name', event.target.value)} placeholder="Medication name" className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm" />
-                      <input value={item.dosage} onChange={(event) => updateItem(index, 'dosage', event.target.value)} placeholder="Dosage/strength if known" className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm" />
-                      <input value={item.quantity} onChange={(event) => updateItem(index, 'quantity', event.target.value)} placeholder="Quantity" className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm" />
-                      <input value={item.instructions} onChange={(event) => updateItem(index, 'instructions', event.target.value)} placeholder="Instructions summary" className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm" />
-                    </div>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setForm((current) => ({ ...current, items: [...current.items, { ...emptyItem }] }))}
-                  >
-                    <Plus className="mr-2 h-4 w-4" /> Add Medication
-                  </Button>
-                </div>
-
-                <textarea
-                  value={form.notes}
-                  onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-                  placeholder="Pharmacy notes or clarification context"
-                  className="min-h-[88px] w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm"
-                />
-                <Button type="submit" className="w-full bg-emerald-600 text-white hover:bg-emerald-500">
-                  <Send className="mr-2 h-4 w-4" /> Send to Pharmacy
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent prescriptions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {loading ? (
-                <p className="text-sm text-slate-600">Loading prescriptions...</p>
-              ) : visiblePrescriptions.length === 0 ? (
-                <p className="text-sm text-slate-600">No Nigeria prescriptions created yet.</p>
-              ) : visiblePrescriptions.map((prescription) => (
-                <div key={prescription.id} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm">
-                  <p className="font-semibold">{prescription.prescription_number || 'Prescription'}</p>
-                  <p className="mt-1 text-slate-600">Patient: {[prescription.patient_first_name, prescription.patient_last_name].filter(Boolean).join(' ') || prescription.patient_email}</p>
-                  <p className="mt-1 text-slate-600">Pharmacy: {prescription.pharmacy_name || 'Not routed'}</p>
-                  <p className="mt-1 text-slate-600">Status: {String(prescription.pharmacy_response_status || prescription.dispense_status || prescription.status || '').replace(/_/g, ' ')}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </section>
-      </div>
-    </main>
-  );
+export default function NigeriaProviderPrescriptionsPage() {
+  return <Suspense fallback={<p role="status">Loading prescribing workspace…</p>}><PrescriptionWorkspace /></Suspense>;
 }

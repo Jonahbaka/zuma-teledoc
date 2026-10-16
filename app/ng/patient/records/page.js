@@ -1,204 +1,55 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { ClipboardList, FileText, Loader2, Package, Pill } from 'lucide-react';
-import api, { appointmentsAPI, medicalRecordsAPI, visitsAPI } from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Calendar, FileText, Pill, RefreshCw } from 'lucide-react';
+import api, { appointmentsAPI, medicalRecordsAPI } from '@/lib/api';
+import { useAuth } from '@/components/providers/AuthProvider';
+import PortalPageHeader from '@/components/branding/PortalPageHeader';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatDateTime } from '@/lib/utils';
-import {
-  PRESENTATION_DEMO_LABEL,
-  buildPatientPortalDemoData,
-  shouldShowPresentationDemoData,
-} from '@/lib/ngPresentationDemoData';
-
-function EmptyState({ icon: Icon, title, description }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-border px-4 py-8 text-center">
-      <Icon className="mx-auto h-10 w-10 text-emerald-500/60" />
-      <p className="mt-4 font-semibold text-foreground">{title}</p>
-      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-    </div>
-  );
-}
 
 export default function NigeriaPatientRecordsPage() {
+  const { user } = useAuth();
+  const [sections, setSections] = useState({});
   const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [documents, setDocuments] = useState([]);
-  const [visits, setVisits] = useState([]);
-  const [prescriptions, setPrescriptions] = useState([]);
-  const [orders, setOrders] = useState([]);
-  const presentationDemoData = useMemo(() => buildPatientPortalDemoData(), []);
-
+  const [revision, setRevision] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [viewing, setViewing] = useState(false);
+  const [viewError, setViewError] = useState('');
   useEffect(() => {
-    const loadRecords = async () => {
-      try {
-        const meResponse = await api.get('/auth/me').catch(() => ({ data: { success: false } }));
-        const currentUser = meResponse.data?.user;
-        setCurrentUser(currentUser || null);
-
-        const [documentsResponse, visitsResponse, prescriptionsResponse, ordersResponse, appointmentsResponse] = await Promise.all([
-          currentUser ? medicalRecordsAPI.getByPatient(currentUser.id).catch(() => ({ data: { success: false, records: [] } })) : Promise.resolve({ data: { success: false, records: [] } }),
-          currentUser ? visitsAPI.getByPatient(currentUser.id).catch(() => ({ data: { success: false, visits: [] } })) : Promise.resolve({ data: { success: false, visits: [] } }),
-          api.get('/ng/patient/prescriptions', { params: { limit: 6 } }).catch(() => ({ data: [] })),
-          api.get('/ng/patient/orders', { params: { limit: 6 } }).catch(() => ({ data: [] })),
-          appointmentsAPI.getAll({ status: 'completed' }).catch(() => ({ data: { success: false, appointments: [] } })),
-        ]);
-
-        setDocuments(documentsResponse.data?.success ? documentsResponse.data.records || [] : []);
-        setVisits(
-          visitsResponse.data?.success
-            ? visitsResponse.data.visits || []
-            : appointmentsResponse.data?.success
-              ? appointmentsResponse.data.appointments || []
-              : []
-        );
-        setPrescriptions(Array.isArray(prescriptionsResponse.data) ? prescriptionsResponse.data : []);
-        setOrders(Array.isArray(ordersResponse.data) ? ordersResponse.data : []);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadRecords();
-  }, []);
-
-  const showDemoData = shouldShowPresentationDemoData(currentUser);
-  const visibleDocuments = showDemoData && documents.length === 0 ? presentationDemoData.documents : documents;
-  const visibleVisits = showDemoData && visits.length === 0 ? presentationDemoData.visits : visits;
-  const visiblePrescriptions = showDemoData && prescriptions.length === 0 ? presentationDemoData.prescriptions : prescriptions;
-  const visibleOrders = showDemoData && orders.length === 0 ? presentationDemoData.orders : orders;
-  const usingDemoData = showDemoData && (
-    documents.length === 0 || visits.length === 0 || prescriptions.length === 0 || orders.length === 0
-  );
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-      </div>
-    );
+    if (!user?.id) return undefined;
+    let cancelled = false;
+    setLoading(true); setSections({});
+    const requests = [
+      ['documents', () => medicalRecordsAPI.getByPatient(user.id), (data) => data.success ? data.records : null],
+      ['visits', () => appointmentsAPI.getAll({ status: 'completed', limit: 20 }), (data) => data.success ? data.appointments : null],
+      ['prescriptions', () => api.get('/ng/patient/prescriptions', { params: { limit: 20 } }), (data) => data],
+    ];
+    Promise.all(requests.map(async ([key, fetch, extract]) => {
+      try { const { data } = await fetch(); const rows = extract(data); if (!Array.isArray(rows)) throw new Error('Unavailable'); return [key, { rows }]; }
+      catch { return [key, { error: true }]; }
+    })).then((results) => { if (!cancelled) { setSections(Object.fromEntries(results)); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [user?.id, revision]);
+  async function openRecord(id) {
+    setViewing(true); setViewError('');
+    try { const { data } = await medicalRecordsAPI.getById(id); if (!data.success || !data.record) throw new Error(); setSelected(data.record); }
+    catch { setViewError('This record could not be opened. Please try again.'); }
+    finally { setViewing(false); }
   }
-
-  return (
-    <div className="space-y-6">
-      <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Nigeria Patient Records</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Visit history, prescriptions, and documents</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Review medical records, completed consultations, prescription activity, and pharmacy orders from one place.</p>
-      </section>
-
-      {usingDemoData ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
-          {PRESENTATION_DEMO_LABEL}: synthetic visit, record, prescription, and pharmacy data are shown for the Abuja pilot walkthrough.
-        </div>
-      ) : null}
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card className="border-border/70">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-emerald-600" />
-              Uploaded documents
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {visibleDocuments.length === 0 ? (
-              <EmptyState icon={FileText} title="No stored medical documents yet." description="Documents uploaded by your care team will appear here when available." />
-            ) : (
-              visibleDocuments.slice(0, 6).map((record) => (
-                <div key={record.id} className="rounded-2xl border border-border px-4 py-4">
-                  <p className="font-semibold text-foreground">{record.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{record.recordType || 'Medical record'}</p>
-                  <p className="mt-2 text-sm text-slate-600">{record.content}</p>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ClipboardList className="h-5 w-5 text-emerald-600" />
-              Visit history
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {visibleVisits.length === 0 ? (
-              <EmptyState icon={ClipboardList} title="No completed consultations yet." description="Completed appointments and provider notes will be listed here once your visits are closed out." />
-            ) : (
-              visibleVisits.slice(0, 6).map((visit) => (
-                <div key={visit.id} className="rounded-2xl border border-border px-4 py-4">
-                  <p className="font-semibold text-foreground">{visit.reasonForVisit || visit.noteType || visit.encounterType || 'Completed consultation'}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {visit.scheduledAt || visit.createdAt ? formatDateTime(visit.scheduledAt || visit.createdAt) : 'Timeline unavailable'}
-                  </p>
-                  {visit.providerFirstName ? (
-                    <p className="mt-2 text-sm text-slate-600">Provider: Dr. {visit.providerFirstName} {visit.providerLastName}</p>
-                  ) : null}
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Pill className="h-5 w-5 text-emerald-600" />
-              Prescription history
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {visiblePrescriptions.length === 0 ? (
-              <EmptyState icon={Pill} title="No prescription history yet." description="Uploaded or provider-generated prescriptions will be visible here." />
-            ) : (
-              visiblePrescriptions.slice(0, 6).map((prescription) => (
-                <div key={prescription.id} className="rounded-2xl border border-border px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-foreground">{prescription.prescriber_name || 'Prescription'}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">{formatDateTime(prescription.created_at)}</p>
-                    </div>
-                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                      {String(prescription.status || '').replace(/_/g, ' ')}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5 text-emerald-600" />
-              Pharmacy orders
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {visibleOrders.length === 0 ? (
-              <EmptyState icon={Package} title="No routed pharmacy orders yet." description="Medication orders and delivery tracking appear here after a pharmacy order has been created." />
-            ) : (
-              visibleOrders.slice(0, 6).map((order) => (
-                <div key={order.id} className="rounded-2xl border border-border px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-foreground">{order.order_number}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">{order.pharmacy_name}</p>
-                    </div>
-                    <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-700">
-                      {String(order.status || '').replace(/_/g, ' ')}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
+  const content = (key, empty, render) => loading ? <p role="status">Loading health records…</p> : sections[key]?.error ? <p role="alert" className="portal-error">This part of your health record could not be loaded. Select Refresh to try again.</p> : sections[key]?.rows?.length ? render(sections[key].rows) : <p className="portal-empty">{empty}</p>;
+  return <div className="space-y-6">
+    <PortalPageHeader eyebrow="DoctaRx · Your health information" title="Health records" description="Review your documents, completed visits, and prescription history.">
+      <Button variant="outline" disabled={loading} onClick={() => setRevision((value) => value + 1)}><RefreshCw className="mr-2 h-5 w-5" aria-hidden="true" />Refresh</Button>
+    </PortalPageHeader>
+    {viewError && <p role="alert" className="portal-error">{viewError}</p>}
+    <div className="grid gap-6 xl:grid-cols-2">
+      <section className="portal-surface"><h2 className="mb-5 flex items-center gap-3 text-xl font-semibold"><FileText className="h-6 w-6 text-blue-800" aria-hidden="true" />Documents</h2>{content('documents', 'No documents have been added to this account.', (rows) => <ul className="divide-y divide-slate-200">{rows.map((row) => <li key={row.id} className="py-4"><h3 className="font-medium">{row.title || 'Health document'}</h3><p className="mt-2 text-slate-600">{row.recordType || 'Medical record'}</p><Button variant="outline" className="mt-3" disabled={viewing} onClick={() => openRecord(row.id)}>View record</Button></li>)}</ul>)}</section>
+      <section className="portal-surface"><h2 className="mb-5 flex items-center gap-3 text-xl font-semibold"><Calendar className="h-6 w-6 text-blue-800" aria-hidden="true" />Completed visits</h2>{content('visits', 'Completed visits will appear here after your consultation.', (rows) => <ul className="divide-y divide-slate-200">{rows.map((row) => <li key={row.id} className="py-4"><h3 className="font-medium">{row.reasonForVisit || 'Consultation'}</h3><p className="mt-2 text-slate-600">{formatDateTime(row.scheduledAt)}</p><Link href={`/ng/patient/appointments/${row.id}`} className="mt-3 inline-flex min-h-12 items-center font-medium text-blue-800">Visit details</Link></li>)}</ul>)}</section>
+      <section className="portal-surface xl:col-span-2"><h2 className="mb-5 flex items-center gap-3 text-xl font-semibold"><Pill className="h-6 w-6 text-blue-800" aria-hidden="true" />Prescription history</h2>{content('prescriptions', 'No prescriptions are listed for this account.', (rows) => <ul className="divide-y divide-slate-200">{rows.map((row) => <li key={row.id} className="flex flex-wrap justify-between gap-3 py-4"><div><p className="font-medium">{row.prescription_number || row.prescriber_name || 'Prescription'}</p><p className="mt-2 text-slate-600">{formatDateTime(row.created_at)}</p></div><p className="capitalize text-slate-600">{String(row.status || 'Status not recorded').replaceAll('_', ' ')}</p></li>)}</ul>)}<Link href="/ng/patient/prescriptions" className="mt-4 inline-flex min-h-12 items-center font-medium text-blue-800">View prescriptions</Link></section>
     </div>
-  );
+    <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null); }}><DialogContent className="max-h-[85vh] overflow-y-auto text-base sm:max-w-2xl"><DialogHeader><DialogTitle>{selected?.title || 'Health record'}</DialogTitle><DialogDescription>DoctaRx · Your medical document</DialogDescription></DialogHeader><p className="whitespace-pre-wrap break-words text-base leading-7">{selected?.content || 'No readable text is available for this record. Contact your care team for the original document.'}</p></DialogContent></Dialog>
+  </div>;
 }

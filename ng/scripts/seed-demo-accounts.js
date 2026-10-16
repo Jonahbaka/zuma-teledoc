@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
-const bcrypt = require('bcryptjs');
-const { createSimulationPool } = require('./simulationSafety');
+const { fixtureTargetSafety } = require('./fixtureTargetSafety');
 
 const DEFAULT_DEMO_PASSWORD = 'Demo12345678!';
 const DEFAULT_DEMO_MFA_SECRET = 'JBSWY3DPEHPK3PXP';
@@ -188,6 +187,8 @@ function demoProviderSpecialty(account) {
 }
 
 async function ensureDemoProgrammeScope(client, accounts) {
+  const safety = fixtureTargetSafety({ source: process.env.SIMULATION_DATABASE_URL ? 'SIMULATION_DATABASE_URL' : 'DATABASE_URL', pool: client });
+  if (safety.skipped) return safety;
   const programme = await client.query(
     `SELECT id FROM public_health_programmes
       WHERE programme_key = 'developer_demo' AND demo_only = TRUE
@@ -429,9 +430,16 @@ async function seedDemoAccounts({ pool, password, mfaSecret = DEFAULT_DEMO_MFA_S
     };
   }
 
+  const source = process.env.SIMULATION_DATABASE_URL ? 'SIMULATION_DATABASE_URL' : 'DATABASE_URL';
+  const safety = fixtureTargetSafety({ source, pool });
+  if (safety.skipped) return safety;
+  if (!pool) return { skipped: true, noWrites: true, code: 'FIXTURE_WRITES_DISABLED', reason: 'A verified isolated _test pool is required for fixture writes.' };
+  const bcrypt = require('bcryptjs');
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const client = await pool.connect();
   try {
+    const clientSafety = fixtureTargetSafety({ source, pool: client });
+    if (clientSafety.skipped) return clientSafety;
     await client.query('BEGIN');
     await ensureColumns(client);
     const accounts = [];
@@ -442,6 +450,7 @@ async function seedDemoAccounts({ pool, password, mfaSecret = DEFAULT_DEMO_MFA_S
     }
     await ensureGovernmentScopes(client, accounts);
     const demoProgramme = await ensureDemoProgrammeScope(client, accounts);
+    if (demoProgramme.skipped) { await client.query('ROLLBACK'); return demoProgramme; }
     await client.query('COMMIT');
     return { dryRun: false, accounts, demoProgramme };
   } catch (error) {
@@ -459,11 +468,16 @@ async function main() {
     return;
   }
 
+  const source = process.env.SIMULATION_DATABASE_URL ? 'SIMULATION_DATABASE_URL' : 'DATABASE_URL';
+  const safety = fixtureTargetSafety({ source });
+  if (safety.skipped) { console.log(JSON.stringify(safety, null, 2)); return; }
   const password = getDemoPassword();
   const mfaSecret = getDemoMfaSecret();
-  const { pool, source, redactedUrl } = createSimulationPool();
+  const { createSimulationPool } = require('./simulationSafety');
+  const { pool, redactedUrl } = createSimulationPool();
   try {
     const result = await seedDemoAccounts({ pool, password, mfaSecret });
+    if (result.skipped) { console.log(JSON.stringify(result, null, 2)); return; }
     console.log(JSON.stringify({
       ok: true,
       source,

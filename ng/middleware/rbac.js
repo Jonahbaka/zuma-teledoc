@@ -65,14 +65,13 @@ function isPlatformAdministrator(user) {
   return ['super_admin', 'platform_admin'].includes(canonicalRole(user?.role || user?.ng_role || ''));
 }
 
-// ─── Jurisdiction scope cache (TTL 60s) ──────────────────────────────────────
+// Compatibility invalidation interface; authorization uses current DB rows.
 
 const _scopeCache = new Map();
-const SCOPE_CACHE_TTL_MS = 60_000;
 
 async function getUserJurisdictionScopes(userId) {
-  const cached = _scopeCache.get(userId);
-  if (cached && Date.now() - cached.ts < SCOPE_CACHE_TTL_MS) return cached.scopes;
+  // Authorization reads current assignments on each request. Cached rows can
+  // outlive their expiry or revocation and must not grant government access.
 
   const pool = getPool();
   try {
@@ -88,7 +87,6 @@ async function getUserJurisdictionScopes(userId) {
       [userId]
     );
     const scopes = result.rows;
-    _scopeCache.set(userId, { ts: Date.now(), scopes });
     return scopes;
   } catch (error) {
     console.error('[Government RBAC] Jurisdiction scope lookup failed:', error.message);
@@ -110,7 +108,7 @@ function scopeMatchesResource(scope, ancestorJurisdictionIds, { facilityId, prog
   return true;
 }
 
-async function userCanAccessResource(user, { jurisdictionId, facilityId, programmeArea } = {}) {
+async function userCanAccessResource(user, { jurisdictionId, facilityId, programmeArea, permission = 'read' } = {}) {
   if (!user) return false;
   if (isPlatformAdministrator(user)) return true;
 
@@ -140,20 +138,28 @@ async function userCanAccessResource(user, { jurisdictionId, facilityId, program
     }
   }
 
-  return scopes.some((scope) => scopeMatchesResource(
+  return scopes.some((scope) => (
+    (permission === 'approve' ? APPROVER_ROLES.has(scope.role) && scope.can_approve === true :
+      permission === 'export' ? EXPORT_ROLES.has(scope.role) && scope.can_export === true :
+        permission === 'review' ? REVIEWER_ROLES.has(scope.role) :
+        permission === 'prepare' ? ['analyst','reviewer','approver','programme_admin','facility_admin'].includes(scope.role) :
+        permission === 'read' ? scope.can_view_aggregate !== false : false)
+  ) && scopeMatchesResource(
     scope,
     ancestorJurisdictionIds,
     { facilityId, programmeArea }
   ));
 }
 
-async function getAccessibleJurisdictionIds(user) {
+async function getAccessibleJurisdictionIds(user, permission = 'read') {
   if (!user) return [];
   if (isPlatformAdministrator(user)) return null;
   const userId = user.id || user.userId;
   if (!userId) return [];
-  const scopes = await getUserJurisdictionScopes(userId);
-  if (scopes === null) return undefined;
+  const currentScopes = await getUserJurisdictionScopes(userId);
+  if (currentScopes === null) return undefined;
+  const scopes = currentScopes.filter((scope) => scope.can_view_aggregate !== false &&
+    (permission !== 'export' || (scope.can_export === true && EXPORT_ROLES.has(scope.role))));
   if (!scopes.length) return [];
   try {
     const result = await getPool().query(
@@ -402,7 +408,7 @@ function requireGovernmentMfa(req, res, next) {
       code: 'GOVERNMENT_MFA_ENROLLMENT_REQUIRED',
     });
   }
-  if (req.cookies?.mfaVerified !== 'true') {
+  if (!require('../../server/utils/mfaAttestation').hasVerifiedMfa(req)) {
     return res.status(403).json({
       error: 'MFA verification is required for government access.',
       code: 'MFA_REQUIRED',

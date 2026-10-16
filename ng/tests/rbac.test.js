@@ -178,11 +178,18 @@ describe('government MFA enforcement', () => {
   });
 
   it('allows an enrolled account with an MFA-verified session', async () => {
+    process.env.JWT_ACCESS_SECRET ||= 'synthetic-unit-test-mfa-secret';
+    const { issueMfaAttestation } = require('../../server/utils/mfaAttestation');
     const result = await runMiddleware(
       requireGovernmentMfa,
-      { role: 'platform_admin', mfaEnabled: true },
-      { mfaVerified: 'true' }
+      { id: 'synthetic-government-user', role: 'platform_admin', mfaEnabled: true },
+      { accessToken: 'synthetic-access-token', mfaVerified: issueMfaAttestation('synthetic-government-user', 'synthetic-access-token') }
     );
     assert.equal(result.nextCalled, true);
+  });
+  it('rejects a client-written true marker', async () => {
+    const result = await runMiddleware(requireGovernmentMfa, { id: 'synthetic-government-user', role: 'platform_admin', mfaEnabled: true }, { accessToken: 'synthetic-access-token', mfaVerified: 'true' });
+    assert.equal(result.nextCalled, false);
+    assert.equal(result.response.body.code, 'MFA_REQUIRED');
   });
 });

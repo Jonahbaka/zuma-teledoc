@@ -15,10 +15,10 @@ const GATE_CONFIGS = {
   },
   subscription_required: {
     icon: Zap,
-    iconColor: 'text-green-500',
-    iconBg: 'bg-green-500/10',
+    iconColor: 'text-blue-500',
+    iconBg: 'bg-blue-500/10',
     badge: 'Subscription Required',
-    badgeBg: 'bg-green-500/10 text-green-600 border-green-500/20',
+    badgeBg: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
     title: 'Upgrade Your Plan',
     message: 'This feature requires an active subscription plan.',
     cta: { label: 'View Plans', href: '/ng/pricing' },
@@ -35,30 +35,30 @@ const GATE_CONFIGS = {
   },
   provider_only: {
     icon: Lock,
-    iconColor: 'text-purple-500',
-    iconBg: 'bg-purple-500/10',
+    iconColor: 'text-blue-500',
+    iconBg: 'bg-blue-500/10',
     badge: 'Providers Only',
-    badgeBg: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+    badgeBg: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
     title: 'Provider Access Required',
     message: 'This feature is available to registered and verified healthcare providers only.',
     cta: { label: 'Register as Provider', href: '/ng/provider/auth/register' },
   },
   pharmacy_only: {
     icon: Lock,
-    iconColor: 'text-teal-500',
-    iconBg: 'bg-teal-500/10',
+    iconColor: 'text-blue-500',
+    iconBg: 'bg-blue-500/10',
     badge: 'Pharmacies Only',
-    badgeBg: 'bg-teal-500/10 text-teal-600 border-teal-500/20',
+    badgeBg: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
     title: 'Pharmacy Access Required',
     message: 'This feature is only available to registered pharmacy partners.',
     cta: { label: 'Open Pharmacy Portal', href: '/ng/pharmacy' },
   },
   corporate_only: {
     icon: Globe,
-    iconColor: 'text-indigo-500',
-    iconBg: 'bg-indigo-500/10',
+    iconColor: 'text-blue-500',
+    iconBg: 'bg-blue-500/10',
     badge: 'Corporate Plan',
-    badgeBg: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20',
+    badgeBg: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
     title: 'Organization Account Required',
     message: 'This feature is available to corporate and organization accounts.',
     cta: { label: 'Register Organization', href: '/ng/organization/register' },
@@ -137,7 +137,7 @@ export function FeatureGate({ type = 'nigeria_pending', available = false, compa
         {config.cta && (
           <a
             href={config.cta.href}
-            className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-green-600 hover:bg-green-500 text-white text-sm font-semibold transition-colors shadow-lg shadow-green-900/20"
+            className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors shadow-lg shadow-blue-900/20"
           >
             {config.cta.label}
           </a>

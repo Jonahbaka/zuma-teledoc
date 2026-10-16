@@ -5,6 +5,11 @@ node_modules/
 
 # Build outputs
 .next/
+.next-careops-preview/
+.next-careops/
+.next-careops-*/
+.env.careops
+work/careops-ui/
 out/
 build/
 dist/
@@ -116,3 +121,8 @@ artifacts/
 .next.*.incoming/
 .next.*.previous/
 .next.verify-build/
+.next-main-platform-preview/
+.next-admin-platform-preview/
+.next-public-platform-preview/
+.next-membership-platform-preview/
+.next-medication-preview/

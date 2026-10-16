@@ -15,7 +15,7 @@ const STATUS_COLORS = {
   draft: 'bg-gray-100 text-gray-800',
   pending_erx: 'bg-yellow-100 text-yellow-800',
   sent_to_erx: 'bg-blue-100 text-blue-800',
-  erx_confirmed: 'bg-green-100 text-green-800',
+  erx_confirmed: 'bg-blue-100 text-blue-800',
   cancelled: 'bg-red-100 text-red-800',
   erx_error: 'bg-orange-100 text-orange-800'
 };
@@ -53,7 +53,7 @@ export default function PatientPrescriptionsPage() {
   if (loading && intents.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
@@ -63,7 +63,7 @@ export default function PatientPrescriptionsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-pink-600 rounded-xl">
               <Pill className="w-6 h-6 text-white" />
             </div>
             My Prescription Activity (External eRx)

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import {
   AlertTriangle, Bookmark, CheckCircle2, ChevronRight, Database,
   Download, FileSearch, Filter, Loader2, RotateCcw, Search, ShieldCheck,
@@ -43,32 +44,32 @@ function flattenJurisdictions(value, output = []) {
 }
 
 function Field({ label, children }) {
-  return <label className="grid gap-1.5 text-sm font-semibold text-slate-700"><span>{label}</span>{children}</label>;
+  return <label className="grid min-w-0 gap-1.5 text-sm font-semibold text-slate-700"><span>{label}</span>{children}</label>;
 }
 
 function Select({ value, onChange, children, ariaLabel }) {
   return (
     <select aria-label={ariaLabel} value={value} onChange={onChange}
-      className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-200">
+      className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200">
       {children}
     </select>
   );
 }
 
 function Input(props) {
-  return <input {...props} className={`min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-200 ${props.className || ''}`} />;
+  return <input {...props} className={`min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-200 ${props.className || ''}`} />;
 }
 
 function Button({ children, tone = 'primary', className = '', ...props }) {
   const tones = {
-    primary: 'bg-emerald-700 text-white hover:bg-emerald-800',
+    primary: 'bg-blue-600 text-white hover:bg-blue-700',
     secondary: 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50',
     danger: 'bg-rose-700 text-white hover:bg-rose-800',
   };
   return <button {...props} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone]} ${className}`}>{children}</button>;
 }
 
-export default function GovernmentDataWorkspace() {
+export default function GovernmentDataWorkspace({ readOnly = false, heading = 'Public health data' }) {
   const [tab, setTab] = useState('search');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -80,7 +81,7 @@ export default function GovernmentDataWorkspace() {
   const [recent, setRecent] = useState([]);
   const [views, setViews] = useState([]);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [searchResult, setSearchResult] = useState({ records: [], total: 0 });
+  const [searchResult, setSearchResult] = useState({ records: [], total: null });
   const [suggestions, setSuggestions] = useState([]);
   const [viewName, setViewName] = useState('');
   const [file, setFile] = useState(null);
@@ -220,22 +221,22 @@ export default function GovernmentDataWorkspace() {
     finally { setBusy(''); }
   }
 
-  if (loading) return <div className="flex min-h-screen items-center justify-center bg-slate-50"><Loader2 className="h-8 w-8 animate-spin text-emerald-700" /><span className="ml-3 font-semibold text-slate-700">Checking government access…</span></div>;
+  if (loading) return <div className="flex min-h-screen items-center justify-center bg-slate-50"><Loader2 className="h-8 w-8 animate-spin text-blue-700" /><span className="ml-3 font-semibold text-slate-700">Checking government access…</span></div>;
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950">
-      <header className="border-b border-slate-200 bg-slate-950 text-white">
+    <main className="clinical-readable min-h-screen bg-slate-50 text-slate-950">
+      <header className="border-b border-slate-200 bg-[#101d36] text-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-6 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-          <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-300">DoctaRx Nigeria · protected workspace</p><h1 className="mt-2 text-2xl font-black sm:text-3xl">Government data intake and search</h1><p className="mt-2 max-w-3xl text-sm text-slate-300">Import, validate, approve, reconcile, search, and export records inside your assigned jurisdiction.</p></div>
-          <div className="flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm"><ShieldCheck className="h-5 w-5 text-emerald-300" /> MFA and scoped audit controls active</div>
+          <div><DoctaRxLogo glow={false} className="h-10" /><h1 className="mt-4 text-3xl font-semibold sm:text-4xl">{heading}</h1><p className="mt-3 max-w-3xl text-base leading-7 text-slate-200">{readOnly ? 'Explore approved reports and records within your authorised institutions and programmes.' : 'Review, validate, and manage public-health records within your authorised institutions and programmes.'}</p></div>
+          <div className="flex items-center gap-3 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-base"><ShieldCheck className="h-6 w-6 text-cyan-200" /> Protected institutional access</div>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {error && <div role="alert" className="mb-4 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" /><div>{error}<div className="mt-2"><Link className="font-bold underline" href="/login">Open secure sign-in</Link></div></div></div>}
-        {notice && <div role="status" className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900"><CheckCircle2 className="h-5 w-5" />{notice}</div>}
+        {notice && <div role="status" className="mb-4 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-900"><CheckCircle2 className="h-5 w-5" />{notice}</div>}
         <div className="mb-6 flex gap-2" role="tablist" aria-label="Government data tools">
-          {[['search', FileSearch, 'Search approved records'], ['import', Upload, 'Import and approve']].map(([key, Icon, label]) => <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${tab === key ? 'bg-slate-950 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}><Icon className="h-4 w-4" />{label}</button>)}
+          {(readOnly ? [['search', FileSearch, 'Approved records']] : [['search', FileSearch, 'Approved records'], ['import', Upload, 'Data management']]).map(([key, Icon, label]) => <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={`inline-flex min-h-12 items-center gap-2 rounded-xl px-4 text-base font-semibold ${tab === key ? 'bg-blue-600 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}><Icon className="h-5 w-5" />{label}</button>)}
         </div>
 
         {tab === 'search' ? <section className="space-y-5">
@@ -256,11 +257,25 @@ export default function GovernmentDataWorkspace() {
               <Field label="Referral status"><Select ariaLabel="Referral status" value={filters.referralStatus} onChange={(event) => updateFilter('referralStatus', event.target.value)}><option value="">All referral statuses</option><option value="pending">Pending</option><option value="completed">Completed</option><option value="unresolved">Unresolved</option></Select></Field>
               <Field label="Data-quality status"><Select ariaLabel="Data quality" value={filters.dataQualityStatus} onChange={(event) => updateFilter('dataQualityStatus', event.target.value)}><option value="">All quality statuses</option><option value="valid">Valid</option><option value="warning">Needs review</option><option value="invalid">Invalid</option></Select></Field>
             </div>
-            <div className="mt-5 flex flex-wrap gap-2"><Button onClick={() => search()}><Filter className="h-4 w-4" />Apply filters</Button><Button tone="secondary" onClick={() => { setFilters(EMPTY_FILTERS); setSearchResult({ records: [], total: 0 }); }}><RotateCcw className="h-4 w-4" />Clear all</Button>{['csv', 'xlsx', 'pdf'].map((format) => <Button key={format} tone="secondary" onClick={() => exportRecords(format)} disabled={busy === `export-${format}`}><Download className="h-4 w-4" />{format === 'xlsx' ? 'Excel' : format.toUpperCase()}</Button>)}</div>
+            <div className="mt-5 flex flex-wrap gap-2"><Button onClick={() => search()}><Filter className="h-4 w-4" />Apply filters</Button><Button tone="secondary" onClick={() => { setFilters(EMPTY_FILTERS); setSearchResult({ records: [], total: null }); }}><RotateCcw className="h-4 w-4" />Clear all</Button>{!readOnly && ['csv', 'xlsx', 'pdf'].map((format) => <Button key={format} tone="secondary" onClick={() => exportRecords(format)} disabled={busy === `export-${format}`}><Download className="h-4 w-4" />{format === 'xlsx' ? 'Excel' : format.toUpperCase()}</Button>)}</div>
           </div>
 
           <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="border-b border-slate-200 px-5 py-4"><h2 className="font-black">Approved records</h2><p className="text-sm text-slate-500">{searchResult.total.toLocaleString()} results in your authorized scope</p></div><div className="overflow-x-auto" role="region" aria-label="Approved government records" tabIndex={0}><table className="w-full min-w-[780px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{['Record', 'Facility / Area', 'Programme / Indicator', 'Period', 'Value', 'Quality'].map((label) => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody>{searchResult.records.map((row) => <tr key={row.id} className="border-t border-slate-100"><td className="px-4 py-4 font-bold">{row.title}<div className="mt-1 text-xs font-normal text-slate-500">{row.record_key}</div></td><td className="px-4 py-4">{row.facility_name || 'All facilities'}<div className="text-xs text-slate-500">{row.area_council}</div></td><td className="px-4 py-4">{row.programme_area?.replaceAll('_', ' ')}<div className="text-xs text-slate-500">{row.indicator_name || 'No indicator'}</div></td><td className="px-4 py-4">{row.reporting_period}</td><td className="px-4 py-4 font-semibold">{formatValue(row.observed_value)} {row.unit || ''}</td><td className="px-4 py-4"><span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">{row.data_quality_status}</span></td></tr>)}{!searchResult.records.length && <tr><td colSpan="6" className="px-5 py-12 text-center text-slate-500">Run a search to see approved records. Missing observations will be labelled, never shown as zero.</td></tr>}</tbody></table></div></div>
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-200 px-5 py-4"><h2 className="font-semibold">Approved records</h2><p className="text-sm text-slate-500">{Number.isFinite(searchResult.total) ? `${searchResult.total.toLocaleString()} results in your authorized scope` : 'Run a search to view records in your authorized scope.'}</p></div>
+              <div className="overflow-x-auto" role="region" aria-label="Approved government records" tabIndex={0}>
+                <table className="w-full min-w-[780px] text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{['Record', 'Facility / Area', 'Programme / Indicator', 'Period', 'Value', 'Quality'].map((label) => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead>
+                  <tbody>{searchResult.records.map((row) => <tr key={row.id} className="border-t border-slate-100">
+                    <td className="px-4 py-4 font-semibold">{row.title}<div className="mt-1 text-sm font-normal text-slate-500">{row.record_key}</div></td>
+                    <td className="px-4 py-4">{row.facility_name || 'All facilities'}<div className="text-sm text-slate-500">{row.area_council}</div></td>
+                    <td className="px-4 py-4">{row.programme_area?.replaceAll('_', ' ')}<div className="text-sm text-slate-500">{row.indicator_name || 'No indicator'}</div></td>
+                    <td className="px-4 py-4">{row.reporting_period}</td><td className="px-4 py-4 font-semibold">{formatValue(row.observed_value)} {row.unit || ''}</td>
+                    <td className="px-4 py-4"><span className="rounded-full bg-blue-100 px-2 py-1 text-sm font-semibold text-blue-800">{row.data_quality_status}</span></td>
+                  </tr>)}{!searchResult.records.length && <tr><td colSpan="6" className="px-5 py-12 text-center text-slate-500">{Number.isFinite(searchResult.total) ? 'No approved records match these filters.' : 'Run a search to see approved records. Missing observations will be labelled, never shown as zero.'}</td></tr>}</tbody>
+                </table>
+              </div>
+            </div>
             <aside className="space-y-4"><div className="rounded-2xl border border-slate-200 bg-white p-4"><h2 className="flex items-center gap-2 font-black"><Bookmark className="h-4 w-4" />Saved views</h2><div className="mt-3 flex gap-2"><Input aria-label="Saved view name" placeholder="View name" value={viewName} onChange={(event) => setViewName(event.target.value)} className="min-w-0" /><Button onClick={saveCurrentView} className="px-3">Save</Button></div><div className="mt-3 grid gap-1">{views.map((view) => <button key={view.id} onClick={() => { setFilters({ ...EMPTY_FILTERS, ...view.filters_json }); search({ ...EMPTY_FILTERS, ...view.filters_json }); }} className="flex items-center justify-between rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-100">{view.name}<ChevronRight className="h-4 w-4" /></button>)}</div></div><div className="rounded-2xl border border-slate-200 bg-white p-4"><h2 className="font-black">Recent searches</h2><div className="mt-3 grid gap-1">{recent.map((item) => <button key={item.id} onClick={() => { setFilters({ ...EMPTY_FILTERS, ...item.filters_json }); search({ ...EMPTY_FILTERS, ...item.filters_json }); }} className="rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-100"><span className="font-semibold">{item.query_text}</span><span className="block text-xs text-slate-500">{item.result_count} results</span></button>)}</div></div></aside>
           </div>
         </section> : <section className="grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
