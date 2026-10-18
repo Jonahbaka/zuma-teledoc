@@ -32,9 +32,12 @@ const MARKET_THEMES = {
 };
 
 function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
-  const { login } = useAuth();
+  const { login, loading: preparing } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [mfaRequired,setMfaRequired]=useState(false);
+  const [mfaCode,setMfaCode]=useState('');
+  const disabled=preparing || isLoading;
   const [testingMode, setTestingMode] = useState(null);
   const [queryState, setQueryState] = useState({
     fromInvite: false,
@@ -113,7 +116,8 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
       const fd = new FormData(e.currentTarget);
       const email = String(fd.get('email') || '').trim();
       const password = String(fd.get('password') || '');
-      const result = await login(email, password, null, 'provider');
+      const result = await login(email, password, mfaRequired?mfaCode:null, 'provider');
+      if(result?.mfaRequired){setMfaRequired(true);return;}
 
       if (result?.error) {
         if (result.error.toLowerCase().includes('pending')) {
@@ -174,7 +178,7 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+    <div className="doctarx-portal min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       <header className="px-4 py-5 sm:p-6">
         <Link href={homeHref} className="flex items-center gap-2">
           <DoctaRxLogo className="h-9 w-auto" />
@@ -233,6 +237,7 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
                     placeholder={market === 'NG' ? 'doctor@clinic.ng' : 'doctor@hospital.com'}
                     name="email"
                     value={formData.email}
+                    disabled={disabled}
                     onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
                     className={`pl-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 ${theme.focus}`}
                     required
@@ -255,24 +260,29 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
                     placeholder="••••••••"
                     name="password"
                     value={formData.password}
+                    disabled={disabled}
                     onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
-                    className={`pl-10 pr-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 ${theme.focus}`}
+                    className={`pl-10 pr-14 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 ${theme.focus}`}
                     required
                   />
                   <button
                     type="button"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                    disabled={disabled}
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                    className="absolute right-1 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center text-slate-400 hover:text-slate-200"
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
               </div>
 
+              {mfaRequired && <div className="space-y-2"><Label htmlFor="provider-mfa" className="text-slate-200">Authenticator code</Label><Input id="provider-mfa" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" required disabled={disabled} value={mfaCode} onChange={event=>setMfaCode(event.target.value)} className="border-slate-600 bg-slate-900/50 text-white" /></div>}
+
               <Button
                 type="submit"
-                disabled={isLoading}
+                disabled={disabled}
                 className={`w-full bg-gradient-to-r ${theme.button} text-white`}
               >
                 {isLoading ? (
@@ -281,7 +291,7 @@ function ProviderLoginContent({ market = 'US', allowTestingAccess = true }) {
                     Signing in...
                   </>
                 ) : (
-                  'Sign In'
+                  preparing ? 'Preparing sign-in…' : 'Sign in'
                 )}
               </Button>
 
