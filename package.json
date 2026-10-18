@@ -33,7 +33,7 @@
     "test:portal": "node ng/tests/portal-contract.test.js",
     "test:sim": "node ng/scripts/simulate.js",
     "test:live-sim": "node ng/scripts/simulate-live.js",
-    "test:deploy-guard": "node --test server/tests/deploy-guard.test.js server/tests/deploy-aux-platforms.test.js server/tests/migrate-agent-tables.test.js",
+    "test:deploy-guard": "node --test server/tests/deploy-guard.test.js server/tests/tunnel-deployment.test.js server/tests/deploy-aux-platforms.test.js server/tests/migrate-agent-tables.test.js ng/tests/fhir-emr-r4.test.js",
     "test:deploy-gate": "npm run test:deploy-guard && npm test && npm run test:sim",
     "e2e:video:ng": "node scripts/e2e-ng-video-call.cjs",
     "e2e:livekit:sfu": "node scripts/e2e-livekit-sfu.cjs",
@@ -66,7 +66,7 @@
     "e2e:careops-profile": "node scripts/e2e-careops-profile.cjs",
     "reconcile:ng:dhis2": "node scripts/process-ng-dhis2-deliveries.cjs",
     "worker:ng:dhis2": "node scripts/process-ng-dhis2-deliveries.cjs --watch",
-    "test:ng:medication-delivery": "node --test ng/tests/courier-provider-contract.test.js ng/tests/medication-delivery-pricing.test.js ng/tests/medication-delivery-webhooks.test.js ng/tests/medication-finance.test.js ng/tests/medication-rx-concurrency.test.js ng/tests/medication-production-guards.test.js ng/tests/medication-pharmacy-wallet.test.js ng/tests/medication-delivery-client.test.js ng/tests/medication-delivery-ui-state.test.js server/tests/medication-migration-safety.test.js",
+    "test:ng:medication-delivery": "node --test ng/tests/pharmacy-commercial-policy.test.js ng/tests/courier-provider-contract.test.js ng/tests/medication-delivery-pricing.test.js ng/tests/medication-delivery-webhooks.test.js ng/tests/medication-finance.test.js ng/tests/medication-rx-concurrency.test.js ng/tests/medication-production-guards.test.js ng/tests/medication-pharmacy-wallet.test.js ng/tests/medication-delivery-client.test.js ng/tests/medication-delivery-ui-state.test.js server/tests/medication-migration-safety.test.js",
     "test:ng:medication-delivery:db": "node --test --test-concurrency=1 ng/tests/medication-delivery-workflow-db.test.js ng/tests/medication-delivery-http-db.test.js ng/tests/medication-delivery-settlement-db.test.js",
     "e2e:ng:medication-delivery": "node scripts/e2e-medication-delivery.cjs",
     "test:fixture-safety": "node --test ng/tests/fixture-target-safety.test.js server/tests/agent-activity-startup-safety.test.js server/tests/financial-startup-safety.test.js"
@@ -147,6 +147,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "ajv": "6.15.0",
     "@axe-core/playwright": "^4.10.2",
     "@playwright/test": "^1.55.1",
     "autoprefixer": "^10.4.20",

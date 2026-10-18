@@ -54,4 +54,14 @@ router.get(capability.RESOURCE_PATHS.Observation, read(async (req, id) => {
   return bundle;
 }));
 
+for(const [type,handler] of [['AllergyIntolerance',service.allergies],['Condition',service.conditions],['DiagnosticReport',service.diagnosticReports]]) {
+  router.get(capability.RESOURCE_PATHS[type],read(async(req,id)=>{
+    const resources=await handler(getPool(),req.programmeContext,id);
+    const count=Math.min(Math.max(Number.parseInt(req.query._count,10)||50,1),200);
+    const offset=Math.max(Number.parseInt(req.query._offset,10)||0,0);
+    const bundle={resourceType:'Bundle',type:'searchset',total:resources.length,entry:resources.slice(offset,offset+count).map(resource=>({resource,search:{mode:'match'}}))};
+    if(offset+count<resources.length){const params=new URLSearchParams({encounter:id,programmeId:req.programmeContext.programme_id,facilityId:req.programmeContext.facility_id,_count:String(count),_offset:String(offset+count)});bundle.link=[{relation:'next',url:`/api/ng/interop/fhir/${type}?${params}`}];}
+    return bundle;
+  }));
+}
 module.exports = router;

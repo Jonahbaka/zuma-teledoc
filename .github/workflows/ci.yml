@@ -35,6 +35,9 @@ jobs:
       - name: Deployment and secret guards
         run: npm run test:deploy-guard
 
+      - name: Recovery command safety
+        run: python3 -m unittest discover -s .github/scripts -p test_recover_ec2_ssm.py
+
       - name: Workflow state-machine simulations
         run: npm run test:sim
 

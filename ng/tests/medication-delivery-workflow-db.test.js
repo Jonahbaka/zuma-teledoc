@@ -50,7 +50,52 @@ test('real PostgreSQL medication checkout, payment, courier and refund workflows
   process.env.NODE_ENV = 'test'; process.env.ENCRYPTION_KEY ||= 'c'.repeat(64);
   const pool = new Pool({ connectionString: target, max: 6 });
   const fixture = options => createBrowserFixture({ pool, ...options });
+  const partnerFixture = async () => {
+    const f = await fixture();
+    const { APPROVALS } = require('../services/pharmacy/commercialProfileService');
+    const profile = (await pool.query(`INSERT INTO ng_pharmacy_commercial_profiles(code,display_name,status,fees,approvals,settings,created_by,updated_by) VALUES($1,'Isolated commercial test','active',$2,$3,$4,$5,$5) RETURNING *`,[
+      `isolated-${crypto.randomUUID()}`,JSON.stringify({currency:'NGN',orderServiceMinor:100000,deliverySupportMinor:50000}),JSON.stringify(Object.fromEntries(APPROVALS.map(key=>[key,`isolated-evidence:${key}`]))),JSON.stringify({mode:'pharmacist_portal',quoteValiditySeconds:1800,inventoryMaxAgeSeconds:3600}),f.superAdmin.id,
+    ])).rows[0];
+    await pool.query(`INSERT INTO ng_pharmacy_commercial_branches(pharmacy_id,profile_id,partner_branch_reference,approval_reference,approved_by) VALUES($1,$2,'isolated-branch','isolated-approval',$3)`,[f.pharmacyId,profile.id,f.superAdmin.id]);
+    f.profile=profile;f.input.pharmacyDataConsent=true;return f;
+  };
   try {
+    await t.test('commercial pharmacy orders require explicit data consent and current verified stock', async () => {
+      const f=await partnerFixture();
+      await assert.rejects(f.service.createOrder({...f.input,pharmacyDataConsent:false},f.patient),{status:422});
+      await pool.query("UPDATE ng_pharmacy_inventory SET availability_verified_at=now()-interval '2 hours' WHERE id=$1",[f.inventoryId]);
+      await assert.rejects(f.service.createOrder(f.input,f.patient),{status:409});
+      assert.equal((await pool.query('SELECT quantity_reserved FROM ng_pharmacy_inventory WHERE id=$1',[f.inventoryId])).rows[0].quantity_reserved,0);
+    });
+    await t.test('commercial pickup collects exact agreed fees, recognizes revenue only on collection and preserves pharmacy payable',async()=>{
+      const f=await partnerFixture();const orderId=await prepared(f);
+      const checkout=await f.service.getCheckout(orderId,f.patient);
+      assert.equal(checkout.pricing.patientTotalMinor,1000000);assert.equal(checkout.pricing.courierMinor,0);assert.equal(checkout.pricing.managementMinor,0);assert.equal(checkout.pricing.coordinationMinor,100000);assert.ok(checkout.pharmacyQuote.reference);
+      const balance=async account=>Number((await pool.query('SELECT COALESCE(sum(credit_minor-debit_minor),0)::text AS amount FROM ng_medication_ledger WHERE order_id=$1 AND account=$2',[orderId,account])).rows[0].amount);
+      assert.equal(await balance('coordination_unearned'),100000);assert.equal(await balance('coordination_revenue'),0);assert.equal(await balance('pharmacy_payable'),900000);
+      await act(f,orderId,'collect',f.pharmacist,{attest:true});
+      assert.equal(await balance('coordination_unearned'),0);assert.equal(await balance('coordination_revenue'),100000);assert.equal(await balance('pharmacy_payable'),900000);assert.equal(f.state.bookCalls,0);
+    });
+    await t.test('an expired pharmacy quote cannot be approved or paid; a fresh pharmacy confirmation needs new consent',async()=>{
+      const f=await partnerFixture();const made=await f.service.createOrder(f.input,f.patient);const orderId=made.order.id;
+      const price={items:[{drugId:f.drugId,unitPriceMinor:900000}],pharmacistRegistrationNumber:f.registration,attest:true,packageCategory:'sealed_ambient_medication'};
+      await act(f,orderId,'confirmPrice',f.pharmacist,price);
+      f.state.now+=1800001;
+      await assert.rejects(act(f,orderId,'approve',f.patient,{stage:'medicines',consent:true}),{status:409});
+      await assert.rejects(pay(f,orderId,'medicines'),{status:409});assert.equal(f.state.initializeCalls,0);
+      const fresh=await act(f,orderId,'confirmPrice',f.pharmacist,{...price,items:[{drugId:f.drugId,unitPriceMinor:910000}]});
+      assert.equal(fresh.pharmacyQuote.expired,false);assert.equal(fresh.pricing.patientTotalMinor,1010000);assert.equal(fresh.actions.canPayMedicines,false);
+      await act(f,orderId,'approve',f.patient,{stage:'medicines',consent:true});
+      await pool.query("UPDATE ng_pharmacy_commercial_profiles SET status='suspended' WHERE id=$1",[f.profile.id]);
+      await assert.rejects(pay(f,orderId,'medicines'),{status:409});assert.equal(f.state.initializeCalls,0);
+    });
+    await t.test('commercial delivery earns the agreed support and order fees only once after recipient proof',async()=>{
+      const f=await partnerFixture();const orderId=await quoted(f);
+      await act(f,orderId,'dispatch',f.pharmacist);f.state.providerStatus='delivered';
+      await f.service.refresh(orderId,f.patient);await f.service.refresh(orderId,f.patient);
+      const balances=(await pool.query('SELECT account,sum(credit_minor-debit_minor)::text AS amount FROM ng_medication_ledger WHERE order_id=$1 GROUP BY account',[orderId])).rows;
+      assert.equal(balances.find(row=>row.account==='management_revenue').amount,'50000');assert.equal(balances.find(row=>row.account==='coordination_revenue').amount,'100000');assert.equal(balances.find(row=>row.account==='pharmacy_payable').amount,'900000');assert.equal(f.state.bookCalls,1);
+    });
     await t.test('concurrent create retries reserve stock once and never accept a body-supplied patient owner', async () => {
       const f = await fixture();
       const input = { ...f.input, patientUserId: f.otherPatient.id, patient_user_id: f.otherPatient.id };

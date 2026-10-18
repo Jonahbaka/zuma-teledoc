@@ -120,21 +120,12 @@ class InventoryService {
 
     for (const item of items) {
       try {
-        // Find or match drug in catalog
-        let drugId = item.drugId;
-
-        if (!drugId && item.drugName) {
-          const drug = await pool.query(
-            `SELECT id FROM ng_drug_catalog
-             WHERE LOWER(name) = LOWER($1) OR LOWER(generic_name) = LOWER($1) OR LOWER(brand_name) = LOWER($1)
-             LIMIT 1`,
-            [item.drugName]
-          );
-          drugId = drug.rows[0]?.id;
-        }
+        // A reviewed catalogue identity includes strength, form and pack. A
+        // medicine name alone cannot safely select a dispensable product.
+        const drugId = item.drugId;
 
         if (!drugId) {
-          results.errors.push({ item: item.drugName, error: 'Drug not found in catalog' });
+          results.errors.push({ item: item.drugName, error: 'A reviewed catalogue drugId is required; name-only product matching is not permitted' });
           results.skipped++;
           continue;
         }

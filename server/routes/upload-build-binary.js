@@ -7,11 +7,11 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { runDetachedCommand } = require('./run-detached-command');
 
-const PROJECT_ROOT = '/home/ec2-user/zuma-teledoc';
+const PROJECT_ROOT = path.resolve(process.env.DEPLOY_PROJECT_ROOT || path.join(__dirname, '../..'));
 const DEPLOY_LOG = '/tmp/doctarx-deploy.log';
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET;
 const DEPLOY_LOCK_TIMEOUT_MS = 30 * 60 * 1000;
-const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
+const PM2_APP_NAME = process.env.PM2_APP_NAME || process.env.name || 'zuma-teledoc';
 const CRONOPS_ROOT = `${PROJECT_ROOT}/cronops`;
 const GITHUB_OIDC_ISSUER = 'https://token.actions.githubusercontent.com';
 const GITHUB_OIDC_JWKS_URL = `${GITHUB_OIDC_ISSUER}/.well-known/jwks`;
@@ -253,6 +253,8 @@ function artifactDeployScript({ deployId, tmpFile, gitSha, branch, scriptPath })
 return `#!/usr/bin/env bash
 set -euo pipefail
 cd ${quotedProject}
+export PROJECT_ROOT=${quotedProject}
+export PM2_APP_NAME=${shQuote(PM2_APP_NAME)}
 echo "[deploy:id] ${deployId}"
 echo "[deploy:pid] $$"
 echo "[deploy] start $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -265,7 +267,7 @@ restore_next_on_failure() {
     if [ -d .next ]; then mv .next .next.failed; fi
     mv ${quotedPrevious} .next
     ln -sfn .next _next || true
-    pm2 reload ecosystem.config.js --only ${PM2_APP_NAME} --update-env 2>/dev/null || true
+    pm2 restart ${shQuote(PM2_APP_NAME)} --update-env 2>/dev/null || true
   fi
   if [ "$rc" != "0" ]; then echo "[deploy] failed (exit $rc) $(date -u +%Y-%m-%dT%H:%M:%SZ)"; fi
   exit "$rc"
@@ -300,13 +302,15 @@ bash scripts/doctarx-blue-green-switch.sh .next.artifact-staging/.next
 rm -rf .next.artifact-staging
 pm2 reload ecosystem.config.js --only cronops --update-env || pm2 start ecosystem.config.js --only cronops --env production || true
 APP_OK=no
+ACTIVE_PORT=$(cat .doctarx-active-port 2>/dev/null || echo 8080)
+[[ "$ACTIVE_PORT" =~ ^[0-9]{2,5}$ ]] && [ "$ACTIVE_PORT" -le 65535 ]
 for i in $(seq 1 90); do
-  H=$(curl -s --max-time 10 --resolve doctarx.com:443:127.0.0.1 https://doctarx.com/api/health || true)
+  H=$(curl -s --max-time 10 "http://127.0.0.1:$ACTIVE_PORT/api/health" || true)
   if echo "$H" | grep -q '"status":"healthy"' && echo "$H" | grep -q '"nextReady":true'; then APP_OK=yes; break; fi
   sleep 2
 done
 [ "$APP_OK" = "yes" ]
-NG_HEALTH=$(curl -s --max-time 10 --resolve doctarx.com:443:127.0.0.1 https://doctarx.com/api/ng/health || true)
+NG_HEALTH=$(curl -s --max-time 10 "http://127.0.0.1:$ACTIVE_PORT/api/ng/health" || true)
 echo "[verify:ng-health] $NG_HEALTH"
 echo "$NG_HEALTH" | grep -q '"status":"ok"'
 echo "[deploy:check] build=success"
@@ -350,11 +354,12 @@ router.post('/', upload.single('tarball'), async (req, res) => {
 
   const gitSha = safeSha(req.body?.gitSha || req.headers['x-git-sha']);
   const branch = safeBranch(req.body?.branch || req.headers['x-git-branch']);
-  const envKeys = mergeEnvFile(path.join(PROJECT_ROOT, '.env'), parseEnvJson(req.body?.envJson));
+  let envKeys;
   const deployId = newDeployId();
   const scriptPath = `/tmp/doctarx-artifact-deploy-${deployId}.sh`;
 
   try {
+    envKeys = mergeEnvFile(path.join(PROJECT_ROOT, '.env'), parseEnvJson(req.body?.envJson));
     fs.writeFileSync(DEPLOY_LOG, '');
     writeScript(scriptPath, artifactDeployScript({
       deployId,

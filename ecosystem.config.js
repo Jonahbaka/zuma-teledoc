@@ -1,9 +1,9 @@
-const os = require('os');
+const path = require('path');
 
 module.exports = {
   apps: [
     {
-      name: 'zuma-teledoc',
+      name: process.env.PM2_APP_NAME || 'zuma-teledoc',
       script: 'server/index.js',
       // NOTE: must stay single-instance (fork) until Socket.IO state is externalized.
       // server/services/socketService.js holds room/presence state in in-process Maps
@@ -30,7 +30,7 @@ module.exports = {
       name: 'cronops',
       script: 'npm',
       args: 'run start:prod',
-      cwd: '/home/ec2-user/zuma-teledoc/cronops',
+      cwd: path.join(__dirname, 'cronops'),
       exec_mode: 'fork',
       instances: 1,
       max_memory_restart: '512M',

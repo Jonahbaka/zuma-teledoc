@@ -10,6 +10,7 @@ const complianceService = require('../services/compliance/complianceService');
 const { getPool } = require('../../server/db');
 const { requireSuperAdmin } = require('../../server/middleware/auth');
 router.use('/medication-delivery', require('./medicationDeliveryAdmin'));
+router.use('/pharmacy-integrations', require('./pharmacyIntegrationsAdmin'));
 const {
   createAdminTestAccount,
   listAdminTestAccounts,

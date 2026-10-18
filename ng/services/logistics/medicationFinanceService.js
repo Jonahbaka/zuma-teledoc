@@ -26,7 +26,7 @@ function approvedAmounts(approval, stage) {
   const allocations = stageLines(stage).map(line => {
     const item = approval.allocations[line];
     if (!item || sum([item.patientMinor, item.insurerMinor]) !== assertMinor(item.amountMinor)) throw error('MEDICATION_FINANCE_APPROVAL_INVALID', 'Approved payer allocation does not balance');
-    return { line, account: LINE_ACCOUNTS[line], amount: assertMinor(item.amountMinor), patient: assertMinor(item.patientMinor), insurer: assertMinor(item.insurerMinor) };
+    return { line, account: line === 'coordinationMinor' && approval.coordinationEarnedOnFulfillment === true ? 'coordination_unearned' : LINE_ACCOUNTS[line], amount: assertMinor(item.amountMinor), patient: assertMinor(item.patientMinor), insurer: assertMinor(item.insurerMinor) };
   });
   if (sum(allocations.map(item => item.patient)) !== assertMinor(approval.patientMinor) || sum(allocations.map(item => item.insurer)) !== assertMinor(approval.insurerMinor) || sum(allocations.map(item => item.amount)) !== assertMinor(approval.totalMinor)) throw error('MEDICATION_FINANCE_APPROVAL_INVALID', 'Approved stage totals do not balance');
   return allocations;
@@ -123,9 +123,27 @@ function createMedicationFinanceService({ pool = null, gateway = paystack, env =
     if (existing.rows.length) return { alreadyRecognized: true, earnedMinor: assertMinor(existing.rows[0].credit_minor) };
     const result = await client.query("SELECT COALESCE(SUM(credit_minor-debit_minor),0)::text AS amount FROM ng_medication_ledger WHERE order_id=$1 AND account='management_unearned'", [orderId]);
     const amount = assertMinor(result.rows[0]?.amount || '0');
-    if (amount !== 75000) throw error('DELIVERY_MANAGEMENT_BALANCE_INVALID', 'The confirmed delivery-management fee must be fully funded or covered');
+    const commercial = (await client.query('SELECT commercial_snapshot FROM ng_medication_fulfillments WHERE order_id=$1',[orderId])).rows[0]?.commercial_snapshot;
+    const expected = commercial ? assertMinor(commercial.deliverySupportMinor) : 75000;
+    if (amount !== expected) throw error('DELIVERY_MANAGEMENT_BALANCE_INVALID', 'The agreed delivery-support fee must be fully funded or covered');
     await post(client, { orderId, group: `delivery-earned:${orderId}`, evidence: reference(evidence), entries: [entry('management_unearned', amount, 'debit'), entry('management_revenue', amount, 'credit')] });
     return { earnedMinor: amount };
+  }
+  async function recognizeOrderService(client,{orderId,reference:evidence}) {
+    const fulfillment = (await client.query('SELECT f.commercial_snapshot,f.collected_at,o.status,o.delivery_type FROM ng_medication_fulfillments f JOIN ng_orders o ON o.id=f.order_id WHERE f.order_id=$1 FOR UPDATE OF f',[orderId])).rows[0];
+    if (!fulfillment?.commercial_snapshot) return { earnedMinor: 0 };
+    if (fulfillment.status !== 'delivered' || fulfillment.delivery_type === 'pickup' && !fulfillment.collected_at) throw error('FULFILLMENT_EVIDENCE_REQUIRED','Completed pharmacy collection or verified delivery is required before earning the order service fee');
+    if (fulfillment.delivery_type === 'delivery') {
+      const booking = (await client.query('SELECT status,delivery_proof FROM ng_medication_bookings WHERE order_id=$1',[orderId])).rows[0];
+      if (booking?.status !== 'delivered' || !booking.delivery_proof) throw error('FULFILLMENT_EVIDENCE_REQUIRED','Verified recipient delivery evidence is required');
+    }
+    const expected = assertMinor(fulfillment.commercial_snapshot.orderServiceMinor);
+    const prior = (await client.query('SELECT credit_minor FROM ng_medication_ledger WHERE posting_key=$1',[`order-service-earned:${orderId}:coordination_revenue`])).rows[0];
+    if (prior) { if (assertMinor(prior.credit_minor)!==expected) throw error('MEDICATION_LEDGER_CONFLICT','The recorded order service fee conflicts with its approved commercial snapshot'); return {alreadyRecognized:true,earnedMinor:expected}; }
+    const amount = assertMinor((await client.query("SELECT COALESCE(sum(credit_minor-debit_minor),0)::text AS amount FROM ng_medication_ledger WHERE order_id=$1 AND account='coordination_unearned'",[orderId])).rows[0]?.amount || '0');
+    if (amount!==expected) throw error('MEDICATION_LEDGER_CONFLICT','The order service fee is not fully funded');
+    await post(client,{orderId,group:`order-service-earned:${orderId}`,evidence:reference(evidence),entries:[entry('coordination_unearned',amount,'debit'),entry('coordination_revenue',amount,'credit')]});
+    return {earnedMinor:amount};
   }
   function refundEvidence(data, refund, payment) {
     const id = String(data?.id ?? '');
@@ -366,7 +384,7 @@ function createMedicationFinanceService({ pool = null, gateway = paystack, env =
       const payable = await client.query('SELECT COALESCE(SUM(credit_minor-debit_minor),0)::text AS amount FROM ng_medication_ledger WHERE order_id=$1 AND account=$2', [orderId, `${payee}_payable`]);
       const amount = assertMinor(payable.rows[0]?.amount || '0');
       if (!amount) throw error('MEDICATION_SETTLEMENT_NOT_DUE', 'There is no outstanding amount due to this payee');
-      const liabilities = await client.query("SELECT COALESCE(SUM(credit_minor-debit_minor),0)::text AS amount FROM ng_medication_ledger WHERE account IN ('pharmacy_payable','courier_payable','tax_payable','management_unearned')");
+      const liabilities = await client.query("SELECT COALESCE(SUM(credit_minor-debit_minor),0)::text AS amount FROM ng_medication_ledger WHERE account IN ('pharmacy_payable','courier_payable','tax_payable','management_unearned','coordination_unearned')");
       const pending = await client.query("SELECT COUNT(*)::int AS count FROM ng_medication_settlements WHERE status IN ('pending','reconciliation_required')");
       const reserveCount = assertMinor(pending.rows[0]?.count || 0) + 1;
       const required = BigInt(assertMinor(liabilities.rows[0]?.amount || '0')) + BigInt(reserve) * BigInt(reserveCount);
@@ -406,16 +424,17 @@ function createMedicationFinanceService({ pool = null, gateway = paystack, env =
     const courierPayableMinor = -debitBalance('courier_payable') || 0;
     const taxPayableMinor = -debitBalance('tax_payable') || 0;
     const managementUnearnedMinor = -debitBalance('management_unearned') || 0;
+    const coordinationUnearnedMinor = -debitBalance('coordination_unearned') || 0;
     const managementRevenueMinor = -debitBalance('management_revenue') || 0;
     const coordinationRevenueMinor = -debitBalance('coordination_revenue') || 0;
     const processingCostMinor = debitBalance('processing_expense') + debitBalance('transfer_processing_expense');
     const merchantRefundExpenseMinor = debitBalance('merchant_refund_expense');
     return { currency: 'NGN', totalDebitsMinor, totalCreditsMinor, balanced: totalDebitsMinor === totalCreditsMinor, accounts: rows,
-      summary: { actualCashMinor: debitBalance('gateway_cash'), insurerReceivableMinor: debitBalance('insurer_receivable'), pharmacyPayableMinor, courierPayableMinor, taxPayableMinor, managementUnearnedMinor, managementRevenueMinor, coordinationRevenueMinor, processingCostMinor, merchantRefundExpenseMinor, netDoctaRxEarningsMinor: managementRevenueMinor + coordinationRevenueMinor - processingCostMinor - merchantRefundExpenseMinor, cashAfterOutstandingLiabilitiesMinor: debitBalance('gateway_cash') - pharmacyPayableMinor - courierPayableMinor - taxPayableMinor - managementUnearnedMinor },
+      summary: { actualCashMinor: debitBalance('gateway_cash'), insurerReceivableMinor: debitBalance('insurer_receivable'), pharmacyPayableMinor, courierPayableMinor, taxPayableMinor, managementUnearnedMinor, coordinationUnearnedMinor, managementRevenueMinor, coordinationRevenueMinor, processingCostMinor, merchantRefundExpenseMinor, netDoctaRxEarningsMinor: managementRevenueMinor + coordinationRevenueMinor - processingCostMinor - merchantRefundExpenseMinor, cashAfterOutstandingLiabilitiesMinor: debitBalance('gateway_cash') - pharmacyPayableMinor - courierPayableMinor - taxPayableMinor - managementUnearnedMinor - coordinationUnearnedMinor },
       refunds: refunds.rows.map(row => ({ status: row.status, count: row.count, amountMinor: assertMinor(row.amount_minor) })),
       settlements: settlements.rows.map(row => ({ payee: row.payee, status: row.status, count: row.count, amountMinor: assertMinor(row.amount_minor) })) };
   }
-  return { postPayment, postCoverage, recognizeDelivery, refundOrder, refundDeliveryStage, refundReturnedOrder, refreshRefunds, handleRefundWebhook, initiateSettlement, refreshSettlements, report };
+  return { postPayment, postCoverage, recognizeDelivery, recognizeOrderService, refundOrder, refundDeliveryStage, refundReturnedOrder, refreshRefunds, handleRefundWebhook, initiateSettlement, refreshSettlements, report };
 }
 
 module.exports = { createMedicationFinanceService };

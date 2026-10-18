@@ -1,5 +1,7 @@
 # DoctaRx Nigeria — Production Deploy Runbook (EC2 host)
 
+**Verified current release path (18 October 2026):** production runs as the existing root-owned PM2 application `doctarx` from `/opt/zuma-teledoc`, with Cloudflare Tunnel forwarding to port 8080. The instance has no inbound security-group rules and is online in SSM. Repository variables contain its verified region, instance, app directory, app user, PM2 name and health port. The `AWS_ROLE_ARN` OIDC role is restricted to this repository's `main` branch and the configured SSM target. Use the unchanged `.github/workflows/deploy.yml` artifact pipeline for releases and the existing `recover-ec2.yml` for bounded SSM diagnosis/restart. Do not apply the historical nginx, Ohio instance, SSH, static key, branch or seeding examples below to this host. The switch script validates a candidate build and retains the previous frontend for rollback; it never restarts the tunnel or opens inbound ports.
+
 > This runbook contains historical branch/build examples. Resolve the approved release commit, current migration manifest and environment configuration before deployment. Current work is tracked in [the scope ledger](DOCTARX_SCOPE_LEDGER.md); a previous build count is not release evidence. Separate CareOps deployment and external activation remain explicit gates.
 
 This runbook covers the steps that **must run on the EC2 instance** (they need the
