@@ -229,6 +229,7 @@ router.use('/discovery', discoveryRoutes);
 router.use('/clinical', authenticate, clinicalRoutes);
 router.use('/phc', authenticate, phcRoutes);
 router.use('/interop/fhir', authenticate, require('./clinicalFhir'));
+router.use('/medication-fhir', authenticate, require('./medicationFhir'));
 router.use('/funding', authenticate, require('./funding'));
 router.use('/billing', authenticate, require('./billing'));
 router.use('/pharmacy', authenticate, pharmacyRoutes);

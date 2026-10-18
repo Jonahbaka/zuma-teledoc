@@ -1,0 +1,10 @@
+'use strict';
+const router = require('express').Router();
+const profiles = require('../services/pharmacy/commercialProfileService');
+router.use((_req,res,next)=>{res.set('Cache-Control','private, no-store');next();});
+const route = operation => async(req,res)=>{try {res.json(await operation(req));} catch(error){res.status(error.status || 503).json({error:error.status ? error.message : 'Pharmacy integration administration is temporarily unavailable.'});}};
+router.get('/',route(req=>profiles.list(req.user)));
+router.post('/',route(req=>profiles.save(req.user,req.body)));
+router.patch('/:profileId',route(req=>profiles.save(req.user,req.body,req.params.profileId)));
+router.post('/:profileId/branches',route(req=>profiles.bindBranch(req.user,req.params.profileId,req.body)));
+module.exports=router;

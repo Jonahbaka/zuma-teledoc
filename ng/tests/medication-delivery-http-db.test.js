@@ -31,6 +31,8 @@ test('real medication HTTP routes enforce current JWT account roles, pharmacy sc
     app.use('/api/ng/pharmacy', authenticate, require('../routes/pharmacy'));
     app.use('/api/ng/prescriptions', authenticate, require('../routes/prescriptions'));
     app.use('/api/ng/admin/medication-delivery', authenticate, require('../routes/medicationDeliveryAdmin'));
+    app.use('/api/ng/admin/pharmacy-integrations', authenticate, require('../routes/pharmacyIntegrationsAdmin'));
+    app.use('/api/ng/medication-fhir', authenticate, require('../routes/medicationFhir'));
     server = await new Promise(resolve => { const instance = app.listen(0, '127.0.0.1', () => resolve(instance)); });
     const origin = `http://127.0.0.1:${server.address().port}`;
     const token = (actor, extra = {}) => jwt.sign({ userId: actor.id, role: actor.role, ...extra }, secret, { algorithm: 'HS256', expiresIn: '15m' });
@@ -63,6 +65,66 @@ test('real medication HTTP routes enforce current JWT account roles, pharmacy sc
     async function coverage(f, orderId, partnerId, extra = {}) {
       return mutate(`/api/ng/admin/medication-delivery/${orderId}`, f.admin, 'coverage', { partnerId, authorizationReference: 'Isolated patient benefit authorization', evidenceReference: 'Isolated approval receipt', expiresAt: new Date(f.state.now + 3600000).toISOString(), allocations: { medicinesMinor: 900000 }, ...extra });
     }
+
+    await t.test('commercial administration requires a current super administrator and cannot activate unsigned proposals or assign draft branches',async()=>{
+      const f=await fixture();const base='/api/ng/admin/pharmacy-integrations';
+      const profile={code:`isolated-${crypto.randomUUID()}`,displayName:'Isolated draft agreement',status:'draft',fees:{currency:'NGN',orderServiceMinor:100000,deliverySupportMinor:50000},approvals:{},settings:{mode:'pharmacist_portal'}};
+      assert.equal((await http(base,{actor:f.patient})).status,403);
+      assert.equal((await http(base,{actor:f.admin,method:'POST',body:profile})).status,403);
+      const saved=await http(base,{actor:f.superAdmin,method:'POST',body:profile});assert.equal(saved.status,200,JSON.stringify(saved.body));
+      const row=saved.body.profile;
+      const register=await http(base,{actor:f.admin});assert.equal(register.status,200);assert.match(register.headers.get('cache-control'),/private.*no-store/);assert.ok(register.body.profiles.some(p=>p.id===row.id));
+      assert.equal((await http(`${base}/${row.id}`,{actor:f.superAdmin,method:'PATCH',body:{...profile,status:'active',version:1}})).status,422);
+      assert.equal((await http(`${base}/${row.id}/branches`,{actor:f.superAdmin,method:'POST',body:{pharmacyId:f.pharmacyId,branchReference:'isolated',approvalReference:'isolated'}})).status,409);
+      const changed=await http(`${base}/${row.id}`,{actor:f.superAdmin,method:'PATCH',body:{...profile,displayName:'Revised isolated draft',version:1}});assert.equal(changed.status,200);assert.equal(changed.body.profile.version,2);
+      assert.equal((await http(`${base}/${row.id}`,{actor:f.superAdmin,method:'PATCH',body:{...profile,version:1}})).status,409);
+      const bearer=token(f.superAdmin);await pool.query("UPDATE users SET role='patient' WHERE id=$1",[f.superAdmin.id]);
+      assert.equal((await http(base,{bearer,method:'POST',body:{...profile,code:`isolated-${crypto.randomUUID()}`}})).status,403);
+      const audit=(await pool.query("SELECT count(*)::int AS count FROM ng_compliance_audit_log WHERE action='pharmacy_commercial_profile_saved' AND resource_id=$1",[row.id])).rows[0];
+      // complianceService writes its canonical action trail; verify the actual
+      // profile remains draft even after attempted role and version escalation.
+      assert.equal((await pool.query('SELECT status FROM ng_pharmacy_commercial_profiles WHERE id=$1',[row.id])).rows[0].status,'draft');
+      assert.equal(audit.count,2);
+    });
+
+    await t.test('FHIR medication exchange validates actual records against official R4, preserves dispense evidence and rejects cross-patient reads and writes',async()=>{
+      const assertR4=require('./helpers/fhir-r4-schema');
+      const f=await fixture();const orderId=await make(f);await confirmPrice(f,orderId);
+      const base='/api/ng/medication-fhir';const path=`${base}/Bundle/${orderId}`;
+      assert.equal((await http(path)).status,401);
+      assert.equal((await http(path,{actor:f.otherPatient})).status,404);
+      assert.equal((await http(path,{actor:f.otherPharmacist})).status,404);
+      assert.equal((await http(path,{actor:f.pharmacist})).status,403);
+      assert.equal((await http(path,{actor:f.patient,method:'POST',body:{resourceType:'MedicationDispense'}})).status,405);
+      const metadata=await http(`${base}/metadata`,{actor:f.patient});assert.equal(metadata.status,200);assertR4(metadata.body);
+      assert.equal((await http(`${base}/MedicationRequest`,{actor:f.patient})).status,400);
+      assert.equal((await http(`${base}/MedicationRequest?order=${orderId}&patient=${f.otherPatient.id}`,{actor:f.patient})).status,400);
+      const initial=await http(path,{actor:f.patient});assert.equal(initial.status,200,JSON.stringify(initial.body));assertR4(initial.body);
+      assert.equal(initial.body.entry.filter(e=>e.resource.resourceType==='MedicationDispense').length,0);
+      const request=initial.body.entry.find(e=>e.resource.resourceType==='MedicationRequest').resource;
+      assert.equal(request.dispenseRequest.quantity.value,1);assert.equal(request.subject.reference,`Patient/${f.patient.id}`);
+      const individual=await http(`${base}/MedicationRequest/${request.id}?order=${orderId}`,{actor:f.patient});assert.equal(individual.status,200);assertR4(individual.body);
+      await mutate(patientBase(orderId),f.patient,'fulfillment',{deliveryType:'pickup',consent:true});
+      assert.equal((await http(path,{actor:f.pharmacist})).status,200);
+      await mutate(patientBase(orderId),f.patient,'approve',{stage:'medicines',consent:true});
+      const payment=await mutate(patientBase(orderId),f.patient,'pay',{stage:'medicines'});
+      assert.equal((await http(`${patientBase(orderId)}/payments/${payment.body.reference}/verify`,{actor:f.patient,method:'POST',body:{}})).status,200);
+      await mutate(pharmacyBase(f,orderId),f.pharmacist,'confirm');await mutate(pharmacyBase(f,orderId),f.pharmacist,'ready',{attest:true});
+      const before=await http(`${base}/MedicationDispense?order=${orderId}`,{actor:f.patient});assert.equal(before.body.total,0);
+      await mutate(pharmacyBase(f,orderId),f.pharmacist,'collect',{attest:true});
+      const complete=await http(path,{actor:f.patient});assert.equal(complete.status,200,JSON.stringify(complete.body));assertR4(complete.body);
+      const dispense=complete.body.entry.find(e=>e.resource.resourceType==='MedicationDispense').resource;
+      assert.equal(dispense.status,'completed');assert.equal(dispense.quantity.value,1);assert.equal(dispense.performer[0].actor.reference,`Practitioner/${f.pharmacist.id}`);assert.ok(dispense.whenHandedOver);assertR4(dispense);
+      assert.equal(dispense.authorizingPrescription[0].reference,`MedicationRequest/${request.id}`);
+      assert.equal(complete.body.entry.filter(e=>e.resource.resourceType==='Provenance').length,1);
+      for(const entry of complete.body.entry)assertR4(entry.resource);
+      const repeat=await http(path,{actor:f.patient});assert.equal(repeat.body.entry.find(e=>e.resource.resourceType==='MedicationDispense').resource.id,dispense.id);
+      const stored=(await pool.query('SELECT resource_encrypted FROM ng_fhir_medication_dispenses WHERE order_id=$1',[orderId])).rows[0];assert.ok(stored.resource_encrypted.encrypted);assert.ok(!JSON.stringify(stored).includes('MedicationDispense'));
+      await assert.rejects(pool.query('UPDATE ng_fhir_medication_dispenses SET drug_id=drug_id WHERE order_id=$1',[orderId]),/append-only/);
+      assert.equal((await http(`${base}/MedicationDispense/${dispense.id}?order=${orderId}`,{actor:f.otherPatient})).status,404);
+      await pool.query("UPDATE users SET is_active=false WHERE id=$1",[f.patient.id]);
+      assert.notEqual((await http(path,{actor:f.patient})).status,200);
+    });
 
     await t.test('unauthenticated checkout is rejected and signed token role claims cannot grant admin access', async () => {
       const f = await fixture(); const orderId = await make(f);

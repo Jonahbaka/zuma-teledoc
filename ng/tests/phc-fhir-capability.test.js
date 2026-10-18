@@ -38,6 +38,8 @@ const pool = {
         patient_user_id: ids.patient, encounter_id: ids.encounter, status: 'final', code_system: 'http://loinc.org', observation_code: '8310-5',
         display_name: 'Body temperature', value_type: 'numeric', value_numeric: '37.1', unit: '°C', observed_at: new Date('2026-10-01T12:00:00Z'), entered_by: ids.actor })) };
     }
+    if(sql.includes('FROM ng_patient_allergies') || sql.includes('FROM ng_problem_list_items')) {assert.equal(params[0],ids.patient);return{rows:[]};}
+    if(sql.includes('FROM ng_lab_results')) {assert.deepEqual(params,[ids.encounter,ids.patient]);return{rows:[]};}
     if (sql.includes('FROM users u')) return { rows: [{ id: ids.patient, first_name: 'Private', last_name: 'Patient fixture', email: 'private-patient@example.invalid', is_active: true, updated_at: new Date('2026-10-01T12:00:00Z') }] };
     if (sql.includes('INSERT INTO ng_programme_audit_events')) {
       if (state.auditFailure) throw new Error('Private audit outage detail');
@@ -79,7 +81,7 @@ test('CapabilityStatement advertises exactly the active PHC Patient/Encounter re
   assert.equal(statement.kind, 'instance'); assert.ok(statement.date && statement.implementation.description && statement.software.name.includes('DoctaRx'));
   assert.deepEqual(statement.format, ['application/fhir+json']);
   assert.deepEqual(statement.rest[0].resource.map(resource => [resource.type, resource.interaction.map(operation => operation.code)]),
-    [['Patient', ['read']], ['Encounter', ['read']], ['Observation', ['search-type']]]);
+    [['Patient', ['read']], ['Encounter', ['read']], ['Observation', ['search-type']], ['AllergyIntolerance',['search-type']], ['Condition',['search-type']], ['DiagnosticReport',['search-type']]]);
   assert.deepEqual(statement.rest[0].resource[2].searchParam.map(parameter => [parameter.name, parameter.type]), [['encounter', 'reference']]);
   assert.equal(statement.rest[0].resource[2].searchParam[0].definition, 'http://hl7.org/fhir/SearchParameter/clinical-encounter');
   assert.deepEqual(router.stack.filter(layer => layer.route).map(layer => layer.route.path), ['/metadata', ...Object.values(capability.RESOURCE_PATHS)]);
@@ -128,8 +130,13 @@ test('advertised HTTP resource operations still require actual enrollment, conse
     assert.equal(observations.body.total, 3); assert.equal(observations.body.entry.length, 1); assert.ok(observations.body.link[0].url.includes('_offset=2'));
     assert.equal(observations.body.entry[0].resource.valueQuantity.code, 'Cel');
     assert.equal((await get('Observation')).status, 400);
+    for(const type of ['AllergyIntolerance','Condition','DiagnosticReport']) {
+      assert.equal((await get(type)).status,400);
+      const result=await get(type,{query:{encounter:ids.encounter}});assert.equal(result.status,200);assert.equal(result.body.type,'searchset');assert.equal(result.body.total,0);
+    }
     state.enrollment = false; assert.equal((await get('Patient/' + ids.patient)).status, 403);
     state.enrollment = true; state.consent = 'revoked'; assert.equal((await get('Encounter/' + ids.encounter)).status, 409);
+    for(const type of ['AllergyIntolerance','Condition','DiagnosticReport'])assert.equal((await get(type,{query:{encounter:ids.encounter}})).status,409);
     state.consent = 'granted'; state.encounter = false; assert.equal((await get('Observation', { query: { encounter: ids.encounter } })).status, 404);
     assert.equal((await get('Patient', { query: { name: 'Private' } })).status, 404);
     assert.equal((await get('Patient/' + ids.patient, { method: 'POST' })).status, 404);

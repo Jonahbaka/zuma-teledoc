@@ -1,6 +1,8 @@
 # DoctaRx implementation prompt
 
-Revised 14 October 2026. This is the governing implementation scope, incorporating the user's later corrections. Use it with the production and PHC implementation plan and the current scope ledger. Requirements remain open until their evidence and release gates are satisfied; an implemented shell or passing build does not complete the product.
+Revised 18 October 2026. This is the governing implementation scope, incorporating the user's later corrections. Use it with the production and PHC implementation plan and the current scope ledger. Requirements remain open until their evidence and release gates are satisfied; an implemented shell or passing build does not complete the product.
+
+Latest approved additions: incorporate private, branch-specific pharmacy commercial terms without changing general fees; require executed agreements and operational acceptance before activation. Develop the EMR using HL7 FHIR R4 for clinical records and pharmacy medication exchange, preserving signed-prescription, patient consent, pharmacist verification, payment and audit controls. Follow `FHIR_EMR_INTEGRATION.md` and `PHARMACY_COMMERCIAL_ACTIVATION.md`; do not call an unverified external partner connection plug-and-play or active. Continue through validation and deployment using the existing GitHub artifact deployment workflow without another routine confirmation. Preserve `.github/workflows/deploy.yml`; repair host compatibility and the existing SSM recovery path where required.
 
 ---
 

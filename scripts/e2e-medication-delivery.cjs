@@ -183,6 +183,7 @@ async function scenario(browser, deliveryType) {
   try {
     await patient.page.goto(`${base}/ng/patient/orders`); await patient.page.getByRole('heading', { name: 'Your pharmacy orders', exact: true }).waitFor();
     await patient.page.getByRole('button', { name: 'Start an order', exact: true }).click(); await patient.page.getByLabel('Prescription and pharmacy', { exact: true }).selectOption(`digital:${fixture.prescriptionId}`);
+    await patient.page.getByRole('checkbox', { name: 'I authorize this pharmacy to receive my prescription and the information needed to dispense it.' }).check();
     const created = await write(patient.page, '/ng/patient/orders', () => patient.page.getByRole('button', { name: 'Send to pharmacy for final confirmation', exact: true }).click());
     const orderId = created.order.id, orderNumber = created.checkout.orderNumber;
     await openPharmacy(pharmacy, orderNumber); await pharmacy.page.getByLabel(/Final unit price in NGN for/).fill(money(fixture.unitPriceMinor)); await pharmacy.page.getByLabel('Verifying pharmacist’s registration number', { exact: true }).fill(fixture.registration); await pharmacy.page.getByRole('combobox', { name: /Verified medication package category/ }).selectOption('sealed_ambient_medication'); await pharmacy.page.getByLabel(/I am the authorized licensed pharmacist/).check();

@@ -86,13 +86,21 @@ function verifiedTaxes(taxes) {
   return { amountMinor: sum(records.map((tax) => tax.amountMinor), 'Tax total'), records };
 }
 
-function buildPricing({ medicinesMinor, deliveryType, quote = null, coordination = null, coverage = null, taxes = [], now = Date.now() } = {}) {
+function commercialFees(snapshot) {
+  if (!snapshot) return null;
+  if (snapshot.currency !== CURRENCY || !reference(snapshot.profileId) || !Number.isInteger(snapshot.profileVersion) || snapshot.profileVersion < 1 || !reference(snapshot.feeScheduleReference) || snapshot.coordinationEarnedOnFulfillment !== true) throw fail('An approved pharmacy commercial snapshot is required', 'COMMERCIAL_POLICY_UNVERIFIED');
+  return { orderServiceMinor: assertMinor(snapshot.orderServiceMinor, 'Agreed order service fee'), deliverySupportMinor: assertMinor(snapshot.deliverySupportMinor, 'Agreed delivery support fee') };
+}
+
+function buildPricing({ medicinesMinor, deliveryType, quote = null, coordination = null, coverage = null, taxes = [], commercialSnapshot = null, now = Date.now() } = {}) {
   if (deliveryType !== 'pickup' && deliveryType !== 'delivery') throw fail('Delivery type must be pickup or delivery');
   const medicines = assertMinor(medicinesMinor, 'Confirmed medicine price');
   const tax = verifiedTaxes(taxes);
   const delivery = deliveryType === 'delivery';
   const courier = delivery ? (quote === null || quote === undefined ? null : quoteFare(quote, now)) : 0;
-  const management = delivery ? MANAGEMENT_MINOR : 0;
+  const commercial = commercialFees(commercialSnapshot);
+  if (commercial && coverage?.verified === true && Object.values(coverage.allocations || {}).some(amount => assertMinor(amount) > 0)) throw fail('This pharmacy commercial profile is approved for self-paying orders only', 'PARTNER_INSURANCE_NOT_ACTIVATED');
+  const management = delivery ? (commercial ? commercial.deliverySupportMinor : MANAGEMENT_MINOR) : 0;
 
   const coordinationRequested = coordination?.authorized === true && coordination?.billable === true && coordination?.includedElsewhere !== true;
   if (coordinationRequested && !reference(coordination.authorizationReference)) {
@@ -101,7 +109,8 @@ function buildPricing({ medicinesMinor, deliveryType, quote = null, coordination
   if (coordinationRequested && coordination.payer !== undefined && !['patient', 'insurer'].includes(coordination.payer)) {
     throw fail('Coordination payer must be patient or insurer');
   }
-  const coordinationAmount = coordinationRequested ? COORDINATION_MINOR : 0;
+  if (commercial && coordinationRequested) throw fail('The agreed order-service fee already includes coordination; a second coordination charge is not permitted', 'COORDINATION_ALREADY_INCLUDED');
+  const coordinationAmount = commercial ? commercial.orderServiceMinor : coordinationRequested ? COORDINATION_MINOR : 0;
   const amounts = { medicinesMinor: medicines, courierMinor: courier, managementMinor: management, coordinationMinor: coordinationAmount, taxMinor: tax.amountMinor };
   const insurer = Object.fromEntries(LINES.map((line) => [line, 0]));
   const coverageApplied = coverage?.verified === true;
@@ -132,6 +141,9 @@ function buildPricing({ medicinesMinor, deliveryType, quote = null, coordination
   return {
     currency: CURRENCY,
     deliveryType,
+    commercialProfile: commercial ? { id: commercialSnapshot.profileId, version: commercialSnapshot.profileVersion, feeScheduleReference: commercialSnapshot.feeScheduleReference } : null,
+    coordinationEarnedOnFulfillment: !!commercial,
+    feeLabels: commercial ? { coordination: 'DoctaRx order service', management: 'DoctaRx delivery support' } : null,
     ...amounts,
     patientTotalMinor,
     insurerTotalMinor,
@@ -142,7 +154,7 @@ function buildPricing({ medicinesMinor, deliveryType, quote = null, coordination
     coordinationAuthorizationReference: coordinationRequested ? coordination.authorizationReference : null,
     taxRules: tax.records,
     allocations: { patient, insurer },
-    revenue: { managementEarnedMinor: 0, managementUnearnedMinor: management, coordinationMinor: coordinationAmount },
+    revenue: { managementEarnedMinor: 0, managementUnearnedMinor: management, coordinationMinor: commercial ? 0 : coordinationAmount, ...(commercial ? {coordinationUnearnedMinor:coordinationAmount} : {}) },
   };
 }
 
@@ -153,6 +165,7 @@ function stageAmounts(pricing, stage) {
   return {
     currency: CURRENCY,
     stage,
+    ...(pricing.coordinationEarnedOnFulfillment ? { coordinationEarnedOnFulfillment: true } : {}),
     totalMinor: nullableSum(lines.map((line) => pricing[line]), 'Stage total'),
     patientMinor: nullableSum(lines.map((line) => pricing.allocations.patient[line]), 'Patient stage total'),
     insurerMinor: sum(lines.map((line) => pricing.allocations.insurer[line]), 'Insurer stage total'),
@@ -193,11 +206,12 @@ function ledgerAllocations(pricing, { deliveryCompleted = false, patientCollecte
     taxPayableMinor: assertMinor(pricing.taxMinor, 'Tax payable'),
     managementUnearnedMinor: deliveryCompleted === true ? 0 : management,
     managementRevenueMinor: deliveryCompleted === true ? management : 0,
-    coordinationRevenueMinor: assertMinor(pricing.coordinationMinor, 'Coordination revenue'),
+    coordinationRevenueMinor: pricing.coordinationEarnedOnFulfillment && !deliveryCompleted ? 0 : assertMinor(pricing.coordinationMinor, 'Coordination revenue'),
+    ...(pricing.coordinationEarnedOnFulfillment ? { coordinationUnearnedMinor: deliveryCompleted ? 0 : assertMinor(pricing.coordinationMinor, 'Unearned order service fee') } : {}),
     processingCostMinor: processing,
   };
   entries.totalDebitsMinor = sum([entries.patientReceivableMinor, entries.patientCashMinor, entries.insurerReceivableMinor, entries.processingCostMinor], 'Ledger debits');
-  entries.totalCreditsMinor = sum([entries.pharmacyPayableMinor, entries.courierPayableMinor, entries.taxPayableMinor, entries.managementUnearnedMinor, entries.managementRevenueMinor, entries.coordinationRevenueMinor], 'Ledger credits');
+  entries.totalCreditsMinor = sum([entries.pharmacyPayableMinor, entries.courierPayableMinor, entries.taxPayableMinor, entries.managementUnearnedMinor, entries.managementRevenueMinor, entries.coordinationRevenueMinor, entries.coordinationUnearnedMinor || 0], 'Ledger credits');
   if (sum([patientDue, insurerDue]) !== total || entries.totalDebitsMinor !== entries.totalCreditsMinor || entries.totalCreditsMinor !== total) {
     throw fail('Delivery ledger does not balance', 'DELIVERY_LEDGER_UNBALANCED');
   }
@@ -205,4 +219,4 @@ function ledgerAllocations(pricing, { deliveryCompleted = false, patientCollecte
   return entries;
 }
 
-module.exports = { assertMinor, decimalToMinor, minorToDecimalString, buildPricing, stageAmounts, ledgerAllocations };
+module.exports = { assertMinor, decimalToMinor, minorToDecimalString, buildPricing, stageAmounts, ledgerAllocations, commercialFees };
