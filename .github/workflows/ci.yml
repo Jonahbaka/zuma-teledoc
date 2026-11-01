@@ -226,6 +226,9 @@ jobs:
       - name: Run desktop and mobile authenticated role matrix
         run: npm run e2e:government:roles
 
+      - name: Clinical Copilot reviewed documentation and follow-up browser regression
+        run: node scripts/e2e-clinical-copilot.cjs
+
       - name: Upload browser screenshots, traces, logs, and accessibility evidence
         if: always()
         uses: actions/upload-artifact@v4
