@@ -136,6 +136,11 @@ test('actual encrypted AI generation, clinician edits, canonical unsigned SOAP i
   const taskReplay = await workflow.createFollowUp(pool, request, doctorContext, taskPayload);
   assert.equal(taskReplay.id, task.id);
   assert.notEqual(task.status, 'completed');
+  const protectedTask = (await pool.query('SELECT title,title_encrypted,title_iv,title_tag FROM ng_follow_up_tasks WHERE id=$1', [task.id])).rows[0];
+  assert.equal(protectedTask.title, null, 'Clinical title must not be written in plaintext');
+  assert.ok(protectedTask.title_encrypted && protectedTask.title_iv && protectedTask.title_tag);
+  await assert.rejects(pool.query('UPDATE ng_follow_up_tasks SET title_encrypted=NULL WHERE id=$1', [task.id]), { code: '23514' });
+  await assert.rejects(pool.query("UPDATE ng_follow_up_tasks SET title_tag='' WHERE id=$1", [task.id]), { code: '23514' });
   const taskAudit = (await pool.query(`SELECT metadata_json FROM ng_programme_audit_events WHERE resource_id=$1 AND action='follow_up_created'`, [task.id])).rows[0];
   assert.deepEqual(taskAudit.metadata_json, { sourceSuggestionId: draft.id, sourceDraftIndex: 0 });
   await assert.rejects(workflow.createFollowUp(pool, request, doctorContext, { ...taskPayload, dueAt: new Date(Date.now() + 172800000).toISOString() }), { code: 'FOLLOW_UP_IDEMPOTENCY_CONFLICT' });
@@ -215,4 +220,55 @@ test('real concurrent observation capture waits for the locked review snapshot, 
   assert.ok(writerOutcome.value.id);
   await assert.rejects(chart.getReviewedAiDraft(encounter.canonical_id, doctor.id, draft.id), { code: 'CLINICAL_AI_SOURCE_CHANGED' });
   assert.equal(Number((await pool.query('SELECT count(*) FROM ng_clinical_ai_reviews WHERE suggestion_id=$1', [draft.id])).rows[0].count), 1);
+});
+
+test('migration 033 upgrades legacy follow-up titles without losing plaintext or accepting incomplete protection', async () => {
+  const migrationSql = require('node:fs').readFileSync(require('node:path').join(__dirname, '../migrations/033_ng_follow_up_protected_title.sql'), 'utf8');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // No public-schema fallback: the actual unqualified migration must resolve
+    // exclusively to this connection-local legacy fixture, never the real table.
+    await client.query('SET LOCAL search_path TO pg_temp');
+    await client.query(`CREATE TEMP TABLE ng_follow_up_tasks (
+      id integer PRIMARY KEY,
+      title text NOT NULL,
+      title_encrypted text,
+      title_iv text,
+      title_tag text
+    ) ON COMMIT DROP`);
+    const target = (await client.query(`SELECT c.relpersistence, c.relnamespace = pg_my_temp_schema() AS is_temp_schema
+      FROM pg_class c WHERE c.oid = 'ng_follow_up_tasks'::regclass`)).rows[0];
+    assert.equal(target.relpersistence, 't');
+    assert.equal(target.is_temp_schema, true);
+    // Fail closed if a later migration revision explicitly names another schema.
+    assert.doesNotMatch(migrationSql, /ALTER\s+TABLE\s+(?:ONLY\s+)?[\w"]+\s*\./i);
+    await client.query("INSERT INTO ng_follow_up_tasks (id,title) VALUES (1,'Synthetic legacy title')");
+    await client.query(migrationSql);
+    assert.equal((await client.query('SELECT title FROM ng_follow_up_tasks WHERE id=1')).rows[0].title, 'Synthetic legacy title');
+    await client.query(`INSERT INTO ng_follow_up_tasks (id,title,title_encrypted,title_iv,title_tag)
+      VALUES (2,NULL,'synthetic-ciphertext','synthetic-iv','synthetic-tag')`);
+    assert.equal((await client.query('SELECT title FROM ng_follow_up_tasks WHERE id=2')).rows[0].title, null);
+    const invalidProtection = [
+      [null, null, null],
+      [null, 'iv', 'tag'], ['ciphertext', null, 'tag'], ['ciphertext', 'iv', null],
+      ['', 'iv', 'tag'], ['ciphertext', '', 'tag'], ['ciphertext', 'iv', ''],
+    ];
+    for (const values of invalidProtection) {
+      await client.query('SAVEPOINT invalid_title');
+      try {
+        await assert.rejects(client.query(`INSERT INTO ng_follow_up_tasks
+          (id,title,title_encrypted,title_iv,title_tag) VALUES (3,NULL,$1,$2,$3)`, values),
+        { code: '23514', constraint: 'ng_follow_up_title_required' });
+      } finally {
+        await client.query('ROLLBACK TO SAVEPOINT invalid_title');
+        await client.query('RELEASE SAVEPOINT invalid_title');
+      }
+    }
+    assert.equal(Number((await client.query('SELECT count(*) FROM ng_follow_up_tasks')).rows[0].count), 2);
+  } finally {
+    // Rollback also removes the temporary table and resets search_path, including
+    // when migration execution/assertions fail; no shared fixture is altered.
+    try { await client.query('ROLLBACK'); } finally { client.release(); }
+  }
 });
