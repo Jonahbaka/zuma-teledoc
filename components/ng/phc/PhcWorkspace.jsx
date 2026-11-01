@@ -1,8 +1,9 @@
-﻿'use client';
+'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { v5 as uuidV5 } from 'uuid';
 import Image from 'next/image';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import {
@@ -161,6 +162,47 @@ function WorkspaceShell({ children, user, context, online, pendingCount, onSync,
   );
 }
 
+function ClinicalAiEvidence({ suggestion }) {
+  return (
+    <div className="mt-3 space-y-2 text-sm">
+      <p className="font-medium text-amber-900">AI-generated content is unverified. Check every claim, including missing information and uncertainties, against the original record before accepting.</p>
+      <p className="text-xs text-slate-600">Source encounter: {suggestion.encounter_id}. Source references identify records; they do not prove that a claim is correct.</p>
+      <details>
+        <summary className="cursor-pointer font-medium">Inspect claims and source references</summary>
+        <ul className="mt-2 space-y-2">
+          {(suggestion.output?.assertions || []).map((assertion, index) => (
+            <li key={index}><p>{assertion.text}</p><p className="text-xs text-slate-600">Sources: {assertion.sourceRefs.join(', ')}</p></li>
+          ))}
+        </ul>
+      </details>
+    </div>
+  );
+}
+
+function ClinicalAiEditor({ output, onChange }) {
+  if (!output) return null;
+  const updateTask = (index, key, value) => onChange({ ...output, followUpDrafts: (output.followUpDrafts || []).map((task, taskIndex) => taskIndex === index ? { ...task, [key]: value } : task) });
+  return (
+    <div className="mt-4 space-y-3 rounded-lg border bg-white p-4">
+      <p className="font-semibold">Review and edit before acceptance</p>
+      <Label>Encounter summary<Textarea value={output.summary} onChange={(event) => onChange({ ...output, summary: event.target.value })} /></Label>
+      <Label>Handover<Textarea value={output.handoverDraft} onChange={(event) => onChange({ ...output, handoverDraft: event.target.value })} /></Label>
+      {['subjective', 'objective', 'assessment', 'plan'].map((field) => (
+        <Label key={field} className="block">{titleCase(field)}<Textarea value={output.soapDraft?.[field] || ''} onChange={(event) => onChange({ ...output, soapDraft: { subjective: '', objective: '', assessment: '', plan: '', ...output.soapDraft, [field]: event.target.value } })} /></Label>
+      ))}
+      <p className="text-sm">Clinical assessment and plans remain your responsibility. Accepting does not save or sign a chart note.</p>
+      {(output.followUpDrafts || []).map((task, index) => (
+        <div key={index} className="space-y-2 border-t pt-3">
+          <Label>Follow-up title<Input value={task.title} onChange={(event) => updateTask(index, 'title', event.target.value)} /></Label>
+          <Label>Follow-up instructions<Textarea value={task.instructions} onChange={(event) => updateTask(index, 'instructions', event.target.value)} /></Label>
+          <Button variant="outline" size="sm" onClick={() => onChange({ ...output, followUpDrafts: output.followUpDrafts.filter((_task, taskIndex) => taskIndex !== index) })}>Remove proposal</Button>
+        </div>
+      ))}
+      <Button variant="outline" size="sm" disabled={(output.followUpDrafts || []).length >= 10} onClick={() => onChange({ ...output, followUpDrafts: [...(output.followUpDrafts || []), { title: '', instructions: '', sourceRefs: [] }] })}>Add clinician follow-up proposal</Button>
+    </div>
+  );
+}
+
 export default function PhcWorkspace({ standalone = false }) {
   const router = useRouter();
   const { user, loading: authLoading, isAuthenticated, logout } = useAuth();
@@ -189,6 +231,16 @@ export default function PhcWorkspace({ standalone = false }) {
   const [reports, setReports] = useState([]);
   const [dhis2Preview, setDhis2Preview] = useState(null);
   const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [aiEditedOutput, setAiEditedOutput] = useState(null);
+  const [aiDraftType, setAiDraftType] = useState('soap_draft');
+  const [aiTaskOptions, setAiTaskOptions] = useState({});
+  const aiRequestVersion = useRef(0);
+  const clearAiSuggestion = useCallback(() => {
+    aiRequestVersion.current += 1;
+    setAiSuggestion(null);
+    setAiEditedOutput(null);
+    setAiTaskOptions({});
+  }, []);
   const [referrals, setReferrals] = useState([]);
   const [referralEntry, setReferralEntry] = useState(null);
   const [referralTarget, setReferralTarget] = useState('');
@@ -304,7 +356,10 @@ export default function PhcWorkspace({ standalone = false }) {
     setPatients([]);
     setReportPreview(null);
     setDhis2Preview(null);
+    aiRequestVersion.current += 1;
     setAiSuggestion(null);
+    setAiEditedOutput(null);
+    setAiTaskOptions({});
     setReferralEntry(null);
     setQueue([]); setFollowUps([]); setReports([]); setReferrals([]);
     setCapabilities({ offlineClinicalSyncEnabled: false, clinicalAiEnabled: false, deviceCaptureEnabled: false });
@@ -575,21 +630,75 @@ export default function PhcWorkspace({ standalone = false }) {
     }
   };
 
-  const requestAiDraft = async (encounterId, suggestionType = 'encounter_summary') => {
+  useEffect(() => {
+    clearAiSuggestion();
+  }, [selectedPatient?.id, activeEncounter?.id, clearAiSuggestion]);
+
+  const requestAiDraft = async (encounterId, suggestionType = aiDraftType, view = 'intake') => {
+    const requestVersion = ++aiRequestVersion.current;
+    setAiSuggestion(null);
+    setAiEditedOutput(null);
+    setAiTaskOptions({});
     const response = await run(`ai-${encounterId}`, () => phcAPI.createAiSuggestion(context, {
       encounterId,
       suggestionType,
-    }), 'AI draft created from the displayed encounter sources. Human review is required.');
-    if (response) setAiSuggestion(response.data.suggestion);
+    }));
+    if (response && requestVersion === aiRequestVersion.current) {
+      const suggestion = response.data.suggestion;
+      if (String(suggestion.encounter_id) !== String(encounterId)) {
+        setError('The returned draft does not match the requested encounter.');
+        return;
+      }
+      setAiSuggestion({ ...suggestion, reviewView: view });
+      setAiEditedOutput(JSON.parse(JSON.stringify(suggestion.output)));
+      setNotice('Source-linked AI draft ready. A clinician must verify every claim.');
+    }
   };
 
   const reviewAiDraft = async (decision) => {
     if (!aiSuggestion) return;
+    const suggestionId = aiSuggestion.id;
+    const requestVersion = aiRequestVersion.current;
     const response = await run('ai-review', () => phcAPI.reviewAiSuggestion(context, aiSuggestion.id, {
       decision,
+      expectedEncounterId: aiSuggestion.encounter_id,
+      editedOutput: decision === 'accepted_with_edits' ? aiEditedOutput : null,
       rejectionReason: decision === 'rejected' ? 'Clinician rejected this draft after review.' : null,
-    }), decision === 'rejected' ? 'AI draft rejected.' : 'AI draft accepted as reviewed; it was not automatically written to the medical record.');
-    if (response) setAiSuggestion((current) => ({ ...current, status: response.data.review.status }));
+    }));
+    if (response && requestVersion === aiRequestVersion.current) {
+      setAiSuggestion((current) => current?.id === suggestionId ? { ...current, status: response.data.review.status, output: decision === 'accepted_with_edits' ? aiEditedOutput : current.output } : current);
+      setNotice(decision === 'rejected' ? 'AI draft rejected.' : 'AI draft accepted as reviewed; it was not automatically written to the medical record.');
+    }
+  };
+
+  const createReviewedAiFollowUp = async (index) => {
+    if (!aiSuggestion || aiSuggestion.status !== 'accepted' || programmeRole !== 'remote_clinician') return;
+    const proposal = aiSuggestion.output?.followUpDrafts?.[index];
+    const options = aiTaskOptions[index];
+    if (!proposal || !options?.dueAt || !options?.assignedRole) {
+      setError('Choose a due date and responsible role before creating this task.');
+      return;
+    }
+    const suggestionId = aiSuggestion.id;
+    const version = aiRequestVersion.current;
+    const response = await run(`ai-task-${index}`, () => phcAPI.createFollowUp(context, {
+      patientUserId: aiSuggestion.patient_user_id,
+      encounterId: aiSuggestion.encounter_id,
+      sourceSuggestionId: suggestionId,
+      sourceDraftIndex: index,
+      taskType: 'care_follow_up',
+      title: proposal.title,
+      instructions: proposal.instructions || null,
+      priority: 'routine',
+      assignedRole: options.assignedRole,
+      dueAt: new Date(options.dueAt).toISOString(),
+      idempotencyKey: uuidV5(`clinical-ai-follow-up:${suggestionId}:${index}`, uuidV5.URL),
+    }));
+    if (response && version === aiRequestVersion.current) {
+      setAiTaskOptions((current) => ({ ...current, [index]: { ...current[index], createdTaskId: response.data.task.id } }));
+      setNotice('Reviewed follow-up task created. It remains open until its outcome is recorded.');
+      await refreshWorklists();
+    }
   };
 
   const createReferral = async (event) => {
@@ -745,6 +854,16 @@ export default function PhcWorkspace({ standalone = false }) {
               </div>
             )}
 
+            {capabilities.clinicalAiEnabled && canIntake && online && (
+              <div className="mb-4">
+                <Label htmlFor="clinical-ai-type">Clinical draft type</Label>
+                <select id="clinical-ai-type" className="ml-3 rounded border p-2" value={aiDraftType} onChange={(event) => setAiDraftType(event.target.value)}>
+                  <option value="soap_draft">SOAP draft</option>
+                  <option value="encounter_summary">Encounter summary</option>
+                  <option value="follow_up_draft">Follow-up proposals</option>
+                </select>
+              </div>
+            )}
             <Tabs defaultValue={canIntake ? 'intake' : canViewQueue ? 'queue' : canFollowUp ? 'follow-ups' : 'reporting'}>
               <TabsList className="mb-4 h-auto w-full justify-start gap-1 overflow-x-auto bg-white p-1.5 shadow-sm">
                 {canIntake && <TabsTrigger value="intake" className="gap-2"><UserRound className="h-4 w-4" /> Patient intake</TabsTrigger>}
@@ -776,7 +895,7 @@ export default function PhcWorkspace({ standalone = false }) {
                             <button
                               type="button"
                               key={patient.id}
-                              onClick={() => { setSelectedPatient(patient); setActiveEncounter(null); }}
+                              onClick={() => { clearAiSuggestion(); setSelectedPatient(patient); setActiveEncounter(null); }}
                               className={`w-full rounded-xl border p-3 text-left transition ${selectedPatient?.id === patient.id ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'}`}
                             >
                               <div className="flex items-start justify-between gap-2">
@@ -889,20 +1008,21 @@ export default function PhcWorkspace({ standalone = false }) {
                         <Card className="border-violet-200 bg-violet-50/40">
                           <CardHeader>
                             <CardTitle className="text-lg">AI-assisted handover draft</CardTitle>
-                            <CardDescription>Generated only from encounter fields and saved observations. It never signs or changes the medical record.</CardDescription>
+                            <CardDescription>Drafted using encounter fields and saved observations. Every claim requires verification; it never signs or changes the medical record.</CardDescription>
                           </CardHeader>
                           <CardContent>
                             <Button variant="outline" onClick={() => requestAiDraft(activeEncounter.id)} disabled={busy === `ai-${activeEncounter.id}`}>
                               {busy === `ai-${activeEncounter.id}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                              Prepare grounded draft
+                              Prepare source-linked draft
                             </Button>
-                            {aiSuggestion && (
+                            {aiSuggestion?.reviewView === 'intake' && String(aiSuggestion.encounter_id) === String(activeEncounter.id) && (
                               <div className="mt-4 rounded-xl border border-violet-200 bg-white p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <Badge className="bg-violet-700 text-white hover:bg-violet-700">AI draft · human review required</Badge>
                                   <Badge variant="outline">{titleCase(aiSuggestion.status)}</Badge>
                                 </div>
-                                <p className="mt-3 whitespace-pre-wrap text-sm text-slate-800">{aiSuggestion.output?.handoverDraft || aiSuggestion.output?.summary}</p>
+                                <ClinicalAiEvidence suggestion={aiSuggestion} />
+                          <p className="mt-3 whitespace-pre-wrap text-sm text-slate-800">{aiSuggestion.output?.handoverDraft || aiSuggestion.output?.summary}</p>
                                 {(aiSuggestion.output?.missingInformation || []).length > 0 && (
                                   <div className="mt-4 rounded-lg bg-violet-50 p-3">
                                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Missing information</p>
@@ -984,7 +1104,7 @@ export default function PhcWorkspace({ standalone = false }) {
                                 {canClaim && capabilities.clinicalAiEnabled
                                   && String(entry.assigned_provider_user_id || '') === String(ownerUserId || '')
                                   && ['claimed', 'called', 'in_consultation'].includes(entry.status) && (
-                                    <Button size="sm" variant="outline" onClick={() => requestAiDraft(entry.encounter_id)} disabled={busy === `ai-${entry.encounter_id}`}>
+                                    <Button size="sm" variant="outline" onClick={() => requestAiDraft(entry.encounter_id, aiDraftType, 'queue')} disabled={busy === `ai-${entry.encounter_id}`}>
                                       AI draft
                                     </Button>
                                   )}
@@ -1012,15 +1132,16 @@ export default function PhcWorkspace({ standalone = false }) {
             )}
                       </div>
 
-                      {aiSuggestion && (
+                      {aiSuggestion?.reviewView === 'queue' && (
                         <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50 p-5">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                               <Badge className="bg-violet-700 text-white hover:bg-violet-700">AI draft · human review required</Badge>
-                              <h3 className="mt-3 font-semibold">Grounded encounter handover</h3>
+                              <h3 className="mt-3 font-semibold">Source-linked encounter handover</h3>
                             </div>
                             <Badge variant="outline">{titleCase(aiSuggestion.status)}</Badge>
                           </div>
+                          <ClinicalAiEvidence suggestion={aiSuggestion} />
                           <p className="mt-3 whitespace-pre-wrap text-sm text-slate-800">{aiSuggestion.output?.handoverDraft || aiSuggestion.output?.summary}</p>
                           {(aiSuggestion.output?.missingInformation || []).length > 0 && (
                             <div className="mt-4 rounded-lg bg-white p-3">
@@ -1030,10 +1151,29 @@ export default function PhcWorkspace({ standalone = false }) {
                               ))}
                             </div>
                           )}
+                          {programmeRole === 'remote_clinician' && aiSuggestion.status === 'drafted' && <ClinicalAiEditor output={aiEditedOutput} onChange={setAiEditedOutput} />}
                           {programmeRole === 'remote_clinician' && aiSuggestion.status === 'drafted' && (
                             <div className="mt-4 flex gap-2">
-                              <Button size="sm" onClick={() => reviewAiDraft('accepted')} disabled={busy === 'ai-review'}>Accept reviewed draft</Button>
+                              <Button size="sm" onClick={() => reviewAiDraft('accepted')} disabled={busy === 'ai-review'}>Accept original draft</Button>
+                              <Button size="sm" onClick={() => reviewAiDraft('accepted_with_edits')} disabled={busy === 'ai-review'}>Accept edited draft</Button>
                               <Button size="sm" variant="outline" onClick={() => reviewAiDraft('rejected')} disabled={busy === 'ai-review'}>Reject</Button>
+                            </div>
+                          )}
+                          {programmeRole === 'remote_clinician' && aiSuggestion.status === 'accepted' && (
+                            <div className="mt-4 space-y-4">
+                              {aiSuggestion.output?.soapDraft && queue.find((entry) => entry.encounter_id === aiSuggestion.encounter_id)?.canonical_encounter_id && (
+                                <Button variant="outline" asChild><Link href={`/ng/provider/encounters/${queue.find((entry) => entry.encounter_id === aiSuggestion.encounter_id).canonical_encounter_id}?aiSuggestionId=${encodeURIComponent(aiSuggestion.id)}`}>Open chart to import reviewed SOAP</Link></Button>
+                              )}
+                              {(aiSuggestion.output?.followUpDrafts || []).map((proposal, index) => (
+                                <div key={index} className="space-y-2 rounded border bg-white p-3">
+                                  <p className="font-medium">{proposal.title}</p><p className="whitespace-pre-wrap text-sm">{proposal.instructions}</p>
+                                  <Label>Due date<Input type="datetime-local" value={aiTaskOptions[index]?.dueAt || ''} disabled={Boolean(aiTaskOptions[index]?.createdTaskId)} onChange={(event) => setAiTaskOptions((current) => ({ ...current, [index]: { ...current[index], dueAt: event.target.value } }))} /></Label>
+                                  <Label>Responsible role<select className="ml-2 rounded border p-2" value={aiTaskOptions[index]?.assignedRole || ''} disabled={Boolean(aiTaskOptions[index]?.createdTaskId)} onChange={(event) => setAiTaskOptions((current) => ({ ...current, [index]: { ...current[index], assignedRole: event.target.value } }))}>
+                                    <option value="">Choose a role</option><option value="phc_nurse">PHC nurse</option><option value="remote_clinician">Remote clinician</option><option value="referral_coordinator">Referral coordinator</option>
+                                  </select></Label>
+                                  <Button size="sm" disabled={busy === `ai-task-${index}` || Boolean(aiTaskOptions[index]?.createdTaskId)} onClick={() => createReviewedAiFollowUp(index)}>{aiTaskOptions[index]?.createdTaskId ? 'Task created' : 'Create reviewed task'}</Button>
+                                </div>
+                              ))}
                             </div>
                           )}
                           <p className="mt-3 text-xs text-slate-500">Acceptance records a review decision only. Clinical documentation still requires the normal clinician-controlled workflow and sign-off.</p>

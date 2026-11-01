@@ -77,6 +77,7 @@ const createEncounterSchema = z.object({
 });
 
 const createNoteSchema = z.object({
+  aiSuggestionId: z.string().uuid().optional(),
   noteType: z.enum(['soap', 'progress', 'procedure', 'consultation']).default('soap'),
   subjective: z.string().optional(),
   objective: z.string().optional(),
@@ -327,6 +328,13 @@ router.get('/patient/:patientId',
  * POST /api/clinical-encounters/:encounterId/notes
  * Create a clinical note (SOAP)
  */
+router.get('/:encounterId/ai-drafts/:suggestionId', authenticate, requireRole('provider'), async (req, res) => {
+  try {
+    const draft = await clinicalEncounterService.getReviewedAiDraft(req.params.encounterId, req.user.id, req.params.suggestionId);
+    res.set('Cache-Control', 'private, no-store').json({ success: true, ...draft });
+  } catch (error) { return clinicalFailure(res, error); }
+});
+
 router.post('/:encounterId/notes',
   authenticate,
   requireRole('provider'),

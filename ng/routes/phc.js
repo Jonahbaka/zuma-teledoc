@@ -428,6 +428,8 @@ router.patch(
 );
 
 const followUpSchema = z.object({
+  sourceSuggestionId: uuid.optional(),
+  sourceDraftIndex: z.number().int().min(0).max(9).optional(),
   patientUserId: uuid,
   encounterId: uuid.nullable().optional(),
   referralId: uuid.nullable().optional(),
@@ -646,6 +648,7 @@ router.get(
 );
 
 const aiReviewSchema = z.object({
+  expectedEncounterId: uuid,
   decision: z.enum(['accepted', 'accepted_with_edits', 'rejected']),
   editedOutput: clinicalAi.suggestionOutputSchema.nullable().optional(),
   rejectionReason: z.string().trim().max(2000).nullable().optional(),

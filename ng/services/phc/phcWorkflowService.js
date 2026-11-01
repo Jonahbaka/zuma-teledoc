@@ -369,6 +369,12 @@ async function createObservation(pool, req, context, {
   provenance = {},
 }) {
   return withTransaction(pool, async (client) => {
+    // Serialize source changes with clinician AI review's freshness check.
+    await client.query(
+      `SELECT id FROM ng_clinical_encounters
+        WHERE id=$1 AND programme_id=$2 AND facility_id=$3 FOR UPDATE`,
+      [encounterId, context.programme_id, context.facility_id]
+    );
     const encounter = await getEncounter(client, context, encounterId);
     const existing = await client.query(
       `SELECT * FROM ng_clinical_observations
@@ -782,15 +788,114 @@ async function createFollowUp(pool, req, context, {
   assignedUserId = null,
   dueAt = null,
   idempotencyKey,
+  sourceSuggestionId = null,
+  sourceDraftIndex = null,
 }) {
+  if ((sourceSuggestionId == null) !== (sourceDraftIndex == null)
+    || (sourceDraftIndex != null && (!Number.isInteger(sourceDraftIndex) || sourceDraftIndex < 0))) {
+    throw workflowError(400, 'AI follow-up source and draft index must be supplied together.', 'FOLLOW_UP_SOURCE_INVALID');
+  }
+  if (sourceSuggestionId != null) {
+    const { v5 } = require('uuid');
+    const sourceKey = v5(`clinical-ai-follow-up:${sourceSuggestionId}:${sourceDraftIndex}`, v5.URL);
+    if (idempotencyKey !== sourceKey) {
+      throw workflowError(400, 'AI follow-up request key must match its reviewed source.', 'FOLLOW_UP_SOURCE_KEY_INVALID');
+    }
+    if (dueAt == null || !Number.isFinite(new Date(dueAt).getTime())) {
+      throw workflowError(400, 'Choose an explicit valid due date for this reviewed follow-up.', 'FOLLOW_UP_DUE_DATE_REQUIRED');
+    }
+    if (!assignedUserId && !['phc_nurse', 'remote_clinician', 'referral_coordinator'].includes(assignedRole)) {
+      throw workflowError(400, 'Choose a responsible follow-up role or an authorized assignee.', 'FOLLOW_UP_ASSIGNEE_REQUIRED');
+    }
+  }
+  const normalizeDate = (value) => value == null ? null : new Date(value).toISOString();
+  if (dueAt != null && !Number.isFinite(new Date(dueAt).getTime())) {
+    throw workflowError(400, 'Follow-up due date is invalid.', 'FOLLOW_UP_DUE_DATE_INVALID');
+  }
+  const requested = {
+    facility_id: context.facility_id, patient_user_id: patientUserId,
+    encounter_id: encounterId, referral_id: referralId, task_type: taskType,
+    title, instructions: instructions || null, priority, assigned_role: assignedRole,
+    assigned_user_id: assignedUserId, due_at: normalizeDate(dueAt), created_by: context.userId,
+  };
+  const verifyReplay = async (row, client) => {
+    const existingTask = formatProtectedRecord(row, ['title', 'instructions']);
+    const matches = Object.entries(requested).every(([field, value]) => {
+      const stored = field === 'due_at' ? normalizeDate(existingTask[field]) : (existingTask[field] ?? null);
+      return stored === (value ?? null);
+    });
+    if (!matches) {
+      throw workflowError(409, 'This follow-up request key was already used for different task details.', 'FOLLOW_UP_IDEMPOTENCY_CONFLICT');
+    }
+    const audit = await client.query(
+      `SELECT metadata_json FROM ng_programme_audit_events
+        WHERE programme_id=$1 AND facility_id=$2 AND resource_id=$3
+          AND resource_type='follow_up_task' AND action='follow_up_created'
+        ORDER BY created_at ASC LIMIT 1`,
+      [context.programme_id, context.facility_id, row.id]
+    );
+    const recordedSource = audit.rows[0]?.metadata_json || {};
+    if ((recordedSource.sourceSuggestionId ?? null) !== sourceSuggestionId
+      || (recordedSource.sourceDraftIndex ?? null) !== sourceDraftIndex) {
+      throw workflowError(409, 'This request key was already used with different AI provenance.', 'FOLLOW_UP_IDEMPOTENCY_CONFLICT');
+    }
+    return existingTask;
+  };
   return withTransaction(pool, async (client) => {
     await requireEnrollment(client, context, patientUserId, { requireConsent: false });
+    if (sourceSuggestionId != null) {
+      // Acquire accepted-draft/assignment/source locks before encounter/referral
+      // locks, matching the clinical review lock order.
+      await require('./clinicalAiService').assertAcceptedFollowUpSource(client, context, {
+        suggestionId: sourceSuggestionId, draftIndex: sourceDraftIndex,
+        patientUserId, encounterId, title, instructions,
+      });
+    }
+    if (encounterId) {
+      const encounter = await client.query(
+        `SELECT id FROM ng_clinical_encounters
+          WHERE id=$1 AND programme_id=$2 AND facility_id=$3 AND patient_user_id=$4
+          FOR SHARE`,
+        [encounterId, context.programme_id, context.facility_id, patientUserId]
+      );
+      if (!encounter.rows.length) {
+        throw workflowError(409, 'Follow-up encounter does not match this patient and facility.', 'FOLLOW_UP_ENCOUNTER_MISMATCH');
+      }
+    }
+    if (referralId) {
+      const referral = await client.query(
+        `SELECT id, encounter_id FROM ng_referrals
+          WHERE id=$1 AND programme_id=$2 AND facility_id=$3 AND patient_user_id=$4
+          FOR SHARE`,
+        [referralId, context.programme_id, context.facility_id, patientUserId]
+      );
+      if (!referral.rows.length || (encounterId && String(referral.rows[0].encounter_id) !== String(encounterId))) {
+        throw workflowError(409, 'Follow-up referral does not match this patient, facility and encounter.', 'FOLLOW_UP_REFERRAL_MISMATCH');
+      }
+    }
+    if (assignedUserId) {
+      const membership = await client.query(
+        `SELECT m.id FROM ng_programme_memberships m
+          JOIN users u ON u.id=m.user_id
+          WHERE m.user_id=$1 AND m.programme_id=$2
+            AND (m.facility_id=$3 OR m.facility_id IS NULL)
+            AND m.status='active' AND u.is_active=TRUE
+            AND ($4::text IS NULL OR m.role=$4)
+            AND (m.effective_at IS NULL OR m.effective_at<=NOW())
+            AND (m.expires_at IS NULL OR m.expires_at>NOW())
+          LIMIT 1`,
+        [assignedUserId, context.programme_id, context.facility_id, assignedRole]
+      );
+      if (!membership.rows.length) {
+        throw workflowError(409, 'Follow-up assignee is not active in this programme and facility.', 'FOLLOW_UP_ASSIGNEE_INVALID');
+      }
+    }
     const existing = await client.query(
       `SELECT * FROM ng_follow_up_tasks
         WHERE programme_id = $1 AND idempotency_key = $2 LIMIT 1`,
       [context.programme_id, idempotencyKey]
     );
-    if (existing.rows.length) return formatProtectedRecord(existing.rows[0], ['title', 'instructions']);
+    if (existing.rows.length) return verifyReplay(existing.rows[0], client);
     const protectedTitle = encrypt(title);
     const protectedInstructions = encrypt(instructions || null);
     const result = await client.query(
@@ -801,6 +906,7 @@ async function createFollowUp(pool, req, context, {
           instructions_iv, instructions_tag, priority, assigned_role,
           assigned_user_id, due_at, idempotency_key, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,$8,$9,NULL,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+       ON CONFLICT (programme_id, idempotency_key) DO NOTHING
        RETURNING *`,
       [
         context.programme_id, context.facility_id, patientUserId, encounterId,
@@ -810,6 +916,18 @@ async function createFollowUp(pool, req, context, {
         assignedUserId, dueAt, idempotencyKey, context.userId,
       ]
     );
+    // The unique key also serializes concurrent first requests. Compare the
+    // winning row rather than returning another request's task or a raw 23505.
+    if (!result.rows.length) {
+      const winner = await client.query(
+        `SELECT * FROM ng_follow_up_tasks WHERE programme_id=$1 AND idempotency_key=$2 LIMIT 1`,
+        [context.programme_id, idempotencyKey]
+      );
+      if (!winner.rows.length) {
+        throw workflowError(409, 'Follow-up creation could not be confirmed. Retry the same request.', 'FOLLOW_UP_RETRY_REQUIRED');
+      }
+      return verifyReplay(winner.rows[0], client);
+    }
     await recordProgrammeAudit(client, req, context, {
       action: 'follow_up_created',
       resourceType: 'follow_up_task',
@@ -817,6 +935,7 @@ async function createFollowUp(pool, req, context, {
       patientUserId,
       purpose: 'Care continuity',
       dataClass: 'sensitive',
+      metadata: sourceSuggestionId == null ? {} : { sourceSuggestionId, sourceDraftIndex },
     });
     return formatProtectedRecord(result.rows[0], ['title', 'instructions']);
   });
