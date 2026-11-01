@@ -49,3 +49,13 @@ test('existing keyboard and responsive protections remain intact', () => {
   assert.match(homepage, /event.key==='Escape'.*menuButton.current\?\.focus/);
   assert.match(homepage, /aria-expanded=\{menuOpen\}/);
 });
+
+// Keep the actual desktop/mobile browser gate aligned with approved public copy.
+test('browser gate checks the approved headline and both exact metadata titles', () => {
+  const browser = read('scripts/e2e-public-platform.cjs');
+  assert.ok(browser.includes('/Connected care\\.\\s*People first\\./'));
+  for (const [route, source] of [['/', us], ['/ng', ng]]) {
+    const title = source.match(/export const metadata = \{[\s\S]*?title: '([^']+)'/)[1];
+    assert.ok(browser.includes(`'${route}': '${title}'`));
+  }
+});
