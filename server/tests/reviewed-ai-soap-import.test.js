@@ -103,3 +103,16 @@ test('same reviewed source replay returns existing note; conflicting replay cann
   assert.match(save, /const currentSave = \(\) => currentEncounter.current === requestedEncounter && importVersion.current === requestVersion/);
   assert.match(save, /if \(!currentSave\(\)\) return;[\s\S]*?setImportedAiSuggestionId\(null\)/);
 });
+
+
+test('chart identity uses the canonical nested patient and provider response fields', () => {
+  const encounter = service._formatEncounter({ id: ids[0], patient_id: ids[1], provider_id: ids[2], patient_first_name: 'Synthetic', patient_last_name: 'Patient', provider_first_name: 'Synthetic', provider_last_name: 'Clinician' });
+  assert.deepEqual(encounter.patient, { firstName: 'Synthetic', lastName: 'Patient', dateOfBirth: undefined });
+  assert.equal(encounter.provider.firstName, 'Synthetic');
+  assert.equal(encounter.provider.lastName, 'Clinician');
+  const page = fs.readFileSync(path.join(__dirname, '../../app/(dashboard)/provider/encounters/[id]/page.js'), 'utf8');
+  assert.match(page, /encounter\?\.patient\?\.firstName/);
+  assert.match(page, /encounter\?\.provider\?\.firstName/);
+  assert.doesNotMatch(page, /encounter\?\.patientFirstName|encounter\?\.providerFirstName/);
+  assert.match(page, /Name unavailable/);
+});

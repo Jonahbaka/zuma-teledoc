@@ -70,7 +70,7 @@ async function main() {
   const actual = fixtureTargetSafety({ pool }); assert.equal(actual.skipped, false, actual.reason);
   const seeded = await seedDemoAccounts({ pool, password: PASSWORD, mfaSecret: 'JBSWY3DPEHPK3PXP' });
   assert.ok(seeded.demoProgramme);
-  const accounts = (await pool.query('SELECT id,email,role,is_test_account FROM users WHERE email=ANY($1::text[])',
+  const accounts = (await pool.query('SELECT id,email,role,is_test_account,first_name,last_name FROM users WHERE email=ANY($1::text[])',
     [['doctor@demo.doctarx.com', 'nurse@demo.doctarx.com', 'patient@demo.doctarx.com']])).rows;
   assert.ok(accounts.length === 3 && accounts.every(account => account.is_test_account));
   const doctor = accounts.find(account => account.email.startsWith('doctor@'));
@@ -179,6 +179,9 @@ async function main() {
   await page.screenshot({ path: path.join(ART, 'reviewed-task.png'), fullPage: true });
   await page.getByRole('link', { name: 'Open chart to import reviewed SOAP' }).click();
   await expect(page.getByRole('button', { name: 'Load reviewed AI draft', exact: true })).toBeVisible();
+  await expect(page.getByTestId('encounter-patient')).toHaveText(`Patient: ${patient.first_name} ${patient.last_name}`);
+  await expect(page.getByTestId('encounter-provider')).toHaveText(`Provider: ${doctor.first_name} ${doctor.last_name}`);
+  pass('canonical chart displays the actual encounter patient and assigned provider identity');
   const editor = label => page.locator('div.space-y-2').filter({ has: page.locator('label').filter({ hasText: new RegExp(`^${label}$`) }) }).locator('textarea');
   await editor('Subjective').fill('Unsaved synthetic clinician text');
   await page.getByRole('button', { name: 'Load reviewed AI draft', exact: true }).click();

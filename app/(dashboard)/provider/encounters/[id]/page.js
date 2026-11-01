@@ -285,8 +285,8 @@ function ProviderEncounterChartContent() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <div><span className="text-slate-500">Patient:</span> {encounter?.patientFirstName} {encounter?.patientLastName}</div>
-              <div><span className="text-slate-500">Provider:</span> {encounter?.providerFirstName} {encounter?.providerLastName}</div>
+              <div data-testid="encounter-patient"><span className="text-slate-500">Patient:</span> {[encounter?.patient?.firstName, encounter?.patient?.lastName].filter(Boolean).join(' ') || 'Name unavailable'}</div>
+              <div data-testid="encounter-provider"><span className="text-slate-500">Provider:</span> {[encounter?.provider?.firstName, encounter?.provider?.lastName].filter(Boolean).join(' ') || 'Name unavailable'}</div>
               <div><span className="text-slate-500">Patient state:</span> {encounter?.patientState || '—'}</div>
               <div><span className="text-slate-500">Chief complaint:</span> {encounter?.chiefComplaint || '—'}</div>
             </CardContent>
