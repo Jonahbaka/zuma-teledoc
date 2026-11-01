@@ -182,7 +182,7 @@ test('stuck finite transitions fail rather than being skipped while unchanged in
 
 test('both ordinary head metadata and Next 15 streamed body metadata are valid while duplicate titles remain a failure', async () => {
   const { state, page } = renderedDocument('/');
-  state.title = 'DoctaRx | Connected Virtual Care'; state.titles = [state.title]; state.titleParent = 'HEAD';
+  state.title = 'DoctaRx | Telehealth AI & Connected Care'; state.titles = [state.title]; state.titleParent = 'HEAD';
   assert.equal((await waitForRenderedPage(page, { timeoutMs: 1000 })).titles[0].parent, 'HEAD');
   state.titleParent = 'BODY';
   assert.equal((await waitForRenderedPage(page, { timeoutMs: 1000 })).titles[0].parent, 'BODY');

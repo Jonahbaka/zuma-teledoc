@@ -196,7 +196,7 @@ async function enrollPatient(pool, req, context, {
             enrolled_by, metadata_json)
          VALUES ($1,$2,$3,$4,'active',$5,$6,
                  CASE WHEN $5 = 'granted' THEN NOW() ELSE NULL END,
-                 CASE WHEN $5 = 'granted' THEN $7 ELSE NULL END,
+                 CASE WHEN $5 = 'granted' THEN $7::uuid ELSE NULL END,
                  $7,$8::JSONB)
          RETURNING *`,
         [
