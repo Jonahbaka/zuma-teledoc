@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { v5 as uuidV5 } from 'uuid';
@@ -180,21 +180,22 @@ function ClinicalAiEvidence({ suggestion }) {
 }
 
 function ClinicalAiEditor({ output, onChange }) {
+  const fieldId = useId();
   if (!output) return null;
   const updateTask = (index, key, value) => onChange({ ...output, followUpDrafts: (output.followUpDrafts || []).map((task, taskIndex) => taskIndex === index ? { ...task, [key]: value } : task) });
   return (
     <div className="mt-4 space-y-3 rounded-lg border bg-white p-4">
       <p className="font-semibold">Review and edit before acceptance</p>
-      <Label>Encounter summary<Textarea value={output.summary} onChange={(event) => onChange({ ...output, summary: event.target.value })} /></Label>
-      <Label>Handover<Textarea value={output.handoverDraft} onChange={(event) => onChange({ ...output, handoverDraft: event.target.value })} /></Label>
+      <div><Label htmlFor={`${fieldId}-summary`}>Encounter summary</Label><Textarea id={`${fieldId}-summary`} value={output.summary} onChange={(event) => onChange({ ...output, summary: event.target.value })} /></div>
+      <div><Label htmlFor={`${fieldId}-handover`}>Handover</Label><Textarea id={`${fieldId}-handover`} value={output.handoverDraft} onChange={(event) => onChange({ ...output, handoverDraft: event.target.value })} /></div>
       {['subjective', 'objective', 'assessment', 'plan'].map((field) => (
-        <Label key={field} className="block">{titleCase(field)}<Textarea value={output.soapDraft?.[field] || ''} onChange={(event) => onChange({ ...output, soapDraft: { subjective: '', objective: '', assessment: '', plan: '', ...output.soapDraft, [field]: event.target.value } })} /></Label>
+        <div key={field}><Label htmlFor={`${fieldId}-${field}`}>{titleCase(field)}</Label><Textarea id={`${fieldId}-${field}`} value={output.soapDraft?.[field] || ''} onChange={(event) => onChange({ ...output, soapDraft: { subjective: '', objective: '', assessment: '', plan: '', ...output.soapDraft, [field]: event.target.value } })} /></div>
       ))}
       <p className="text-sm">Clinical assessment and plans remain your responsibility. Accepting does not save or sign a chart note.</p>
       {(output.followUpDrafts || []).map((task, index) => (
         <div key={index} className="space-y-2 border-t pt-3">
-          <Label>Follow-up title<Input value={task.title} onChange={(event) => updateTask(index, 'title', event.target.value)} /></Label>
-          <Label>Follow-up instructions<Textarea value={task.instructions} onChange={(event) => updateTask(index, 'instructions', event.target.value)} /></Label>
+          <div><Label htmlFor={`${fieldId}-task-${index}-title`}>Follow-up title</Label><Input id={`${fieldId}-task-${index}-title`} value={task.title} onChange={(event) => updateTask(index, 'title', event.target.value)} /></div>
+          <div><Label htmlFor={`${fieldId}-task-${index}-instructions`}>Follow-up instructions</Label><Textarea id={`${fieldId}-task-${index}-instructions`} value={task.instructions} onChange={(event) => updateTask(index, 'instructions', event.target.value)} /></div>
           <Button variant="outline" size="sm" onClick={() => onChange({ ...output, followUpDrafts: output.followUpDrafts.filter((_task, taskIndex) => taskIndex !== index) })}>Remove proposal</Button>
         </div>
       ))}
@@ -204,6 +205,7 @@ function ClinicalAiEditor({ output, onChange }) {
 }
 
 export default function PhcWorkspace({ standalone = false }) {
+  const taskFieldId = useId();
   const router = useRouter();
   const { user, loading: authLoading, isAuthenticated, logout } = useAuth();
   const [online, setOnline] = useState(true);
@@ -1167,10 +1169,10 @@ export default function PhcWorkspace({ standalone = false }) {
                               {(aiSuggestion.output?.followUpDrafts || []).map((proposal, index) => (
                                 <div key={index} className="space-y-2 rounded border bg-white p-3">
                                   <p className="font-medium">{proposal.title}</p><p className="whitespace-pre-wrap text-sm">{proposal.instructions}</p>
-                                  <Label>Due date<Input type="datetime-local" value={aiTaskOptions[index]?.dueAt || ''} disabled={Boolean(aiTaskOptions[index]?.createdTaskId)} onChange={(event) => setAiTaskOptions((current) => ({ ...current, [index]: { ...current[index], dueAt: event.target.value } }))} /></Label>
-                                  <Label>Responsible role<select className="ml-2 rounded border p-2" value={aiTaskOptions[index]?.assignedRole || ''} disabled={Boolean(aiTaskOptions[index]?.createdTaskId)} onChange={(event) => setAiTaskOptions((current) => ({ ...current, [index]: { ...current[index], assignedRole: event.target.value } }))}>
+                                  <div><Label htmlFor={`${taskFieldId}-${index}-due`}>Due date</Label><Input id={`${taskFieldId}-${index}-due`} type="datetime-local" value={aiTaskOptions[index]?.dueAt || ''} disabled={Boolean(aiTaskOptions[index]?.createdTaskId)} onChange={(event) => setAiTaskOptions((current) => ({ ...current, [index]: { ...current[index], dueAt: event.target.value } }))} /></div>
+                                  <div><Label htmlFor={`${taskFieldId}-${index}-role`}>Responsible role</Label><select id={`${taskFieldId}-${index}-role`} className="ml-2 rounded border p-2" value={aiTaskOptions[index]?.assignedRole || ''} disabled={Boolean(aiTaskOptions[index]?.createdTaskId)} onChange={(event) => setAiTaskOptions((current) => ({ ...current, [index]: { ...current[index], assignedRole: event.target.value } }))}>
                                     <option value="">Choose a role</option><option value="phc_nurse">PHC nurse</option><option value="remote_clinician">Remote clinician</option><option value="referral_coordinator">Referral coordinator</option>
-                                  </select></Label>
+                                  </select></div>
                                   <Button size="sm" disabled={busy === `ai-task-${index}` || Boolean(aiTaskOptions[index]?.createdTaskId)} onClick={() => createReviewedAiFollowUp(index)}>{aiTaskOptions[index]?.createdTaskId ? 'Task created' : 'Create reviewed task'}</Button>
                                 </div>
                               ))}

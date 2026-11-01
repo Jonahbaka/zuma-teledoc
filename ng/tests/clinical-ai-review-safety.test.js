@@ -173,3 +173,10 @@ test('synthetic provider draft persists protected provenance and clinician revie
 test('edited content cannot be smuggled into an accepted-original review', async () => {
   await assert.rejects(ai.reviewSuggestion({ connect() { throw new Error('Must reject before DB'); } }, {}, { programmeRole: 'remote_clinician' }, 'draft-a', { decision: 'accepted', expectedEncounterId: encounter.id, editedOutput: {} }), { code: 'CLINICAL_AI_EDIT_DECISION_REQUIRED' });
 });
+
+test('clinical editor and task controls have explicit labels independent of initial text and options', () => {
+  assert.match(source, /const fieldId = useId\(\)/);
+  assert.match(source, /htmlFor=\{`\$\{fieldId\}-task-\$\{index\}-instructions`\}>Follow-up instructions<\/Label><Textarea id=\{`\$\{fieldId\}-task-\$\{index\}-instructions`\}/);
+  assert.match(source, /htmlFor=\{`\$\{taskFieldId\}-\$\{index\}-role`\}>Responsible role<\/Label><select id=/);
+  assert.doesNotMatch(source, /<Label>Follow-up instructions<Textarea|<Label>Responsible role<select/);
+});
