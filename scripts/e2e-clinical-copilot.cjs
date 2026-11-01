@@ -22,11 +22,17 @@ const workflow = require('../ng/services/phc/phcWorkflowService');
 const scope = require('../ng/services/phc/programmeScopeService');
 const ai = require('../ng/services/phc/clinicalAiService');
 const BASE = 'http://127.0.0.1:8080';
+// Existing root-layout font stylesheet is a named offline static fixture only.
+// No remote font request is sent; every other external request still fails.
+const OFFLINE_FONT_STYLESHEET = 'https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Instrument+Serif:ital@0;1&display=swap';
+function isOfflineFontFixture(requestUrl, method, resourceType) {
+  return requestUrl === OFFLINE_FONT_STYLESHEET && method === 'GET' && resourceType === 'stylesheet';
+}
 const ART = path.join(__dirname, '../artifacts/government-browser/clinical-copilot');
 fs.mkdirSync(ART, { recursive: true });
 const request = { ip: '127.0.0.1', headers: { 'user-agent': 'synthetic-copilot-browser' } };
 const PASSWORD = 'Demo12345678!';
-const evidence = { syntheticOnly: true, mockedEndpoints: ['POST /api/ng/phc/ai/suggestions'], checks: [] };
+const evidence = { syntheticOnly: true, mockedEndpoints: ['POST /api/ng/phc/ai/suggestions'], offlineStaticFixtures: [], checks: [] };
 const pass = name => { evidence.checks.push(name); console.log(`COPILOT PASS: ${name}`); };
 let child, browser, context, page, pool;
 let stopping = false;
@@ -113,7 +119,11 @@ async function main() {
     try {
     if (stopping) return await route.abort('aborted');
     const url = new URL(route.request().url());
-    if (url.origin !== BASE) { external.push(url.origin); return await route.abort('blockedbyclient'); }
+    if (isOfflineFontFixture(url.href, route.request().method(), route.request().resourceType())) {
+      evidence.offlineStaticFixtures.push('Root-layout Google Fonts stylesheet replaced with empty local CSS; system font fallback');
+      return await route.fulfill({ status: 200, contentType: 'text/css', body: '/* Offline synthetic browser fixture: system fonts only. */' });
+    }
+    if (url.origin !== BASE) { external.push(url.href); return await route.abort('blockedbyclient'); }
     if (url.pathname === '/api/ng/phc/ai/suggestions' && route.request().method() === 'POST') {
       const body = route.request().postDataJSON();
       assert.equal(body.suggestionType, 'soap_draft');
@@ -215,7 +225,7 @@ async function main() {
   pass('late encounter A generation cannot overwrite the displayed encounter B draft');
   await page.screenshot({ path: path.join(ART, 'stale-context-protected.png'), fullPage: true });
   assert.deepEqual(pageErrors, []); assert.deepEqual(external, []);
-  pass('no uncaught browser errors or external network requests');
+  pass('no uncaught browser errors or unexpected external requests; named font stylesheet fulfilled offline');
 }
 
 async function waitForSignal(promise, label) {

@@ -371,3 +371,21 @@ test('a connected browser that closes normally cannot hide a surviving owned bro
   });
   assert.equal(closes, 1); assert.equal(serverCloses, 1); assert.equal(kills, 1);
 });
+
+
+test('Copilot browser offline font fixture accepts only the exact known static stylesheet', () => {
+  const copilot = fs.readFileSync(path.resolve(__dirname, '../../scripts/e2e-clinical-copilot.cjs'), 'utf8');
+  const declaration = copilot.match(/const OFFLINE_FONT_STYLESHEET = '[^']+';/)[0];
+  const helper = copilot.match(/function isOfflineFontFixture\([^)]*\) \{[^}]+\}/)[0];
+  const context = {};
+  vm.runInNewContext(`${declaration}\n${helper}\nglobalThis.url = OFFLINE_FONT_STYLESHEET; globalThis.matches = isOfflineFontFixture;`, context);
+  assert.ok(fs.readFileSync(path.resolve(__dirname, '../../app/layout.js'), 'utf8').includes(context.url));
+  assert.equal(context.matches(context.url, 'GET', 'stylesheet'), true);
+  for (const url of [context.url + '&extra=1', context.url.replace('fonts.googleapis.com', 'fonts.googleapis.com.evil.invalid'), context.url.replace('/css2?', '/other?'), context.url.replace('https:', 'http:'), 'https://api.anthropic.com/v1/messages']) {
+    assert.equal(context.matches(url, 'GET', 'stylesheet'), false);
+  }
+  assert.equal(context.matches(context.url, 'POST', 'stylesheet'), false);
+  assert.equal(context.matches(context.url, 'GET', 'fetch'), false);
+  assert.match(copilot, /if \(url.origin !== BASE\) \{ external.push\(url.href\); return await route.abort/);
+  assert.match(copilot, /assert.deepEqual\(external, \[\]\)/);
+});
