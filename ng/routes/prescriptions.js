@@ -66,12 +66,24 @@ function handleError(res, err) {
 }
 
 async function resolveProviderId(req, pool) {
-  const result = await pool.query('SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1', [req.user.id]);
+  const result = await pool.query(
+    `SELECT p.id FROM ng_providers p
+       JOIN users u ON u.id=p.user_id
+      WHERE p.user_id=$1 AND p.status='verified' AND u.role='provider'
+        AND u.is_active=TRUE AND u.provider_status='approved'
+        AND u.market_scope='NG' LIMIT 1`,
+    [req.user.id]
+  );
   return result.rows[0]?.id || null;
 }
 
 async function resolvePharmacyId(req, pool) {
-  const result = await pool.query('SELECT id FROM ng_pharmacies WHERE owner_user_id = $1 LIMIT 1', [req.user.id]);
+  const result = await pool.query(
+    `SELECT id FROM ng_pharmacies
+      WHERE owner_user_id=$1 AND status='approved' AND account_status='active'
+        AND pcn_license_expiry>=CURRENT_DATE LIMIT 1`,
+    [req.user.id]
+  );
   return result.rows[0]?.id || null;
 }
 
