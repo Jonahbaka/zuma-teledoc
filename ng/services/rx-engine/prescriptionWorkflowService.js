@@ -530,6 +530,7 @@ module.exports = {
   nextDispenseStatus,
   generateRxNumber,
   createDraft,
+  verifyClinicalAiRxProvenance,
   getPrescription,
   listPrescriptions,
   sign,
