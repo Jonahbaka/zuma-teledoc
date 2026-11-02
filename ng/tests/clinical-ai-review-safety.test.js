@@ -289,3 +289,13 @@ test('pharmacy medication checkout never treats an AI-reviewed Rx draft as signe
  assert.match(rxService,/lifecycle_status\)\s*VALUES|lifecycle_status, clinical_ai_source_suggestion_id/);
  assert.match(rxService,/'drafted'/);
 });
+
+test('prescription mutations require clinical professional role; administration cannot sign or dispense', () => {
+ const fs=require('node:fs'),path=require('node:path');
+ const routes=fs.readFileSync(path.join(__dirname,'../routes/prescriptions.js'),'utf8');
+ assert.match(routes,/if \(allowed\.has\(role\)\) return next\(\)/);
+ assert.doesNotMatch(routes,/ADMIN\.has\(role\) \|\| allowed\.has\(role\)/);
+ assert.match(routes,/router\.post\('\/:id\/sign', requireRole\(PRESCRIBER\)/);
+ assert.match(routes,/router\.post\('\/:id\/receive', requireRole\(PHARMACIST\)/);
+ assert.match(routes,/router\.post\('\/:id\/items\/:itemId\/dispense', requireRole\(PHARMACIST\)/);
+});
