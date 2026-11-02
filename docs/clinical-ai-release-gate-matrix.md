@@ -24,3 +24,24 @@
 6. Test a reversible deployment and migration/rollback plan with application owner approval; confirm secrets, kill switch, logs/alerts, audit trails and operational support.
 
 **Release verdict:** NOT READY. This is a verification register, not proof the gates have passed. Each row must be confirmed by CI evidence or a human release approver before promoting code.
+
+## Required independent clinical and privacy approval (not self-certified)
+
+Clinical review sign-off record:
+- Reviewer name, licensed role and jurisdiction: **PENDING**
+- Exact build/commit SHA reviewed: **PENDING**
+- Synthetic scenarios evaluated, including red flags, missing data and referral handoff: **PENDING**
+- AI risk and failure findings, mitigation and independent retest: **PENDING**
+- Approval outcome, scope, date and signature: **NOT APPROVED**
+
+Privacy/security sign-off record:
+- DPO/security reviewer, authority and date: **PENDING**
+- Real-patient data-flow inventory (including translation, logs, telemetry, backups and external models): **PENDING**
+- External inference processor agreement, retention, permitted purposes and geographic transfers: **PENDING**
+- Key rotation, least-privilege, incident-response, access/audit tests: **PENDING**
+- Approval outcome, scope and signature: **NOT APPROVED**
+
+Production activation must remain blocked while either outcome is pending. A successful
+synthetic CI run does not substitute for independent clinical or privacy approval.
+Model, provider or processing-region changes invalidate previous provider approval
+until independently reviewed.
