@@ -341,3 +341,13 @@ test('pharmacy notifications and pharmacist Rx access are restricted to signed e
  assert.ok(send.indexOf('svc.sendToPharmacy') < send.indexOf('createPharmacyPrescriptionNotification'));
  assert.match(service,/pharmacy_response_status = 'pending_pharmacy_confirmation'/);
 });
+
+test('release kill switch prevents inference review and provenance-based care actions', () => {
+ const src=require('node:fs').readFileSync(require('node:path').join(__dirname,'../services/phc/clinicalAiService.js'),'utf8');
+ assert.match(src,/function assertClinicalAiOperational\(\)/);
+ for(const name of ['reviewSuggestion','assertAcceptedCareActionSource','assertAcceptedFollowUpSource']){
+   const start=src.indexOf('async function '+name+'(');
+   assert.ok(start>0,name+' must exist');
+   assert.ok(src.slice(start,start+700).includes('assertClinicalAiOperational()'),name+' must enforce kill switch');
+ }
+});
