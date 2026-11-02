@@ -46,7 +46,9 @@ function requireRole(...groups) {
   const allowed = new Set(groups.flatMap((g) => [...g]));
   return (req, res, next) => {
     const role = roleOf(req);
-    if (ADMIN.has(role) || allowed.has(role)) return next();
+    // Operational admins are not clinically credentialed by virtue of admin access.
+    // Only authenticated prescribers and dispensing professionals may mutate Rx state.
+    if (allowed.has(role)) return next();
     return res.status(403).json({ ok: false, error: `forbidden: action requires role ${[...allowed].join(' | ')}` });
   };
 }
@@ -170,7 +172,7 @@ router.post('/', requireRole(PRESCRIBER), express.json(), async (req, res) => {
   const pool = getPool();
   try {
     const role = roleOf(req);
-    const providerId = ADMIN.has(role) ? req.body.provider_id : await resolveProviderId(req, pool);
+    const providerId = await resolveProviderId(req, pool);
     if (!providerId) return res.status(403).json({ ok: false, error: 'Provider profile required' });
     // Optional source-linked AI documentation is never a medication order.
     // The clinician still enters every medicine, dose and indication.
