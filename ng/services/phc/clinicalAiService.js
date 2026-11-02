@@ -498,6 +498,67 @@ async function reviewSuggestion(pool, req, context, suggestionId, { decision, ex
   }
 }
 
+/**
+ * Verify that a human-approved, still-current care-stage review belongs to
+ * exactly this patient, PHC programme, facility, encounter and assigned
+ * clinician before a separate manual Rx/referral action records its provenance.
+ *
+ * Never uses model output as a medicine order or referral instruction.
+ * Called inside the caller's database transaction and before clinical writes.
+ */
+async function assertAcceptedCareActionSource(client, context, {
+  suggestionId, stageType, patientUserId, encounterId,
+}) {
+  if (context.programmeRole !== 'remote_clinician' || !context.userId) {
+    throw scopeError(403, 'An assigned clinician must authorize this care action.', 'ASSIGNED_CLINICIAN_REQUIRED');
+  }
+  if (!['prescription_review', 'referral_brief'].includes(stageType)) {
+    throw scopeError(400, 'Unsupported clinical action review stage.', 'CLINICAL_AI_ACTION_STAGE_INVALID');
+  }
+  const result = await client.query(
+    \`SELECT s.*, r.decision, r.reviewer_user_id,
+            r.edited_output_encrypted
+       FROM ng_clinical_ai_suggestions s
+       JOIN ng_clinical_ai_reviews r ON r.suggestion_id=s.id
+      WHERE s.id=$1 AND s.programme_id=$2 AND s.facility_id=$3
+        AND s.suggestion_type=$4
+      FOR UPDATE OF s\`,
+    [suggestionId, context.programme_id, context.facility_id, stageType]
+  );
+  const suggestion = result.rows[0];
+  if (!suggestion || suggestion.status !== 'accepted' || !['accepted', 'accepted_with_edits'].includes(suggestion.decision)
+      || String(suggestion.reviewer_user_id) !== String(context.userId)
+      || (suggestion.decision === 'accepted_with_edits' && !suggestion.edited_output_encrypted)) {
+    throw scopeError(409, 'A current clinician-approved review of the required stage is necessary.', 'CLINICAL_AI_CARE_ACTION_REVIEW_REQUIRED');
+  }
+  if (String(suggestion.patient_user_id) !== String(patientUserId)
+      || String(suggestion.encounter_id) !== String(encounterId)) {
+    throw scopeError(409, 'The AI review belongs to a different patient or encounter.', 'CLINICAL_AI_ENCOUNTER_MISMATCH');
+  }
+  const assignment = await client.query(
+    \`SELECT assigned_provider_user_id
+       FROM ng_phc_queue_entries
+      WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3
+      LIMIT 1 FOR UPDATE\`,
+    [encounterId, context.programme_id, context.facility_id]
+  );
+  await assertEncounterAiAccess(client, context, assignment.rows[0] || {});
+  await client.query(
+    \`SELECT id FROM ng_clinical_encounters
+       WHERE id=$1 AND programme_id=$2 AND facility_id=$3 FOR UPDATE\`,
+    [encounterId, context.programme_id, context.facility_id]
+  );
+  await client.query(
+    \`SELECT id FROM ng_clinical_observations
+       WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3 FOR SHARE\`,
+    [encounterId, context.programme_id, context.facility_id]
+  );
+  const encounter = await workflow.getEncounter(client, context, encounterId);
+  const { observations } = await workflow.listObservations(client, context, encounterId);
+  assertReviewFreshness(suggestion, encounter, observations, encounterId);
+  return { suggestionId: suggestion.id, stageType, encounterId, patientUserId };
+}
+
 async function assertAcceptedFollowUpSource(client, context, { suggestionId, draftIndex, patientUserId, encounterId, title, instructions }) {
   if (context.programmeRole !== 'remote_clinician') {
     throw scopeError(403, 'Only the assigned clinician may create a reviewed AI follow-up.', 'ASSIGNED_CLINICIAN_REQUIRED');
@@ -561,4 +622,5 @@ module.exports = {
   normalizeValidation,
   assertReviewFreshness,
   assertAcceptedFollowUpSource,
+  assertAcceptedCareActionSource,
 };
