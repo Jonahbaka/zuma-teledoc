@@ -235,6 +235,9 @@ async function sendToPharmacy(id, pharmacyId, actor, pool = getPool()) {
   const r = await pool.query(
     `UPDATE ng_digital_prescriptions
         SET lifecycle_status = 'sent_to_pharmacy',
+            status = 'routed',
+            dispense_status = 'pending',
+            pharmacy_response_status = 'pending_pharmacy_confirmation',
             routed_pharmacy_id = $2, routed_at = NOW(),
             sent_at = NOW(), updated_at = NOW()
       WHERE id = $1 AND lifecycle_status = $3 RETURNING *`,
