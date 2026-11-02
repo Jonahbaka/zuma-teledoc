@@ -351,3 +351,16 @@ test('release kill switch prevents inference review and provenance-based care ac
    assert.ok(src.slice(start,start+700).includes('assertClinicalAiOperational()'),name+' must enforce kill switch');
  }
 });
+
+test('suspended pharmacy and terminal Rx state cannot regain clinical dispensing access', () => {
+ const source=require('node:fs').readFileSync(require('node:path').join(__dirname,'../routes/pharmacy.js'),'utf8');
+ assert.match(source,/async function assertCurrentClinicalPharmacyAccess/);
+ assert.match(source,/pcn_license_expiry>=CURRENT_DATE/);
+ for (const route of ["router.get('/:pharmacyId/prescriptions'","router.get('/:pharmacyId/whatsapp-notifications'","router.patch('/:pharmacyId/prescriptions/:prescriptionId'"]) {
+   const i=source.indexOf(route);
+   assert.ok(i>=0);
+   assert.ok(source.slice(i,i+1100).includes('assertCurrentClinicalPharmacyAccess'));
+ }
+ assert.match(source,/lifecycle_status NOT IN \('fully_dispensed','completed'\) OR \$1 = 'fulfilled'/);
+ assert.match(source,/\$1 <> 'cancelled' OR lifecycle_status = 'sent_to_pharmacy'/);
+});
