@@ -322,21 +322,19 @@ router.get('/patient/:patientId',
 
 // PHC-linked clinician Copilot. The canonical encounter ID is the only
 // locator accepted here; programme/facility and source are resolved server-side.
-const linkedPhcAi = require('../services/linkedPhcAiService');
-const careStages = require('../../shared/clinicalAiStages.json');
 const linkedDraftSchema = z.object({
-  suggestionType: z.enum(Object.keys(careStages)),
+  suggestionType: z.enum(['intake_review','triage_review','consultation_brief','soap_draft','encounter_summary','missing_information','emr_reconciliation','prescription_review','referral_brief','follow_up_draft']),
 }).strict();
 const linkedReviewSchema = z.object({
   decision: z.enum(['accepted', 'accepted_with_edits', 'rejected']),
-  editedOutput: require('../../ng/services/phc/clinicalAiService').suggestionOutputSchema.nullable().optional(),
+  editedOutput: z.object({ summary:z.string(), handoverDraft:z.string(), missingInformation:z.array(z.object({ field:z.string(),reason:z.string() })), assertions:z.array(z.object({ text:z.string(),sourceRefs:z.array(z.string()) })), uncertainties:z.array(z.string()), soapDraft:z.object({subjective:z.string(),objective:z.string(),assessment:z.string(),plan:z.string()}).optional(), followUpDrafts:z.array(z.object({title:z.string(),instructions:z.string(),sourceRefs:z.array(z.string())})).optional() }).strict().nullable().optional(),
   rejectionReason: z.string().max(2000).nullable().optional(),
 }).strict();
 
 router.post('/:encounterId/ai-review-drafts', authenticate, requireRole('provider'), async (req, res) => {
   try {
     const data = validate(linkedDraftSchema, req.body);
-    const draft = await linkedPhcAi.createLinkedDraft(req, req.params.encounterId, req.user.id, data.suggestionType);
+    const draft = await require('../services/linkedPhcAiService').createLinkedDraft(req, req.params.encounterId, req.user.id, data.suggestionType);
     res.set('Cache-Control', 'private, no-store').status(201).json({ success: true, suggestion: draft });
   } catch (error) { return clinicalFailure(res, error); }
 });
@@ -344,7 +342,7 @@ router.post('/:encounterId/ai-review-drafts', authenticate, requireRole('provide
 router.post('/:encounterId/ai-review-drafts/:suggestionId/review', authenticate, requireRole('provider'), async (req, res) => {
   try {
     const data = validate(linkedReviewSchema, req.body);
-    const review = await linkedPhcAi.reviewLinkedDraft(req, req.params.encounterId, req.user.id, req.params.suggestionId, data);
+    const review = await require('../services/linkedPhcAiService').reviewLinkedDraft(req, req.params.encounterId, req.user.id, req.params.suggestionId, data);
     res.set('Cache-Control', 'private, no-store').json({ success: true, review });
   } catch (error) { return clinicalFailure(res, error); }
 });
