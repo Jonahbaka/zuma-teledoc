@@ -327,3 +327,17 @@ test('main Nigeria provider saves normalized unsigned Rx, no WhatsApp before sig
  assert.doesNotMatch(body,/createPharmacyPrescriptionNotification/);
  assert.match(body,/whatsappNotification: null/);
 });
+
+test('pharmacy notifications and pharmacist Rx access are restricted to signed explicit routing', () => {
+ const fs=require('node:fs'),path=require('node:path');
+ const notifications=fs.readFileSync(path.join(__dirname,'../services/whatsapp/whatsappDispenseService.js'),'utf8');
+ const routes=fs.readFileSync(path.join(__dirname,'../routes/prescriptions.js'),'utf8');
+ const service=fs.readFileSync(path.join(__dirname,'../services/rx-engine/prescriptionWorkflowService.js'),'utf8');
+ assert.match(notifications,/rx\.signed_at IS NOT NULL/);
+ assert.match(notifications,/rx\.routed_pharmacy_id = \$2/);
+ assert.match(routes,/rx\.routed_pharmacy_id === pharmacyId/);
+ assert.doesNotMatch(routes,/\[rx\.preferred_pharmacy_id, rx\.routed_pharmacy_id/);
+ const send=routes.slice(routes.indexOf("router.post('/:id/send'"),routes.indexOf("router.post('/:id/receive'"));
+ assert.ok(send.indexOf('svc.sendToPharmacy') < send.indexOf('createPharmacyPrescriptionNotification'));
+ assert.match(service,/pharmacy_response_status = 'pending_pharmacy_confirmation'/);
+});
