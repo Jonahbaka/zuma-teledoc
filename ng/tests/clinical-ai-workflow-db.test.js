@@ -227,7 +227,7 @@ test('approved referral brief links to clinician-created referral without turnin
     { ...manual, sourceSuggestionId: null }), { code: 'REFERRAL_IDEMPOTENCY_CONFLICT' });
   await assert.rejects(workflow.createReferral(pool, request, doctorContext,
     { ...manual, patientUserId: otherPatient.id, idempotencyKey: key() }),
-    { code: 'CLINICAL_AI_ENCOUNTER_MISMATCH' });
+    { code: 'PATIENT_ENCOUNTER_MISMATCH' });
   const rows = await pool.query('SELECT COUNT(*)::int AS n FROM ng_referrals WHERE id=$1', [referral.id]);
   assert.equal(rows.rows[0].n, 1);
 });
