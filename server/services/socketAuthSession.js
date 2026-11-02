@@ -20,9 +20,8 @@ async function installSocketAuthorization(socket,{decoded,verify,db,onRevoke,ref
    claims=next;socket.authSessionId=next.sessionId||null;pending?.resolve();ack?.({ok:true});
   }catch(_){pending?.reject(new Error('Session is no longer valid'));ack?.({ok:false});revoke();}
  });
- socket.use(async(packet,done)=>{
-  if(packet[0]==='auth:reauthenticate')return done();
-  try{
+ async function authorizeCurrent() {
+  try {
    let user=await current(claims);if(user.role!==initial.role)throw new Error('Account authority changed');
    if(!claims.exp||claims.exp*1000<=Date.now()){
     if(!pending){
@@ -35,8 +34,15 @@ async function installSocketAuthorization(socket,{decoded,verify,db,onRevoke,ref
     user=await current(claims);
     if(!claims.exp||claims.exp*1000<=Date.now()||user.role!==initial.role)throw new Error('Session is no longer valid');
    }
-   done();
-  }catch(_){revoke();done(new Error('Session is no longer valid'));}
+   return true;
+  } catch (_) { revoke(); return false; }
+ }
+ // Server-initiated PHI delivery must validate idle recipients too; packet
+ // middleware alone does not run when an inactive socket only receives data.
+ socket.authorizeDelivery = authorizeCurrent;
+ socket.use(async(packet,done)=>{
+  if(packet[0]==='auth:reauthenticate')return done();
+  done(await authorizeCurrent() ? undefined : new Error('Session is no longer valid'));
  });
  socket.on('disconnect',()=>pending?.reject(new Error('Socket disconnected')));
  return initial;

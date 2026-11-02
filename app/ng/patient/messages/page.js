@@ -3,11 +3,26 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, MessageSquare, Plus, Send } from 'lucide-react';
 import api from '@/lib/api';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatRelativeTime } from '@/lib/utils';
 
 export default function NigeriaPatientMessagesPage() {
+  const { user, loading } = useAuth();
+  const accountId = user?.id || user?.userId;
+  const market = user?.marketScope || user?.market_scope;
+  const ready = !loading && accountId && user?.role === 'patient' && market === 'NG';
+  const accountKey = ready ? JSON.stringify([accountId, user.role, market]) : null;
+  const session = useRef(accountKey);
+  session.current = accountKey;
+  if (!ready) {
+    return <p role="status">{loading ? 'Loading messages…' : 'Sign in with your Nigeria patient account to view messages.'}</p>;
+  }
+  return <NigeriaPatientMessagesWorkspace key={accountKey} session={session} accountKey={accountKey} />;
+}
+
+export function NigeriaPatientMessagesWorkspace({ session, accountKey } = {}) {
   const [loading, setLoading] = useState(true);
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
@@ -23,11 +38,28 @@ export default function NigeriaPatientMessagesPage() {
   const [conversationLoading, setConversationLoading] = useState(false);
   const [revision, setRevision] = useState(0);
   const selectedRecipient = useRef(null);
-  const sendAttempt = useRef(null);
+  const sendAttempts = useRef(new Map());
+  const sendingRef = useRef(false);
+  const mounted = useRef(true);
+  const isCurrent = () => mounted.current && (!session || session.current === accountKey);
+  const contextVersion = useRef(0);
+  const draftVersion = useRef(0);
+  const confirmedMessages = useRef(new Map());
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const editDraft = (value) => { draftVersion.current += 1; setDraft(value); };
+  const changeContext = () => {
+    contextVersion.current += 1;
+    editDraft(''); setNotice(''); setConversationError('');
+  };
+  const selectConversation = (conversation) => {
+    changeContext(); selectedRecipient.current = conversation.recipientId;
+    setSelectedConversation(conversation); setShowComposer(false); setProviderId('');
+  };
   selectedRecipient.current = selectedConversation?.recipientId || null;
 
   useEffect(() => {
     let cancelled = false;
+    const openedContext = contextVersion.current;
     const loadPortalMessaging = async () => {
       setLoading(true); setLoadError('');
       try {
@@ -41,7 +73,7 @@ export default function NigeriaPatientMessagesPage() {
         const nextConversations = conversationsResponse.data?.success ? conversationsResponse.data.conversations || [] : [];
         setConversations(nextConversations);
 
-        if (nextConversations[0]) {
+        if (nextConversations[0] && contextVersion.current === openedContext && !selectedRecipient.current) {
           const firstConversation = nextConversations[0];
           const recipientId = firstConversation.recipientId || firstConversation.otherUser?.id;
           const recipientName =
@@ -80,10 +112,11 @@ export default function NigeriaPatientMessagesPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setMessages([]); setDraft(''); setConversationError('');
+    const recipient = selectedConversation?.recipientId;
+    setMessages(confirmedMessages.current.get(recipient) || []); setConversationError('');
     const loadConversation = async () => {
       if (!selectedConversation?.recipientId) {
-        setMessages([]);
+        setMessages([]); setConversationLoading(false);
         return;
       }
 
@@ -91,63 +124,73 @@ export default function NigeriaPatientMessagesPage() {
       try {
         const response = await api.get(`/messages/conversation/${selectedConversation.recipientId}`);
         if (!response.data?.success) throw new Error();
-        if (!cancelled) setMessages(response.data.messages || []);
+        if (!cancelled) {
+          const loaded = response.data.messages || [];
+          const confirmed = confirmedMessages.current.get(recipient) || [];
+          setMessages([...loaded, ...confirmed.filter((message) => !loaded.some((item) => item.id === message.id))]);
+        }
       } catch { if (!cancelled) setConversationError('This conversation could not be loaded.'); }
       finally { if (!cancelled) setConversationLoading(false); }
     };
 
     loadConversation();
     return () => { cancelled = true; };
-  }, [selectedConversation]);
+  }, [selectedConversation?.recipientId]);
 
-  const refreshConversations = async () => {
+  const refreshConversations = async (openedContext) => {
     try {
       const response = await api.get('/messages/conversations');
       if (!response.data?.success) throw new Error();
-      setConversations(response.data.conversations || []);
-    } catch { setLoadError('Your inbox could not be refreshed. A successfully sent message remains saved.'); }
+      if (isCurrent() && contextVersion.current === openedContext) setConversations(response.data.conversations || []);
+    } catch {
+      if (isCurrent() && contextVersion.current === openedContext) setLoadError('Your inbox could not be refreshed. A successfully sent message remains saved.');
+    }
   };
 
   const sendMessage = async ({ recipientId, content, resetComposer = false }) => {
-    if (!recipientId || !content.trim()) return;
-
+    const normalizedContent = content.trim();
+    if (!isCurrent() || sendingRef.current || !recipientId || !normalizedContent) return;
+    sendingRef.current = true;
     setSending(true);
-    const openedRecipient = selectedRecipient.current;
+    const openedContext = contextVersion.current;
+    const submittedDraftVersion = draftVersion.current;
+    const attemptKey = JSON.stringify([recipientId, normalizedContent]);
+    if (!sendAttempts.current.has(attemptKey)) sendAttempts.current.set(attemptKey, crypto.randomUUID());
     setNotice('');
     try {
-      if (sendAttempt.current?.recipientId !== recipientId || sendAttempt.current?.content !== content.trim()) sendAttempt.current = { recipientId, content: content.trim(), id: crypto.randomUUID() };
       const response = await api.post('/messages', {
-        recipientId,
-        content: content.trim(),
-        isUrgent: false,
-        clientMessageId: sendAttempt.current.id,
+        recipientId, content: normalizedContent, isUrgent: false,
+        clientMessageId: sendAttempts.current.get(attemptKey),
       });
-
-      if (response.data?.success) {
-        await refreshConversations();
-        if (selectedRecipient.current !== openedRecipient) return;
-        sendAttempt.current = null;
-        const saved = response.data.data || (typeof response.data.message === 'object' ? response.data.message : null);
-        if (selectedRecipient.current === recipientId && saved?.id) setMessages((current) => current.some((item) => item.id === saved.id) ? current : [...current, { ...saved, content: content.trim(), createdAt: saved.createdAt || saved.created_at, sentByMe: true }]);
-        if (resetComposer) {
-          setShowComposer(false);
-          setProviderId('');
-        }
-        setDraft('');
-        setNotice('Message sent.');
-        setSelectedConversation((current) =>
-          current?.recipientId === recipientId
-            ? current
-            : {
-                recipientId,
-                recipientName: providers.find((item) => item.id === recipientId)?.name || current?.recipientName || 'Care team',
-              }
-        );
+      if (!response.data?.success) throw new Error('Unable to send message.');
+      if (!isCurrent()) return;
+      sendAttempts.current.delete(attemptKey);
+      const saved = response.data.data || (typeof response.data.message === 'object' ? response.data.message : null);
+      if (saved?.id) {
+        const normalized = { ...saved, content: typeof saved.content === 'string' ? saved.content : normalizedContent, createdAt: saved.createdAt || saved.created_at, sentByMe: true };
+        const previous = confirmedMessages.current.get(recipientId) || [];
+        confirmedMessages.current.set(recipientId, previous.some((item) => item.id === saved.id) ? previous : [...previous, normalized]);
+        if (selectedRecipient.current === recipientId) setMessages((current) => current.some((item) => item.id === saved.id) ? current : [...current, normalized]);
       }
+      if (contextVersion.current !== openedContext) return;
+      // Preserve edits made while the acknowledged message was in flight.
+      if (draftVersion.current === submittedDraftVersion) {
+        editDraft('');
+        if (resetComposer) {
+          setShowComposer(false); setProviderId('');
+          selectedRecipient.current = recipientId;
+          setSelectedConversation((current) => current?.recipientId === recipientId ? current : {
+            recipientId, recipientName: providers.find((item) => item.id === recipientId)?.name || 'Care team',
+          });
+        }
+      }
+      setNotice('Message sent.');
+      await refreshConversations(openedContext);
     } catch (error) {
-      setNotice(error.response?.data?.error || 'Unable to send message.');
+      if (isCurrent() && contextVersion.current === openedContext) setNotice(error.response?.data?.error || 'Unable to send message.');
     } finally {
-      setSending(false);
+      sendingRef.current = false;
+      if (isCurrent()) setSending(false);
     }
   };
 
@@ -167,7 +210,7 @@ export default function NigeriaPatientMessagesPage() {
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Messages and support</h1>
           <p className="mt-2 text-sm text-muted-foreground">Stay connected with providers and care operations without leaving the patient portal.</p>
         </div>
-        <Button onClick={() => setShowComposer((current) => !current)} className="bg-blue-600 text-white hover:bg-blue-500">
+        <Button onClick={() => { changeContext(); setProviderId(''); setShowComposer((current) => !current); }} className="bg-blue-600 text-white hover:bg-blue-500">
           <Plus className="mr-2 h-4 w-4" />
           New Message
         </Button>
@@ -188,7 +231,7 @@ export default function NigeriaPatientMessagesPage() {
             <select
               aria-label="Care-team provider"
               value={providerId}
-              onChange={(event) => setProviderId(event.target.value)}
+              onChange={(event) => { changeContext(); setProviderId(event.target.value); }}
               className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
             >
               <option value="">Choose a provider from your appointments</option>
@@ -201,7 +244,7 @@ export default function NigeriaPatientMessagesPage() {
             <textarea
               aria-label="New message"
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => editDraft(event.target.value)}
               rows={4}
               className="w-full rounded-xl border border-border bg-background px-3 py-3 text-sm"
               placeholder="Describe your follow-up question, prescription issue, or support need."
@@ -239,7 +282,7 @@ export default function NigeriaPatientMessagesPage() {
                   <button
                     key={conversation.conversationId || recipientId}
                     type="button"
-                    onClick={() => setSelectedConversation({ recipientId, recipientName })}
+                    onClick={() => selectConversation({ recipientId, recipientName })}
                     className={`w-full rounded-2xl border px-4 py-4 text-left transition-colors ${
                       isActive ? 'border-blue-300 bg-blue-50' : 'border-border hover:border-blue-200 hover:bg-blue-50/40'
                     }`}
@@ -295,14 +338,15 @@ export default function NigeriaPatientMessagesPage() {
                 <div className="space-y-3 border-t border-border pt-4">
                   <textarea
                     aria-label="Message to care team"
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
+                    value={showComposer ? '' : draft}
+                    disabled={showComposer}
+                    onChange={(event) => editDraft(event.target.value)}
                     rows={4}
                     className="w-full rounded-xl border border-border bg-background px-3 py-3 text-sm"
                     placeholder="Type your message to the care team."
                   />
                   <div className="flex justify-end">
-                    <Button onClick={() => sendMessage({ recipientId: selectedConversation.recipientId, content: draft })} disabled={sending || !draft.trim()} className="bg-blue-600 text-white hover:bg-blue-500">
+                    <Button onClick={() => sendMessage({ recipientId: selectedConversation.recipientId, content: draft })} disabled={showComposer || sending || !draft.trim()} className="bg-blue-600 text-white hover:bg-blue-500">
                       <Send className="mr-2 h-4 w-4" />
                       {sending ? 'Sending...' : 'Send'}
                     </Button>

@@ -300,8 +300,67 @@ async function main() {
     await nurseBrowser.close();
   }
   await exerciseConference({ doctor, nurse, patient, external, pageErrors, session });
+  await exercisePatientMessaging({ doctor, patient, external, pageErrors });
   assert.deepEqual(pageErrors, []); assert.deepEqual(external, []);
   pass('no uncaught browser errors or unexpected external requests; named font stylesheet fulfilled offline');
+}
+
+async function exercisePatientMessaging({ doctor, patient, external, pageErrors }) {
+  // Explicit synthetic appointment establishes the real backend care relationship
+  // and the real UI provider selector; no authorization endpoint is mocked.
+  await pool.query(`INSERT INTO appointments(patient_id,provider_id,scheduled_at,status,reason_for_visit)
+    VALUES($1,$2,NOW()+INTERVAL '1 day','scheduled','Synthetic messaging browser fixture')`, [patient.id, doctor.id]);
+  const guest = await browser.newContext({ baseURL: BASE, viewport: { width: 1280, height: 960 } });
+  const sent = deferred(), release = deferred(); const writes = [];
+  try {
+    await guest.tracing.start({ screenshots: true, snapshots: true, sources: true });
+    await guest.route('**/*', async route => {
+      const req = route.request(), url = new URL(req.url());
+      if (isOfflineFontFixture(url.href, req.method(), req.resourceType())) return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+      if (url.origin !== BASE) { external.push(url.href); return route.abort(); }
+      if (url.pathname === '/api/messages' && req.method() === 'POST') {
+        writes.push(req.postDataJSON());
+        // Delay only delivery of the actual backend response to exercise typing
+        // during an in-flight send. Persistence, encryption and auth stay real.
+        const response = await route.fetch();
+        assert.equal(response.status(), 201);
+        sent.resolve(); await waitForSignal(release.promise, 'release saved message response');
+        return route.fulfill({ response });
+      }
+      return route.continue();
+    });
+    const login = await guest.request.post('/api/auth/login', { data: { email: patient.email, password: PASSWORD, role: 'patient' } });
+    assert.equal(login.status(), 200); const session = await login.json();
+    await guest.addInitScript(({ accessToken, refreshToken, user }) => {
+      localStorage.setItem('accessToken', accessToken); localStorage.setItem('refreshToken', refreshToken); localStorage.setItem('user', JSON.stringify(user));
+    }, session);
+    const p = await guest.newPage(); p.setDefaultTimeout(20000); p.on('pageerror', error => pageErrors.push(error.message));
+    await p.goto('/ng/patient/messages', { waitUntil: 'networkidle' });
+    await p.getByRole('button', { name: 'New Message', exact: true }).click();
+    await p.getByLabel('Care-team provider', { exact: true }).selectOption(doctor.id);
+    const content = `Synthetic message ${crypto.randomUUID()}`;
+    const newer = 'Newer unsent synthetic draft must remain.';
+    await p.getByLabel('New message', { exact: true }).fill(content);
+    await p.getByRole('button', { name: 'Send Message', exact: true }).evaluate(button => { button.click(); button.click(); });
+    await waitForSignal(sent.promise, 'actual message persistence');
+    await p.getByLabel('New message', { exact: true }).fill(newer);
+    release.resolve();
+    await expect(p.getByText('Message sent.', { exact: true })).toBeVisible();
+    assert.equal(writes.length, 1, 'Repeated same-render send must issue one write');
+    await expect(p.getByLabel('New message', { exact: true })).toHaveValue(newer);
+    const rows = (await pool.query('SELECT * FROM messages WHERE sender_id=$1 AND client_message_id=$2', [patient.id, writes[0].clientMessageId])).rows;
+    assert.equal(rows.length, 1); assert.equal(rows[0].recipient_id, doctor.id);
+    assert.equal(JSON.stringify(rows[0]).includes(content), false);
+    assert.equal(require('../lib/encryption').decrypt(rows[0].content_encrypted, rows[0].content_iv, rows[0].content_tag), content);
+    await p.reload({ waitUntil: 'networkidle' });
+    await expect(p.getByText(content, { exact: true })).toBeVisible();
+    await p.screenshot({ path: path.join(ART, 'patient-message-persisted.png'), fullPage: true });
+    pass('patient messaging: actual care-scoped encrypted send persists once under repeated clicks; delayed success preserves a newer draft and saved content survives reload');
+  } finally {
+    release.resolve();
+    await guest.tracing.stop({ path: path.join(ART, 'patient-message-trace.zip') });
+    await guest.close();
+  }
 }
 
 async function exerciseConference({ doctor, nurse, patient, external, pageErrors, session }) {

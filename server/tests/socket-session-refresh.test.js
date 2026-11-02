@@ -8,7 +8,7 @@ async function fixture(){
  const socket={on(name,fn){handlers.set(name,fn);},use(fn){middleware=fn;},emit(name){events.push(name);},disconnect(){disconnected++;handlers.get('disconnect')?.();}};
  const db={async query(sql){return{rows:sql.includes('FROM users')?[{id,is_active:state.active,role:state.role,credential_version:state.version}]:state.revoked?[]:[{id:'active-token'}]};}};
  await installSocketAuthorization(socket,{decoded:claims,verify:token=>{const next=JSON.parse(token);assert.ok(next.exp*1000>Date.now());return next;},db,refreshTimeoutMs:100});
- return{claims,state,events,handlers,packet:()=>new Promise(resolve=>middleware(['clinical-message'],resolve)),disconnected:()=>disconnected};
+ return{socket,claims,state,events,handlers,packet:()=>new Promise(resolve=>middleware(['clinical-message'],resolve)),disconnected:()=>disconnected};
 }
 test('long socket session pauses expired-token packet and resumes after same-family refresh without disconnect',async()=>{
  const f=await fixture();f.claims.exp=1;let settled=false;const packet=f.packet().then(error=>{settled=true;assert.equal(error,undefined);});
@@ -42,4 +42,27 @@ test('actual client socket refresh uses current HTTP session and never reauthent
   if(switchAccount){generation++;stored='B:fresh';}resolve();await pending;
   assert.equal(requests.length,switchAccount?0:1);assert.equal(disconnected,switchAccount?1:0);if(!switchAccount)assert.equal(socket.auth.token,'A:fresh');cleanup();assert.equal(handlers.size,0);
  }
+});
+
+
+test('idle receiving socket validates expiry and revoked authority before server-initiated delivery', async () => {
+ const f=await fixture(); f.claims.exp=1;
+ const delivery=f.socket.authorizeDelivery(); await turn();
+ assert.deepEqual(f.events,['auth:refresh-required']);
+ await f.handlers.get('auth:reauthenticate')({token:JSON.stringify({...f.claims,exp:Math.floor(Date.now()/1000)+60})},()=>{});
+ assert.equal(await delivery,true);
+ f.state.revoked=true; assert.equal(await f.socket.authorizeDelivery(),false); assert.ok(f.disconnected()>0);
+});
+
+test('clinical realtime delivery selects only current participants and rechecks care scope after refresh', async () => {
+ const {deliverClinicalMessage}=require('../services/messageDelivery');
+ const sent=[];let authority=true;let unrelatedChecks=0;
+ const socket=(userId,allowed=true)=>({userId,connected:true,async authorizeDelivery(){if(userId==='unrelated')unrelatedChecks++;return allowed;},emit(name,payload){sent.push({userId,name,payload});}});
+ const sender=socket('sender'),recipient=socket('recipient'),revoked=socket('recipient',false),unrelated=socket('unrelated');
+ const args={sockets:[sender,recipient,revoked,unrelated],conversationId:'conversation',recipientId:'recipient',message:{id:'message',senderId:'sender',content:'Synthetic clinical content'},async authorize(){if(!authority)throw new Error('Revoked care relationship');return{conversationId:'conversation'};}};
+ assert.deepEqual(await deliverClinicalMessage(args),{queued:2});assert.equal(unrelatedChecks,0);
+ assert.equal(sent.filter(item=>item.name==='message:new').length,2);assert.equal(sent.filter(item=>item.name==='notification:message').length,1);
+ assert.equal(sent.find(item=>item.userId==='sender').payload.sentByMe,true);
+ sent.length=0;authority=false;assert.deepEqual(await deliverClinicalMessage(args),{queued:0});assert.equal(sent.length,0);
+ authority=true;args.conversationId='wrong';assert.deepEqual(await deliverClinicalMessage(args),{queued:0});assert.equal(sent.length,0);
 });

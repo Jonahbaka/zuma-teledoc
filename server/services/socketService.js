@@ -944,21 +944,11 @@ const getIO = () => {
 /**
  * Emit a new message to a conversation (called from message routes)
  */
-const emitNewMessage = (conversationId, recipientId, message) => {
+const emitNewMessage = async (conversationId, recipientId, message) => {
   if (!io) return;
-  
-  // Emit to conversation room
-  io.to(`conversation:${conversationId}`).emit('message:new', message);
-  
-  // Also emit to recipient's personal room
-  io.to(`user:${recipientId}`).emit('message:new', message);
-  
-  // Emit notification for unread count update
-  io.to(`user:${recipientId}`).emit('notification:message', {
-    conversationId,
-    messageId: message.id,
-    senderName: message.senderName,
-    preview: message.content?.substring(0, 50) || 'New message'
+  return require('./messageDelivery').deliverClinicalMessage({
+    sockets: io.sockets.sockets.values(), conversationId, recipientId, message,
+    authorize: (senderId, targetId) => assertMessagingRelationship(db, senderId, targetId)
   });
 };
 

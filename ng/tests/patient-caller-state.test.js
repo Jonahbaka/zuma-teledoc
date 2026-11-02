@@ -12,7 +12,7 @@ const patientB = { id: 'patient-b', role: 'patient', marketScope: 'US' };
 const event = { preventDefault() {} };
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 
-function viewHarness(filename, auth, api, guidance = async () => { throw new Error('Unavailable'); }) {
+function viewHarness(filename, auth, api, guidance = async () => { throw new Error('Unavailable'); }, exportName = 'default') {
   const slots = []; const effects = []; let cursor = 0; let dirty = false; let tree;
   const react = {
     useState(initial) {
@@ -28,12 +28,15 @@ function viewHarness(filename, auth, api, guidance = async () => { throw new Err
       }
     },
   };
-  const jsxRuntime = { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
+  const jsxRuntime = { jsx: (type, props, key) => ({ type, props, key }), jsxs: (type, props, key) => ({ type, props, key }) };
   const dependencies = {
     react, 'react/jsx-runtime': jsxRuntime,
     'next/link': { __esModule: true, default: Symbol('Link') },
     'lucide-react': new Proxy({}, { get: (_target, name) => Symbol(String(name)) }),
     '@/lib/api': { __esModule: true, default: api },
+    '@/components/ui/button': { Button: 'button' },
+    '@/components/ui/card': { Card: 'section', CardContent: 'div', CardHeader: 'header', CardTitle: 'h2' },
+    '@/lib/utils': { formatRelativeTime: () => 'Synthetic relative time' },
     '@/lib/doctaService': { DoctaService: { runAITriage: guidance } },
     '@/components/providers/AuthProvider': { useAuth: () => auth.value },
     '@/components/branding/PortalPageHeader': { __esModule: true, default: Symbol('PortalPageHeader') },
@@ -42,7 +45,7 @@ function viewHarness(filename, auth, api, guidance = async () => { throw new Err
   const absolute = path.resolve(__dirname, '../..', filename);
   const compiled = transformSync(fs.readFileSync(absolute, 'utf8'), { filename: absolute, jsc: { parser: { syntax: 'ecmascript', jsx: true }, transform: { react: { runtime: 'automatic' } } }, module: { type: 'commonjs' } }).code;
   vm.runInNewContext(compiled, { module: sourceModule, exports: sourceModule.exports, require(name) { assert.ok(name in dependencies, name); return dependencies[name]; }, AbortController, crypto: { randomUUID: crypto.randomUUID } });
-  const Component = sourceModule.exports.default;
+  const Component = sourceModule.exports[exportName];
   const view = {
     render(runEffects = true) {
       do { cursor = 0; dirty = false; tree = Component(); if (runEffects) for (const effect of effects.splice(0)) effect(); } while (runEffects && dirty);
@@ -177,4 +180,121 @@ test('symptom guidance rejects either API naming form of a foreign-patient appoi
     view.render(); await flush(view);
     assert.equal(view.text().includes('Foreign private clinician'), false); assert.ok(view.text().includes('Your next appointment could not be loaded'));
   }
+});
+
+const ngPatientA = { ...patientA, marketScope: 'NG' };
+function messagingView(api, auth = { value: { user: ngPatientA, loading: false } }, exportName = 'NigeriaPatientMessagesWorkspace') {
+  return viewHarness('app/ng/patient/messages/page.js', auth, api, undefined, exportName);
+}
+function messagingApi(options = {}) {
+  return {
+    get(url) {
+      if (url === '/messages/conversations') return Promise.resolve({ data: { success: true, conversations: [
+        { recipientId: 'doctor-a', recipientName: 'Doctor A' }, { recipientId: 'doctor-b', recipientName: 'Doctor B' },
+      ] } });
+      if (url === '/appointments') return Promise.resolve({ data: { success: true, appointments: [{ providerId: 'doctor-a', providerFirstName: 'A' }, { providerId: 'doctor-b', providerFirstName: 'B' }] } });
+      return options.read ? options.read(url) : Promise.resolve({ data: { success: true, messages: [] } });
+    },
+    post: options.post || (() => { throw new Error('Unexpected message write'); }),
+  };
+}
+async function openMessaging(api) { const view = messagingView(api); view.render(); await flush(view); await flush(view); return view; }
+function messageDraft(view, text, label = 'Message to care team') {
+  view.find('textarea').find((field) => field.props['aria-label'] === label).props.onChange({ target: { value: text } }); view.render();
+}
+function messageButton(view, text) { return view.find('button').find((button) => strings(button.props.children).trim() === text); }
+
+test('NG messages trusted shell gates missing/loading/wrong role or market and keys actual workspace by account', () => {
+  let reads = 0;
+  const api = { get() { reads++; } };
+  const auth = { value: { user: ngPatientA, loading: true } };
+  const view = messagingView(api, auth, 'default');
+  assert.equal(view.render().props.role, 'status');
+  for (const user of [null, { ...ngPatientA, role: 'provider' }, patientA]) {
+    auth.value = { user, loading: false }; assert.equal(view.render().props.role, 'status');
+  }
+  auth.value = { user: ngPatientA, loading: false }; const a = view.render();
+  auth.value = { user: { ...ngPatientA, id: 'patient-b' }, loading: false }; const b = view.render(false);
+  assert.equal(typeof a.type, 'function'); assert.equal(a.type, b.type); assert.notEqual(a.key, b.key);
+  assert.notEqual(a.props.session.current, a.props.accountKey);
+  assert.equal(b.props.session.current, b.props.accountKey);
+  assert.equal(reads, 0);
+});
+
+test('NG pending send preserves newer draft, normalizes saved 201 response and rejects repeated same-render clicks', async () => {
+  const post = deferred(); const payloads = [];
+  const view = await openMessaging(messagingApi({ post(_url, payload) { payloads.push(payload); return post.promise; } }));
+  messageDraft(view, 'First message');
+  const button = messageButton(view, 'Send'); const sending = button.props.onClick();
+  await button.props.onClick(); assert.equal(payloads.length, 1);
+  view.render(); messageDraft(view, 'Newer unsent draft');
+  post.resolve({ data: { success: true, data: { id: 'message-a', created_at: '2026-11-02T10:00:00Z' } } });
+  await sending; await flush(view);
+  assert.equal(view.find('textarea')[0].props.value, 'Newer unsent draft');
+  assert.ok(view.text().includes('First message')); assert.ok(view.text().includes('Message sent.'));
+  assert.equal(messageButton(view, 'Send').props.disabled, false);
+});
+
+test('NG failed message retries retain clientMessageId for normalized content and accept dedup 200 message', async () => {
+  const payloads = []; let fail = true;
+  const view = await openMessaging(messagingApi({ async post(_url, payload) {
+    payloads.push(payload); if (fail) throw new Error('Response lost');
+    return { data: { success: true, message: { id: 'dedup-message', createdAt: '2026-11-02T10:00:00Z' } } };
+  } }));
+  messageDraft(view, 'Retry message'); await messageButton(view, 'Send').props.onClick(); await flush(view);
+  messageDraft(view, ' Retry message '); fail = false;
+  await messageButton(view, 'Send').props.onClick(); await flush(view);
+  assert.equal(payloads[0].clientMessageId, payloads[1].clientMessageId);
+  assert.equal(view.find('textarea')[0].props.value, ''); assert.ok(view.text().includes('Retry message'));
+  messageDraft(view, 'Different message'); await messageButton(view, 'Send').props.onClick();
+  assert.notEqual(payloads[2].clientMessageId, payloads[0].clientMessageId);
+});
+
+test('NG late send errors cannot leak into another conversation or a newly opened composer', async () => {
+  for (const navigate of ['conversation', 'composer', 'provider']) {
+    const post = deferred();
+    const view = await openMessaging(messagingApi({ post: () => post.promise }));
+    messageDraft(view, 'Old recipient message'); const pending = messageButton(view, 'Send').props.onClick();
+    if (navigate === 'conversation') view.button('Doctor B').props.onClick();
+    else messageButton(view, 'New Message').props.onClick();
+    view.render();
+    if (navigate === 'provider') { view.find('select')[0].props.onChange({ target: { value: 'doctor-b' } }); view.render(); }
+    messageDraft(view, 'New context draft', navigate === 'conversation' ? 'Message to care team' : 'New message');
+    post.reject({ response: { data: { error: 'Old recipient failure detail' } } }); await pending; await flush(view);
+    assert.equal(view.text().includes('Old recipient failure detail'), false);
+    assert.ok(view.text().includes('New context draft')); assert.equal(view.text().includes('Old recipient message'), false);
+  }
+});
+
+test('NG late composer send cannot close a newer composer or erase edits', async () => {
+  for (const change of ['edit', 'provider', 'close-reopen']) {
+    const post = deferred(); const view = await openMessaging(messagingApi({ post: () => post.promise }));
+    messageButton(view, 'New Message').props.onClick(); view.render();
+    view.find('select')[0].props.onChange({ target: { value: 'doctor-a' } }); view.render();
+    messageDraft(view, 'Composer submission', 'New message'); const pending = messageButton(view, 'Send Message').props.onClick(); view.render();
+    if (change === 'provider') { view.find('select')[0].props.onChange({ target: { value: 'doctor-b' } }); view.render(); }
+    if (change === 'close-reopen') { messageButton(view, 'New Message').props.onClick(); view.render(); messageButton(view, 'New Message').props.onClick(); view.render(); }
+    messageDraft(view, 'New composer draft', 'New message');
+    post.resolve({ data: { success: true, data: { id: 'composer-saved' } } }); await pending; await flush(view);
+    assert.equal(view.find('textarea').find((field) => field.props['aria-label'] === 'New message').props.value, 'New composer draft');
+    if (change !== 'edit') assert.equal(view.text().includes('Message sent.'), false);
+  }
+});
+
+test('NG delayed conversation read merges confirmed sent message instead of erasing it', async () => {
+  const read = deferred();
+  const view = await openMessaging(messagingApi({ read: () => read.promise, async post() { return { data: { success: true, data: { id: 'confirmed-message' } } }; } }));
+  messageDraft(view, 'Confirmed message content'); await messageButton(view, 'Send').props.onClick(); await flush(view);
+  read.resolve({ data: { success: true, messages: [{ id: 'older-message', content: 'Older content' }] } }); await flush(view);
+  assert.ok(view.text().includes('Confirmed message content')); assert.ok(view.text().includes('Older content'));
+});
+
+test('NG unmounted account workspace discards pending send response and does not refresh old inbox', async () => {
+  const post = deferred(); const base = messagingApi({ post: () => post.promise }); let reads = 0;
+  const view = await openMessaging({ ...base, get(url) { reads++; return base.get(url); } });
+  messageDraft(view, 'Private account A draft'); const pending = messageButton(view, 'Send').props.onClick(); view.render();
+  const before = reads; view.unmount();
+  const next = await openMessaging(messagingApi());
+  post.resolve({ data: { success: true, data: { id: 'old-account-message' } } }); await pending; await flush(next);
+  assert.equal(reads, before); assert.equal(next.text().includes('Private account A draft'), false); assert.equal(next.text().includes('Message sent.'), false);
 });
