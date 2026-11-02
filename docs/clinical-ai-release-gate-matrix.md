@@ -9,9 +9,9 @@
 | Consultation | Clinician-owned, PHC-linked consultation brief | Video failure/reconnect, consent, assigned clinician, encounter ownership, no PHI leak | Draft wired; E2E pending |
 | SOAP | Protected source-linked draft and explicit clinician review | Editing, stale source rejection, patient crossover, encrypted storage, one-time unsigned note import, signature separate | Integration tests present; final CI pending |
 | EMR | Encounter-scoped documentation gap review | Longitudinal problem/allergy/medication history, amendments, exports and encounter versioning | **Not** full record reconciliation |
-| Prescribing | Documentation-only checklist | Allergies, interactions, indication, contraindications, clinician identity/signature, pharmacy handoff and replay | Clinical Rx automation not connected |
-| Referral | Documentation-only context brief; independent referral network | Consent, destination access, specialist match safety, explicit send, receipt, closure, status reconciliation | Operational automation not connected |
-| Pharmacy | Existing order and dispense operations | Verify exact signed Rx, stock status, split fulfilment, substitution authorization, delivery audit and idempotency | Groq not authorized to order/dispense |
+| Prescribing | Documentation-only AI review; clinician-entered Nigeria eRx may attach accepted review/PHC encounter UUIDs | Allergies, interactions, indication, contraindications, clinician identity/signature, pharmacy handoff and replay | Manual provenance bridge committed; final CI and clinical sign-off pending |
+| Referral | Clinician-created PHC referral may optionally reference approved AI brief; existing state machine sends/accepts/closes | Consent, destination access, specialist match safety, explicit send, receipt, closure, status reconciliation | PHC referral provenance and synthetic status test committed; independent DRN PHI bridge pending |
+| Pharmacy | Existing Nigeria Rx and independent pharmacy ordering/dispensing retain clinical authority | Verify signed Rx, stock status, split fulfilment, substitution authorization, delivery audit and idempotency | AI source provenance stored on draft; no AI dispensing; final CI/browser gate pending |
 | Follow-up | Reviewable source-linked proposals and separate assigned tasks | Due date, assigned role, duplicate replay, status transitions, notification, overdue escalation | PHC integration present; browser E2E pending |
 
 ## Absolute blockers
