@@ -34,7 +34,7 @@ function handlerHarness() {
   let suggestion = null;
   let error = '';
   const version = { current: 0 };
-  const context = { aiRequestVersion: version, context: {}, aiDraftType: 'soap_draft', setAiEditedOutput() {}, setAiTaskOptions() {}, setAiSuggestion: value => { suggestion = value; }, setError: value => { error = value; }, setNotice() {},
+  const context = { aiRequestVersion: version, context: {}, aiDraftType: 'soap_draft', careStages: require('../../shared/clinicalAiStages.json'), programmeRole: 'remote_clinician', setAiEditedOutput() {}, setAiTaskOptions() {}, setAiSuggestion: value => { suggestion = value; }, setError: value => { error = value; }, setNotice() {},
     run: (_name, operation) => operation(),
     phcAPI: { createAiSuggestion: (_context, { encounterId }) => new Promise(resolve => pending.set(encounterId, resolve)) },
   };
