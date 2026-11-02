@@ -145,8 +145,15 @@ test('all eight PHC care stages share encrypted drafts, correct clinical roles a
     ai.createSuggestion(pool, request, nurseContext, { encounterId: encounter.id, suggestionType: 'prescription_review' }, modelCaller),
     { code: 'CLINICAL_AI_STAGE_ROLE_DENIED' }
   );
+  // Intake documentation review is intentionally available to both nurses and
+  // assigned clinicians. Test the actual role matrix instead of expecting a
+  // rejection for an authorized clinician.
+  const clinicianIntake = await ai.createSuggestion(
+    pool, request, doctorContext, { encounterId: encounter.id, suggestionType: 'intake_review' }, modelCaller
+  );
+  assert.equal(clinicianIntake.suggestion_type, 'intake_review');
   await assert.rejects(
-    ai.createSuggestion(pool, request, doctorContext, { encounterId: encounter.id, suggestionType: 'intake_review' }, modelCaller),
+    ai.createSuggestion(pool, request, nurseContext, { encounterId: encounter.id, suggestionType: 'consultation_brief' }, modelCaller),
     { code: 'CLINICAL_AI_STAGE_ROLE_DENIED' }
   );
 });
