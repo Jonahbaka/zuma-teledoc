@@ -185,7 +185,7 @@ test('clinical editor and task controls have explicit labels independent of init
 test('Groq adapter refuses real patient, production and non-opted-in requests before HTTP', async () => {
   const { requestGroqDraft } = require('../services/phc/clinicalAiGroqAdapter');
   const env = { NODE_ENV: 'test', GROQ_API_KEY: 'synthetic-only-key', CLINICAL_AI_ALLOW_DEMO_GROQ: 'true' };
-  const args = { context: { demo_only: true }, model: 'openai/gpt-oss-20b', systemPrompt: 'Synthetic test', userPrompt: 'Synthetic record' };
+  const args = { context: { demo_only: true }, model: 'openai/gpt-oss-120b', systemPrompt: 'Synthetic test', userPrompt: 'Synthetic record' };
   let calls = 0;
   const fetchImpl = async () => { calls++; return { ok: true, json: async () => ({ model: args.model, choices: [{ message: { content: '{}' } }] }) }; };
   for (const [context, changedEnv] of [
@@ -206,7 +206,7 @@ test('Groq adapter refuses real patient, production and non-opted-in requests be
 test('Groq synthetic adapter sends only to pinned endpoint and returns shaped output', async () => {
   const { requestGroqDraft } = require('../services/phc/clinicalAiGroqAdapter');
   const env = { NODE_ENV: 'test', GROQ_API_KEY: 'synthetic-only-key', CLINICAL_AI_ALLOW_DEMO_GROQ: 'true' };
-  const args = { context: { demo_only: true }, model: 'openai/gpt-oss-20b', systemPrompt: 'Safe synthetic system prompt', userPrompt: 'Synthetic encounter record' };
+  const args = { context: { demo_only: true }, model: 'openai/gpt-oss-120b', systemPrompt: 'Safe synthetic system prompt', userPrompt: 'Synthetic encounter record' };
   let captured;
   const result = await requestGroqDraft(args, {
     env,
@@ -228,7 +228,7 @@ test('Groq synthetic adapter sends only to pinned endpoint and returns shaped ou
 test('Groq synthetic adapter never returns upstream failure bodies', async () => {
   const { requestGroqDraft } = require('../services/phc/clinicalAiGroqAdapter');
   const env = { NODE_ENV: 'test', GROQ_API_KEY: 'synthetic-only-key', CLINICAL_AI_ALLOW_DEMO_GROQ: 'true' };
-  const args = { context: { demo_only: true }, model: 'openai/gpt-oss-20b', systemPrompt: 'test', userPrompt: 'test' };
+  const args = { context: { demo_only: true }, model: 'openai/gpt-oss-120b', systemPrompt: 'test', userPrompt: 'test' };
   const cases = [
     async () => ({ ok: false, status: 429, json: async () => ({ private: 'sensitive text' }) }),
     async () => { throw new Error('sensitive text'); },
