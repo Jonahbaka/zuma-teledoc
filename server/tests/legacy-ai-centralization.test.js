@@ -17,3 +17,14 @@ test('legacy triage metadata cannot persist browser supplied priority or drugs',
  assert.match(src,/'UNASSESSED'/);
  assert.doesNotMatch(src,/triageResult\.severity \|\| 0/);
 });
+
+test('legacy caption translation requires separate server approval for clinical text', () => {
+ const src=fs.readFileSync(path.join(__dirname,'../routes/aiAssist.js'),'utf8');
+ assert.match(src,/CLINICAL_AI_ALLOW_EXTERNAL_TRANSLATION/);
+ assert.match(src,/CLINICAL_AI_TRANSLATION_PROVIDER_APPROVED/);
+ assert.match(src,/CLINICAL_AI_ALLOW_EXTERNAL_PHI/);
+ const gate=src.indexOf("process.env.CLINICAL_AI_ALLOW_EXTERNAL_TRANSLATION");
+ const call=src.indexOf("llm.callLLM(");
+ assert.ok(gate > -1 && call > gate, 'approval must precede external model call');
+ assert.match(src,/manualInterpreterRequired: true/);
+});
