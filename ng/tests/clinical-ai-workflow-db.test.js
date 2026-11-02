@@ -97,6 +97,60 @@ test.before(async () => {
 });
 test.after(async () => { await close(); });
 
+test('all eight PHC care stages share encrypted drafts, correct clinical roles and canonical encounter linkage', async () => {
+  const linked = require('../../server/services/linkedPhcAiService');
+  const encounter = await encounterFor();
+  const stages = {
+    intake_review: nurseContext,
+    triage_review: nurseContext,
+    consultation_brief: doctorContext,
+    soap_draft: doctorContext,
+    emr_reconciliation: doctorContext,
+    prescription_review: doctorContext,
+    referral_brief: doctorContext,
+    follow_up_draft: doctorContext,
+  };
+  const resolved = await linked.resolveLinkedPhcEncounter(encounter.canonical_id, doctor.id, pool);
+  assert.equal(resolved.sourceEncounterId, encounter.id);
+  assert.equal(resolved.context.userId, doctor.id);
+  assert.equal(resolved.context.patientUserId || patient.id, patient.id);
+
+  const initialCount = Number((await pool.query(
+    'SELECT COUNT(*) AS total FROM clinical_notes WHERE encounter_id=$1',
+    [encounter.canonical_id]
+  )).rows[0].total);
+  for (const [suggestionType, actorContext] of Object.entries(stages)) {
+    const output = await ai.createSuggestion(
+      pool, request, actorContext, { encounterId: encounter.id, suggestionType }, modelCaller
+    );
+    assert.equal(output.suggestion_type, suggestionType);
+    assert.equal(output.status, 'drafted');
+    assert.equal(output.requiresHumanReview, true);
+    assert.equal(output.validation_json.groundingValidated, false);
+    const saved = (await pool.query(
+      'SELECT output_encrypted,model_provider,requested_by FROM ng_clinical_ai_suggestions WHERE id=$1',
+      [output.id]
+    )).rows[0];
+    assert.ok(saved.output_encrypted && !saved.output_encrypted.includes(complaint));
+    assert.equal(saved.model_provider, 'synthetic-test');
+    assert.equal(saved.requested_by, actorContext.userId);
+    assert.equal(
+      Number((await pool.query('SELECT COUNT(*) AS total FROM clinical_notes WHERE encounter_id=$1',
+        [encounter.canonical_id])).rows[0].total),
+      initialCount,
+      'Generating a care-stage draft must not write a chart note'
+    );
+  }
+  await assert.rejects(
+    ai.createSuggestion(pool, request, nurseContext, { encounterId: encounter.id, suggestionType: 'prescription_review' }, modelCaller),
+    { code: 'CLINICAL_AI_STAGE_ROLE_DENIED' }
+  );
+  await assert.rejects(
+    ai.createSuggestion(pool, request, doctorContext, { encounterId: encounter.id, suggestionType: 'intake_review' }, modelCaller),
+    { code: 'CLINICAL_AI_STAGE_ROLE_DENIED' }
+  );
+});
+
 test('actual encrypted AI generation, clinician edits, canonical unsigned SOAP import and reviewed follow-up replay', async () => {
   const encounter = await encounterFor();
   const draft = await draftFor(encounter);
