@@ -220,23 +220,9 @@ async function callModel({ suggestionType, input, allowedSourceRefs, context }) 
       userPrompt: 'Structured encounter record:\n' + JSON.stringify(input),
     });
   }
-  if (provider !== 'anthropic' || !process.env.ANTHROPIC_API_KEY || !model) {
-    throw scopeError(503, 'Approved clinical AI provider configuration is unavailable.', 'CLINICAL_AI_PROVIDER_UNAVAILABLE');
-  }
-  const Anthropic = require('@anthropic-ai/sdk');
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 20000 });
-  const response = await client.messages.create({
-    model,
-    max_tokens: 1800,
-    temperature: 0,
-    system: systemPrompt(suggestionType, allowedSourceRefs),
-    messages: [{
-      role: 'user',
-      content: `Structured encounter record:\n${JSON.stringify(input)}`,
-    }],
-  });
-  const text = response.content?.find((item) => item.type === 'text')?.text;
-  return { text, provider, model, modelVersion: response.model || model };
+  throw scopeError(503,
+    'The selected Clinical Copilot provider is unavailable. Groq synthetic demos require explicit configuration.',
+    'CLINICAL_AI_PROVIDER_UNAVAILABLE');
 }
 
 async function createSuggestion(pool, req, context, { encounterId, suggestionType }, modelCaller = callModel) {
