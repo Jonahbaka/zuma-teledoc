@@ -260,3 +260,18 @@ test('Clinical Copilot read endpoints filter clinician-only stages from nurse wo
   assert.match(source, /if \(!careStages\[row\.suggestion_type\]\?\.roles\.includes\(context\.programmeRole\)\)/);
   assert.match(source, /CLINICAL_AI_STAGE_ROLE_DENIED/);
 });
+
+test('manual prescription provenance is optional and cannot bypass clinical review or pharmacy signing', () => {
+  const fs=require('node:fs'),path=require('node:path');
+  const rx=fs.readFileSync(path.join(__dirname,'../services/rx-engine/prescriptionWorkflowService.js'),'utf8');
+  const route=fs.readFileSync(path.join(__dirname,'../routes/prescriptions.js'),'utf8');
+  const migration=fs.readFileSync(path.join(__dirname,'../migrations/035_ng_rx_ai_review_provenance.sql'),'utf8');
+  assert.match(rx,/verifyClinicalAiRxProvenance\(client, input\)/);
+  assert.match(rx,/assertAcceptedCareActionSource\(client, context/);
+  assert.match(rx,/clinical_ai_source_suggestion_id/);
+  assert.match(route,/aiSourceSuggestionId/);
+  assert.match(route,/phcEncounterId/);
+  assert.match(migration,/ng_rx_ai_provenance_pair/);
+  assert.match(migration,/clinical_ai_source_encounter_id/);
+  assert.doesNotMatch(rx.slice(rx.indexOf('async function verifyClinicalAiRxProvenance'), rx.indexOf('async function createDraft')), /\.sign\(|\.sendToPharmacy\(|\.dispenseItem\(/);
+});
