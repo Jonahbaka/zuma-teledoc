@@ -196,6 +196,33 @@ test('approved referral brief links to clinician-created referral without turnin
   assert.equal(referral.audit_metadata.sourceSuggestionId, draft.id);
   const replay = await workflow.createReferral(pool, request, doctorContext, manual);
   assert.equal(replay.id, referral.id);
+  const sent = await workflow.transitionReferral(pool, request, doctorContext, {
+    referralId: referral.id, toStatus: 'sent',
+  });
+  assert.equal(sent.status, 'sent');
+  const accepted = await workflow.transitionReferral(pool, request, doctorContext, {
+    referralId: referral.id, toStatus: 'accepted',
+  });
+  assert.equal(accepted.status, 'accepted');
+  const linkedTask = await workflow.createFollowUp(pool, request, doctorContext, {
+    patientUserId: patient.id, encounterId: encounter.id, referralId: referral.id,
+    taskType: 'care_follow_up', title: 'Synthetic documentation check',
+    instructions: 'Review the synthetic intake documentation.',
+    sourceSuggestionId: draft.id, sourceDraftIndex: 0,
+    idempotencyKey: v5(`clinical-ai-follow-up:${draft.id}:0`, v5.URL),
+    dueAt: new Date(Date.now() + 86400000).toISOString(),
+    assignedRole: 'remote_clinician', assignedUserId: doctor.id,
+  });
+  assert.equal(linkedTask.referral_id, referral.id);
+  const completed = await workflow.transitionReferral(pool, request, doctorContext, {
+    referralId: referral.id, toStatus: 'completed',
+    responseSummary: 'Synthetic referral handoff and response recorded.',
+  });
+  assert.equal(completed.status, 'completed');
+  const events = await pool.query('SELECT from_status,to_status FROM ng_referral_events WHERE referral_id=$1 ORDER BY created_at', [referral.id]);
+  assert.ok(events.rows.some(row => row.to_status === 'sent'));
+  assert.ok(events.rows.some(row => row.to_status === 'accepted'));
+  assert.ok(events.rows.some(row => row.to_status === 'completed'));
   await assert.rejects(workflow.createReferral(pool, request, doctorContext,
     { ...manual, sourceSuggestionId: null }), { code: 'REFERRAL_IDEMPOTENCY_CONFLICT' });
   await assert.rejects(workflow.createReferral(pool, request, doctorContext,
