@@ -26,7 +26,7 @@ test('failed schema migration rolls back and always releases connection and advi
  const client={async query(sql){
   calls.push(sql);
   if(sql.includes('SELECT filename, checksum FROM ng_migrations')) return {rows:[]};
-  if(sql.includes('CREATE EXTENSION') || sql.includes('CREATE TABLE IF NOT EXISTS ng_drug_catalog'))throw Object.assign(new Error('synthetic schema failure'),{code:'SIMULATED'});
+  if(sql.includes('INSERT INTO ng_migrations'))throw Object.assign(new Error('synthetic schema failure'),{code:'SIMULATED'});
   return {rows:[]};
  },release(){calls.push('RELEASE');}};
  const pool={connect:async()=>client};
