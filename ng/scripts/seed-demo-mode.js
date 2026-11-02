@@ -8,25 +8,23 @@
  * so the Minister-of-Health walkthrough has live data on day zero.
  *
  * SAFETY:
- *  - Aborts unless DEMO_MODE=true OR --force is passed.
- *  - Only writes to ng_/drn_ tables. Does not touch US tables.
+ *  - Requires DEMO_MODE=true and an explicit loopback *_test database.
+ *  - Creates only marked synthetic NG accounts and fixture-owned catalogue rows.
  *  - All inserts are idempotent (ON CONFLICT DO NOTHING / lookup-by-key).
  *
  * USAGE:
  *   DEMO_MODE=true node ng/scripts/seed-demo-mode.js
- *   node ng/scripts/seed-demo-mode.js --force
+ *   --force never bypasses the isolated-database safety guard.
  */
 
-const path = require('path');
-const { getPool } = require('../../server/db');
+const { Pool } = require('pg');
+const { fixtureTargetSafety } = require('./fixtureTargetSafety');
 const drn = require('../services/referral-network/referralNetworkService');
 
-function abortGuard() {
-  const force = process.argv.includes('--force');
-  if (!force && process.env.DEMO_MODE !== 'true') {
-    console.error('[demo-seed] Refusing to run — set DEMO_MODE=true or pass --force.');
-    process.exit(1);
-  }
+function abortGuard(pool) {
+  const safety = fixtureTargetSafety({ pool, env: process.env });
+  if (safety.skipped) throw new Error(safety.reason);
+  if (process.env.DEMO_MODE !== 'true') throw new Error('Set DEMO_MODE=true for isolated synthetic fixtures; --force does not bypass safety.');
 }
 
 // ─── Demo data ────────────────────────────────────────────────────────────────
@@ -85,70 +83,77 @@ const REFERRALS = [
 
 // ─── Seed routine ────────────────────────────────────────────────────────────
 
-async function getOrgIdBySlug(pool, slug) {
-  const r = await pool.query(`SELECT id FROM drn_organizations WHERE slug = $1 LIMIT 1`, [slug]);
-  return r.rows[0]?.id || null;
+async function syntheticProvider(pool, key) {
+  abortGuard(pool);
+  const email = `drn-fixture-${key}@example.invalid`;
+  let user = (await pool.query('SELECT * FROM users WHERE email=$1', [email])).rows[0];
+  if (user && (!user.is_test_account || !user.is_active || user.market_scope !== 'NG' || user.role !== 'provider' || user.provider_status !== 'approved')) throw new Error('Existing fixture identity is not an active synthetic NG provider');
+  if (!user) user = (await pool.query("INSERT INTO users(email,password_hash,role,first_name,last_name,is_active,is_test_account,market_scope,provider_status) VALUES($1,'!disabled-synthetic','provider','Synthetic','DRN',TRUE,TRUE,'NG','approved') RETURNING *", [email])).rows[0];
+  let provider = (await pool.query('SELECT * FROM ng_providers WHERE user_id=$1', [user.id])).rows[0];
+  if (provider && (provider.status !== 'verified' || provider.full_name !== `[SYNTHETIC DRN] ${key}` || provider.email !== email)) throw new Error('Existing synthetic provider is not verified; refusing to promote it');
+  if (!provider) provider = (await pool.query("INSERT INTO ng_providers(user_id,full_name,email,phone,status) VALUES($1,$2,$3,'synthetic-no-phone','verified') RETURNING *", [user.id, `[SYNTHETIC DRN] ${key}`, email])).rows[0];
+  return { user_id: user.id, provider_id: provider.id };
 }
 
-async function seedListings(pool) {
+async function getOrgIdBySlug(pool, slug) {
+  const fixtureSlug = `synthetic-drn-${slug}`;
+  let org = (await pool.query('SELECT * FROM drn_organizations WHERE slug=$1', [fixtureSlug])).rows[0];
+  if (org && (!org.active || org.name !== `[SYNTHETIC DRN] ${slug}`)) throw new Error('Existing organization is not this active synthetic fixture');
+  if (!org) org = (await pool.query("INSERT INTO drn_organizations(org_type,name,slug,active) VALUES('specialist_practice',$1,$2,TRUE) RETURNING *", [`[SYNTHETIC DRN] ${slug}`, fixtureSlug])).rows[0];
+  return org.id;
+}
+
+async function seedListings(pool, receiver) {
   let inserted = 0;
   for (const l of LISTINGS) {
+    if (l.service_kind === 'imaging' && process.env.NG_MEDICAL_IMAGING_AUTHORIZED !== 'true') continue;
     const orgId = await getOrgIdBySlug(pool, l.org_slug);
     if (!orgId) { console.warn(`[demo-seed] org ${l.org_slug} not found, skipping listing`); continue; }
     // idempotent: lookup by (org_id, title)
     const existing = await pool.query(
-      `SELECT id FROM drn_marketplace_listings WHERE organization_id = $1 AND title = $2 LIMIT 1`,
+      `SELECT * FROM drn_marketplace_listings WHERE organization_id = $1 AND title = $2 LIMIT 1`,
       [orgId, l.title]
     );
-    if (existing.rows[0]) continue;
+    if (existing.rows[0]) {
+      if (existing.rows[0].provider_id !== receiver.provider_id || !existing.rows[0].active || existing.rows[0].metadata_json?.fixture !== 'synthetic-drn') throw new Error('Existing listing is not this active mapped synthetic fixture');
+      continue;
+    }
     await pool.query(
       `INSERT INTO drn_marketplace_listings
          (organization_id, specialty, service_kind, title, price_min_naira, price_max_naira,
           avg_wait_minutes, accepts_emergency, accepts_insurance, acceptance_rate,
-          total_referrals, completed_referrals, featured)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13,false))`,
+          total_referrals, completed_referrals, featured, provider_id, metadata_json)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13,false),$14,'{"fixture":"synthetic-drn"}'::jsonb)`,
       [orgId, l.specialty, l.service_kind, l.title, l.price_min, l.price_max,
         l.wait_min, l.emergency, l.insurance, l.acceptance,
-        Math.round((l.completed || 0) * 1.15), l.completed || 0, l.featured || false]
+        Math.round((l.completed || 0) * 1.15), l.completed || 0, l.featured || false, receiver.provider_id]
     );
     inserted++;
   }
   return inserted;
 }
 
-async function seedAgents(pool) {
-  let inserted = 0;
-  for (const a of AGENTS) {
-    const existing = await pool.query(
-      `SELECT id FROM drn_agents WHERE phone = $1 LIMIT 1`, [a.phone]
-    );
-    if (existing.rows[0]) continue;
-    await drn.registerAgent({ ...a, status: 'active' }, pool);
-    inserted++;
-  }
-  return inserted;
-}
-
-async function seedReferrals(pool) {
-  const agentRows = (await pool.query(`SELECT id, full_name FROM drn_agents WHERE status='active' ORDER BY full_name`)).rows;
-  const agentByIdx = (i) => agentRows[i % Math.max(1, agentRows.length)]?.id || null;
-
+async function seedReferrals(pool, origin, receiver) {
   let inserted = 0;
   for (let i = 0; i < REFERRALS.length; i++) {
     const r = REFERRALS[i];
+    if (r.spec.startsWith('imaging_') && process.env.NG_MEDICAL_IMAGING_AUTHORIZED !== 'true') continue;
     const p = PATIENTS.find(x => x.name === r.patient);
     const orgId = await getOrgIdBySlug(pool, r.org_slug);
     if (!orgId) continue;
 
+    const listing = (await pool.query("SELECT * FROM drn_marketplace_listings WHERE organization_id=$1 AND specialty=$2 AND provider_id=$3 AND active=TRUE AND metadata_json->>'fixture'='synthetic-drn' ORDER BY id LIMIT 1", [orgId, r.spec, receiver.provider_id])).rows[0];
+    if (!listing) throw new Error('Synthetic mapped catalogue listing missing');
     // idempotent: lookup by (destination, reason, patient_phone)
     const exists = await pool.query(
-      `SELECT id FROM drn_referrals
+      `SELECT * FROM drn_referrals
         WHERE destination_org = $1 AND patient_phone = $2 AND reason = $3 LIMIT 1`,
       [orgId, p.phone, r.reason]
     );
-    if (exists.rows[0]) continue;
+    const prior = exists.rows[0];
+    if (prior && (prior.originating_provider !== origin.provider_id || prior.destination_provider !== receiver.provider_id || prior.destination_listing !== listing.id)) throw new Error('Existing referral is not this synthetic actor/catalogue fixture');
 
-    const created = await drn.createReferral({
+    const created = prior || await drn.createReferral({
       specialty: r.spec,
       service_kind: null,
       reason: r.reason,
@@ -158,52 +163,53 @@ async function seedReferrals(pool) {
       patient_age: p.age,
       patient_sex: p.sex,
       destination_org: orgId,
-      service_fee_naira: r.fee,
-      match_score: 60 + (i % 5) * 7,
+      destination_listing: listing.id,
       urgency: r.urgency,
-      originating_agent: agentByIdx(i),
-    }, { kind: 'system' }, pool);
+    }, origin, pool);
 
     // Walk to target status
     const refId = created.id;
     const order = ['sent', 'received', 'accepted', 'scheduled', 'in_progress', 'completed'];
+    if (created.status !== 'draft' && !order.includes(created.status)) throw new Error('Synthetic referral was closed outside this fixture workflow');
     for (const step of order) {
       const idx = order.indexOf(step);
       const targetIdx = order.indexOf(r.status);
       if (targetIdx < 0) break;
       if (idx > targetIdx) break;
-      try {
-        await drn.transitionReferral(refId, step, { kind: 'system' }, { notes: 'seed' }, pool);
-      } catch { break; }
+      if (idx <= order.indexOf(created.status)) continue;
+      await drn.transitionReferral(refId, step, step === 'sent' ? origin : receiver, { notes: 'Synthetic fixture only' }, pool);
     }
-    inserted++;
+    if (!prior) inserted++;
   }
   return inserted;
 }
 
 async function main() {
   abortGuard();
-  const pool = getPool();
-  console.log('[demo-seed] starting demo fixtures…');
-
-  const listings = await seedListings(pool);
-  console.log(`[demo-seed] marketplace listings inserted: ${listings}`);
-
-  const agents = await seedAgents(pool);
-  console.log(`[demo-seed] agents inserted: ${agents}`);
-
-  const refs = await seedReferrals(pool);
-  console.log(`[demo-seed] referrals inserted: ${refs}`);
-
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  abortGuard(pool);
   try {
-    await drn.refreshHeatmap({}, pool);
-    console.log('[demo-seed] heatmap refreshed');
-  } catch (err) {
-    console.warn('[demo-seed] heatmap refresh failed:', err.message);
-  }
+    const origin = await syntheticProvider(pool, 'origin');
+    const receiver = await syntheticProvider(pool, 'receiver');
+    console.log('[demo-seed] starting demo fixtures…');
 
-  console.log('[demo-seed] done.');
-  process.exit(0);
+    const listings = await seedListings(pool, receiver);
+    console.log(`[demo-seed] marketplace listings inserted: ${listings}`);
+
+    console.log('[demo-seed] Agent-signing fixtures omitted: current user-role schema has no agent role.');
+
+    const refs = await seedReferrals(pool, origin, receiver);
+    console.log(`[demo-seed] referrals inserted: ${refs}`);
+
+    try {
+      await drn.refreshHeatmap({}, pool);
+      console.log('[demo-seed] heatmap refreshed');
+    } catch (err) {
+      console.warn('[demo-seed] heatmap refresh failed:', err.message);
+    }
+
+    console.log('[demo-seed] done.');
+  } finally { await pool.end(); }
 }
 
 if (require.main === module) {
@@ -213,4 +219,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, PATIENTS, AGENTS, LISTINGS, REFERRALS };
+module.exports = { abortGuard, syntheticProvider, main, PATIENTS, AGENTS, LISTINGS, REFERRALS };

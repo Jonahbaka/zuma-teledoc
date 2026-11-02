@@ -2,27 +2,23 @@
 
 /**
  * components/ng/referral-network/drnApi.js
- * Thin fetch wrapper for /api/ng/referral-network/*.
+ * Guarded authenticated client wrapper for /api/ng/referral-network/*.
  */
 
-const BASE = '/api/ng/referral-network';
+import api from '@/lib/api';
+const BASE = '/ng/referral-network';
 
 async function call(path, opts = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-    ...opts,
-  });
-  let body = null;
-  try { body = await res.json(); } catch { /* ignore */ }
-  if (!res.ok) {
-    const msg = body?.error || `${res.status} ${res.statusText}`;
-    const err = new Error(msg);
-    err.status = res.status;
-    err.body = body;
+  try {
+    const response = await api.request({ url: `${BASE}${path}`, method: opts.method || 'GET',
+      ...(opts.body ? { data: JSON.parse(opts.body) } : {}), ...(opts.headers ? { headers: opts.headers } : {}) });
+    return response.data;
+  } catch (error) {
+    const err = new Error(error.response?.data?.error || error.message || 'Referral request failed');
+    err.status = error.response?.status;
+    err.body = error.response?.data;
     throw err;
   }
-  return body;
 }
 
 export const drn = {

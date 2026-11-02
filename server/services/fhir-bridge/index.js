@@ -1,8 +1,8 @@
 /**
  * FHIR Bridge Service - Enterprise Healthcare Interoperability Layer
  * 
- * This service provides HL7 FHIR R4 compliance for integration with
- * major EHR systems like Epic, Cerner, and Allscripts.
+ * This legacy service contains FHIR-shaped mapping helpers intended for
+ * EHR integration. Partner compatibility and conformance are not established.
  * 
  * @module fhir-bridge
  * @version 1.0.0
@@ -79,9 +79,19 @@ class FHIRBridge {
   /**
    * Send referral to external hospital system
    */
-  async dispatchReferral(patientId, referralData, destinationEndpoint) {
-    const bundle = await this.createReferralBundle(patientId, referralData);
-    return this.referralDispatcher.dispatch(bundle, destinationEndpoint);
+  assertReferralTransportReady() {
+    // This legacy path has no verified recipient/consent-category/endpoint and
+    // encrypted-credential contract. A configured URL is not authorization to
+    // disclose PHI. Keep transport unavailable until an independently reviewed
+    // adapter implements those checks; no environment flag bypasses this gate.
+    const error = new Error('External referral transport is not configured for approved clinical use');
+    error.status = 503;
+    error.code = 'REFERRAL_TRANSPORT_UNAVAILABLE';
+    throw error;
+  }
+
+  async dispatchReferral() {
+    this.assertReferralTransportReady();
   }
 
   /**

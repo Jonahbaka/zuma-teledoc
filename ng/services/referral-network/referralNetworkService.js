@@ -16,6 +16,7 @@
  */
 
 const crypto = require('crypto');
+const authority = require('./referralAuthority');
 const { getPool, transaction } = require('../../../server/db');
 
 // ─── State machine ────────────────────────────────────────────────────────────
@@ -42,6 +43,13 @@ function isValidTransition(from, to) {
 
 function isTerminal(status) {
   return (REFERRAL_TRANSITIONS[status] || []).length === 0;
+}
+
+function allowedTransitions(scope, referral) {
+  if (!scope) return [];
+  return (REFERRAL_TRANSITIONS[referral.status] || []).filter(status => {
+    try { authority.assertTransition(scope, referral, status); return true; } catch { return false; }
+  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -223,6 +231,21 @@ async function matchSpecialists(request, { limit = 10 } = {}, pool = getPool()) 
 // ─── Create + dispatch a referral ────────────────────────────────────────────
 
 async function createReferral(input, actor, pool = getPool()) {
+  const run = async (client) => {
+    const destination = input.destination_listing ? (await client.query('SELECT p.user_id FROM drn_marketplace_listings l JOIN ng_providers p ON p.id=l.provider_id WHERE l.id=$1', [input.destination_listing])).rows[0] : null;
+    const scope = await authority.actorScope(client, actor, input.patient_user_id || null, destination?.user_id || null);
+    const canonical = await authority.creationInput(client, input, scope);
+    const created = await insertReferral(canonical, { user_id: scope.userId, kind: scope.kind }, client);
+    return { ...created, allowed_transitions: allowedTransitions(scope, created) };
+  };
+  if (typeof pool.connect !== 'function') throw new Error('Referral creation requires a transactional pool');
+  const client = await pool.connect();
+  try { await client.query('BEGIN'); const result = await run(client); await client.query('COMMIT'); return result; }
+  catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
+
+async function insertReferral(input, actor, pool) {
   const refCode = generateRefCode();
   const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14d
 
@@ -297,6 +320,7 @@ async function transitionReferral(id, toStatus, actor, opts = {}, existing = nul
   // ledger, and two concurrent completions could double-accrue. The row lock
   // serializes concurrent transitions on the same referral.
   const run = async (client) => {
+    const scope = await authority.actorScope(client, actor);
     const lockRes = await client.query(`SELECT * FROM drn_referrals WHERE id = $1 FOR UPDATE`, [id]);
     const ref = lockRes.rows[0];
     if (!ref) {
@@ -310,6 +334,8 @@ async function transitionReferral(id, toStatus, actor, opts = {}, existing = nul
       throw err;
     }
 
+    authority.assertTransition(scope, ref, toStatus);
+    actor = { user_id: scope.userId, kind: scope.kind };
     const cols = ['status = $2', 'updated_at = NOW()'];
     const params = [id, toStatus];
 
@@ -340,10 +366,17 @@ async function transitionReferral(id, toStatus, actor, opts = {}, existing = nul
       await accrueCommissions(updated, client);
     }
 
-    return updated;
+    return { ...updated, allowed_transitions: allowedTransitions(scope, updated) };
   };
 
-  return existing ? run(existing) : transaction(run);
+  if (!existing) return transaction(run);
+  // A supplied pool still needs a transaction; callers may explicitly supply a
+  // checked-out client only when they already own its transaction.
+  if (typeof existing.connect !== 'function') return run(existing);
+  const client = await existing.connect();
+  try { await client.query('BEGIN'); const result = await run(client); await client.query('COMMIT'); return result; }
+  catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
 }
 
 async function logEvent(referralId, actor, eventKind, fromStatus, toStatus, notes, payload, pool = getPool()) {
@@ -671,6 +704,7 @@ module.exports = {
   REFERRAL_TRANSITIONS,
   isValidTransition,
   isTerminal,
+  allowedTransitions,
   // matching
   scoreCandidate,
   matchSpecialists,

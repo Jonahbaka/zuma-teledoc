@@ -7,7 +7,8 @@
  * Data source: /api/ng/referral-network/*
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
+import { useAuth } from '@/components/providers/AuthProvider';
 import {
   Network, Search, Send, Inbox as InboxIcon, Users, Map, Wallet,
   RefreshCw, AlertCircle, CheckCircle2, Clock, Activity, QrCode,
@@ -34,7 +35,26 @@ const TABS = [
 ];
 
 export default function ReferralNetworkPortal({ initialTab = 'overview' }) {
-  const [tab, setTab] = useState(initialTab);
+  const { user, loading } = useAuth();
+  const market = user?.marketScope || user?.market_scope;
+  const id = user?.id || user?.userId;
+  if (loading || !id || !user?.role || market !== 'NG') return <p role="status">{loading ? 'Loading referral access…' : 'Sign in with your Nigeria account to view referrals.'}</p>;
+  return <ReferralNetworkWorkspace key={JSON.stringify([id, user.role, market])} initialTab={initialTab} role={user.role} />;
+}
+
+export function ReferralNetworkWorkspace({ initialTab = 'overview', role }) {
+  const admin = ['admin', 'super_admin'].includes(role);
+  const agent = ['agent', 'referral_agent', 'referral_coordinator'].includes(role);
+  const clinical = role === 'provider' || role === 'patient';
+  const visibleTabs = TABS.filter(item => {
+    if (item.id === 'agents') return admin;
+    if (['overview', 'commissions'].includes(item.id)) return admin || agent;
+    if (item.id === 'compose') return clinical || agent;
+    if (['inbox', 'outbox'].includes(item.id)) return clinical || admin || agent;
+    return true;
+  });
+  const fallback = admin || agent ? 'overview' : role === 'provider' ? 'inbox' : role === 'patient' ? 'outbox' : 'marketplace';
+  const [tab, setTab] = useState(visibleTabs.some(item => item.id === initialTab) ? initialTab : fallback);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30">
@@ -53,7 +73,7 @@ export default function ReferralNetworkPortal({ initialTab = 'overview' }) {
           </div>
         </div>
         <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-6 pb-2">
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {visibleTabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setTab(id)}

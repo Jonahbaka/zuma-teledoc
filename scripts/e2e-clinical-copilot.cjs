@@ -301,8 +301,58 @@ async function main() {
   }
   await exerciseConference({ doctor, nurse, patient, external, pageErrors, session });
   await exercisePatientMessaging({ doctor, patient, external, pageErrors });
+  await exerciseReferralAuthority({ doctor, patient, external, pageErrors });
   assert.deepEqual(pageErrors, []); assert.deepEqual(external, []);
   pass('no uncaught browser errors or unexpected external requests; named font stylesheet fulfilled offline');
+}
+
+async function exerciseReferralAuthority({ doctor, patient, external, pageErrors }) {
+  const provider = (await pool.query("SELECT id FROM ng_providers WHERE user_id=$1 AND status='verified'", [doctor.id])).rows[0];
+  assert.ok(provider);
+  const org = (await pool.query("INSERT INTO drn_organizations(org_type,name,slug,active) VALUES('specialist_practice','[SYNTHETIC BROWSER] Receiver',$1,TRUE) RETURNING id", [`synthetic-browser-${crypto.randomUUID()}`])).rows[0];
+  const listing = (await pool.query(`INSERT INTO drn_marketplace_listings(organization_id,provider_id,specialty,service_kind,title,price_min_naira,price_max_naira,active)
+    VALUES($1,$2,'cardiology','consultation','[SYNTHETIC BROWSER] Referral',500,500,TRUE) RETURNING id`, [org.id, provider.id])).rows[0];
+  const guest = await browser.newContext({ baseURL: BASE, viewport: { width: 1280, height: 960 } });
+  try {
+    await guest.tracing.start({ screenshots: true, snapshots: true, sources: true });
+    await guest.route('**/*', async route => {
+      const req=route.request(), url=new URL(req.url());
+      if(isOfflineFontFixture(url.href,req.method(),req.resourceType()))return route.fulfill({status:200,contentType:'text/css',body:''});
+      if(url.origin!==BASE){external.push(url.href);return route.abort();}
+      return route.continue();
+    });
+    const login=await guest.request.post('/api/auth/login',{data:{email:patient.email,password:PASSWORD,role:'patient'}});
+    assert.equal(login.status(),200);const session=await login.json();
+    await guest.addInitScript(({accessToken,refreshToken,user})=>{localStorage.setItem('accessToken',accessToken);localStorage.setItem('refreshToken',refreshToken);localStorage.setItem('user',JSON.stringify(user));},session);
+    const headers={Authorization:`Bearer ${session.accessToken}`};
+    const reason=`Synthetic referral authority ${crypto.randomUUID()}`;
+    const create=await guest.request.post('/api/ng/referral-network/referrals',{headers,data:{specialty:'cardiology',reason,destination_listing:listing.id,patient_name:'Forged linked identity',originating_provider:provider.id,service_fee_naira:99999}});
+    assert.equal(create.status(),201);const referral=(await create.json()).referral;
+    assert.equal(referral.patient_user_id,patient.id);assert.equal(referral.originating_provider,null);
+    assert.equal(referral.patient_name,`${patient.first_name} ${patient.last_name}`);assert.equal(Number(referral.service_fee_naira),500);
+    const transition=to_status=>guest.request.post(`/api/ng/referral-network/referrals/${referral.id}/transition`,{headers,data:{to_status}});
+    assert.equal((await transition('sent')).status(),200);
+    assert.equal((await transition('received')).status(),403);
+    const p=await guest.newPage();p.setDefaultTimeout(20000);p.on('pageerror',error=>pageErrors.push(error.message));
+    await p.goto('/ng/referral-network',{waitUntil:'networkidle'});
+    await p.getByRole('button',{name:'Outbox',exact:true}).click();
+    const patientRow=p.locator('li').filter({hasText:reason});await expect(patientRow).toBeVisible();
+    await expect(patientRow.getByRole('button',{name:'received',exact:true})).toHaveCount(0);
+    await expect(patientRow.getByRole('button',{name:'cancelled',exact:true})).toBeVisible();
+    await page.goto('/ng/referral-network',{waitUntil:'networkidle'});
+    await page.getByRole('button',{name:'Inbox',exact:true}).click();
+    const clinicianRow=page.locator('li').filter({hasText:reason});await expect(clinicianRow).toBeVisible();
+    await clinicianRow.getByRole('button',{name:'received',exact:true}).evaluate(button=>{button.click();button.click();});
+    await expect(clinicianRow.getByRole('button',{name:'accepted',exact:true})).toBeVisible();
+    assert.equal((await transition('accepted')).status(),403);
+    await clinicianRow.getByRole('button',{name:'accepted',exact:true}).click();
+    await expect(clinicianRow.getByRole('button',{name:'scheduled',exact:true})).toBeVisible();
+    const events=(await pool.query("SELECT event_kind FROM drn_referral_events WHERE referral_id=$1 AND event_kind='received'",[referral.id])).rows;
+    assert.equal(events.length,1);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM drn_commissions WHERE referral_id=$1',[referral.id])).rows[0].n,0);
+    await page.screenshot({path:path.join(ART,'referral-receiver-authority.png'),fullPage:true});
+    pass('DRN actual API/UI: patient-origin provenance and linked identity are canonical, catalogue fee is trusted, visibility cannot accept care, mapped receiver advances once with no commission payment');
+  } finally { await guest.tracing.stop({path:path.join(ART,'referral-authority-trace.zip')});await guest.close(); }
 }
 
 async function exercisePatientMessaging({ doctor, patient, external, pageErrors }) {
@@ -315,6 +365,7 @@ async function exercisePatientMessaging({ doctor, patient, external, pageErrors 
   try {
     await guest.tracing.start({ screenshots: true, snapshots: true, sources: true });
     await guest.route('**/*', async route => {
+      try {
       const req = route.request(), url = new URL(req.url());
       if (isOfflineFontFixture(url.href, req.method(), req.resourceType())) return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
       if (url.origin !== BASE) { external.push(url.href); return route.abort(); }
@@ -327,7 +378,8 @@ async function exercisePatientMessaging({ doctor, patient, external, pageErrors 
         sent.resolve(); await waitForSignal(release.promise, 'release saved message response');
         return route.fulfill({ response });
       }
-      return route.continue();
+      return await route.continue();
+      } catch (error) { signalRouteFailure(error); await route.abort().catch(() => {}); }
     });
     const login = await guest.request.post('/api/auth/login', { data: { email: patient.email, password: PASSWORD, role: 'patient' } });
     assert.equal(login.status(), 200); const session = await login.json();
