@@ -97,6 +97,173 @@ test.before(async () => {
 });
 test.after(async () => { await close(); });
 
+test('all eight PHC care stages share encrypted drafts, correct clinical roles and canonical encounter linkage', async () => {
+  const linked = require('../../server/services/linkedPhcAiService');
+  const encounter = await encounterFor();
+  const stages = {
+    intake_review: nurseContext,
+    triage_review: nurseContext,
+    consultation_brief: doctorContext,
+    soap_draft: doctorContext,
+    emr_reconciliation: doctorContext,
+    prescription_review: doctorContext,
+    referral_brief: doctorContext,
+    follow_up_draft: doctorContext,
+  };
+  const resolved = await linked.resolveLinkedPhcEncounter(encounter.canonical_id, doctor.id, pool);
+  assert.equal(resolved.sourceEncounterId, encounter.id);
+  assert.equal(resolved.context.userId, doctor.id);
+  assert.equal(resolved.context.patientUserId || patient.id, patient.id);
+
+  const initialCount = Number((await pool.query(
+    'SELECT COUNT(*) AS total FROM clinical_notes WHERE encounter_id=$1',
+    [encounter.canonical_id]
+  )).rows[0].total);
+  for (const [suggestionType, actorContext] of Object.entries(stages)) {
+    const output = await ai.createSuggestion(
+      pool, request, actorContext, { encounterId: encounter.id, suggestionType }, modelCaller
+    );
+    assert.equal(output.suggestion_type, suggestionType);
+    assert.equal(output.status, 'drafted');
+    assert.equal(output.requiresHumanReview, true);
+    assert.equal(output.validation_json.groundingValidated, false);
+    const saved = (await pool.query(
+      'SELECT output_encrypted,model_provider,requested_by FROM ng_clinical_ai_suggestions WHERE id=$1',
+      [output.id]
+    )).rows[0];
+    assert.ok(saved.output_encrypted && !saved.output_encrypted.includes(complaint));
+    assert.equal(saved.model_provider, 'synthetic-test');
+    assert.equal(saved.requested_by, actorContext.userId);
+    assert.equal(
+      Number((await pool.query('SELECT COUNT(*) AS total FROM clinical_notes WHERE encounter_id=$1',
+        [encounter.canonical_id])).rows[0].total),
+      initialCount,
+      'Generating a care-stage draft must not write a chart note'
+    );
+  }
+  await assert.rejects(
+    ai.createSuggestion(pool, request, nurseContext, { encounterId: encounter.id, suggestionType: 'prescription_review' }, modelCaller),
+    { code: 'CLINICAL_AI_STAGE_ROLE_DENIED' }
+  );
+  // Intake documentation review is intentionally available to both nurses and
+  // assigned clinicians. Test the actual role matrix instead of expecting a
+  // rejection for an authorized clinician.
+  const clinicianIntake = await ai.createSuggestion(
+    pool, request, doctorContext, { encounterId: encounter.id, suggestionType: 'intake_review' }, modelCaller
+  );
+  assert.equal(clinicianIntake.suggestion_type, 'intake_review');
+  await assert.rejects(
+    ai.createSuggestion(pool, request, nurseContext, { encounterId: encounter.id, suggestionType: 'consultation_brief' }, modelCaller),
+    { code: 'CLINICAL_AI_STAGE_ROLE_DENIED' }
+  );
+});
+
+test('PHC nurse cannot enumerate or retrieve clinician-only AI stages', async () => {
+  const encounter = await encounterFor();
+  const clinicianDraft = await ai.createSuggestion(
+    pool, request, doctorContext, { encounterId: encounter.id, suggestionType: 'prescription_review' }, modelCaller
+  );
+  const nurseDraft = await ai.createSuggestion(
+    pool, request, nurseContext, { encounterId: encounter.id, suggestionType: 'triage_review' }, modelCaller
+  );
+  const nurseList = await ai.listSuggestions(pool, nurseContext, encounter.id);
+  assert.equal(nurseList.some(item => item.id === clinicianDraft.id), false);
+  assert.equal(nurseList.some(item => item.id === nurseDraft.id), true);
+  await assert.rejects(ai.getSuggestion(pool, nurseContext, clinicianDraft.id),
+    { code: 'CLINICAL_AI_STAGE_ROLE_DENIED' });
+  assert.equal((await ai.getSuggestion(pool, doctorContext, clinicianDraft.id)).id, clinicianDraft.id);
+});
+
+test('approved referral brief links to clinician-created referral without turning AI into an order', async () => {
+  const encounter = await encounterFor();
+  const draft = await ai.createSuggestion(pool, request, doctorContext,
+    { encounterId: encounter.id, suggestionType: 'referral_brief' }, modelCaller);
+  const idempotencyKey = key();
+  const manual = {
+    patientUserId: patient.id, encounterId: encounter.id,
+    targetName: 'Synthetic receiving clinic', destinationType: 'external',
+    reason: 'Clinician-written synthetic specialist referral',
+    priority: 'routine', idempotencyKey, sourceSuggestionId: draft.id,
+  };
+  await assert.rejects(workflow.createReferral(pool, request, doctorContext, manual),
+    { code: 'CLINICAL_AI_CARE_ACTION_REVIEW_REQUIRED' });
+  assert.equal(Number((await pool.query('SELECT COUNT(*) AS n FROM ng_referrals WHERE programme_id=$1 AND idempotency_key=$2',
+    [doctorContext.programme_id, idempotencyKey])).rows[0].n), 0);
+  await review(encounter, draft);
+  const referral = await workflow.createReferral(pool, request, doctorContext, manual);
+  assert.equal(referral.patient_user_id, patient.id);
+  assert.equal(referral.encounter_id, encounter.id);
+  assert.equal(referral.audit_metadata.sourceSuggestionId, draft.id);
+  const replay = await workflow.createReferral(pool, request, doctorContext, manual);
+  assert.equal(replay.id, referral.id);
+  const sent = await workflow.transitionReferral(pool, request, doctorContext, {
+    referralId: referral.id, toStatus: 'sent',
+  });
+  assert.equal(sent.status, 'sent');
+  const accepted = await workflow.transitionReferral(pool, request, doctorContext, {
+    referralId: referral.id, toStatus: 'accepted',
+  });
+  assert.equal(accepted.status, 'accepted');
+  const linkedTask = await workflow.createFollowUp(pool, request, doctorContext, {
+    patientUserId: patient.id, encounterId: encounter.id, referralId: referral.id,
+    taskType: 'care_follow_up', title: 'Synthetic documentation check',
+    instructions: 'Review the synthetic intake documentation.',
+    sourceSuggestionId: draft.id, sourceDraftIndex: 0,
+    idempotencyKey: v5(`clinical-ai-follow-up:${draft.id}:0`, v5.URL),
+    dueAt: new Date(Date.now() + 86400000).toISOString(),
+    assignedRole: 'remote_clinician', assignedUserId: doctor.id,
+  });
+  assert.equal(linkedTask.referral_id, referral.id);
+  const completed = await workflow.transitionReferral(pool, request, doctorContext, {
+    referralId: referral.id, toStatus: 'completed',
+    responseSummary: 'Synthetic referral handoff and response recorded.',
+  });
+  assert.equal(completed.status, 'completed');
+  const events = await pool.query('SELECT from_status,to_status FROM ng_referral_events WHERE referral_id=$1 ORDER BY created_at', [referral.id]);
+  assert.ok(events.rows.some(row => row.to_status === 'sent'));
+  assert.ok(events.rows.some(row => row.to_status === 'accepted'));
+  assert.ok(events.rows.some(row => row.to_status === 'completed'));
+  await assert.rejects(workflow.createReferral(pool, request, doctorContext,
+    { ...manual, sourceSuggestionId: null }), { code: 'REFERRAL_IDEMPOTENCY_CONFLICT' });
+  await assert.rejects(workflow.createReferral(pool, request, doctorContext,
+    { ...manual, patientUserId: otherPatient.id, idempotencyKey: key() }),
+    { code: 'PATIENT_ENCOUNTER_MISMATCH' });
+  const rows = await pool.query('SELECT COUNT(*)::int AS n FROM ng_referrals WHERE id=$1', [referral.id]);
+  assert.equal(rows.rows[0].n, 1);
+});
+
+test('Nigeria eRx draft requires matching approved clinical review and remains unsigned', async () => {
+  const rx = require('../services/rx-engine/prescriptionWorkflowService');
+  const provider = (await pool.query('SELECT id FROM ng_providers WHERE user_id=$1', [doctor.id])).rows[0];
+  assert.ok(provider?.id);
+  const encounter = await encounterFor();
+  const source = await ai.createSuggestion(pool, request, doctorContext,
+    { encounterId: encounter.id, suggestionType: 'prescription_review' }, modelCaller);
+  const input = {
+    provider_id: provider.id, patient_user_id: patient.id,
+    items: [{ drug_name: 'Synthetic fixture medicine - not for use',
+      dosage: 'test fixture only', frequency: 'test fixture only', quantity: 1 }],
+    notes: 'Synthetic, clinician-written draft. No actual medication ordered.',
+    clinical_ai_source_suggestion_id: source.id,
+    clinical_ai_source_encounter_id: encounter.id,
+  };
+  await assert.rejects(rx.createDraft(input),
+    { code: 'CLINICAL_AI_CARE_ACTION_REVIEW_REQUIRED' });
+  await review(encounter, source);
+  const drafted = await rx.createDraft(input);
+  assert.equal(drafted.clinical_ai_source_suggestion_id, source.id);
+  assert.equal(drafted.clinical_ai_source_encounter_id, encounter.id);
+  assert.equal(drafted.lifecycle_status, 'drafted');
+  assert.equal(drafted.signed_at, null);
+  assert.equal(drafted.routed_pharmacy_id, null);
+  await assert.rejects(rx.createDraft({
+    ...input, patient_user_id: otherPatient.id,
+  }), { code: 'CLINICAL_AI_RX_CONTEXT_DENIED' });
+  await assert.rejects(rx.createDraft({
+    ...input, clinical_ai_source_encounter_id: crypto.randomUUID(),
+  }), { code: 'CLINICAL_AI_RX_CONTEXT_DENIED' });
+});
+
 test('actual encrypted AI generation, clinician edits, canonical unsigned SOAP import and reviewed follow-up replay', async () => {
   const encounter = await encounterFor();
   const draft = await draftFor(encounter);

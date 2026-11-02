@@ -46,12 +46,17 @@ function requireRole(...groups) {
   const allowed = new Set(groups.flatMap((g) => [...g]));
   return (req, res, next) => {
     const role = roleOf(req);
-    if (ADMIN.has(role) || allowed.has(role)) return next();
+    // Operational admins are not clinically credentialed by virtue of admin access.
+    // Only authenticated prescribers and dispensing professionals may mutate Rx state.
+    if (allowed.has(role)) return next();
     return res.status(403).json({ ok: false, error: `forbidden: action requires role ${[...allowed].join(' | ')}` });
   };
 }
 
 function handleError(res, err) {
+  if (/^CLINICAL_AI_RX_|^CLINICAL_AI_CARE_ACTION_|^CLINICAL_AI_ENCOUNTER_MISMATCH$|^ASSIGNED_CLINICIAN_REQUIRED$/.test(err.code || '')) {
+    return res.status(err.statusCode || 409).json({ ok: false, code: err.code, error: 'The clinical review does not authorize this prescription context.' });
+  }
   if (err.code === 'NOT_FOUND')          return res.status(404).json({ ok: false, error: err.message });
   if (err.code === 'FORBIDDEN')          return res.status(403).json({ ok: false, error: err.message });
   if (err.code === 'INVALID_TRANSITION') return res.status(409).json({ ok: false, error: err.message });
@@ -61,12 +66,24 @@ function handleError(res, err) {
 }
 
 async function resolveProviderId(req, pool) {
-  const result = await pool.query('SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1', [req.user.id]);
+  const result = await pool.query(
+    `SELECT p.id FROM ng_providers p
+       JOIN users u ON u.id=p.user_id
+      WHERE p.user_id=$1 AND p.status='verified' AND u.role='provider'
+        AND u.is_active=TRUE AND u.provider_status='approved'
+        AND u.market_scope='NG' LIMIT 1`,
+    [req.user.id]
+  );
   return result.rows[0]?.id || null;
 }
 
 async function resolvePharmacyId(req, pool) {
-  const result = await pool.query('SELECT id FROM ng_pharmacies WHERE owner_user_id = $1 LIMIT 1', [req.user.id]);
+  const result = await pool.query(
+    `SELECT id FROM ng_pharmacies
+      WHERE owner_user_id=$1 AND status='approved' AND account_status='active'
+        AND pcn_license_expiry>=CURRENT_DATE LIMIT 1`,
+    [req.user.id]
+  );
   return result.rows[0]?.id || null;
 }
 
@@ -75,10 +92,10 @@ function canAccessRx(role, rx, { providerId, pharmacyId, patientUserId }) {
   if (PATIENT.has(role)) return rx.patient_user_id === patientUserId;
   if (PRESCRIBER.has(role)) return Boolean(providerId && rx.provider_id === providerId);
   if (PHARMACIST.has(role)) {
-    return Boolean(
-      pharmacyId &&
-      [rx.preferred_pharmacy_id, rx.routed_pharmacy_id, rx.dispensed_by_pharmacy_id].includes(pharmacyId)
-    );
+    // A preferred pharmacy is not authorized to view or dispense this
+    // prescription until the clinician signs and routes it there.
+    return Boolean(pharmacyId && rx.routed_pharmacy_id === pharmacyId
+      && rx.signed_at && ['sent_to_pharmacy', 'received', 'partially_dispensed', 'fully_dispensed', 'completed'].includes(rx.lifecycle_status));
   }
   return false;
 }
@@ -167,9 +184,21 @@ router.post('/', requireRole(PRESCRIBER), express.json(), async (req, res) => {
   const pool = getPool();
   try {
     const role = roleOf(req);
-    const providerId = ADMIN.has(role) ? req.body.provider_id : await resolveProviderId(req, pool);
+    const providerId = await resolveProviderId(req, pool);
     if (!providerId) return res.status(403).json({ ok: false, error: 'Provider profile required' });
-    const rx = await svc.createDraft({ ...req.body, provider_id: providerId });
+    // Optional source-linked AI documentation is never a medication order.
+    // The clinician still enters every medicine, dose and indication.
+    const aiSourceSuggestionId = req.body?.aiSourceSuggestionId || null;
+    const phcEncounterId = req.body?.phcEncounterId || null;
+    if ((aiSourceSuggestionId == null) !== (phcEncounterId == null)) {
+      return res.status(400).json({ ok: false, code: 'CLINICAL_AI_RX_SOURCE_INVALID',
+        error: 'Provide both the approved AI review and PHC encounter, or neither.' });
+    }
+    const rx = await svc.createDraft({
+      ...req.body, provider_id: providerId,
+      clinical_ai_source_suggestion_id: aiSourceSuggestionId,
+      clinical_ai_source_encounter_id: phcEncounterId,
+    });
     res.status(201).json({ ok: true, prescription: rx });
   } catch (e) { handleError(res, e); }
 });
@@ -214,7 +243,21 @@ router.post('/:id/send', requireRole(PRESCRIBER), express.json(), async (req, re
     if (!pid) return res.status(400).json({ ok: false, error: 'pharmacy_id required' });
     const rx = await getScopedPrescription(req, pool, [PRESCRIBER]);
     if (!rx) return res.status(404).json({ ok: false, error: 'Not found' });
-    res.json({ ok: true, prescription: await svc.sendToPharmacy(req.params.id, pid, actor(req), pool) });
+    const prescription = await svc.sendToPharmacy(req.params.id, pid, actor(req), pool);
+    // Pharmacy notification is permitted only after a signed, routed Rx.
+    // The notification service independently rechecks those conditions.
+    let pharmacyNotification = null;
+    try {
+      pharmacyNotification = await require('../services/whatsapp/whatsappDispenseService')
+        .createPharmacyPrescriptionNotification({
+          prescriptionId: prescription.id, pharmacyId: pid,
+          createdByUserId: req.user.id,
+        });
+    } catch (_notificationError) {
+      // Sending was committed; do not falsely report that the Rx failed.
+      // The pharmacy dashboard remains the authoritative inbox.
+    }
+    res.json({ ok: true, prescription, pharmacyNotification });
   } catch (e) { handleError(res, e); }
 });
 

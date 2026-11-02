@@ -1096,6 +1096,7 @@ async function createReferral(pool, req, context, {
   clinicalNotes = null,
   dueAt = null,
   idempotencyKey,
+  sourceSuggestionId = null,
 }) {
   return withTransaction(pool, async (client) => {
     await requireEnrollment(client, context, patientUserId);
@@ -1103,11 +1104,26 @@ async function createReferral(pool, req, context, {
     if (String(encounter.patient_user_id) !== String(patientUserId)) {
       throw workflowError(409, 'Encounter patient does not match referral patient.', 'PATIENT_ENCOUNTER_MISMATCH');
     }
+    if (sourceSuggestionId != null) {
+      await require('./clinicalAiService').assertAcceptedCareActionSource(client, context, {
+        suggestionId: sourceSuggestionId, stageType: 'referral_brief',
+        patientUserId, encounterId,
+      });
+    }
     const existing = await client.query(
       `SELECT * FROM ng_referrals WHERE programme_id = $1 AND idempotency_key = $2 LIMIT 1`,
       [context.programme_id, idempotencyKey]
     );
-    if (existing.rows.length) return formatProtectedRecord(existing.rows[0], ['reason', 'clinical_notes', 'response_summary']);
+    if (existing.rows.length) {
+      const prior = existing.rows[0];
+      const previousSource = prior.audit_metadata?.sourceSuggestionId || null;
+      if (previousSource !== sourceSuggestionId
+        || String(prior.patient_user_id) !== String(patientUserId)
+        || String(prior.encounter_id) !== String(encounterId)) {
+        throw workflowError(409, 'A referral idempotency key cannot be reused for a different encounter or review.', 'REFERRAL_IDEMPOTENCY_CONFLICT');
+      }
+      return formatProtectedRecord(prior, ['reason', 'clinical_notes', 'response_summary']);
+    }
     const protectedReason = encrypt(reason || null);
     const protectedClinicalNotes = encrypt(clinicalNotes || null);
     const result = await client.query(
@@ -1129,7 +1145,7 @@ async function createReferral(pool, req, context, {
         protectedClinicalNotes.encrypted, protectedClinicalNotes.iv, protectedClinicalNotes.tag,
         context.programme_id, context.facility_id,
         context.programme_facility_id, dueAt, idempotencyKey,
-        JSON.stringify({ createdByProgrammeRole: context.programmeRole }),
+        JSON.stringify({ createdByProgrammeRole: context.programmeRole, ...(sourceSuggestionId ? { sourceSuggestionId, sourceStage: 'referral_brief', clinicianApproved: true } : {}) }),
       ]
     );
     const protectedEventNotes = encrypt(reason || null);
@@ -1147,6 +1163,7 @@ async function createReferral(pool, req, context, {
       resourceId: result.rows[0].id,
       patientUserId,
       purpose: 'Care coordination',
+      metadata: sourceSuggestionId ? { sourceSuggestionId, sourceStage: 'referral_brief', clinicianApproved: true } : {},
       dataClass: 'sensitive',
     });
     return formatProtectedRecord(result.rows[0], ['reason', 'clinical_notes', 'response_summary']);
