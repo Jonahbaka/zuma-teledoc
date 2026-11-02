@@ -158,6 +158,22 @@ test('all eight PHC care stages share encrypted drafts, correct clinical roles a
   );
 });
 
+test('PHC nurse cannot enumerate or retrieve clinician-only AI stages', async () => {
+  const encounter = await encounterFor();
+  const clinicianDraft = await ai.createSuggestion(
+    pool, request, doctorContext, { encounterId: encounter.id, suggestionType: 'prescription_review' }, modelCaller
+  );
+  const nurseDraft = await ai.createSuggestion(
+    pool, request, nurseContext, { encounterId: encounter.id, suggestionType: 'triage_review' }, modelCaller
+  );
+  const nurseList = await ai.listSuggestions(pool, nurseContext, encounter.id);
+  assert.equal(nurseList.some(item => item.id === clinicianDraft.id), false);
+  assert.equal(nurseList.some(item => item.id === nurseDraft.id), true);
+  await assert.rejects(ai.getSuggestion(pool, nurseContext, clinicianDraft.id),
+    { code: 'CLINICAL_AI_STAGE_ROLE_DENIED' });
+  assert.equal((await ai.getSuggestion(pool, doctorContext, clinicianDraft.id)).id, clinicianDraft.id);
+});
+
 test('actual encrypted AI generation, clinician edits, canonical unsigned SOAP import and reviewed follow-up replay', async () => {
   const encounter = await encounterFor();
   const draft = await draftFor(encounter);
