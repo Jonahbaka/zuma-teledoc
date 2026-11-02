@@ -43,7 +43,7 @@ function makeFakeDb({ failItemInsert = 0, existingCommissions = false } = {}) {
       }
       if (/INSERT INTO ng_rx_events/i.test(text)) { log.push('INS_EVENT'); return { rows: [] }; }
       if (/SELECT (?:p\.id|id) FROM ng_providers/i.test(text)) { return { rows: [{ id: 'prov-1' }] }; }
-      if (/SELECT id FROM ng_pharmacies WHERE owner_user_id/i.test(text)) { return { rows: [{ id: 'pharm-1' }] }; }
+      if (/SELECT id FROM ng_pharmacies\s+WHERE owner_user_id/i.test(text)) { return { rows: [{ id: 'pharm-1' }] }; }
       if (/SELECT \* FROM ng_digital_prescriptions/i.test(text)) {
         return {
           rows: [{
