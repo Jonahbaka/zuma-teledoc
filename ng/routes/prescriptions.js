@@ -52,6 +52,9 @@ function requireRole(...groups) {
 }
 
 function handleError(res, err) {
+  if (/^CLINICAL_AI_RX_|^CLINICAL_AI_CARE_ACTION_|^CLINICAL_AI_ENCOUNTER_MISMATCH$|^ASSIGNED_CLINICIAN_REQUIRED$/.test(err.code || '')) {
+    return res.status(err.statusCode || 409).json({ ok: false, code: err.code, error: 'The clinical review does not authorize this prescription context.' });
+  }
   if (err.code === 'NOT_FOUND')          return res.status(404).json({ ok: false, error: err.message });
   if (err.code === 'FORBIDDEN')          return res.status(403).json({ ok: false, error: err.message });
   if (err.code === 'INVALID_TRANSITION') return res.status(409).json({ ok: false, error: err.message });
@@ -169,7 +172,19 @@ router.post('/', requireRole(PRESCRIBER), express.json(), async (req, res) => {
     const role = roleOf(req);
     const providerId = ADMIN.has(role) ? req.body.provider_id : await resolveProviderId(req, pool);
     if (!providerId) return res.status(403).json({ ok: false, error: 'Provider profile required' });
-    const rx = await svc.createDraft({ ...req.body, provider_id: providerId });
+    // Optional source-linked AI documentation is never a medication order.
+    // The clinician still enters every medicine, dose and indication.
+    const aiSourceSuggestionId = req.body?.aiSourceSuggestionId || null;
+    const phcEncounterId = req.body?.phcEncounterId || null;
+    if ((aiSourceSuggestionId == null) !== (phcEncounterId == null)) {
+      return res.status(400).json({ ok: false, code: 'CLINICAL_AI_RX_SOURCE_INVALID',
+        error: 'Provide both the approved AI review and PHC encounter, or neither.' });
+    }
+    const rx = await svc.createDraft({
+      ...req.body, provider_id: providerId,
+      clinical_ai_source_suggestion_id: aiSourceSuggestionId,
+      clinical_ai_source_encounter_id: phcEncounterId,
+    });
     res.status(201).json({ ok: true, prescription: rx });
   } catch (e) { handleError(res, e); }
 });
