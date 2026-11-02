@@ -217,6 +217,24 @@ router.post(
         return res.status(400).json({ success: false, error: 'Invalid targetLang' });
       }
 
+      // Consent in an API request is not sufficient authorization for an
+      // external LLM to process medical text. This legacy Gemini path may
+      // contain consultation captions with patient information. It therefore
+      // stays disabled unless an operator has separately approved this exact
+      // provider and its data-processing terms. The Groq demo setting does
+      // not override the clinical privacy gate.
+      if (process.env.CLINICAL_AI_ALLOW_EXTERNAL_TRANSLATION !== 'true'
+          || process.env.CLINICAL_AI_TRANSLATION_PROVIDER_APPROVED !== 'true'
+          || process.env.CLINICAL_AI_ALLOW_EXTERNAL_PHI !== 'true') {
+        return res.set('Cache-Control', 'private, no-store').json({
+          success: true,
+          translatedText: cleanText,
+          provider: 'none',
+          translationAvailable: false,
+          manualInterpreterRequired: true
+        });
+      }
+
       // No keys configured: don't hard-fail the call UI.
       try { llm.initialize(); } catch {}
       if (!llm.isAvailable()) {
