@@ -42,13 +42,14 @@ function makeFakeDb({ failItemInsert = 0, existingCommissions = false } = {}) {
         log.push('INS_ITEM'); return { rows: [{ id: 'it-' + itemN }] };
       }
       if (/INSERT INTO ng_rx_events/i.test(text)) { log.push('INS_EVENT'); return { rows: [] }; }
-      if (/SELECT id FROM ng_providers WHERE user_id/i.test(text)) { return { rows: [{ id: 'prov-1' }] }; }
-      if (/SELECT id FROM ng_pharmacies WHERE owner_user_id/i.test(text)) { return { rows: [{ id: 'pharm-1' }] }; }
+      if (/SELECT (?:p\.id|id) FROM ng_providers/i.test(text)) { return { rows: [{ id: 'prov-1' }] }; }
+      if (/SELECT id FROM ng_pharmacies\s+WHERE owner_user_id/i.test(text)) { return { rows: [{ id: 'pharm-1' }] }; }
       if (/SELECT \* FROM ng_digital_prescriptions/i.test(text)) {
         return {
           rows: [{
             id: 'rx-1',
-            lifecycle_status: 'drafted',
+            lifecycle_status: 'received',
+            signed_at: new Date('2026-11-02T00:00:00Z'),
             provider_id: 'prov-1',
             patient_user_id: 'patient-1',
             preferred_pharmacy_id: 'pharm-1',
@@ -162,7 +163,7 @@ test('P3 tx: illegal referral transition is rejected (no UPDATE/COMMIT)', async 
 });
 
 // ─── P1: Prescription RBAC ────────────────────────────────────────────────────
-test('P1 RBAC: patient is forbidden from dispense/sign; pharmacist/prescriber/admin pass', async () => {
+test('P1 RBAC: patient and admin cannot dispense/sign; pharmacist may dispense signed routed Rx', async () => {
   current = makeFakeDb().db; // allowed roles pass the guard then reach the service; keep it off real pg
   const express = require('express');
   const router = require('../routes/prescriptions');
@@ -183,7 +184,7 @@ test('P1 RBAC: patient is forbidden from dispense/sign; pharmacist/prescriber/ad
   assert.strictEqual(await hit('pharmacist', '/rx/x/sign'), 403, 'pharmacist must not sign');
   assert.notStrictEqual(await hit('pharmacist', '/rx/x/items/i/dispense'), 403, 'pharmacist may dispense');
   assert.notStrictEqual(await hit('doctor', '/rx/x/sign'), 403, 'prescriber may sign');
-  assert.notStrictEqual(await hit('admin', '/rx/x/items/i/dispense'), 403, 'admin override');
+  assert.strictEqual(await hit('admin', '/rx/x/items/i/dispense'), 403, 'admin has no pharmacist licence merely by role');
 });
 
 // ─── P6: Socket userSockets leak ──────────────────────────────────────────────

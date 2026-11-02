@@ -31,6 +31,21 @@ const getConferenceRoomKey = (roomId) => `conference:${roomId}`;
 
 let io = null;
 
+function revokeConferenceAccess(roomId, userId = null) {
+  for (const [socketId, session] of conferenceSocketMeta) {
+    if (String(session.roomId) !== String(roomId) || (userId && String(session.participant.userId) !== String(userId))) continue;
+    const socket = io?.sockets?.sockets?.get(socketId);
+    if (socket) {
+      socket.emit('conference:revoked', { roomId });
+      removeConferenceMembership(socket, { emitLeft: true });
+    } else {
+      conferenceSocketMeta.delete(socketId);
+      conferenceRooms.get(roomId)?.delete(socketId);
+    }
+  }
+}
+
+
 const normalizeRole = (role) => String(role || '').trim().toLowerCase();
 const roleAliasMap = {
   administrator: 'admin',
@@ -688,7 +703,7 @@ const initializeSocket = (httpServer) => {
       }
     });
 
-    socket.on('conference:signal', (payload = {}, ack) => {
+    socket.on('conference:signal', async (payload = {}, ack) => {
       const session = conferenceSocketMeta.get(socket.id);
       if (!session) {
         return emitSocketAck(ack, { ok: false, error: 'Conference session not initialized' });
@@ -704,6 +719,25 @@ const initializeSocket = (httpServer) => {
 
       if (!['offer', 'answer', 'ice-candidate'].includes(signalType)) {
         return emitSocketAck(ack, { ok: false, error: 'Unsupported signal type' });
+      }
+
+      try {
+        const target = roomParticipants.get(targetSocketId);
+        const { rows } = await db.query(
+          `SELECT p.user_id FROM ng_conf_participants p JOIN ng_conf_rooms r ON r.id=p.room_id
+             JOIN users u ON u.id=p.user_id AND u.is_active=TRUE
+            WHERE p.room_id=$1 AND p.user_id=ANY($2::uuid[]) AND p.status='admitted'
+              AND r.status IN ('scheduled','live')`, [session.roomId, [socket.userId, target.userId]]
+        );
+        const authorized = new Set(rows.map(row => String(row.user_id)));
+        if (!authorized.has(String(socket.userId))) revokeConferenceAccess(session.roomId, socket.userId);
+        if (!authorized.has(String(target.userId))) revokeConferenceAccess(session.roomId, target.userId);
+        if (authorized.size !== new Set([String(socket.userId), String(target.userId)]).size ||
+            conferenceSocketMeta.get(socket.id) !== session || !conferenceRooms.get(session.roomId)?.has(targetSocketId)) {
+          return emitSocketAck(ack, { ok: false, error: 'Conference access is no longer active' });
+        }
+      } catch (_error) {
+        return emitSocketAck(ack, { ok: false, error: 'Current conference access could not be verified' });
       }
 
       io.to(targetSocketId).emit('conference:signal', {
@@ -948,6 +982,7 @@ const getUserLastSeen = (userId) => {
 
 module.exports = {
   initializeSocket,
+  revokeConferenceAccess,
   getIO,
   emitNewMessage,
   emitAgentOpsEvent,

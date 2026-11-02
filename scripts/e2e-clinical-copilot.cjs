@@ -16,6 +16,8 @@ assert.equal(safety.skipped, false, safety.reason);
 assert.ok(!process.env.SIMULATION_DATABASE_URL || process.env.SIMULATION_DATABASE_URL === process.env.DATABASE_URL);
 process.env.CLINICAL_AI_ENCRYPTION_KEY = 'a'.repeat(64);
 process.env.CLINICAL_AI_KILL_SWITCH = 'false';
+// Synthetic peer-media stays on loopback; no public STUN/TURN service is used.
+process.env.WEBRTC_ICE_SERVERS_JSON = JSON.stringify([{ urls: 'stun:127.0.0.1:9' }]);
 const { getPool, close } = require('../server/db');
 const { seedDemoAccounts } = require('../ng/scripts/seed-demo-accounts');
 const workflow = require('../ng/services/phc/phcWorkflowService');
@@ -99,7 +101,7 @@ async function main() {
   }
   await startServer();
   assertRunning();
-  browser = await chromium.launch({ args: ['--no-sandbox'] });
+  browser = await chromium.launch({ args: ['--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
   context = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 1000 } });
   await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
   const login = await context.request.post('/api/auth/login', { data: { email: doctor.email, password: PASSWORD, role: 'provider' } });
@@ -297,8 +299,57 @@ async function main() {
     await nurseBrowser.tracing.stop({ path: path.join(ART, 'follow-up-trace.zip') });
     await nurseBrowser.close();
   }
+  await exerciseConference({ doctor, nurse, patient, external, pageErrors });
   assert.deepEqual(pageErrors, []); assert.deepEqual(external, []);
   pass('no uncaught browser errors or unexpected external requests; named font stylesheet fulfilled offline');
+}
+
+async function exerciseConference({ doctor, nurse, patient, external, pageErrors }) {
+  const guests=[]; let conference;
+  const request=async(ctx,route,data)=>{const response=await ctx.request.post(route,{data});assert.equal(response.ok(),true,`Synthetic conference API ${route}: ${response.status()}`);return response.json();};
+  const trackMedia=()=>{window.__conferenceStreams=[];const original=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=async options=>{const stream=await original(options);window.__conferenceStreams.push(stream);return stream;};};
+  try {
+    await context.grantPermissions(['camera','microphone']);await context.addInitScript(trackMedia);
+    conference=(await request(context,'/api/ng/conference/rooms',{title:'Synthetic three-party workflow',host_display_name:'Synthetic clinical host',patient_user_id:patient.id,max_participants:3,media_server:'peer_mesh',requires_waiting_room:false})).room;
+    for(const [index,account] of [patient,nurse].entries()) {
+      const invite=await request(context,`/api/ng/conference/rooms/${conference.id}/invites`,{role:'family',display_name:`Synthetic invited family ${index+1}`});
+      const token=invite.invite?.token || invite.token;assert.ok(token);
+      const anonymous=await fetch(`${BASE}/api/ng/conference/public/redeem-invite`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});assert.equal(anonymous.status,401);
+      const guest=await browser.newContext({baseURL:BASE,viewport:{width:1440,height:1000},permissions:['camera','microphone']});guests.push({context:guest,account});
+      await guest.route('**/*',async route=>{const req=route.request();const url=req.url();if(url.startsWith(BASE)||url.startsWith('data:')||url.startsWith('blob:'))return route.continue();if(isOfflineFontFixture(url,req.method(),req.resourceType()))return route.fulfill({status:200,contentType:'text/css',body:''});external.push(url);return route.abort();});
+      const login=await request(guest,'/api/auth/login',{email:account.email,password:PASSWORD,role:account.role});
+      await guest.addInitScript(({accessToken,refreshToken,user})=>{localStorage.setItem('accessToken',accessToken);localStorage.setItem('refreshToken',refreshToken);localStorage.setItem('user',JSON.stringify(user));},login);
+      await guest.addInitScript(trackMedia);
+      const guestPage=await guest.newPage();guestPage.setDefaultTimeout(20000);guestPage.on('pageerror',error=>pageErrors.push(error.message));guests[index].page=guestPage;
+      await guestPage.goto(`/ng/conference/join/${token}`,{waitUntil:'networkidle'});
+      await guestPage.getByRole('button',{name:'Accept invitation',exact:true}).evaluate(button=>{button.click();button.click();});
+      await guestPage.waitForURL(`**/ng/conference/${conference.id}`);
+      const participant=(await pool.query('SELECT * FROM ng_conf_participants WHERE room_id=$1 AND user_id=$2',[conference.id,account.id])).rows[0];
+      assert.equal(participant.role,'family');guests[index].participant=participant;
+    }
+    await request(context,`/api/ng/conference/rooms/${conference.id}/start`,{});
+    await page.goto(`/ng/conference/${conference.id}`,{waitUntil:'networkidle'});
+    await expect(page.getByPlaceholder('e.g. Dr. Amina Okafor')).toHaveValue('Synthetic clinical host');
+    await page.getByRole('button',{name:'Join Now',exact:true}).click();
+    await expect(page.getByRole('button',{name:'End room',exact:true})).toBeVisible();
+    for(const [index,guest] of guests.entries()) {
+      await guest.page.goto(`/ng/conference/${conference.id}`,{waitUntil:'networkidle'});
+      await expect(guest.page.getByPlaceholder('e.g. Dr. Amina Okafor')).toHaveValue(`Synthetic invited family ${index+1}`);
+      await guest.page.getByRole('button',{name:'Join Now',exact:true}).click();
+      await expect(guest.page.getByRole('button',{name:'End room',exact:true})).toHaveCount(0);
+    }
+    const activeVideos=p=>p.evaluate(()=>Array.from(document.querySelectorAll('video')).filter(video=>video.srcObject?.getVideoTracks().some(track=>track.readyState==='live')&&video.readyState>=2).length);
+    for(const p of [page,...guests.map(guest=>guest.page)])await expect.poll(()=>activeVideos(p),{timeout:45000}).toBeGreaterThanOrEqual(3);
+    await page.screenshot({path:path.join(ART,'three-party-conference.png'),fullPage:true});
+    await request(context,`/api/ng/conference/rooms/${conference.id}/participants/${guests[1].participant.id}/remove`,{});
+    await expect.poll(()=>guests[1].page.evaluate(()=>window.__conferenceStreams.length>0&&window.__conferenceStreams.every(stream=>stream.getTracks().every(track=>track.readyState==='ended'))),{timeout:20000}).toBe(true);
+    const rejoin=await guests[1].context.request.post(`/api/ng/conference/rooms/${conference.id}/join`,{data:{role:'host'}});assert.equal(rejoin.status(),403);
+    await guests[0].page.getByTitle('Leave call',{exact:true}).click();
+    await expect.poll(async()=>(await pool.query('SELECT status FROM ng_conf_participants WHERE id=$1',[guests[0].participant.id])).rows[0].status).toBe('left');
+    page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'End room',exact:true}).click();
+    await expect.poll(async()=>(await pool.query('SELECT status FROM ng_conf_rooms WHERE id=$1',[conference.id])).rows[0].status).toBe('ended');
+    pass('synthetic three-party generic conference: authenticated role-preserving invites, own identity, provider-host controls, real peer video, removal stops tracks, leave releases membership and end persists');
+  } finally {for(const guest of guests)await guest.context.close();}
 }
 
 async function waitForSignal(promise, label) {

@@ -34,7 +34,7 @@ function handlerHarness() {
   let suggestion = null;
   let error = '';
   const version = { current: 0 };
-  const context = { aiRequestVersion: version, context: {}, aiDraftType: 'soap_draft', setAiEditedOutput() {}, setAiTaskOptions() {}, setAiSuggestion: value => { suggestion = value; }, setError: value => { error = value; }, setNotice() {},
+  const context = { aiRequestVersion: version, context: {}, aiDraftType: 'soap_draft', careStages: require('../../shared/clinicalAiStages.json'), programmeRole: 'remote_clinician', setAiEditedOutput() {}, setAiTaskOptions() {}, setAiSuggestion: value => { suggestion = value; }, setError: value => { error = value; }, setNotice() {},
     run: (_name, operation) => operation(),
     phcAPI: { createAiSuggestion: (_context, { encounterId }) => new Promise(resolve => pending.set(encounterId, resolve)) },
   };
@@ -179,4 +179,188 @@ test('clinical editor and task controls have explicit labels independent of init
   assert.match(source, /htmlFor=\{`\$\{fieldId\}-task-\$\{index\}-instructions`\}>Follow-up instructions<\/Label><Textarea id=\{`\$\{fieldId\}-task-\$\{index\}-instructions`\}/);
   assert.match(source, /htmlFor=\{`\$\{taskFieldId\}-\$\{index\}-role`\}>Responsible role<\/Label><select id=/);
   assert.doesNotMatch(source, /<Label>Follow-up instructions<Textarea|<Label>Responsible role<select/);
+});
+
+
+test('Groq adapter refuses real patient, production and non-opted-in requests before HTTP', async () => {
+  const { requestGroqDraft } = require('../services/phc/clinicalAiGroqAdapter');
+  const env = { NODE_ENV: 'test', GROQ_API_KEY: 'synthetic-only-key', CLINICAL_AI_ALLOW_DEMO_GROQ: 'true' };
+  const args = { context: { demo_only: true }, model: 'openai/gpt-oss-120b', systemPrompt: 'Synthetic test', userPrompt: 'Synthetic record' };
+  let calls = 0;
+  const fetchImpl = async () => { calls++; return { ok: true, json: async () => ({ model: args.model, choices: [{ message: { content: '{}' } }] }) }; };
+  for (const [context, changedEnv] of [
+    [{ demo_only: false }, env],
+    [{ demo_only: 'true' }, env],
+    [args.context, { ...env, NODE_ENV: 'production' }],
+    [args.context, { ...env, NODE_ENV: 'staging' }],
+    [args.context, { ...env, CLINICAL_AI_ALLOW_DEMO_GROQ: 'false' }],
+  ]) {
+    await assert.rejects(
+      requestGroqDraft({ ...args, context }, { env: changedEnv, fetchImpl }),
+      { code: 'CLINICAL_AI_GROQ_DEMO_ONLY' }
+    );
+  }
+  assert.equal(calls, 0);
+});
+
+test('Groq synthetic adapter sends only to pinned endpoint and returns shaped output', async () => {
+  const { requestGroqDraft } = require('../services/phc/clinicalAiGroqAdapter');
+  const env = { NODE_ENV: 'test', GROQ_API_KEY: 'synthetic-only-key', CLINICAL_AI_ALLOW_DEMO_GROQ: 'true' };
+  const args = { context: { demo_only: true }, model: 'openai/gpt-oss-120b', systemPrompt: 'Safe synthetic system prompt', userPrompt: 'Synthetic encounter record' };
+  let captured;
+  const result = await requestGroqDraft(args, {
+    env,
+    fetchImpl: async (url, options) => {
+      captured = { url, options };
+      return { ok: true, json: async () => ({ model: args.model, choices: [{ message: { content: '{"summary":""}' } }] }) };
+    },
+  });
+  assert.equal(captured.url, 'https://api.groq.com/openai/v1/chat/completions');
+  assert.equal(captured.options.method, 'POST');
+  assert.equal(captured.options.headers.Authorization, 'Bearer synthetic-only-key');
+  const body = JSON.parse(captured.options.body);
+  assert.equal(body.model, args.model);
+  assert.deepEqual(body.messages.map(item => item.role), ['system', 'user']);
+  assert.equal(result.provider, 'groq');
+  assert.equal(result.text, '{"summary":""}');
+});
+
+test('Groq synthetic adapter never returns upstream failure bodies', async () => {
+  const { requestGroqDraft } = require('../services/phc/clinicalAiGroqAdapter');
+  const env = { NODE_ENV: 'test', GROQ_API_KEY: 'synthetic-only-key', CLINICAL_AI_ALLOW_DEMO_GROQ: 'true' };
+  const args = { context: { demo_only: true }, model: 'openai/gpt-oss-120b', systemPrompt: 'test', userPrompt: 'test' };
+  const cases = [
+    async () => ({ ok: false, status: 429, json: async () => ({ private: 'sensitive text' }) }),
+    async () => { throw new Error('sensitive text'); },
+    async () => ({ ok: true, json: async () => ({ choices: [] }) }),
+  ];
+  for (const fetchImpl of cases) {
+    await assert.rejects(requestGroqDraft(args, { env, fetchImpl }), error => (
+      error.code === 'CLINICAL_AI_PROVIDER_ERROR'
+      && !String(error.message).includes('sensitive text')
+    ));
+  }
+});
+
+
+test('central AI care stages cover the PHC care journey with source-linking and role restriction', () => {
+  const { careStages, SUPPORTED_TYPES, systemPrompt } = require('../services/phc/clinicalAiService');
+  for (const type of ['intake_review', 'triage_review', 'consultation_brief', 'soap_draft', 'emr_reconciliation', 'prescription_review', 'referral_brief', 'follow_up_draft']) {
+    assert.equal(SUPPORTED_TYPES.has(type), true);
+    assert.ok(careStages[type].roles.length > 0);
+    assert.match(systemPrompt(type, ['encounter:chief_complaint']), /sourceRefs/);
+  }
+  assert.match(careStages.prescription_review.prompt, /Do not suggest or validate any medicine/);
+  assert.match(careStages.triage_review.prompt, /Do not assign a triage level/);
+});
+
+test('Clinical Copilot read endpoints filter clinician-only stages from nurse worklists', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../services/phc/clinicalAiService.js'), 'utf8');
+  assert.match(source, /result\.rows\.filter\(\(row\) => careStages\[row\.suggestion_type\]\?\.roles\.includes\(context\.programmeRole\)\)/);
+  assert.match(source, /if \(!careStages\[row\.suggestion_type\]\?\.roles\.includes\(context\.programmeRole\)\)/);
+  assert.match(source, /CLINICAL_AI_STAGE_ROLE_DENIED/);
+});
+
+test('manual prescription provenance is optional and cannot bypass clinical review or pharmacy signing', () => {
+  const fs=require('node:fs'),path=require('node:path');
+  const rx=fs.readFileSync(path.join(__dirname,'../services/rx-engine/prescriptionWorkflowService.js'),'utf8');
+  const route=fs.readFileSync(path.join(__dirname,'../routes/prescriptions.js'),'utf8');
+  const migration=fs.readFileSync(path.join(__dirname,'../migrations/035_ng_rx_ai_review_provenance.sql'),'utf8');
+  assert.match(rx,/verifyClinicalAiRxProvenance\(client, input\)/);
+  assert.match(rx,/assertAcceptedCareActionSource\(client, context/);
+  assert.match(rx,/clinical_ai_source_suggestion_id/);
+  assert.match(route,/aiSourceSuggestionId/);
+  assert.match(route,/phcEncounterId/);
+  assert.match(migration,/ng_rx_ai_provenance_pair/);
+  assert.match(migration,/clinical_ai_source_encounter_id/);
+  assert.doesNotMatch(rx.slice(rx.indexOf('async function verifyClinicalAiRxProvenance'), rx.indexOf('async function createDraft')), /\.sign\(|\.sendToPharmacy\(|\.dispenseItem\(/);
+});
+
+test('pharmacy medication checkout never treats an AI-reviewed Rx draft as signed or routed', () => {
+ const fs=require('node:fs'),path=require('node:path');
+ const delivery=fs.readFileSync(path.join(__dirname,'../services/logistics/medicationDeliveryWorkflowService.js'),'utf8');
+ const rxRoutes=fs.readFileSync(path.join(__dirname,'../routes/prescriptions.js'),'utf8');
+ const rxService=fs.readFileSync(path.join(__dirname,'../services/rx-engine/prescriptionWorkflowService.js'),'utf8');
+ assert.match(delivery,/!rx\.signed_at/);
+ assert.match(delivery,/rx\.routed_pharmacy_id !== p\.id/);
+ assert.match(delivery,/prescription_claim_active=true/);
+ assert.match(rxRoutes,/\/\:id\/sign/);
+ assert.match(rxRoutes,/\/\:id\/send/);
+ assert.match(rxService,/lifecycle_status\)\s*VALUES|lifecycle_status, clinical_ai_source_suggestion_id/);
+ assert.match(rxService,/'drafted'/);
+});
+
+test('prescription mutations require clinical professional role; administration cannot sign or dispense', () => {
+ const fs=require('node:fs'),path=require('node:path');
+ const routes=fs.readFileSync(path.join(__dirname,'../routes/prescriptions.js'),'utf8');
+ assert.match(routes,/if \(allowed\.has\(role\)\) return next\(\)/);
+ assert.doesNotMatch(routes,/ADMIN\.has\(role\) \|\| allowed\.has\(role\)/);
+ assert.match(routes,/router\.post\('\/:id\/sign', requireRole\(PRESCRIBER\)/);
+ assert.match(routes,/router\.post\('\/:id\/receive', requireRole\(PHARMACIST\)/);
+ assert.match(routes,/router\.post\('\/:id\/items\/:itemId\/dispense', requireRole\(PHARMACIST\)/);
+});
+
+test('pharmacy inbox and status endpoints reject unsigned and merely preferred prescriptions', () => {
+ const fs=require('node:fs'),path=require('node:path');
+ const route=fs.readFileSync(path.join(__dirname,'../routes/pharmacy.js'),'utf8');
+ const inbox=route.slice(route.indexOf("router.get('/:pharmacyId/prescriptions'"),route.indexOf("router.get('/:pharmacyId/whatsapp-notifications'"));
+ const mutate=route.slice(route.indexOf("router.patch('/:pharmacyId/prescriptions/:prescriptionId'"),route.indexOf("router.get('/:pharmacyId/medication-requests'"));
+ assert.match(inbox,/WHERE rx\.routed_pharmacy_id = \$1/);
+ assert.match(inbox,/rx\.signed_at IS NOT NULL/);
+ assert.match(inbox,/rx\.lifecycle_status IN/);
+ assert.doesNotMatch(inbox,/OR rx\.preferred_pharmacy_id = \$1/);
+ assert.match(mutate,/req\.user\?\.role !== 'pharmacy'/);
+ assert.match(mutate,/routed_pharmacy_id = \$7/);
+ assert.match(mutate,/signed_at IS NOT NULL/);
+ assert.match(mutate,/\$1 <> 'fulfilled' OR lifecycle_status IN/);
+});
+test('main Nigeria provider saves normalized unsigned Rx, no WhatsApp before signing', () => {
+ const fs=require('node:fs'),path=require('node:path');
+ const src=fs.readFileSync(path.join(__dirname,'../routes/provider.js'),'utf8');
+ const start=src.indexOf("router.post('/prescriptions'");
+ const end=src.indexOf('// --- PROVIDER PROFILE ---',start);
+ const body=src.slice(start,end);
+ assert.match(body,/INSERT INTO ng_rx_items/);
+ assert.match(body,/lifecycle_status, clinical_ai_source_suggestion_id/);
+ assert.match(body,/'drafted'/);
+ assert.match(body,/routed_pharmacy_id, routed_at/);
+ assert.doesNotMatch(body,/createPharmacyPrescriptionNotification/);
+ assert.match(body,/whatsappNotification: null/);
+});
+
+test('pharmacy notifications and pharmacist Rx access are restricted to signed explicit routing', () => {
+ const fs=require('node:fs'),path=require('node:path');
+ const notifications=fs.readFileSync(path.join(__dirname,'../services/whatsapp/whatsappDispenseService.js'),'utf8');
+ const routes=fs.readFileSync(path.join(__dirname,'../routes/prescriptions.js'),'utf8');
+ const service=fs.readFileSync(path.join(__dirname,'../services/rx-engine/prescriptionWorkflowService.js'),'utf8');
+ assert.match(notifications,/rx\.signed_at IS NOT NULL/);
+ assert.match(notifications,/rx\.routed_pharmacy_id = \$2/);
+ assert.match(routes,/rx\.routed_pharmacy_id === pharmacyId/);
+ assert.doesNotMatch(routes,/\[rx\.preferred_pharmacy_id, rx\.routed_pharmacy_id/);
+ const send=routes.slice(routes.indexOf("router.post('/:id/send'"),routes.indexOf("router.post('/:id/receive'"));
+ assert.ok(send.indexOf('svc.sendToPharmacy') < send.indexOf('createPharmacyPrescriptionNotification'));
+ assert.match(service,/pharmacy_response_status = 'pending_pharmacy_confirmation'/);
+});
+
+test('release kill switch prevents inference review and provenance-based care actions', () => {
+ const src=require('node:fs').readFileSync(require('node:path').join(__dirname,'../services/phc/clinicalAiService.js'),'utf8');
+ assert.match(src,/function assertClinicalAiOperational\(\)/);
+ for(const name of ['reviewSuggestion','assertAcceptedCareActionSource','assertAcceptedFollowUpSource']){
+   const start=src.indexOf('async function '+name+'(');
+   assert.ok(start>0,name+' must exist');
+   assert.ok(src.slice(start,start+700).includes('assertClinicalAiOperational()'),name+' must enforce kill switch');
+ }
+});
+
+test('suspended pharmacy and terminal Rx state cannot regain clinical dispensing access', () => {
+ const source=require('node:fs').readFileSync(require('node:path').join(__dirname,'../routes/pharmacy.js'),'utf8');
+ assert.match(source,/async function assertCurrentClinicalPharmacyAccess/);
+ assert.match(source,/pcn_license_expiry>=CURRENT_DATE/);
+ for (const route of ["router.get('/:pharmacyId/prescriptions'","router.get('/:pharmacyId/whatsapp-notifications'","router.patch('/:pharmacyId/prescriptions/:prescriptionId'"]) {
+   const i=source.indexOf(route);
+   assert.ok(i>=0);
+   assert.ok(source.slice(i,i+1100).includes('assertCurrentClinicalPharmacyAccess'));
+ }
+ assert.match(source,/lifecycle_status NOT IN \('fully_dispensed','completed'\) OR \$1 = 'fulfilled'/);
+ assert.match(source,/\$1 <> 'cancelled' OR lifecycle_status = 'sent_to_pharmacy'/);
 });

@@ -39,6 +39,10 @@ function ProviderEncounterChartContent() {
   const importVersion = useRef(0);
   const [importingDraft, setImportingDraft] = useState(false);
   const [importedAiSuggestionId, setImportedAiSuggestionId] = useState(null);
+  const [aiStage, setAiStage] = useState('consultation_brief');
+  const [aiWorking, setAiWorking] = useState(false);
+  const [aiReviewDraft, setAiReviewDraft] = useState(null);
+  const [aiEditable, setAiEditable] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [encounter, setEncounter] = useState(null);
@@ -116,6 +120,7 @@ function ProviderEncounterChartContent() {
     importVersion.current += 1;
     setEncounter(null); setNotes([]); setIntents([]);
     setImportedAiSuggestionId(null); setImportingDraft(false); setSavingNote(false);
+    setAiReviewDraft(null); setAiEditable(null); setAiWorking(false);
     setNoteDraft({ noteType: 'soap', subjective: '', objective: '', assessment: '', plan: '', physicalExam: '' });
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,6 +137,46 @@ function ProviderEncounterChartContent() {
     if (!notes.length) return null;
     return notes[0];
   }, [notes]);
+
+  const prepareEncounterAiDraft = async () => {
+    const selectedEncounter = encounterId;
+    setAiWorking(true);
+    setAiReviewDraft(null);
+    setAiEditable(null);
+    try {
+      const response = await clinicalEhrAPI.createEncounterAiDraft(selectedEncounter, aiStage);
+      if (currentEncounter.current !== selectedEncounter) return;
+      const suggestion = response.data?.suggestion;
+      if (!suggestion?.id || suggestion.status !== 'drafted') throw new Error('AI draft unavailable');
+      setAiReviewDraft(suggestion);
+      setAiEditable(JSON.parse(JSON.stringify(suggestion.output)));
+    } catch (e) {
+      if (currentEncounter.current === selectedEncounter) toast({ title: 'AI draft unavailable', description: e?.response?.data?.error || 'This encounter may not be linked to an eligible PHC programme.', variant: 'destructive' });
+    } finally { if (currentEncounter.current === selectedEncounter) setAiWorking(false); }
+  };
+
+  const reviewEncounterAiDraft = async (decision) => {
+    const selected = aiReviewDraft;
+    const selectedEncounter = encounterId;
+    if (!selected || selected.status !== 'drafted') return;
+    setAiWorking(true);
+    try {
+      const response = await clinicalEhrAPI.reviewEncounterAiDraft(selectedEncounter, selected.id, {
+        decision,
+        ...(decision === 'accepted_with_edits' ? { editedOutput: aiEditable } : {}),
+        ...(decision === 'rejected' ? { rejectionReason: 'Clinician declined the draft after review.' } : {}),
+      });
+      if (currentEncounter.current !== selectedEncounter) return;
+      setAiReviewDraft(current => current?.id === selected.id ? { ...current, status: response.data?.review?.status } : current);
+      if (decision !== 'rejected' && selected.suggestion_type === 'soap_draft') {
+        toast({ title: 'AI SOAP reviewed', description: 'Use the existing reviewed-draft import to load it as an unsigned note.' });
+      } else {
+        toast({ title: 'AI review saved', description: 'No clinical order, prescription, referral or record was changed.' });
+      }
+    } catch (e) {
+      if (currentEncounter.current === selectedEncounter) toast({ title: 'Review failed', description: e?.response?.data?.error || 'Review was not saved.', variant: 'destructive' });
+    } finally { if (currentEncounter.current === selectedEncounter) setAiWorking(false); }
+  };
 
   const importReviewedDraft = async () => {
     const hasText = () => ['subjective', 'objective', 'assessment', 'plan', 'physicalExam'].some(field => currentNoteDraft.current[field]?.trim());
@@ -329,6 +374,51 @@ function ProviderEncounterChartContent() {
         </div>
 
         <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader><CardTitle>AI clinical documentation review</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-slate-600">Only PHC-linked encounters with an assigned clinician and programme approval can use this source-linked assistant. All drafts require clinician review; no diagnosis, medication, referral, or chart update is automated.</p>
+              <Label htmlFor="encounter-ai-stage">Documentation stage</Label>
+              <select id="encounter-ai-stage" className="w-full rounded-md border p-2" value={aiStage} onChange={e => { setAiStage(e.target.value); setAiReviewDraft(null); setAiEditable(null); }}>
+                <option value="consultation_brief">Consultation brief</option>
+                <option value="soap_draft">SOAP draft</option>
+                <option value="emr_reconciliation">EMR documentation gaps</option>
+                <option value="prescription_review">Prescription documentation checklist</option>
+                <option value="referral_brief">Referral documentation brief</option>
+                <option value="follow_up_draft">Follow-up proposals</option>
+              </select>
+              <Button variant="outline" onClick={prepareEncounterAiDraft} disabled={aiWorking}>{aiWorking ? 'Preparing…' : 'Prepare source-linked AI draft'}</Button>
+              {aiReviewDraft && (
+                <div className="space-y-2 rounded-lg border p-3">
+                  <p className="text-sm font-semibold">Unverified AI draft · {aiReviewDraft.status}</p>
+                  <p className="text-xs">Source references identify records; they do not establish factual correctness. Review each claim.</p>
+                  {(aiReviewDraft.output?.assertions || []).map((claim, i) => (
+                    <div key={i} className="text-sm"><p>{claim.text}</p><p className="text-xs text-slate-500">{(claim.sourceRefs || []).join(', ')}</p></div>
+                  ))}
+                  {aiReviewDraft.status === 'drafted' && aiEditable && (
+                    <>
+                      <Label htmlFor="ai-reviewed-summary">Clinician-edited summary</Label>
+                      <Textarea id="ai-reviewed-summary" value={aiEditable.summary || ''} onChange={e => setAiEditable({ ...aiEditable, summary: e.target.value })} />
+                      {aiReviewDraft.suggestion_type === 'soap_draft' && ['subjective', 'objective', 'assessment', 'plan'].map(field => (
+                        <div key={field}>
+                          <Label htmlFor={'review-soap-' + field}>{field}</Label>
+                          <Textarea id={'review-soap-' + field} value={aiEditable.soapDraft?.[field] || ''} onChange={e => setAiEditable({ ...aiEditable, soapDraft: { ...aiEditable.soapDraft, [field]: e.target.value } })} />
+                        </div>
+                      ))}
+                      <div className="flex flex-wrap gap-2">
+                        <Button disabled={aiWorking} onClick={() => reviewEncounterAiDraft('accepted')}>Accept original</Button>
+                        <Button disabled={aiWorking} variant="outline" onClick={() => reviewEncounterAiDraft('accepted_with_edits')}>Accept edits</Button>
+                        <Button disabled={aiWorking} variant="outline" onClick={() => reviewEncounterAiDraft('rejected')}>Reject</Button>
+                      </div>
+                    </>
+                  )}
+                  {aiReviewDraft.status === 'accepted' && aiReviewDraft.suggestion_type === 'soap_draft' && (
+                    <Link className="text-sm underline" href={pathname + '?aiSuggestionId=' + encodeURIComponent(aiReviewDraft.id)}>Select reviewed SOAP for separate chart import</Link>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

@@ -127,7 +127,8 @@ export default function NigeriaPatientMessagesPage() {
         await refreshConversations();
         if (selectedRecipient.current !== openedRecipient) return;
         sendAttempt.current = null;
-        if (selectedRecipient.current === recipientId && response.data.message?.id) setMessages((current) => current.some((item) => item.id === response.data.message.id) ? current : [...current, { ...response.data.message, sentByMe: true }]);
+        const saved = response.data.data || (typeof response.data.message === 'object' ? response.data.message : null);
+        if (selectedRecipient.current === recipientId && saved?.id) setMessages((current) => current.some((item) => item.id === saved.id) ? current : [...current, { ...saved, content: content.trim(), createdAt: saved.createdAt || saved.created_at, sentByMe: true }]);
         if (resetComposer) {
           setShowComposer(false);
           setProviderId('');

@@ -524,6 +524,8 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
   const [sidebarTab,     setSidebarTab]     = useState(null);
   const [unreadChat,     setUnreadChat]     = useState(0);
   const [joinError,      setJoinError]      = useState('');
+  const [leaveError, setLeaveError] = useState('');
+  const leaving = useRef(false);
 
   const lobbyVideoRef = useRef(null);
   const [lobbyStream, setLobbyStream] = useState(null);
@@ -551,21 +553,23 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
     displayName: displayName || 'Participant',
   });
 
-  const isHost = myParticipant?.role === 'host' || myParticipant?.role === 'consultant';
+  const isHost = Boolean(myParticipant && (myParticipant.user_id === room?.host_user_id || myParticipant.permissions_json?.admit_others === true || myParticipant.permissions_json?.end_room === true || ['host', 'consultant'].includes(myParticipant.role)));
 
   // ── Lobby camera preview ───────────────────────────────────────────────────
   useEffect(() => {
     if (phase !== 'lobby') return;
-    let stream = null;
+    let stream = null; let cancelled = false;
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: false })
       .then((s) => {
+        if (cancelled) { s.getTracks().forEach((track) => track.stop()); return; }
         stream = s;
         setLobbyStream(s);
         if (lobbyVideoRef.current) lobbyVideoRef.current.srcObject = s;
       })
       .catch(() => {});
     return () => {
+      cancelled = true;
       if (stream) stream.getTracks().forEach((t) => t.stop());
       setLobbyStream(null);
     };
@@ -581,12 +585,15 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
         if (cancelled) return;
         setParticipants(r.participants || []);
 
-        if (phase === 'waiting' && myParticipant?.id) {
+        if (myParticipant?.id) {
           const me = (r.participants || []).find((p) => p.id === myParticipant.id);
           if (me?.status === 'admitted') setPhase('meeting');
-          if (me?.status === 'denied' || me?.status === 'removed') setPhase('denied');
+          else if (['denied', 'removed'].includes(me?.status)) setPhase('denied');
+          else if (!me || me.status === 'left') setPhase('left');
         }
-      } catch {}
+      } catch (error) {
+        if (!cancelled && [401, 403, 404].includes(error.status)) setPhase('denied');
+      }
     };
     poll();
     const t = setInterval(poll, 3000);
@@ -662,10 +669,18 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
     } catch {}
   }, [handRaised, myParticipant?.id, room?.id]);
 
-  const handleLeave = useCallback(() => {
-    setPhase('left');
-    onLeft?.();
-  }, [onLeft]);
+  const handleLeave = useCallback(async () => {
+    if (leaving.current) return;
+    leaving.current = true;
+    setPhase('left'); // Unmount media immediately, even if the API is unavailable.
+    setLeaveError('');
+    try {
+      if (myParticipant?.id) await conf.leave(room.id, myParticipant.id);
+      onLeft?.();
+    } catch (_error) {
+      setLeaveError('Media stopped, but leaving could not be confirmed. Retry to release your room place.');
+    } finally { leaving.current = false; }
+  }, [room?.id, myParticipant?.id, onLeft]);
 
   const handleEndRoom = useCallback(async () => {
     if (!confirm('End this room for all participants?')) return;
@@ -718,10 +733,11 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
 
           {/* Display name */}
           <div>
-            <label className="mb-1.5 block text-xs font-semibold text-slate-300">
+            <label htmlFor="conference-display-name" className="mb-1.5 block text-xs font-semibold text-slate-300">
               Your display name
             </label>
             <input
+              id="conference-display-name"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') joinMeeting(); }}
@@ -774,7 +790,8 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
             Checking every few seconds…
           </div>
           <button
-            onClick={() => setPhase('lobby')}
+            onClick={handleLeave}
+            disabled={Boolean(leaveError) || leaving.current}
             className="mt-6 rounded-xl bg-slate-800 px-5 py-2 text-sm text-slate-300 hover:bg-slate-700"
           >
             Cancel
@@ -810,8 +827,10 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
           </div>
           <h2 className="text-xl font-bold text-white">You left the meeting</h2>
           <p className="mt-2 text-sm text-slate-400">The room may still be active.</p>
+          {leaveError && <div role="alert" className="mt-4 text-sm text-amber-300">{leaveError}<button onClick={handleLeave} className="ml-3 underline">Retry leaving</button></div>}
           <button
             onClick={() => setPhase('lobby')}
+            disabled={Boolean(leaveError) || leaving.current}
             className="mt-6 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-500"
           >
             Rejoin

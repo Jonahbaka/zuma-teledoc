@@ -90,9 +90,9 @@ function resolveBuildId() {
 }
 
 function getFrontendState() {
+  if (nextInitStatus === 'failed' || nextInitStatus === 'timeout') return 'degraded';
   if (nextReady) return 'ready';
   if (!initialized) return 'initializing';
-  if (nextInitStatus === 'failed' || nextInitStatus === 'timeout') return 'degraded';
   if (Date.now() - serverStartedAt.getTime() <= NEXT_WARMUP_GRACE_MS) return 'warming_up';
   // Past the warmup grace window and Next is still not ready: escalate to
   // degraded so health gates stop treating a stuck frontend as acceptable.
@@ -384,6 +384,15 @@ app.get('/api/health', (req, res) => {
     buildId,                                 // id of the served frontend bundles (.next/BUILD_ID)
     gitCommit: readGitCommitId() || null,    // git HEAD — may differ from buildId after a chunked-upload deploy
     nemoClaw,
+    // Operational state only: never expose API keys, prompts, patient data, or
+    // programme membership in a public health endpoint.
+    clinicalAi: {
+      inferenceAvailable: process.env.CLINICAL_AI_KILL_SWITCH !== 'true'
+        && process.env.NODE_ENV !== 'production',
+      killSwitchActive: process.env.CLINICAL_AI_KILL_SWITCH === 'true',
+      providerConfigured: Boolean(process.env.CLINICAL_AI_PROVIDER),
+      productionClinicalAiAllowed: false
+    },
     // Cloud Run metadata (helps diagnose load balancer / revision split)
     service: process.env.K_SERVICE,
     revision: process.env.K_REVISION,
@@ -728,17 +737,21 @@ async function initializeApp() {
     console.error('🇳🇬 Stack:', err.stack?.split('\n').slice(0, 5).join('\n'));
   }
 
-  // Run Nigeria migrations (non-blocking)
-  try {
+  // Clinical schema is a readiness prerequisite, never background work.
+  // Refuse to serve API traffic if the Nigeria migration manifest fails.
+  // Keep liveness available, but /readyz and /api/health must fail closed.
+  {
     const { runNgMigrations } = require('../ng/migrations/migrate');
     const pool = require('./db').getPool();
-    runNgMigrations(pool).then(result => {
-      console.log(`🇳🇬 Nigeria DB migrations: ${result.ran} new, ${result.total} total`);
-    }).catch(err => {
-      console.error('🇳🇬 Nigeria migrations warning:', err.message);
-    });
-  } catch (err) {
-    console.error('🇳🇬 Nigeria migrations skipped:', err.message);
+    try {
+      const result = await runNgMigrations(pool);
+      console.log('[NG] Migration manifest verified: ' + result.ran + ' new');
+    } catch (error) {
+      nextInitStatus = 'failed';
+      nextInitError = 'Nigeria migration verification failed';
+      console.error('[BOOT] Nigeria migrations blocked readiness:', error.code || 'MIGRATION_FAILED');
+      throw error;
+    }
   }
 
   console.log('✅ API routes loading complete (+ Hive Gateway + OpenClaw REST API)');

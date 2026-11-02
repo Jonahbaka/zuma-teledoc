@@ -187,12 +187,9 @@ const referralNetworkAuth = (req, res, next) => {
 };
 router.use('/referral-network', referralNetworkAuth, referralNetworkRoutes);
 
-// Conference: /public/redeem-invite is unauthenticated, everything else
-// requires auth. Same selective-auth pattern as referral-network.
-const conferenceAuth = (req, res, next) => {
-  if (req.path.startsWith('/public/')) return next();
-  return authenticate(req, res, next);
-};
+// Invite links are bearer credentials for a room, not substitutes for an
+// authenticated account. Keep the legacy URL but authenticate every operation.
+const conferenceAuth = (req, res, next) => authenticate(req, res, next);
 router.use('/conference', conferenceAuth, conferenceRoutes);
 
 // Auth middleware (reuse existing)

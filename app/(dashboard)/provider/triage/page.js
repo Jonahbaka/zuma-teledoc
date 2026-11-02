@@ -72,12 +72,12 @@ export default function ProviderTriageDashboard() {
         try {
           const urgent = cases.filter(c => {
             try {
-              return c?.triageData?.triageLevel === 'URGENT' || (c?.triageData?.severity >= 4);
+              return c?.triageData?.assessmentStatus === 'clinician_verified' && c?.triageData?.triageLevel === 'URGENT';
             } catch {
               return false;
             }
           }).length;
-          const routine = cases.length - urgent;
+          const routine = cases.filter(c => c?.triageData?.assessmentStatus === 'clinician_verified' && c?.triageData?.triageLevel === 'ROUTINE').length;
           const totalSeverity = cases.reduce((sum, c) => {
             try {
               return sum + (c?.triageData?.severity || 0);
@@ -163,9 +163,9 @@ export default function ProviderTriageDashboard() {
             <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
               <BrainCircuit className="w-6 h-6 text-white" />
             </div>
-            AI Triage Dashboard
+            Patient Intake Review Dashboard
           </h1>
-          <p className="text-slate-500 mt-1">Review patient triage assessments and prioritize care</p>
+          <p className="text-slate-500 mt-1">Review patient-reported symptoms; clinical priority requires clinician assessment</p>
         </div>
         <Button
           onClick={fetchTriageCases}
@@ -246,10 +246,10 @@ export default function ProviderTriageDashboard() {
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">No Triage Cases</h3>
               <p className="text-gray-500 mb-4">
-                Patients will appear here after completing AI symptom checker in their portal
+                Patient-reported intake details appear here when available
               </p>
               <p className="text-sm text-gray-400">
-                The AI triage system analyzes patient symptoms and provides clinical assessments to help prioritize care
+                Patient-reported information is not a clinical urgency assessment. Assess patients before assigning priority.
               </p>
             </div>
           </CardContent>
@@ -260,7 +260,7 @@ export default function ProviderTriageDashboard() {
           <div className="lg:col-span-2 space-y-4">
             {triageCases.map((triageCase) => {
               const triage = triageCase.triageData || {};
-              const severity = triage.severity || 0;
+              const severity = triage.assessmentStatus === 'clinician_verified' ? triage.severity : null;
 
               return (
                 <Card
@@ -268,7 +268,7 @@ export default function ProviderTriageDashboard() {
                   className={`cursor-pointer hover:shadow-lg transition-all border-l-4 ${
                     selectedCase?.id === triageCase.id
                       ? 'ring-2 ring-blue-500 border-l-blue-600'
-                      : severity >= 4
+                      : severity == null ? 'border-l-slate-300' : severity >= 4
                         ? 'border-l-red-500'
                         : severity >= 3
                         ? 'border-l-yellow-500'
@@ -305,18 +305,18 @@ export default function ProviderTriageDashboard() {
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-2">
-                        {triage.triageLevel === 'URGENT' ? (
+                        {triage.assessmentStatus === 'clinician_verified' && triage.triageLevel === 'URGENT' ? (
                           <Badge className="bg-red-100 text-red-700 border-red-200 flex items-center gap-1">
                             <AlertTriangle className="w-3 h-3" />
                             URGENT
                           </Badge>
                         ) : (
                           <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-                            ROUTINE
+                            {triage.assessmentStatus === 'clinician_verified' && triage.triageLevel === 'ROUTINE' ? 'ROUTINE' : 'UNASSESSED'}
                           </Badge>
                         )}
                         <Badge className={`${getSeverityBgColor(severity)} ${getSeverityTextColor(severity)} border`}>
-                          Severity: {severity}/5
+                          Severity: {severity == null ? 'Unassessed' : `${severity}/5`}
                         </Badge>
                       </div>
                     </div>
@@ -407,19 +407,19 @@ export default function ProviderTriageDashboard() {
                     <div className={`p-3 rounded-lg border ${getSeverityBgColor(selectedCase.triageData?.severity || 0)}`}>
                       <p className="text-xs text-gray-600 uppercase font-bold mb-1">Severity</p>
                       <p className={`text-3xl font-bold ${getSeverityTextColor(selectedCase.triageData?.severity || 0)}`}>
-                        {selectedCase.triageData?.severity || 0}/5
+                        {selectedCase.triageData?.assessmentStatus === 'clinician_verified' ? `${selectedCase.triageData?.severity}/5` : 'Unassessed'}
                       </p>
                     </div>
                     <div className="p-3 rounded-lg border bg-gray-50">
                       <p className="text-xs text-gray-600 uppercase font-bold mb-1">Urgency</p>
-                      {selectedCase.triageData?.triageLevel === 'URGENT' ? (
+                      {selectedCase.triageData?.assessmentStatus === 'clinician_verified' && selectedCase.triageData?.triageLevel === 'URGENT' ? (
                         <Badge className="bg-red-100 text-red-700 mt-2">
                           <AlertTriangle className="w-3 h-3 mr-1" />
                           URGENT
                         </Badge>
                       ) : (
                         <Badge className="bg-blue-100 text-blue-700 mt-2">
-                          ROUTINE
+                          {selectedCase.triageData?.assessmentStatus === 'clinician_verified' && selectedCase.triageData?.triageLevel === 'ROUTINE' ? 'ROUTINE' : 'UNASSESSED'}
                         </Badge>
                       )}
                     </div>

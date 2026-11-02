@@ -73,17 +73,20 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
   const localStreamRef  = useRef(null);
   const screenStreamRef = useRef(null);
   const iceServersRef   = useRef([]);
+  const mediaEpoch = useRef(0);
   const [reconnectKey, setReconnectKey] = useState(0);
 
   // ── Acquire local media ────────────────────────────────────────────────────
-  const acquireLocalMedia = useCallback(async () => {
+  const acquireLocalMedia = useCallback(async (isCancelled = () => false) => {
     if (localStreamRef.current) return localStreamRef.current;
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    } catch {
+    } catch (error) {
+      if (isCancelled()) throw error;
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     }
+    if (isCancelled()) { stream.getTracks().forEach(track => track.stop()); throw new Error('Media request cancelled'); }
     localStreamRef.current = stream;
     setLocalStream(stream);
     return stream;
@@ -142,6 +145,7 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
 
   // ── Clean up everything ────────────────────────────────────────────────────
   const cleanupAll = useCallback((stopMedia = true) => {
+    mediaEpoch.current += 1;
     try { socketRef.current?.emit('conference:leave'); } catch {}
     try { socketRef.current?.disconnect(); } catch {}
     socketRef.current = null;
@@ -176,7 +180,8 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
 
       try {
         iceServersRef.current = await fetchIceServers();
-        await acquireLocalMedia();
+        await acquireLocalMedia(() => cancelled);
+        if (cancelled) return;
         const io = await loadSocketIO();
         if (cancelled) return;
 
@@ -239,6 +244,11 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
             }));
           }
           cleanupAll(false);
+        });
+
+        sock.on('conference:revoked', () => {
+          cleanupAll(true);
+          if (!cancelled) setSigState((state) => ({ ...state, phase: 'error', error: 'Conference access ended.', peers: [], streams: {} }));
         });
 
         sock.on('conference:participant-left', ({ participant }) => {
@@ -339,10 +349,14 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
     }
   }, []);
 
+  const screenRequestBusy = useRef(false);
   const startScreenShare = useCallback(async () => {
-    if (screenStreamRef.current) return;
+    if (screenStreamRef.current || screenRequestBusy.current) return;
+    screenRequestBusy.current = true;
+    const epoch = mediaEpoch.current;
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      if (epoch !== mediaEpoch.current || !socketRef.current) { stream.getTracks().forEach(track => track.stop()); return; }
       screenStreamRef.current = stream;
       setScreenStream(stream);
       setIsScreenSharing(true);
@@ -361,7 +375,7 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
       if (e.name !== 'AbortError' && e.name !== 'NotAllowedError') {
         console.error('[conference] getDisplayMedia failed', e);
       }
-    }
+    } finally { screenRequestBusy.current = false; }
   }, [replaceVideoTrack]);
 
   const stopScreenShare = useCallback(() => {

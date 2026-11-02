@@ -103,6 +103,39 @@ async function logEvent(roomId, participantId, actor, eventKind, payload, pool =
   );
 }
 
+// Pool callers use one checked-out transaction. Internal callers may pass the
+// already-checked-out client so invite consumption and joining stay atomic.
+async function conferenceTransaction(pool, work) {
+  if (typeof pool.connect !== 'function') return work(pool);
+  const client = await pool.connect(); let discard = false;
+  try { await client.query('BEGIN'); const result = await work(client); await client.query('COMMIT'); return result; }
+  catch (error) { try { await client.query('ROLLBACK'); } catch (_) { discard = true; } throw error; }
+  finally { client.release(discard); }
+}
+function lockedRoomOperation(operation, poolIndex, { allowClosed = false, revoke = false, end = false } = {}) {
+  return async (...args) => {
+    const pool = args[poolIndex] || getPool(); let room;
+    const result = await conferenceTransaction(pool, async client => {
+      room = (await client.query('SELECT * FROM ng_conf_rooms WHERE id = $1 FOR UPDATE', [args[0]])).rows[0];
+      if (!room) throwNotFound();
+      if (!allowClosed && !['scheduled', 'live'].includes(room.status)) throwInvalid('Conference is not open');
+      args[poolIndex] = client;
+      return operation(...args);
+    });
+    // Revoke signaling/media only after the authoritative transaction commits.
+    if (revoke && result && (end || result.user_id)) {
+      require('../../../server/services/socketService').revokeConferenceAccess(args[0], end ? null : result.user_id);
+      if (room.media_server === 'livekit') {
+        const media = require('./livekitService');
+        if (end) await media.closeMediaRoom(args[0]);
+        else if (result.user_id) await media.disconnectParticipant(args[0], result.user_id);
+      }
+    }
+    return result;
+  };
+}
+function forbidden(message) { const error = new Error(message); error.code = 'FORBIDDEN'; return error; }
+
 // ─── Room CRUD ───────────────────────────────────────────────────────────────
 
 async function createRoom(input, actor, pool = getPool()) {
@@ -290,8 +323,7 @@ async function endRoom(id, actor, pool = getPool()) {
   const room = await getRoom(id, pool);
   if (!room) throwNotFound();
     if (room.status === 'ended') {
-      if (room.media_server === 'livekit') await require('./livekitService').closeMediaRoom(id);
-      return room;
+          return room;
     }
   if (!isValidRoomTransition(room.status, 'ended')) throwInvalid(`Cannot end from ${room.status}`);
   const r = await pool.query(
@@ -307,7 +339,6 @@ async function endRoom(id, actor, pool = getPool()) {
       WHERE room_id=$1 AND status='admitted'`, [id]
   );
   await logEvent(id, null, actor, 'room_ended', null, pool);
-  if (room.media_server === 'livekit') await require('./livekitService').closeMediaRoom(id);
   return r.rows[0];
 }
 
@@ -315,46 +346,39 @@ async function cancelRoom(id, actor, { reason } = {}, pool = getPool()) {
   await assertRoomAccess(id, actor, { moderatorOnly: true }, pool);
   const room = await getRoom(id, pool);
   if (!room) throwNotFound();
+  if (room.status === 'cancelled') return room;
   if (!isValidRoomTransition(room.status, 'cancelled')) throwInvalid(`Cannot cancel from ${room.status}`);
   const r = await pool.query(
     `UPDATE ng_conf_rooms SET status='cancelled', cancelled_at=NOW(),
             cancellation_reason=$2, updated_at=NOW() WHERE id=$1 RETURNING *`,
     [id, reason || null]
   );
+  await pool.query("UPDATE ng_conf_participants SET status='left', left_at=NOW() WHERE room_id=$1 AND status IN ('admitted','waiting','invited')", [id]);
   await logEvent(id, null, actor, 'room_cancelled', { reason }, pool);
   return r.rows[0];
 }
 
 // ─── Participants ────────────────────────────────────────────────────────────
 
-async function joinRoom(roomId, actor, { display_name, role = 'observer', user_agent, client_ip } = {}, pool = getPool()) {
-  const room = await getRoom(roomId, pool);
+async function joinRoom(roomId, actor, options = {}, pool = getPool()) {
+  if (!actor?.user_id) throw forbidden('Sign in before joining this conference');
+  return conferenceTransaction(pool, client => joinRoomInTransaction(roomId, actor, options, client));
+}
+
+async function joinRoomInTransaction(roomId, actor, { display_name, role = 'observer', user_agent, client_ip } = {}, pool) {
+  const room = (await pool.query('SELECT * FROM ng_conf_rooms WHERE id = $1 FOR UPDATE', [roomId])).rows[0];
   if (!room) throwNotFound();
   if (room.status === 'cancelled' || room.status === 'ended') throwInvalid(`Room is ${room.status}`);
 
-  // Map platform/synonym roles → valid ng_conf_role; never let an invalid enum
-  // value reach the DB. Prefer the actor's platform role when no explicit role
-  // is supplied so a logged-in provider joins as a clinician, not an observer.
-  if (!actor?.user_id) {
-    const error = new Error('Sign in before joining this conference');
-    error.code = 'FORBIDDEN';
-    throw error;
-  }
   const existing = await getActorParticipant(roomId, actor.user_id, pool);
   const isRoomHost = String(room.host_user_id) === String(actor.user_id);
-  if (isRoomHost) {
-    role = coerceConfRole(actor.role, 'host');
-  } else if (
-    String(room.patient_user_id) === String(actor.user_id) ||
-    String(actor.role || '').toLowerCase() === 'patient'
-  ) {
-    role = 'patient';
-  } else if (existing?.role) {
-    role = existing.role;
-  } else {
-    // New accounts wait as observers. Client input can never self-promote.
-    role = 'observer';
-  }
+  const isRoomPatient = String(room.patient_user_id) === String(actor.user_id);
+  if (existing && ['removed', 'denied'].includes(existing.status)) throw forbidden('A new authorized invitation is required');
+  if (!isRoomHost && !isRoomPatient && !existing) throw forbidden('An authorized room invitation is required');
+  if (isRoomHost) role = coerceConfRole(actor.role, 'host');
+  else if (existing?.role) role = existing.role;
+  else if (isRoomPatient) role = 'patient';
+  else role = 'observer';
 
   // Count current admitted
   const c = await pool.query(
@@ -369,7 +393,7 @@ async function joinRoom(roomId, actor, { display_name, role = 'observer', user_a
   // The platform provider retains the clinical doctor role. Room ownership,
   // rather than that role's label, grants host admission. A retry also must not
   // demote an already admitted member back into the waiting room.
-  const status = isRoomHost || existing?.status === 'admitted' || !room.requires_waiting_room
+  const status = isRoomHost || existing?.status === 'admitted' || (!room.requires_waiting_room && existing?.status !== 'waiting')
     ? 'admitted'
     : 'waiting';
   const joinedAt = status === 'admitted' ? 'NOW()' : 'NULL';
@@ -404,9 +428,13 @@ async function admitParticipant(roomId, participantId, actor, pool = getPool()) 
 
   // Authorisation — actor must have admit_others
   const actorPart = await getActorParticipant(roomId, actor?.user_id, pool);
-  if (!can(actorPart?.role, actorPart?.permissions_json, 'admit_others')) {
+  if (actorPart?.status !== 'admitted' || !can(actorPart?.role, actorPart?.permissions_json, 'admit_others')) {
     const e = new Error('Insufficient permission to admit'); e.code = 'FORBIDDEN'; throw e;
   }
+
+  const room = await getRoom(roomId, pool);
+  const count = (await pool.query("SELECT COUNT(*)::int AS n FROM ng_conf_participants WHERE room_id=$1 AND status='admitted'", [roomId])).rows[0].n;
+  if (count >= room.max_participants) { const error = new Error('Room is full'); error.code = 'ROOM_FULL'; throw error; }
 
   const r = await pool.query(
     `UPDATE ng_conf_participants
@@ -420,7 +448,7 @@ async function admitParticipant(roomId, participantId, actor, pool = getPool()) 
 
 async function denyParticipant(roomId, participantId, actor, pool = getPool()) {
   const actorPart = await getActorParticipant(roomId, actor?.user_id, pool);
-  if (!can(actorPart?.role, actorPart?.permissions_json, 'admit_others')) {
+  if (actorPart?.status !== 'admitted' || !can(actorPart?.role, actorPart?.permissions_json, 'admit_others')) {
     const e = new Error('Insufficient permission'); e.code = 'FORBIDDEN'; throw e;
   }
   const r = await pool.query(
@@ -442,14 +470,16 @@ async function leaveRoom(roomId, participantId, actor, pool = getPool()) {
   )).rows[0];
   if (!actorPart || !target) throwNotFound();
   const isSelf = actorPart.id === participantId;
-  if (!isSelf && !can(actorPart.role, actorPart.permissions_json, 'kick_others')) {
+  if (isSelf && actorPart.status === 'left') return actorPart;
+  if (['removed', 'denied'].includes(actorPart.status)) throw forbidden('Active room membership required');
+  if (!isSelf && (actorPart.status !== 'admitted' || !can(actorPart.role, actorPart.permissions_json, 'kick_others') || !canActOn(actorPart.role, target.role))) {
     const error = new Error('Cannot end another participant session');
     error.code = 'FORBIDDEN';
     throw error;
   }
   const r = await pool.query(
     `UPDATE ng_conf_participants
-        SET status='left', left_at=NOW(),
+        SET status='${isSelf ? 'left' : 'removed'}', left_at=NOW(),
             attended_seconds = attended_seconds +
               GREATEST(0, EXTRACT(EPOCH FROM (NOW() - COALESCE(joined_at, NOW())))::int)
       WHERE id=$1 AND room_id=$2 RETURNING *`,
@@ -475,21 +505,20 @@ async function removeParticipant(roomId, participantId, actor, { reason } = {}, 
     [participantId, roomId, actor?.user_id || null]
   );
   await logEvent(roomId, participantId, actor, 'removed', { reason }, pool);
-  if (room.media_server === 'livekit' && r.rows[0]?.user_id) await require('./livekitService').disconnectParticipant(roomId, r.rows[0].user_id);
   return r.rows[0];
 }
 
 async function promoteParticipant(roomId, participantId, actor, { role, permissions_overrides } = {}, pool = getPool()) {
   const room = await assertRoomAccess(roomId, actor, { admittedOnly: true, allowAdmin: false }, pool);
   const actorPart = await getActorParticipant(roomId, actor?.user_id, pool);
-  if (actorPart?.role !== 'host' && actorPart?.role !== 'consultant') {
+  const owner = String(room.host_user_id) === String(actor.user_id);
+  if (!owner && actorPart?.role !== 'host' && actorPart?.role !== 'consultant') {
     const e = new Error('Only host or consultant can promote'); e.code = 'FORBIDDEN'; throw e;
   }
   // Coerce to a valid enum member; null leaves the existing role untouched.
   role = role ? coerceConfRole(role, 'observer') : null;
   const target = (await pool.query('SELECT role FROM ng_conf_participants WHERE id=$1 AND room_id=$2', [participantId, roomId])).rows[0];
   if (!target) throwNotFound();
-  const owner = String(room.host_user_id) === String(actor.user_id);
   if (!owner && (!canActOn(actorPart.role, target.role) || (role && !canActOn(actorPart.role, role)))) {
     const error = new Error('Cannot grant an equal or higher conference role'); error.code = 'FORBIDDEN'; throw error;
   }
@@ -538,8 +567,8 @@ async function getActorParticipant(roomId, userId, pool = getPool()) {
 
 async function raiseHand(roomId, participantId, raised, actor, pool = getPool()) {
   const actorPart = await getActorParticipant(roomId, actor?.user_id, pool);
-  if (!actorPart) {
-    const error = new Error('Conference membership required');
+  if (actorPart?.status !== 'admitted') {
+    const error = new Error('Active conference membership required');
     error.code = 'FORBIDDEN';
     throw error;
   }
@@ -560,10 +589,12 @@ async function raiseHand(roomId, participantId, raised, actor, pool = getPool())
 }
 
 async function setMute(roomId, participantId, { audio, video }, actor, pool = getPool()) {
-  // Self-mute is always allowed; muting others needs the permission.
-  if (actor?.user_id) {
+  // Only an admitted participant can control the active room.
+  if (!actor?.user_id) throw forbidden('Active conference membership required');
+  {
     const actorPart = await getActorParticipant(roomId, actor.user_id, pool);
-    const self = actorPart?.id === participantId;
+    if (actorPart?.status !== 'admitted') throw forbidden('Active conference membership required');
+    const self = actorPart.id === participantId;
     if (!self && !can(actorPart?.role, actorPart?.permissions_json, 'mute_others')) {
       const e = new Error('Cannot mute others'); e.code = 'FORBIDDEN'; throw e;
     }
@@ -664,8 +695,12 @@ async function listChat(roomId, { user_id, since, limit = 200 } = {}, pool = get
 // ─── Invites (hashed token, parallels portal_access_tokens) ──────────────────
 
 async function createInvite(roomId, actor, { role = 'observer', email, phone, display_name, ttlHours = 24 } = {}, pool = getPool()) {
-  await assertRoomAccess(roomId, actor, { moderatorOnly: true }, pool);
+  const room = await assertRoomAccess(roomId, actor, { admittedOnly: true, allowAdmin: false }, pool);
+  const inviter = await getActorParticipant(roomId, actor.user_id, pool);
+  const owner = String(room.host_user_id) === String(actor.user_id);
   role = coerceConfRole(role, 'observer');
+  if (!owner && (!can(inviter?.role, inviter?.permissions_json, 'admit_others') || !canActOn(inviter.role, role) || Object.entries(effectivePermissions(role)).some(([key, value]) => value && !can(inviter.role, inviter.permissions_json, key)))) throw forbidden('Invitation exceeds current moderator authority');
+  if (!Number.isFinite(Number(ttlHours)) || Number(ttlHours) <= 0 || Number(ttlHours) > 168) { const error = new Error('Invitation expiry must be within seven days'); error.code = 'BAD_INPUT'; throw error; }
   const raw = mintToken();
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
   await pool.query(
@@ -679,24 +714,34 @@ async function createInvite(roomId, actor, { role = 'observer', email, phone, di
 }
 
 async function redeemInvite(rawToken, actor, pool = getPool()) {
-  if (!rawToken) return null;
-  const hash = hashToken(rawToken);
-  const r = await pool.query(
-    `SELECT * FROM ng_conf_invites
-      WHERE token_hash = $1
-        AND revoked_at IS NULL
-        AND used_at IS NULL
-        AND expires_at > NOW()`,
-    [hash]
-  );
-  const inv = r.rows[0];
-  if (!inv) return null;
-  await pool.query(
-    `UPDATE ng_conf_invites SET used_at = NOW(), used_by_user = $2 WHERE id = $1`,
-    [inv.id, actor?.user_id || null]
-  );
-  // Auto-join as the invited role
-  return joinRoom(inv.room_id, actor, { display_name: inv.display_name, role: inv.role }, pool);
+  if (!actor?.user_id) throw forbidden('Sign in before redeeming a conference invitation');
+  if (typeof rawToken !== 'string' || !rawToken || rawToken.length > 512) return null;
+  return conferenceTransaction(pool, async client => {
+    const inv = (await client.query(
+      `SELECT * FROM ng_conf_invites WHERE token_hash=$1 AND revoked_at IS NULL
+         AND used_at IS NULL AND expires_at>clock_timestamp() FOR UPDATE`, [hashToken(rawToken)]
+    )).rows[0];
+    if (!inv) return null;
+    // Lock room before participant updates, consistent with join/moderation.
+    const room = (await client.query('SELECT * FROM ng_conf_rooms WHERE id = $1 FOR UPDATE', [inv.room_id])).rows[0];
+    if (!room) throwNotFound();
+    if (!['scheduled', 'live'].includes(room.status)) throwInvalid('Conference is not open');
+    await client.query(
+      `INSERT INTO ng_conf_participants (room_id,user_id,display_name,role,status)
+       VALUES ($1,$2,$3,$4,'invited') ON CONFLICT (room_id,user_id) DO UPDATE
+       SET role=CASE WHEN ng_conf_participants.status IN ('removed','denied','left','invited') THEN EXCLUDED.role ELSE ng_conf_participants.role END,
+           status=CASE WHEN ng_conf_participants.status IN ('removed','denied','left') THEN 'invited'::ng_conf_participant_status ELSE ng_conf_participants.status END,
+           permissions_json=CASE WHEN ng_conf_participants.status IN ('removed','denied','left','invited') THEN '{}'::jsonb ELSE ng_conf_participants.permissions_json END`,
+      [inv.room_id,actor.user_id,inv.display_name || actor.display_name || 'Participant',coerceConfRole(inv.role)]
+    );
+    const participant = await joinRoomInTransaction(inv.room_id,actor,{display_name:inv.display_name},client);
+    const used = await client.query(
+      `UPDATE ng_conf_invites SET used_at=NOW(),used_by_user=$2 WHERE id=$1
+         AND used_at IS NULL AND revoked_at IS NULL AND expires_at>clock_timestamp() RETURNING id`, [inv.id,actor.user_id]
+    );
+    if (!used.rows.length) throwInvalid('Invitation expired or already redeemed');
+    return participant;
+  });
 }
 
 // ─── Events readout ──────────────────────────────────────────────────────────
@@ -729,25 +774,25 @@ module.exports = {
   getRoomByCode,
   assertRoomAccess,
   listRooms,
-  startRoom,
-  endRoom,
-  cancelRoom,
+  startRoom: lockedRoomOperation(startRoom, 2),
+  endRoom: lockedRoomOperation(endRoom, 2, { allowClosed: true, revoke: true, end: true }),
+  cancelRoom: lockedRoomOperation(cancelRoom, 3, { allowClosed: true, revoke: true, end: true }),
   // participants
   joinRoom,
-  admitParticipant,
-  denyParticipant,
-  leaveRoom,
-  removeParticipant,
-  promoteParticipant,
+  admitParticipant: lockedRoomOperation(admitParticipant, 3),
+  denyParticipant: lockedRoomOperation(denyParticipant, 3),
+  leaveRoom: lockedRoomOperation(leaveRoom, 3, { allowClosed: true, revoke: true }),
+  removeParticipant: lockedRoomOperation(removeParticipant, 4, { revoke: true }),
+  promoteParticipant: lockedRoomOperation(promoteParticipant, 4),
   listParticipants,
   // in-call
-  raiseHand,
-  setMute,
+  raiseHand: lockedRoomOperation(raiseHand, 4),
+  setMute: lockedRoomOperation(setMute, 4),
   // chat
-  sendChat,
+  sendChat: lockedRoomOperation(sendChat, 3),
   listChat,
   // invites
-  createInvite,
+  createInvite: lockedRoomOperation(createInvite, 3),
   redeemInvite,
   // events
   listEvents,
