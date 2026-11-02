@@ -275,3 +275,17 @@ test('manual prescription provenance is optional and cannot bypass clinical revi
   assert.match(migration,/clinical_ai_source_encounter_id/);
   assert.doesNotMatch(rx.slice(rx.indexOf('async function verifyClinicalAiRxProvenance'), rx.indexOf('async function createDraft')), /\.sign\(|\.sendToPharmacy\(|\.dispenseItem\(/);
 });
+
+test('pharmacy medication checkout never treats an AI-reviewed Rx draft as signed or routed', () => {
+ const fs=require('node:fs'),path=require('node:path');
+ const delivery=fs.readFileSync(path.join(__dirname,'../services/logistics/medicationDeliveryWorkflowService.js'),'utf8');
+ const rxRoutes=fs.readFileSync(path.join(__dirname,'../routes/prescriptions.js'),'utf8');
+ const rxService=fs.readFileSync(path.join(__dirname,'../services/rx-engine/prescriptionWorkflowService.js'),'utf8');
+ assert.match(delivery,/!rx\.signed_at/);
+ assert.match(delivery,/rx\.routed_pharmacy_id !== p\.id/);
+ assert.match(delivery,/prescription_claim_active=true/);
+ assert.match(rxRoutes,/\/\:id\/sign/);
+ assert.match(rxRoutes,/\/\:id\/send/);
+ assert.match(rxService,/lifecycle_status\)\s*VALUES|lifecycle_status, clinical_ai_source_suggestion_id/);
+ assert.match(rxService,/'drafted'/);
+});
