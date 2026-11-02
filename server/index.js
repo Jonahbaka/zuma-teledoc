@@ -728,17 +728,21 @@ async function initializeApp() {
     console.error('🇳🇬 Stack:', err.stack?.split('\n').slice(0, 5).join('\n'));
   }
 
-  // Run Nigeria migrations (non-blocking)
-  try {
+  // Clinical schema is a readiness prerequisite, never background work.
+  // Refuse to serve API traffic if the Nigeria migration manifest fails.
+  // Keep liveness available, but /readyz and /api/health must fail closed.
+  {
     const { runNgMigrations } = require('../ng/migrations/migrate');
     const pool = require('./db').getPool();
-    runNgMigrations(pool).then(result => {
-      console.log(`🇳🇬 Nigeria DB migrations: ${result.ran} new, ${result.total} total`);
-    }).catch(err => {
-      console.error('🇳🇬 Nigeria migrations warning:', err.message);
-    });
-  } catch (err) {
-    console.error('🇳🇬 Nigeria migrations skipped:', err.message);
+    try {
+      const result = await runNgMigrations(pool);
+      console.log('[NG] Migration manifest verified: ' + result.ran + ' new');
+    } catch (error) {
+      nextInitStatus = 'failed';
+      nextInitError = 'Nigeria migration verification failed';
+      console.error('[BOOT] Nigeria migrations blocked readiness:', error.code || 'MIGRATION_FAILED');
+      throw error;
+    }
   }
 
   console.log('✅ API routes loading complete (+ Hive Gateway + OpenClaw REST API)');
