@@ -25,6 +25,7 @@ import {
   Zap
 } from 'lucide-react';
 import { io } from 'socket.io-client';
+import { installSocketSessionRefresh } from '@/lib/socketSession';
 import HolographicAvatar from '@/components/agents/HolographicAvatar';
 import { ARCHITECTURE_LAYERS, COUNCIL_PERSONAS, getArchitecturePersona, getCouncilPersona, getThemeForColor } from '@/lib/agentPersonas';
 import { useSpeechSynthesis } from '@/lib/useSpeechSynthesis';
@@ -180,6 +181,7 @@ export default function AgentOpsDashboard() {
       withCredentials: true
     });
 
+    installSocketSessionRefresh(socket);
     socket.on('connect', () => {
       setSocketConnected(true);
       socket.emit('agent-ops:subscribe');

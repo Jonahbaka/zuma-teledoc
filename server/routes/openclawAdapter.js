@@ -79,7 +79,17 @@ function resolveAgentId(agentId) {
  * Called once from server/index.js after Express is set up.
  */
 function initOpenClawAdapter(httpServer, hiveRouteHandler) {
-  const wss = new WebSocketServer({ server: httpServer, path: '/openclaw' });
+  // A ws.Server({server,path}) rejects every other upgrade path, corrupting
+  // Socket.IO's handshake on the shared HTTP server. Only claim our own path.
+  const wss = new WebSocketServer({ noServer: true });
+  const upgrade = (request, socket, head) => {
+    let pathname;
+    try { pathname = new URL(request.url, 'http://localhost').pathname; } catch (_) { return; }
+    if (pathname !== '/openclaw') return;
+    wss.handleUpgrade(request, socket, head, client => wss.emit('connection', client, request));
+  };
+  httpServer.on('upgrade', upgrade);
+  wss.on('close', () => httpServer.off('upgrade', upgrade));
 
   wss.on('connection', (ws, req) => {
     const clientId = `oc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;

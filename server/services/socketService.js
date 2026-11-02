@@ -31,6 +31,17 @@ const getConferenceRoomKey = (roomId) => `conference:${roomId}`;
 
 let io = null;
 
+function revokeUserSessions(userId,sessionId=null) {
+  for(const namespace of [io,io?.of('/hive')]) {
+    for(const socket of namespace?.sockets?.sockets?.values?.() || namespace?.sockets?.values?.() || []) {
+      if(String(socket.userId)!==String(userId)||(sessionId&&socket.authSessionId!==sessionId))continue;
+      socket.emit('conference:revoked',{});
+      socket.disconnect(true);
+    }
+  }
+}
+
+
 function revokeConferenceAccess(roomId, userId = null) {
   for (const [socketId, session] of conferenceSocketMeta) {
     if (String(session.roomId) !== String(roomId) || (userId && String(session.participant.userId) !== String(userId))) continue;
@@ -289,9 +300,11 @@ const initializeSocket = (httpServer) => {
         process.env.JWT_SECRET ||
         global.__JWT_ACCESS_SECRET;
       const decoded = jwt.verify(token, accessSecret);
-      socket.userId = decoded.userId || decoded.id;
-      socket.userRole = canonicalRole(decoded.role);
-      socket.userName = decoded.name || `${decoded.firstName || ''} ${decoded.lastName || ''}`.trim();
+      const current = await require('./socketAuthSession').installSocketAuthorization(socket, { decoded, verify: value => jwt.verify(value, accessSecret), db, onRevoke: () => socket.emit('conference:revoked', {}) });
+      socket.userId = current.id;
+      socket.userRole = canonicalRole(current.role);
+      socket.userName = `${current.first_name || ''} ${current.last_name || ''}`.trim();
+
       
       next();
     } catch (error) {
@@ -818,9 +831,11 @@ const initializeSocket = (httpServer) => {
         process.env.JWT_SECRET ||
         global.__JWT_ACCESS_SECRET;
       const decoded = jwt.verify(token, accessSecret);
-      socket.userId = decoded.userId || decoded.id;
-      socket.userRole = canonicalRole(decoded.role);
-      socket.userName = decoded.name || `${decoded.firstName || ''} ${decoded.lastName || ''}`.trim();
+      const current = await require('./socketAuthSession').installSocketAuthorization(socket, { decoded, verify: value => jwt.verify(value, accessSecret), db, onRevoke: () => socket.emit('conference:revoked', {}) });
+      socket.userId = current.id;
+      socket.userRole = canonicalRole(current.role);
+      socket.userName = `${current.first_name || ''} ${current.last_name || ''}`.trim();
+
       socket.hiveRole = socket.userRole;
       next();
     } catch {
@@ -983,6 +998,7 @@ const getUserLastSeen = (userId) => {
 module.exports = {
   initializeSocket,
   revokeConferenceAccess,
+  revokeUserSessions,
   getIO,
   emitNewMessage,
   emitAgentOpsEvent,

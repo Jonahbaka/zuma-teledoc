@@ -35,6 +35,7 @@ const {
 } = require('../../lib/validation');
 
 const crypto = require('crypto');
+const authSessions = require('../services/authSessionService');
 const router = express.Router();
 
 const BCRYPT_ROUNDS = 12;
@@ -89,15 +90,15 @@ const REFRESH_TOKEN_EXPIRES = process.env.JWT_REFRESH_EXPIRES || '7d';
 /**
  * Generate access and refresh tokens
  */
-const generateTokens = (userId, role) => {
+const generateTokens = (userId, role, { sessionVersion = 0, sessionId } = {}) => {
   const accessToken = jwt.sign(
-    { userId, role, jti: crypto.randomUUID() },
+    { userId, role, sessionVersion, ...(sessionId ? { sessionId } : {}), jti: crypto.randomUUID() },
     ACCESS_TOKEN_SECRET,
     { expiresIn: ACCESS_TOKEN_EXPIRES }
   );
   
   const refreshToken = jwt.sign(
-    { userId, type: 'refresh', jti: crypto.randomUUID() },
+    { userId, type: 'refresh', sessionVersion, ...(sessionId ? { sessionId } : {}), jti: crypto.randomUUID() },
     REFRESH_TOKEN_SECRET,
     { expiresIn: REFRESH_TOKEN_EXPIRES }
   );
@@ -260,17 +261,8 @@ router.post('/register', async (req, res) => {
       [user.id, hash(verificationToken), expiresAt]
     );
     
-    // Generate tokens
-    const { accessToken, refreshToken } = generateTokens(user.id, user.role);
-    
-    // Store refresh token hash
-    const tokenHash = hash(refreshToken);
-    await db.query(
-      `INSERT INTO refresh_tokens (user_id, token_hash, ip_address, expires_at)
-       VALUES ($1, $2, $3, NOW() + INTERVAL '7 days')`,
-      [user.id, tokenHash, req.ip]
-    );
-    
+    const { accessToken, refreshToken } = await authSessions.issueSession({ ...user, password_hash: passwordHash }, req, generateTokens);
+
     // Set cookies
     setAuthCookies(res, accessToken, refreshToken);
     
@@ -517,17 +509,8 @@ const loginHandler = async (req, res) => {
       [user.id]
     );
     
-    // Generate tokens
-    const { accessToken, refreshToken } = generateTokens(user.id, user.role);
-    
-    // Store refresh token
-    const tokenHash = hash(refreshToken);
-    await db.query(
-      `INSERT INTO refresh_tokens (user_id, token_hash, ip_address, device_info, expires_at)
-       VALUES ($1, $2, $3, $4, NOW() + INTERVAL '7 days')`,
-      [user.id, tokenHash, req.ip, req.get('user-agent')]
-    );
-    
+    const { accessToken, refreshToken } = await authSessions.issueSession(user, req, generateTokens);
+
     // Set cookies
     setAuthCookies(res, accessToken, refreshToken);
     
@@ -580,9 +563,9 @@ const loginHandler = async (req, res) => {
     
     logger.error('Login error', { error: error.message, stack: error.stack });
     
-    res.status(500).json({
+    res.status(error.statusCode === 401 ? 401 : 500).json({
       success: false,
-      error: 'Login failed'
+      error: error.statusCode === 401 ? 'Credentials changed; sign in again' : 'Login failed'
     });
   }
 };
@@ -627,54 +610,8 @@ router.post('/refresh', async (req, res) => {
       });
     }
     
-    // Check if token exists in database and not revoked
-    const tokenHash = hash(refreshToken);
-    const { rows: tokens } = await db.query(
-      `SELECT id, user_id FROM refresh_tokens 
-       WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > NOW()`,
-      [tokenHash]
-    );
-    
-    if (tokens.length === 0 || tokens[0].user_id !== decoded.userId) {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid or expired refresh token'
-      });
-    }
-    
-    // Get user
-    const { rows: users } = await db.query(
-      `SELECT id, email, role, first_name, last_name, is_active, mfa_enabled
-       FROM users WHERE id = $1`,
-      [decoded.userId]
-    );
-    
-    if (users.length === 0 || !users[0].is_active) {
-      return res.status(401).json({
-        success: false,
-        error: 'User not found or inactive'
-      });
-    }
-    
-    const user = users[0];
-    
-    // Revoke old refresh token
-    await db.query(
-      'UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1',
-      [tokens[0].id]
-    );
-    
-    // Generate new tokens
-    const { accessToken, refreshToken: newRefreshToken } = generateTokens(user.id, user.role);
-    
-    // Store new refresh token
-    const newTokenHash = hash(newRefreshToken);
-    await db.query(
-      `INSERT INTO refresh_tokens (user_id, token_hash, ip_address, expires_at)
-       VALUES ($1, $2, $3, NOW() + INTERVAL '7 days')`,
-      [user.id, newTokenHash, req.ip]
-    );
-    
+    const { user, accessToken, refreshToken: newRefreshToken } = await authSessions.rotateSession(decoded, refreshToken, req, generateTokens);
+
     // Set cookies
     setAuthCookies(res, accessToken, newRefreshToken);
     const rotatedMfa = user.mfa_enabled ? rotateMfaAttestation(req, user.id, accessToken) : null;
@@ -697,6 +634,7 @@ router.post('/refresh', async (req, res) => {
       });
     }
     
+    if (error.statusCode === 401) return res.status(401).json({ success: false, error: 'Invalid or expired refresh token' });
     logger.error('Token refresh error', { error: error.message });
     res.status(500).json({
       success: false,
@@ -714,15 +652,8 @@ router.post('/logout', authenticate, async (req, res) => {
     const explicit = Object.prototype.hasOwnProperty.call(req.body || {}, 'refreshToken');
     const refreshToken = explicit ? req.body.refreshToken : req.cookies.refreshToken;
     
-    if (refreshToken) {
-      // Revoke refresh token
-      const tokenHash = hash(refreshToken);
-      await db.query(
-        'UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1 AND user_id = $2',
-        [tokenHash, req.user.id]
-      );
-    }
-    
+    await authSessions.revokeSession(req.user.id, refreshToken, req.authSessionId);
+
     // Clear cookies
     clearAuthCookies(res);
     
@@ -1103,37 +1034,8 @@ router.post('/password/change', authenticate, async (req, res) => {
     const user = rows[0];
     const wasRequiredPasswordChange = user.must_change_password === true;
 
-    // Update password
-    await db.query(
-      `UPDATE users
-          SET password_hash = $1,
-              password_changed_at = NOW(),
-              must_change_password = FALSE,
-              updated_at = NOW()
-        WHERE id = $2`,
-      [newPasswordHash, req.user.id]
-    );
-    
-    // Revoke all existing refresh tokens after a credential rotation.
-    await db.query(
-      'UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1',
-      [req.user.id]
-    );
-    
-    // Audit successful password change
-    await logAuditEvent({
-      userId: req.user.id,
-      action: 'change_password',
-      resourceType: 'user',
-      resourceId: req.user.id,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      description: 'Password changed successfully',
-      oldValues: { passwordChanged: true, mustChangePassword: wasRequiredPasswordChange },
-      newValues: { passwordChanged: true, mustChangePassword: false },
-      success: true
-    });
-    
+    const rotated = await authSessions.changeCredentials({ userId: req.user.id, expectedPasswordHash: user.password_hash, newPasswordHash, request: req, generateTokens });
+
     logger.info('Password changed', { 
       userId: req.user.id,
       email: rows[0].email,
@@ -1142,14 +1044,7 @@ router.post('/password/change', authenticate, async (req, res) => {
     });
 
     if (wasRequiredPasswordChange) {
-      const { accessToken, refreshToken } = generateTokens(req.user.id, user.role);
-      const tokenHash = hash(refreshToken);
-
-      await db.query(
-        `INSERT INTO refresh_tokens (user_id, token_hash, ip_address, device_info, expires_at)
-         VALUES ($1, $2, $3, $4, NOW() + INTERVAL '7 days')`,
-        [req.user.id, tokenHash, req.ip, req.get('user-agent')]
-      );
+      const { accessToken, refreshToken } = rotated.tokens;
 
       setAuthCookies(res, accessToken, refreshToken);
 
@@ -1201,9 +1096,9 @@ router.post('/password/change', authenticate, async (req, res) => {
       });
     }
     
-    res.status(500).json({
+    res.status(error.statusCode === 401 ? 401 : 500).json({
       success: false,
-      error: 'Failed to change password'
+      error: error.statusCode === 401 ? 'Credentials changed; sign in again' : 'Failed to change password'
     });
   }
 });
@@ -1319,10 +1214,6 @@ router.post('/password/reset', async (req, res) => {
     
     // Check if token expired
     if (new Date(resetToken.expires_at) < new Date()) {
-      await db.query(
-        'DELETE FROM password_reset_tokens WHERE user_id = $1',
-        [resetToken.user_id]
-      );
       return res.status(400).json({
         success: false,
         error: 'Reset token has expired. Please request a new one.'
@@ -1332,29 +1223,8 @@ router.post('/password/reset', async (req, res) => {
     // Hash new password
     const newPasswordHash = await bcrypt.hash(data.newPassword, BCRYPT_ROUNDS);
     
-    // Update password
-    await db.query(
-      `UPDATE users
-          SET password_hash = $1,
-              password_changed_at = NOW(),
-              must_change_password = FALSE,
-              updated_at = NOW()
-        WHERE id = $2`,
-      [newPasswordHash, resetToken.user_id]
-    );
-    
-    // Delete reset token
-    await db.query(
-      'DELETE FROM password_reset_tokens WHERE user_id = $1',
-      [resetToken.user_id]
-    );
-    
-    // Revoke all refresh tokens
-    await db.query(
-      'UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1',
-      [resetToken.user_id]
-    );
-    
+    await authSessions.changeCredentials({ userId: resetToken.user_id, resetTokenHash: tokenHash, newPasswordHash, request: req, generateTokens });
+
     logger.info('Password reset completed', { userId: resetToken.user_id });
     
     res.json({
@@ -1363,9 +1233,9 @@ router.post('/password/reset', async (req, res) => {
     });
   } catch (error) {
     logger.error('Password reset error', { error: error.message });
-    res.status(500).json({
+    res.status(error.statusCode === 401 ? 400 : 500).json({
       success: false,
-      error: 'Failed to reset password'
+      error: error.statusCode === 401 ? 'Invalid or expired reset token' : 'Failed to reset password'
     });
   }
 });

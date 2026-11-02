@@ -306,9 +306,12 @@ async function main() {
 
 async function exerciseConference({ doctor, nurse, patient, external, pageErrors, session }) {
   const guests=[]; let conference;
+  const refreshFrames=new Map(),signalFrames=new Map();let latestExpiry=0;
+  const observeRefresh=p=>{refreshFrames.set(p,0);signalFrames.set(p,0);p.on('websocket',ws=>{ws.on('framesent',frame=>{if(String(frame.payload).includes('auth:reauthenticate'))refreshFrames.set(p,refreshFrames.get(p)+1);});ws.on('framereceived',frame=>{if(String(frame.payload).includes('conference:signal'))signalFrames.set(p,signalFrames.get(p)+1);});});};
+  const shortSession=async p=>{const jwt=require('jsonwebtoken');const original=await p.evaluate(()=>localStorage.getItem('accessToken'));const claims=jwt.verify(original,process.env.JWT_ACCESS_SECRET);assert.ok(claims.sessionId,'Actual login must create a session family');const access=jwt.sign({userId:claims.userId,role:claims.role,sessionVersion:claims.sessionVersion,sessionId:claims.sessionId},process.env.JWT_ACCESS_SECRET,{expiresIn:'12s'});latestExpiry=Math.max(latestExpiry,jwt.decode(access).exp*1000);await p.evaluate(token=>localStorage.setItem('accessToken',token),access);};
   const bearer=new Map([[context,session.accessToken]]);
   const request=async(ctx,route,data)=>{const response=await ctx.request.post(route,{data,...(bearer.has(ctx)?{headers:{Authorization:`Bearer ${bearer.get(ctx)}`}}:{})});assert.equal(response.ok(),true,`Synthetic conference API ${route}: ${response.status()}`);return response.json();};
-  const trackMedia=()=>{window.__conferenceStreams=[];const original=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=async options=>{const stream=await original(options);window.__conferenceStreams.push(stream);return stream;};};
+  const trackMedia=()=>{window.__conferencePeers=[];const OriginalPeer=window.RTCPeerConnection;window.RTCPeerConnection=class extends OriginalPeer{constructor(...args){super(...args);window.__conferencePeers.push(this);this.addEventListener('icecandidate',event=>{if(event.candidate)this.__lastCandidate=event.candidate;});}};window.__conferenceStreams=[];const original=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=async options=>{const stream=await original(options);window.__conferenceStreams.push(stream);return stream;};};
   try {
     await context.grantPermissions(['camera','microphone']);await context.addInitScript(trackMedia);
     conference=(await request(context,'/api/ng/conference/rooms',{title:'Synthetic three-party workflow',host_display_name:'Synthetic clinical host',patient_user_id:patient.id,max_participants:3,media_server:'peer_mesh',requires_waiting_room:false})).room;
@@ -332,17 +335,30 @@ async function exerciseConference({ doctor, nurse, patient, external, pageErrors
     await request(context,`/api/ng/conference/rooms/${conference.id}/start`,{});
     await page.goto(`/ng/conference/${conference.id}`,{waitUntil:'networkidle'});
     await expect(page.getByPlaceholder('e.g. Dr. Amina Okafor')).toHaveValue('Synthetic clinical host');
+    observeRefresh(page);await shortSession(page);
     await page.getByRole('button',{name:'Join Now',exact:true}).click();
     await expect(page.getByRole('button',{name:'End room',exact:true})).toBeVisible();
     for(const [index,guest] of guests.entries()) {
       await guest.page.goto(`/ng/conference/${conference.id}`,{waitUntil:'networkidle'});
       await expect(guest.page.getByPlaceholder('e.g. Dr. Amina Okafor')).toHaveValue(`Synthetic invited family ${index+1}`);
+      observeRefresh(guest.page);await shortSession(guest.page);
       await guest.page.getByRole('button',{name:'Join Now',exact:true}).click();
       await expect(guest.page.getByRole('button',{name:'End room',exact:true})).toHaveCount(0);
     }
     const activeVideos=p=>p.evaluate(()=>Array.from(document.querySelectorAll('video')).filter(video=>video.srcObject?.getVideoTracks().some(track=>track.readyState==='live')&&video.readyState>=2).length);
     for(const p of [page,...guests.map(guest=>guest.page)])await expect.poll(()=>activeVideos(p),{timeout:45000}).toBeGreaterThanOrEqual(3);
     await page.screenshot({path:path.join(ART,'three-party-conference.png'),fullPage:true});
+    await delay(Math.max(0,latestExpiry-Date.now()+1000));
+    for(const p of [page,...guests.map(guest=>guest.page)]) {
+      // Retransmit a real gathered candidate through the actual conference
+      // socket, forcing an expired transport token to refresh without mock I/O.
+      const signalsBefore=Array.from(signalFrames.values()).reduce((sum,value)=>sum+value,0);
+      assert.ok(await p.evaluate(()=>{const peer=window.__conferencePeers.find(value=>value.__lastCandidate&&value.onicecandidate);if(!peer)return false;peer.onicecandidate({candidate:peer.__lastCandidate});return true;}));
+      await expect.poll(()=>refreshFrames.get(p),{timeout:30000}).toBeGreaterThan(0);
+      await expect.poll(()=>Array.from(signalFrames.values()).reduce((sum,value)=>sum+value,0),{timeout:30000}).toBeGreaterThan(signalsBefore);
+      await expect.poll(()=>activeVideos(p),{timeout:20000}).toBeGreaterThanOrEqual(3);
+    }
+    pass('three-party media remains active while expired socket tokens refresh and reauthenticate through real HTTP/socket paths');
     await request(context,`/api/ng/conference/rooms/${conference.id}/participants/${guests[1].participant.id}/remove`,{});
     await expect.poll(()=>guests[1].page.evaluate(()=>window.__conferenceStreams.length>0&&window.__conferenceStreams.every(stream=>stream.getTracks().every(track=>track.readyState==='ended'))),{timeout:20000}).toBe(true);
     const rejoin=await guests[1].context.request.post(`/api/ng/conference/rooms/${conference.id}/join`,{data:{role:'host'},headers:{Authorization:`Bearer ${bearer.get(guests[1].context)}`}});assert.equal(rejoin.status(),403);

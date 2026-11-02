@@ -35,6 +35,10 @@ test('reviewed SQL migrations are loaded from the explicit allowlist', () => {
       file: '040_clinical_encrypted_history.sql',
     },
     {
+      name: '041_atomic_auth_sessions',
+      file: '041_atomic_auth_sessions.sql',
+    },
+    {
       name: '400_agent_orchestrator_schema',
       file: '400_agent_orchestrator_schema.sql',
     },
@@ -58,4 +62,13 @@ test('agent schema runs after inline core migrations', () => {
 
   assert.ok(inlineIndex >= 0, 'expected inline chat/upload migration to remain present');
   assert.ok(agentIndex > inlineIndex, 'agent orchestrator schema should run after core inline migrations');
+});
+
+
+test('session migration is additive and preserves credential epoch and token-family invariants', () => {
+  const migration = migrate.getMigrations().find(item => item.name === '041_atomic_auth_sessions');
+  assert.ok(migration);
+  assert.match(migration.up, /credential_version INTEGER NOT NULL DEFAULT 0/);
+  assert.match(migration.up, /family_id UUID NOT NULL DEFAULT uuid_generate_v4\(\)/);
+  assert.doesNotMatch(migration.up, /DROP\s+(TABLE|COLUMN)|DELETE\s+FROM/i);
 });

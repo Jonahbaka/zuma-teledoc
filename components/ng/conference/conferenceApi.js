@@ -21,6 +21,7 @@ async function call(path, opts = {}) {
 }
 
 export const conf = {
+  getIceServers: () => call('/ice-servers'),
   // Rooms
   listRooms:   (q = {}) => call('/rooms?' + new URLSearchParams(prune(q))),
   createRoom:  (body)   => call('/rooms', { method: 'POST', body: JSON.stringify(body) }),

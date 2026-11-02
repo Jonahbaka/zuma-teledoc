@@ -3031,6 +3031,10 @@ const SQL_FILE_MIGRATIONS = [
     file: '040_clinical_encrypted_history.sql'
   },
   {
+    name: '041_atomic_auth_sessions',
+    file: '041_atomic_auth_sessions.sql'
+  },
+  {
     name: '400_agent_orchestrator_schema',
     file: '400_agent_orchestrator_schema.sql'
   }
