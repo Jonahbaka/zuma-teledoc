@@ -1114,7 +1114,16 @@ async function createReferral(pool, req, context, {
       `SELECT * FROM ng_referrals WHERE programme_id = $1 AND idempotency_key = $2 LIMIT 1`,
       [context.programme_id, idempotencyKey]
     );
-    if (existing.rows.length) return formatProtectedRecord(existing.rows[0], ['reason', 'clinical_notes', 'response_summary']);
+    if (existing.rows.length) {
+      const prior = existing.rows[0];
+      const previousSource = prior.audit_metadata?.sourceSuggestionId || null;
+      if (previousSource !== sourceSuggestionId
+        || String(prior.patient_user_id) !== String(patientUserId)
+        || String(prior.encounter_id) !== String(encounterId)) {
+        throw workflowError(409, 'A referral idempotency key cannot be reused for a different encounter or review.', 'REFERRAL_IDEMPOTENCY_CONFLICT');
+      }
+      return formatProtectedRecord(prior, ['reason', 'clinical_notes', 'response_summary']);
+    }
     const protectedReason = encrypt(reason || null);
     const protectedClinicalNotes = encrypt(clinicalNotes || null);
     const result = await client.query(
