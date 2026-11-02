@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const pharmacyOnboardingService = require('../services/pharmacy/pharmacyOnboardingService');
 const inventoryService = require('../services/pharmacy/inventoryService');
+const { previewCatalogue } = require('../services/pharmacy/cataloguePreviewService');
 const orderService = require('../services/pharmacy/orderService');
 const medicationDelivery = require('../services/logistics/medicationDeliveryWorkflowService');
 const walletService = require('../services/pharmacy/walletService');
@@ -280,6 +281,21 @@ router.patch('/:pharmacyId/inventory/:itemId', async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// Transport-free partner catalogue validation; never imports or activates.
+router.post('/:pharmacyId/inventory/catalogue-preview', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  try {
+    const result = await previewCatalogue(getPool(), req.user, req.params.pharmacyId, req.body);
+    res.json(result);
+  } catch (error) {
+    const status = error.statusCode || 503;
+    res.status(status).json({
+      code: error.statusCode ? error.code : 'CATALOGUE_PREVIEW_UNAVAILABLE',
+      error: error.statusCode ? error.message : 'Catalogue validation is temporarily unavailable.',
+    });
   }
 });
 

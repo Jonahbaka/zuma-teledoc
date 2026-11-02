@@ -203,6 +203,48 @@ test('real medication HTTP routes enforce current JWT account roles, pharmacy sc
       const attempted = await mutate(pharmacyBase(f, orderId), f.pharmacist, 'confirm'); assert.equal(attempted.status, 409);
     });
 
+    await t.test('catalogue preview validates exact partner identity over authenticated HTTP without importing or activating', async () => {
+      const f = await fixture();
+      const drug = (await pool.query(`UPDATE ng_drug_catalog SET dosage_form='tablet',strength='10 mg',pack_size='10 tablets',manufacturer='Synthetic manufacturer',nafdac_approved=TRUE WHERE id=$1 RETURNING *`, [f.drugId])).rows[0];
+      const profile = (await pool.query(`INSERT INTO ng_pharmacy_commercial_profiles(code,display_name,status,settings,created_by,updated_by)
+        VALUES($1,'Synthetic catalogue preview','testing','{"mode":"restricted_file","inventoryMaxAgeSeconds":3600}'::jsonb,$2,$2) RETURNING *`,
+      [`preview-${crypto.randomUUID()}`,f.superAdmin.id])).rows[0];
+      await pool.query(`INSERT INTO ng_pharmacy_commercial_branches(pharmacy_id,profile_id,partner_branch_reference,approval_reference,approved_by)
+        VALUES($1,$2,'synthetic-preview-branch','synthetic-test-only-reference',$3)`,[f.pharmacyId,profile.id,f.superAdmin.id]);
+      const endpoint = `/api/ng/pharmacy/${f.pharmacyId}/inventory/catalogue-preview`;
+      const body = { schemaVersion:1,profileId:profile.id,partnerBranchReference:'synthetic-preview-branch',generatedAt:new Date().toISOString(),items:[{
+        partnerItemId:'synthetic-sku',drugId:f.drugId,identity:{name:drug.name,dosageForm:drug.dosage_form,strength:drug.strength,packSize:drug.pack_size,manufacturer:drug.manufacturer},
+        quantityUnit:'catalogue_pack',quantityAvailable:5,unitPriceMinor:12345,currency:'NGN',batchNumber:'candidate-only-batch',expiryDate:'2099-01-01',observedAt:new Date(Date.now()-1000).toISOString(),
+      }] };
+      const before = (await pool.query('SELECT * FROM ng_pharmacy_inventory WHERE pharmacy_id=$1 ORDER BY id',[f.pharmacyId])).rows;
+      assert.equal((await http(endpoint,{method:'POST',body})).status,401);
+      assert.equal((await http(endpoint,{actor:f.otherPharmacist,method:'POST',body})).status,403);
+      assert.equal((await http(endpoint,{actor:f.patient,bearer:token(f.patient,{role:'super_admin'}),method:'POST',body})).status,403);
+      for (const change of [{profileId:crypto.randomUUID()},{partnerBranchReference:'wrong-branch'}]) {
+        const denied=await http(endpoint,{actor:f.pharmacist,method:'POST',body:{...body,...change}});
+        assert.equal(denied.status,403);assert.equal(denied.body.code,'CATALOGUE_SCOPE_DENIED');
+      }
+      const valid=await http(endpoint,{actor:f.pharmacist,method:'POST',body});
+      assert.equal(valid.status,200,JSON.stringify(valid.body));assert.equal(valid.body.valid,true);
+      assert.equal(valid.headers.get('cache-control'),'private, no-store');
+      for(const flag of ['persisted','liveConnection','availabilityVerified','activationAuthorized'])assert.equal(valid.body[flag],false);
+      assert.equal(valid.body.profileVersion,profile.version);assert.equal(valid.body.priceUnit,'kobo_per_catalogue_pack');
+      const mismatch=structuredClone(body);mismatch.items[0].identity.strength='100 mg';
+      const rejected=await http(endpoint,{actor:f.pharmacist,method:'POST',body:mismatch});
+      assert.equal(rejected.status,200);assert.equal(rejected.body.valid,false);assert.ok(rejected.body.rows[0].reasons.includes('CATALOGUE_IDENTITY_MISMATCH'));
+      const badUnit=structuredClone(body);badUnit.items[0].quantityUnit='tablet';
+      assert.equal((await http(endpoint,{actor:f.pharmacist,method:'POST',body:badUnit})).body.valid,false);
+      assert.equal((await http(endpoint,{actor:f.pharmacist,method:'POST',body:{...body,endpoint:'https://partner.example.invalid'}})).status,400);
+      assert.deepEqual((await pool.query('SELECT * FROM ng_pharmacy_inventory WHERE pharmacy_id=$1 ORDER BY id',[f.pharmacyId])).rows,before);
+      assert.equal((await pool.query('SELECT status FROM ng_pharmacy_commercial_profiles WHERE id=$1',[profile.id])).rows[0].status,'testing');
+      await pool.query("UPDATE ng_pharmacy_commercial_profiles SET status='suspended' WHERE id=$1",[profile.id]);
+      assert.equal((await http(endpoint,{actor:f.pharmacist,method:'POST',body})).status,403);
+      await pool.query("UPDATE ng_pharmacy_commercial_profiles SET status='testing' WHERE id=$1",[profile.id]);
+      await pool.query('UPDATE ng_pharmacies SET pcn_license_expiry=CURRENT_DATE-1 WHERE id=$1',[f.pharmacyId]);
+      assert.equal((await http(endpoint,{actor:f.pharmacist,method:'POST',body})).status,403);
+      assert.equal(f.state.bookCalls,0);assert.equal(f.state.initializeCalls,0);
+    });
+
     await t.test('deactivated or changed-role accounts lose medication writes despite an unexpired JWT', async () => {
       const f = await fixture(); const orderId = await make(f); const bearer = token(f.patient);
       await pool.query('UPDATE users SET is_active=FALSE WHERE id=$1', [f.patient.id]);
