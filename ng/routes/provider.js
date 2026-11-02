@@ -12,7 +12,6 @@ const {
   recordProviderUsage,
   requireActiveProviderToolAccess,
 } = require('../services/providers/providerAccessService');
-const whatsappDispenseService = require('../services/whatsapp/whatsappDispenseService');
 const { validatePrescriptionInput, assertProviderPrescriptionContext } = require('../services/rx-engine/providerPrescriptionGuardService');
 const adminDecisions = require('../services/adminVerificationService');
 
