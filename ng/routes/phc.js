@@ -13,6 +13,7 @@ const workflow = require('../services/phc/phcWorkflowService');
 const offlineSync = require('../services/phc/offlineSyncService');
 const reporting = require('../services/phc/programmeReportingService');
 const clinicalAi = require('../services/phc/clinicalAiService');
+const clinicalAiStages = require('../../shared/clinicalAiStages.json');
 const devices = require('../services/phc/deviceGatewayService');
 
 const router = express.Router();
@@ -621,9 +622,7 @@ router.post(
 
 const aiSuggestionSchema = z.object({
   encounterId: uuid,
-  suggestionType: z.enum([
-    'encounter_summary', 'soap_draft', 'missing_information', 'follow_up_draft',
-  ]),
+  suggestionType: z.enum(Object.keys(clinicalAiStages)),
 });
 
 router.post(
