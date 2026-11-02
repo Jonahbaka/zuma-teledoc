@@ -36,3 +36,13 @@ This connects all eight PHC **review stages** through one provider service and U
 ## Outstanding integration and release work
 
 Legacy US patient-side triage, old unscoped AI-assist routes, pharmacies, prescribing and independent referral-network workflows remain separate systems with different authorization contracts. Do not call the current implementation a complete cross-market AI rollout. Next: adapt each pathway to this protected service only where an actual authorized source record can be linked. Complete synthetic PostgreSQL tests, browser E2E, CI, provider privacy review, signed-off clinical testing and release approval before production activation.
+
+## Manual prescription and referral provenance added
+
+- **PHC referral draft:** an assigned clinician may explicitly attach an **accepted** `referral_brief` review to a manually authored, encrypted PHC referral. The backend validates programme, facility, patient, encounter, assigned clinician, freshness and replay identity. This does not choose destinations, mark a referral sent/received, or generate a clinical reason.
+- **Nigeria eRx draft:** a prescriber can explicitly attach an accepted `prescription_review` with its PHC encounter. The backend re-resolves their provider account and programme membership and verifies all encounter identifiers before writing an **unsigned** digital prescription. The clinician still supplies every medication and instruction. The standard signed-prescription, pharmacy routing, pharmacist receipt and fulfilment state machines remain the only authority for medicines.
+- **PHC follow-up:** source-linked tasks require a clinician-accepted draft, chosen due date and role, scoped patient/referral and a stable idempotency key. The synthetic database suite exercises referral sent -> accepted -> completed and linked task creation.
+- **Consumer US eRx and DRN:** remain separate. The US EHR stores an external-prescribing intent, not a Nigeria digital prescription. The DRN referral network stores different patient and organization records; automatic copying of sensitive PHC clinical details into it is **not authorized** without an encrypted, consent-scoped bridge and receiving-organization access review.
+
+These are audit-linked, clinician-controlled interactions, **not** autonomous prescribing or referral dispatch. A linked source is documentation provenance, not evidence that its suggestions are clinically correct.
+
