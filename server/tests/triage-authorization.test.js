@@ -28,3 +28,15 @@ test('cross-patient, unassigned provider, arbitrary IDs and missing identity do 
   }
   assert.equal(await service.getTriageForAppointment('appointment-2', patient, database()), null);
 });
+
+test('historical patient-submitted clinical suggestions are stripped on read', () => {
+  const input={symptoms:'synthetic',severity:5,triageLevel:'URGENT',suggestedMeds:['fictional medicine'],soapDraft:'invented plan',flags:['urgent'],suggestedSpecialty:'Surgery'};
+  const safe=service.normalizePatientReportedTriage(input);
+  assert.equal(safe.symptoms,'synthetic');
+  assert.equal(safe.triageLevel,'UNASSESSED');
+  assert.equal(safe.severity,null);
+  assert.equal(safe.assessmentStatus,'unassessed');
+  assert.deepEqual(safe.suggestedMeds,[]);
+  assert.equal(safe.soapDraft,'');
+  assert.equal(input.triageLevel,'URGENT');
+});
