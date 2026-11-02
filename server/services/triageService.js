@@ -7,6 +7,20 @@ const db = require('../db');
 const logger = require('../middleware/logger');
 const { keysToCamel } = require('../../lib/utils');
 
+// The legacy appointment metadata contains patient-supplied triageResults,
+// not a signed clinician assessment. Older entries must be treated the same
+// way as new ones to avoid replaying unverified urgency/medication guidance.
+function normalizePatientReportedTriage(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const unsafe = ['severity', 'soapDraft', 'triageLevel', 'suggestedSpecialty', 'flags', 'suggestedMeds', 'diagnosis', 'recommendedTests'];
+  if (!unsafe.some(key => Object.hasOwn(input, key))) return input;
+  const clean = { ...input };
+  for (const key of unsafe) delete clean[key];
+  return { ...clean, severity: null, triageLevel: 'UNASSESSED',
+    assessmentStatus: 'unassessed', requiresClinicalReview: true,
+    soapDraft: '', suggestedSpecialty: null, flags: [], suggestedMeds: [] };
+}
+
 class TriageService {
   /**
    * Store patient triage results
@@ -121,7 +135,7 @@ class TriageService {
         return null;
       }
       
-      return result.rows[0].triage_data;
+      return normalizePatientReportedTriage(result.rows[0].triage_data);
     } catch (error) {
       logger.error('Error fetching triage for appointment:', error);
       return null;
@@ -160,14 +174,17 @@ class TriageService {
         AND a.metadata IS NOT NULL
         AND a.metadata ? 'triage'
         AND jsonb_typeof(a.metadata->'triage') = 'object'
-        ORDER BY COALESCE((a.metadata->'triage'->>'severity')::int, 0) DESC, a.scheduled_at ASC
+        ORDER BY a.scheduled_at ASC
       `;
       const result = await db.pool.query(query, [providerId]);
       
       return result.rows.map(row => {
         const appointment = keysToCamel(row);
         // Ensure triageData is attached cleanly
-        appointment.triageData = row.triage_data; 
+        appointment.triageData = normalizePatientReportedTriage(row.triage_data);
+        if (appointment.metadata && typeof appointment.metadata === 'object') {
+          appointment.metadata = { ...appointment.metadata, triage: appointment.triageData };
+        } 
         return appointment;
       });
     } catch (error) {
@@ -177,5 +194,7 @@ class TriageService {
   }
 }
 
-module.exports = new TriageService();
+const instance = new TriageService();
+instance.normalizePatientReportedTriage = normalizePatientReportedTriage;
+module.exports = instance;
 
