@@ -229,18 +229,33 @@ router.post('/prescriptions',
       const access = await assertProviderPrescriptionContext(client, req, {
         patientUserId, appointmentId, preferredPharmacyId, routedPharmacyId, fulfillmentPreference,
       });
+      // Pharmacy selection is a preference until a prescriber signs and
+      // explicitly sends the prescription using the authenticated Rx lifecycle.
       const pharmacyId = routedPharmacyId || preferredPharmacyId || null;
+      const sourceSuggestionId = req.body?.aiSourceSuggestionId || null;
+      const sourceEncounterId = req.body?.phcEncounterId || null;
+      if ((sourceSuggestionId == null) !== (sourceEncounterId == null)) {
+        const error = new Error('Choose both an approved AI documentation review and its PHC encounter, or neither.');
+        error.statusCode = 400; throw error;
+      }
+      const aiSource = await require('../services/rx-engine/prescriptionWorkflowService').verifyClinicalAiRxProvenance(client, {
+        provider_id: access.providerId, patient_user_id: patientUserId,
+        clinical_ai_source_suggestion_id: sourceSuggestionId,
+        clinical_ai_source_encounter_id: sourceEncounterId,
+      });
 
       const prescriptionResult = await client.query(
         `INSERT INTO ng_digital_prescriptions (
            provider_id, patient_user_id, appointment_id, prescription_number,
            items, preferred_pharmacy_id, routed_pharmacy_id, routed_at,
            status, dispense_status, pharmacy_response_status,
-           diagnosis, notes, fulfillment_preference, is_controlled, provider_user_id
+           diagnosis, notes, fulfillment_preference, is_controlled, provider_user_id,
+           lifecycle_status, clinical_ai_source_suggestion_id, clinical_ai_source_encounter_id
          ) VALUES (
-           $1,$2,$3,$4,$5,$6,$7,CASE WHEN $7::uuid IS NOT NULL THEN NOW() ELSE NULL END,
-           $8,'pending','pending_pharmacy_confirmation',
-           $9,$10,$11,$12,$13
+           $1,$2,$3,$4,$5,$6,NULL,NULL,
+           'active','pending','not_sent',
+           $7,$8,$9,$10,$11,
+           'drafted',$12,$13
          )
          RETURNING *`,
         [
@@ -249,16 +264,30 @@ router.post('/prescriptions',
           appointmentId || null,
           buildPrescriptionNumber(),
           JSON.stringify(items),
-          preferredPharmacyId || null,
-          routedPharmacyId || preferredPharmacyId || null,
-          pharmacyId ? 'routed' : 'active',
+          preferredPharmacyId || pharmacyId || null,
           diagnosis || null,
           notes || null,
           fulfillmentPreference || 'pickup_or_delivery',
           items.some((item) => item.isControlled === true || item.controlledOrSpecialHandling === true),
           access.providerUserId,
+          aiSource?.suggestionId || null, aiSource?.encounterId || null,
         ]
       );
+
+      // Maintain the normalized Rx items that the pharmacist lifecycle uses.
+      // An unsigned draft must not enter the pharmacy queue.
+      for (let index = 0; index < items.length; index += 1) {
+        const item = items[index];
+        await client.query(
+          `INSERT INTO ng_rx_items
+             (prescription_id, position, drug_id, drug_name, generic_name, brand_name,
+              dosage, frequency, duration_days, quantity, refills_authorized, refills_remaining, notes)
+           VALUES ($1,$2,NULL,$3,NULL,NULL,$4,$5,NULL,$6,0,0,$7)`,
+          [prescriptionResult.rows[0].id, index + 1, item.drug_name,
+            item.dosage, item.instructions || 'Clinician must confirm directions',
+            item.quantity, item.instructions || null]
+        );
+      }
 
       await client.query(
         `INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,phi_accessed,success,description)
@@ -266,27 +295,14 @@ router.post('/prescriptions',
         [access.providerUserId, prescriptionResult.rows[0].id, patientUserId]
       );
       await client.query('COMMIT');
-      await recordProviderUsage(req.user.id, 'prescription_issued', {
-        metadata: { prescriptionId: prescriptionResult.rows[0].id, routed: Boolean(pharmacyId) },
+      await recordProviderUsage(req.user.id, 'prescription_draft_created', {
+        metadata: { prescriptionId: prescriptionResult.rows[0].id, routed: false },
       }).catch(() => null);
-
-      let whatsappNotification = null;
-      if (pharmacyId) {
-        whatsappNotification = await whatsappDispenseService
-          .createPharmacyPrescriptionNotification({
-            prescriptionId: prescriptionResult.rows[0].id,
-            pharmacyId,
-            createdByUserId: req.user.id,
-          })
-          .catch(() => null);
-      }
 
       res.status(201).json({
         prescription: prescriptionResult.rows[0],
-        whatsappNotification,
-        message: pharmacyId
-          ? 'Prescription routed to the selected pharmacy for confirmation.'
-          : 'Prescription created. Select a pharmacy to route fulfillment.',
+        whatsappNotification: null,
+        message: 'Unsigned prescription draft saved. The clinician must sign and explicitly send it before pharmacy fulfilment.',
       });
     } catch (err) {
       try {
