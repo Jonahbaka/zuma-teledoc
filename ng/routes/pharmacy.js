@@ -435,6 +435,11 @@ router.get('/:pharmacyId/whatsapp-notifications', async (req, res) => {
 
 router.patch('/:pharmacyId/prescriptions/:prescriptionId', async (req, res) => {
   try {
+    // Admin privileges are not pharmacist privileges; no clinical dispensing
+    // status may be recorded solely by a platform administrator.
+    if (req.user?.role !== 'pharmacy') {
+      return res.status(403).json({ error: 'Pharmacy professional account required for prescription status updates.' });
+    }
     await assertPharmacyAccess(req, req.params.pharmacyId);
 
     const allowedStatuses = new Set([
