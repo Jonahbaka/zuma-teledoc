@@ -98,7 +98,8 @@ test('FHIR Patient and Encounter serialize from the migrated schema with correct
   await pool.query("UPDATE users SET provider_status='suspended' WHERE id=$1", [ids.provider]);
   try {
     const suspended = await fetch(`${baseUrl}/interop/fhir/Encounter/${ids.appointment}`, { headers: { authorization: bearer('provider') } });
-    assert.equal(suspended.status, 404);
+    // Authentication rejects globally suspended clinicians before resource scope.
+    assert.equal(suspended.status, 403);
   } finally { await pool.query("UPDATE users SET provider_status='approved' WHERE id=$1", [ids.provider]); }
 
 });

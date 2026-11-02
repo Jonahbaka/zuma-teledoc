@@ -46,6 +46,15 @@ const smartBookingSchema = z.object({
 });
 
 const router = express.Router();
+// Appointment persistence is authoritative. Notification/enrichment work is
+// best-effort and must not hold a saved response open or turn it into a 500.
+function scheduleAppointmentSideEffects(appointmentId, work) {
+  Promise.resolve().then(work).catch(error => {
+    logger.warn('Post-commit appointment notification failed', { appointmentId, error: error.message });
+  });
+  return { status: 'scheduled', note: 'Best-effort notification work scheduled; delivery is not confirmed.' };
+}
+
 const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
 const PROVIDER_UPCOMING_LOOKBACK_MS = 2 * 60 * 60 * 1000;
 const MAX_UPCOMING_LIMIT = 50;
@@ -154,75 +163,78 @@ router.post('/',
         ]
       ));
       
-      // Get patient and provider details for notifications
-      const { rows: patientRows } = await db.query(
-        'SELECT id, email, first_name, last_name, role FROM users WHERE id = $1',
-        [patientId]
-      );
-      
-      // Prepare appointment data with names
-      const appointmentData = {
-        ...keysToCamel(rows[0]),
-        providerFirstName: providers[0]?.first_name,
-        providerLastName: providers[0]?.last_name,
-        patientFirstName: patientRows[0]?.first_name,
-        patientLastName: patientRows[0]?.last_name
-      };
-      
-      // Create in-app notifications for both provider and patient
-      try {
-        // Notify provider
-        await notificationService.sendAppointmentNotification(
-          appointmentData,
-          data.providerId,
-          'provider',
-          'created'
-        );
-        
-        // Notify patient (if different from current user or explicit)
-        await notificationService.sendAppointmentNotification(
-          appointmentData,
-          patientId,
-          'patient',
-          'created'
-        );
-      } catch (notifyError) {
-        logger.warn('Failed to create appointment notifications', { error: notifyError.message });
-      }
-      
-      // Send email notifications
-      try {
-        const emailService = require('../services/email');
-        
-        // Get provider details for email
-        const { rows: providerRows } = await db.query(
+      const dispatch = scheduleAppointmentSideEffects(rows[0].id, async () => {
+        // Get patient and provider details for notifications
+        const { rows: patientRows } = await db.query(
           'SELECT id, email, first_name, last_name, role FROM users WHERE id = $1',
-          [data.providerId]
+          [patientId]
         );
-        
-        if (providerRows.length > 0) {
-          await emailService.sendAppointmentNotification(
+
+        // Prepare appointment data with names
+        const appointmentData = {
+          ...keysToCamel(rows[0]),
+          providerFirstName: providers[0]?.first_name,
+          providerLastName: providers[0]?.last_name,
+          patientFirstName: patientRows[0]?.first_name,
+          patientLastName: patientRows[0]?.last_name
+        };
+
+        // Create in-app notifications for both provider and patient
+        try {
+          // Notify provider
+          await notificationService.sendAppointmentNotification(
             appointmentData,
-            keysToCamel(providerRows[0]),
+            data.providerId,
+            'provider',
             'created'
           );
-        }
         
-        if (patientRows.length > 0) {
-          await emailService.sendAppointmentNotification(
+          // Notify patient (if different from current user or explicit)
+          await notificationService.sendAppointmentNotification(
             appointmentData,
-            keysToCamel(patientRows[0]),
+            patientId,
+            'patient',
             'created'
           );
+        } catch (notifyError) {
+          logger.warn('Failed to create appointment notifications', { error: notifyError.message });
         }
-      } catch (emailError) {
-        logger.error('Failed to send appointment notification emails', { 
-          error: emailError.message, 
-          appointmentId: rows[0].id 
-        });
-        // Don't fail appointment creation if email fails
-      }
+
+        // Send email notifications
+        try {
+          const emailService = require('../services/email');
+
+          // Get provider details for email
+          const { rows: providerRows } = await db.query(
+            'SELECT id, email, first_name, last_name, role FROM users WHERE id = $1',
+            [data.providerId]
+          );
+
+          if (providerRows.length > 0) {
+            await emailService.sendAppointmentNotification(
+              appointmentData,
+              keysToCamel(providerRows[0]),
+              'created'
+            );
+          }
+
+          if (patientRows.length > 0) {
+            await emailService.sendAppointmentNotification(
+              appointmentData,
+              keysToCamel(patientRows[0]),
+              'created'
+            );
+          }
+        } catch (emailError) {
+          logger.error('Failed to send appointment notification emails', {
+            error: emailError.message,
+            appointmentId: rows[0].id
+          });
+          // Don't fail appointment creation if email fails
+        }
       
+      });
+
       logger.info('Appointment created', { 
         appointmentId: rows[0].id, 
         patientId, 
@@ -232,6 +244,7 @@ router.post('/',
       res.status(201).json({
         success: true,
         message: 'Appointment scheduled successfully',
+        dispatch,
         appointment: keysToCamel(rows[0])
       });
     } catch (error) {
@@ -681,63 +694,66 @@ router.post('/smart-book',
         throw new Error('Failed to create appointment - no rows returned');
       }
       
-      // Create notification for provider
-      await db.query(
-        `INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id)
-         VALUES ($1, 'appointment', 'New Appointment', $2, 'appointment', $3)`,
-        [
-          providerId,
-          `New ${type || 'video'} appointment scheduled for ${scheduledDate.toLocaleString()}`,
-          rows[0].id
-        ]
-      ).catch((error) => logger.warn('Appointment notification failed', { error: error.message }));
+      const dispatch = scheduleAppointmentSideEffects(rows[0].id, async () => {
+        // Create notification for provider
+        await db.query(
+          `INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id)
+           VALUES ($1, 'appointment', 'New Appointment', $2, 'appointment', $3)`,
+          [
+            providerId,
+            `New ${type || 'video'} appointment scheduled for ${scheduledDate.toLocaleString()}`,
+            rows[0].id
+          ]
+        ).catch((error) => logger.warn('Appointment notification failed', { error: error.message }));
       
-      // Send email notifications
-      try {
-        const emailService = require('../services/email');
+        // Send email notifications
+        try {
+          const emailService = require('../services/email');
         
-        // Get provider details
-        const { rows: providerRows } = await db.query(
-          'SELECT id, email, first_name, last_name FROM users WHERE id = $1',
-          [providerId]
-        );
-        
-        // Get patient details
-        const { rows: patientRows } = await db.query(
-          'SELECT id, email, first_name, last_name FROM users WHERE id = $1',
-          [patientId]
-        );
-        
-        // Prepare appointment data with names for email template
-        const appointmentData = keysToCamel(rows[0]);
-        appointmentData.providerFirstName = provider?.first_name || providerRows[0]?.first_name;
-        appointmentData.providerLastName = provider?.last_name || providerRows[0]?.last_name;
-        appointmentData.patientFirstName = patientRows[0]?.first_name;
-        appointmentData.patientLastName = patientRows[0]?.last_name;
-        
-        if (providerRows.length > 0) {
-          await emailService.sendAppointmentNotification(
-            appointmentData,
-            keysToCamel(providerRows[0]),
-            'created'
+          // Get provider details
+          const { rows: providerRows } = await db.query(
+            'SELECT id, email, first_name, last_name FROM users WHERE id = $1',
+            [providerId]
           );
-        }
         
-        if (patientRows.length > 0) {
-          await emailService.sendAppointmentNotification(
-            appointmentData,
-            keysToCamel(patientRows[0]),
-            'created'
+          // Get patient details
+          const { rows: patientRows } = await db.query(
+            'SELECT id, email, first_name, last_name FROM users WHERE id = $1',
+            [patientId]
           );
+        
+          // Prepare appointment data with names for email template
+          const appointmentData = keysToCamel(rows[0]);
+          appointmentData.providerFirstName = provider?.first_name || providerRows[0]?.first_name;
+          appointmentData.providerLastName = provider?.last_name || providerRows[0]?.last_name;
+          appointmentData.patientFirstName = patientRows[0]?.first_name;
+          appointmentData.patientLastName = patientRows[0]?.last_name;
+        
+          if (providerRows.length > 0) {
+            await emailService.sendAppointmentNotification(
+              appointmentData,
+              keysToCamel(providerRows[0]),
+              'created'
+            );
+          }
+        
+          if (patientRows.length > 0) {
+            await emailService.sendAppointmentNotification(
+              appointmentData,
+              keysToCamel(patientRows[0]),
+              'created'
+            );
+          }
+        } catch (emailError) {
+          logger.error('Failed to send appointment notification emails', {
+            error: emailError.message,
+            appointmentId: rows[0].id
+          });
+          // Don't fail appointment creation if email fails
         }
-      } catch (emailError) {
-        logger.error('Failed to send appointment notification emails', { 
-          error: emailError.message, 
-          appointmentId: rows[0].id 
-        });
-        // Don't fail appointment creation if email fails
-      }
       
+      });
+
       logger.info('Smart appointment booked', {
         appointmentId: rows[0].id,
         patientId,
@@ -749,6 +765,7 @@ router.post('/smart-book',
       res.status(201).json({
         success: true,
         message: 'Appointment scheduled successfully',
+        dispatch,
         appointment: keysToCamel(rows[0]),
         provider: provider ? {
           id: provider.id,
@@ -915,7 +932,7 @@ router.put('/:id',
         (req.user.role === 'patient' && appointment.patient_id === req.user.id) ||
         (req.user.role === 'provider' && appointment.provider_id === req.user.id);
       
-      if (!canUpdate) {
+      if (!canUpdate || !await patientFinancialAccess(req.user, appointment.patient_id)) {
         return res.status(403).json({
           success: false,
           error: 'Access denied'
@@ -924,6 +941,12 @@ router.put('/:id',
 
       if (req.user.role === 'patient' && (data.providerNotes !== undefined || (data.status && data.status !== 'cancelled'))) {
         return res.status(403).json({ success: false, error: 'Clinical status and notes require a clinician.' });
+      }
+      if (data.status === appointment.status && data.scheduledAt === undefined && data.providerNotes === undefined &&
+          (data.status !== 'cancelled' || data.cancellationReason === undefined || data.cancellationReason === appointment.cancellation_reason)) {
+        return res.json({ success: true, message: 'Appointment already has this status',
+          appointment: keysToCamel(appointment), deduplicated: true,
+          dispatch: { status: 'not_repeated', note: 'No new notification or refund was initiated.' } });
       }
       if (['completed', 'cancelled', 'no_show'].includes(appointment.status) ||
           (data.scheduledAt && !['scheduled', 'confirmed'].includes(appointment.status)) ||
@@ -1004,7 +1027,7 @@ router.put('/:id',
       ));
       
       // Create notification for status changes
-      if (data.status) {
+      const dispatch = data.status ? scheduleAppointmentSideEffects(rows[0].id, async () => {
         const notifyUserId = req.user.id === appointment.patient_id 
           ? appointment.provider_id 
           : appointment.patient_id;
@@ -1018,13 +1041,14 @@ router.put('/:id',
             id
           ]
         );
-      }
+      }) : { status: 'not_requested' };
       
       logger.info('Appointment updated', { appointmentId: id, updates: Object.keys(data) });
       
       res.json({
         success: true,
         message: 'Appointment updated successfully',
+        dispatch,
         appointment: keysToCamel(rows[0])
       });
     } catch (error) {
@@ -1085,6 +1109,14 @@ router.post('/:id/cancel', authenticate, requireRole('patient', 'provider', 'adm
       });
     }
     
+    if (appointment.status === 'cancelled') {
+      if (reason !== undefined && reason !== appointment.cancellation_reason) {
+        return res.status(409).json({ success: false, error: 'This appointment is already cancelled with a recorded reason. Refresh the saved appointment.' });
+      }
+      return res.json({ success: true, message: 'Appointment already cancelled', appointment: keysToCamel(appointment),
+        deduplicated: true, dispatch: { status: 'not_repeated', note: 'No new notification or refund was initiated.' } });
+    }
+
     // Check if can be cancelled
     if (['completed', 'cancelled', 'in_progress'].includes(appointment.status)) {
       return res.status(400).json({
@@ -1107,26 +1139,30 @@ router.post('/:id/cancel', authenticate, requireRole('patient', 'provider', 'adm
     );
     if (!rows.length) return res.status(409).json({ success: false, error: 'The appointment changed and cannot be cancelled. Refresh your schedule.' });
     
-    // Notify the other party
-    const notifyUserId = req.user.id === appointment.patient_id 
-      ? appointment.provider_id 
-      : appointment.patient_id;
+    const dispatch = scheduleAppointmentSideEffects(rows[0].id, async () => {
+      // Notify the other party
+      const notifyUserId = req.user.id === appointment.patient_id
+        ? appointment.provider_id
+        : appointment.patient_id;
     
-    await db.query(
-      `INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id)
-       VALUES ($1, 'appointment', 'Appointment Cancelled', $2, 'appointment', $3)`,
-      [
-        notifyUserId,
-        reason ? `Appointment cancelled. Reason: ${reason}` : 'Your appointment has been cancelled',
-        id
-      ]
-    );
+      await db.query(
+        `INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id)
+         VALUES ($1, 'appointment', 'Appointment Cancelled', $2, 'appointment', $3)`,
+        [
+          notifyUserId,
+          reason ? `Appointment cancelled. Reason: ${reason}` : 'Your appointment has been cancelled',
+          id
+        ]
+      );
     
+    });
+
     logger.info('Appointment cancelled', { appointmentId: id, cancelledBy: req.user.id });
     
     res.json({
       success: true,
       message: 'Appointment cancelled successfully',
+      dispatch,
       appointment: keysToCamel(rows[0])
     });
   } catch (error) {

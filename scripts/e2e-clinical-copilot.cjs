@@ -358,10 +358,10 @@ async function exerciseReferralAuthority({ doctor, patient, external, pageErrors
 async function exercisePatientMessaging({ doctor, patient, external, pageErrors }) {
   // Explicit synthetic appointment establishes the real backend care relationship
   // and the real UI provider selector; no authorization endpoint is mocked.
-  await pool.query(`INSERT INTO appointments(patient_id,provider_id,scheduled_at,status,reason_for_visit)
-    VALUES($1,$2,NOW()+INTERVAL '1 day','scheduled','Synthetic messaging browser fixture')`, [patient.id, doctor.id]);
+  const visit = (await pool.query(`INSERT INTO appointments(patient_id,provider_id,scheduled_at,status,reason_for_visit)
+    VALUES($1,$2,NOW()+INTERVAL '1 day','scheduled','Synthetic messaging browser fixture') RETURNING id`, [patient.id, doctor.id])).rows[0];
   const guest = await browser.newContext({ baseURL: BASE, viewport: { width: 1280, height: 960 } });
-  const sent = deferred(), release = deferred(); const writes = [];
+  const sent = deferred(), release = deferred(); const writes = [], cancellationWrites = [];
   try {
     await guest.tracing.start({ screenshots: true, snapshots: true, sources: true });
     await guest.route('**/*', async route => {
@@ -369,6 +369,7 @@ async function exercisePatientMessaging({ doctor, patient, external, pageErrors 
       const req = route.request(), url = new URL(req.url());
       if (isOfflineFontFixture(url.href, req.method(), req.resourceType())) return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
       if (url.origin !== BASE) { external.push(url.href); return route.abort(); }
+      if (url.pathname === `/api/appointments/${visit.id}` && req.method() === 'PUT') cancellationWrites.push(req.postDataJSON());
       if (url.pathname === '/api/messages' && req.method() === 'POST') {
         writes.push(req.postDataJSON());
         // Delay only delivery of the actual backend response to exercise typing
@@ -408,6 +409,25 @@ async function exercisePatientMessaging({ doctor, patient, external, pageErrors 
     await expect(p.getByText(content, { exact: true })).toBeVisible();
     await p.screenshot({ path: path.join(ART, 'patient-message-persisted.png'), fullPage: true });
     pass('patient messaging: actual care-scoped encrypted send persists once under repeated clicks; delayed success preserves a newer draft and saved content survives reload');
+    // Scheduling cancellation uses the actual guarded client and persisted row;
+    // it neither collects payment nor claims a refund/notification receipt.
+    await p.goto(`/patient/appointments/${visit.id}`, { waitUntil: 'networkidle' });
+    await expect(p.getByText('Synthetic messaging browser fixture', { exact: true })).toBeVisible();
+    p.on('dialog', dialog => dialog.accept());
+    await p.getByRole('button', { name: 'Cancel Appointment', exact: true }).evaluate(button => { button.click(); button.click(); });
+    await p.waitForURL('**/patient/appointments');
+    assert.equal(cancellationWrites.length, 1, 'Repeated same-render cancellation must issue one write');
+    const cancelled = (await pool.query('SELECT status,cancelled_by FROM appointments WHERE id=$1', [visit.id])).rows[0];
+    assert.equal(cancelled.status, 'cancelled'); assert.equal(cancelled.cancelled_by, patient.id);
+    const repeated = await guest.request.put(`/api/appointments/${visit.id}`, { headers: { Authorization: `Bearer ${session.accessToken}` }, data: cancellationWrites[0] });
+    assert.equal(repeated.status(), 200); const replay = await repeated.json();
+    assert.equal(replay.deduplicated, true); assert.equal(replay.dispatch.status, 'not_repeated');
+    await p.goto(`/patient/appointments/${visit.id}`, { waitUntil: 'networkidle' });
+    await expect(p.getByText('Cancelled', { exact: true })).toBeVisible();
+    await expect(p.getByRole('button', { name: 'Cancel Appointment', exact: true })).toHaveCount(0);
+    await p.screenshot({ path: path.join(ART, 'patient-appointment-cancelled.png'), fullPage: true });
+    pass('patient appointment cancellation: actual saved response, repeated clicks write once, exact retry does not repeat notification, persisted cancellation survives reload');
+
   } finally {
     release.resolve();
     await guest.tracing.stop({ path: path.join(ART, 'patient-message-trace.zip') });
