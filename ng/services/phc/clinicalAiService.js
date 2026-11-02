@@ -516,13 +516,13 @@ async function assertAcceptedCareActionSource(client, context, {
     throw scopeError(400, 'Unsupported clinical action review stage.', 'CLINICAL_AI_ACTION_STAGE_INVALID');
   }
   const result = await client.query(
-    \`SELECT s.*, r.decision, r.reviewer_user_id,
+    `SELECT s.*, r.decision, r.reviewer_user_id,
             r.edited_output_encrypted
        FROM ng_clinical_ai_suggestions s
        JOIN ng_clinical_ai_reviews r ON r.suggestion_id=s.id
       WHERE s.id=$1 AND s.programme_id=$2 AND s.facility_id=$3
         AND s.suggestion_type=$4
-      FOR UPDATE OF s\`,
+      FOR UPDATE OF s`,
     [suggestionId, context.programme_id, context.facility_id, stageType]
   );
   const suggestion = result.rows[0];
@@ -536,21 +536,21 @@ async function assertAcceptedCareActionSource(client, context, {
     throw scopeError(409, 'The AI review belongs to a different patient or encounter.', 'CLINICAL_AI_ENCOUNTER_MISMATCH');
   }
   const assignment = await client.query(
-    \`SELECT assigned_provider_user_id
+    `SELECT assigned_provider_user_id
        FROM ng_phc_queue_entries
       WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3
-      LIMIT 1 FOR UPDATE\`,
+      LIMIT 1 FOR UPDATE`,
     [encounterId, context.programme_id, context.facility_id]
   );
   await assertEncounterAiAccess(client, context, assignment.rows[0] || {});
   await client.query(
-    \`SELECT id FROM ng_clinical_encounters
-       WHERE id=$1 AND programme_id=$2 AND facility_id=$3 FOR UPDATE\`,
+    `SELECT id FROM ng_clinical_encounters
+       WHERE id=$1 AND programme_id=$2 AND facility_id=$3 FOR UPDATE`,
     [encounterId, context.programme_id, context.facility_id]
   );
   await client.query(
-    \`SELECT id FROM ng_clinical_observations
-       WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3 FOR SHARE\`,
+    `SELECT id FROM ng_clinical_observations
+       WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3 FOR SHARE`,
     [encounterId, context.programme_id, context.facility_id]
   );
   const encounter = await workflow.getEncounter(client, context, encounterId);
