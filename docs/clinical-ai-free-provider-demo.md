@@ -11,7 +11,7 @@ Set these in the server environment, not in a browser or committed file:
 
     NODE_ENV=development
     CLINICAL_AI_PROVIDER=groq
-    CLINICAL_AI_MODEL=openai/gpt-oss-20b
+    CLINICAL_AI_MODEL=openai/gpt-oss-120b
     GROQ_API_KEY=<private-key>
     CLINICAL_AI_ALLOW_DEMO_GROQ=true
     CLINICAL_AI_ENCRYPTION_KEY=<existing-32-byte-protected-storage-key>
