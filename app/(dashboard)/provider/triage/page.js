@@ -312,7 +312,7 @@ export default function ProviderTriageDashboard() {
                           </Badge>
                         ) : (
                           <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-                            {selectedCase.triageData?.assessmentStatus === 'clinician_verified' ? 'ROUTINE' : 'UNASSESSED'}
+                            {triage.assessmentStatus === 'clinician_verified' && triage.triageLevel === 'ROUTINE' ? 'ROUTINE' : 'UNASSESSED'}
                           </Badge>
                         )}
                         <Badge className={`${getSeverityBgColor(severity)} ${getSeverityTextColor(severity)} border`}>
@@ -419,7 +419,7 @@ export default function ProviderTriageDashboard() {
                         </Badge>
                       ) : (
                         <Badge className="bg-blue-100 text-blue-700 mt-2">
-                          ROUTINE
+                          {selectedCase.triageData?.assessmentStatus === 'clinician_verified' && selectedCase.triageData?.triageLevel === 'ROUTINE' ? 'ROUTINE' : 'UNASSESSED'}
                         </Badge>
                       )}
                     </div>
