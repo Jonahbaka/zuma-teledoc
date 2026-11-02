@@ -377,8 +377,8 @@ router.get('/:pharmacyId/prescriptions', async (req, res) => {
          LEFT JOIN ng_pharmacies pharmacy
            ON pharmacy.id = COALESCE(rx.routed_pharmacy_id, rx.preferred_pharmacy_id, rx.dispensed_by_pharmacy_id)
         WHERE rx.routed_pharmacy_id = $1
-           OR rx.preferred_pharmacy_id = $1
-           OR rx.dispensed_by_pharmacy_id = $1
+          AND rx.signed_at IS NOT NULL
+          AND rx.lifecycle_status IN ('sent_to_pharmacy','received','partially_dispensed','fully_dispensed','completed')
         ORDER BY
           CASE rx.pharmacy_response_status
             WHEN 'pending_pharmacy_confirmation' THEN 1
@@ -489,7 +489,10 @@ router.patch('/:pharmacyId/prescriptions/:prescriptionId', async (req, res) => {
               cancelled_at = CASE WHEN $1 = 'cancelled' THEN NOW() ELSE cancelled_at END,
               updated_at = NOW()
         WHERE id = $8
-          AND (preferred_pharmacy_id = $7 OR routed_pharmacy_id = $7 OR dispensed_by_pharmacy_id = $7)
+          AND routed_pharmacy_id = $7
+          AND signed_at IS NOT NULL
+          AND lifecycle_status IN ('sent_to_pharmacy','received','partially_dispensed','fully_dispensed','completed')
+          AND ($1 <> 'fulfilled' OR lifecycle_status IN ('fully_dispensed','completed'))
         RETURNING *`,
       [
         nextStatus,
