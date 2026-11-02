@@ -90,9 +90,9 @@ function resolveBuildId() {
 }
 
 function getFrontendState() {
+  if (nextInitStatus === 'failed' || nextInitStatus === 'timeout') return 'degraded';
   if (nextReady) return 'ready';
   if (!initialized) return 'initializing';
-  if (nextInitStatus === 'failed' || nextInitStatus === 'timeout') return 'degraded';
   if (Date.now() - serverStartedAt.getTime() <= NEXT_WARMUP_GRACE_MS) return 'warming_up';
   // Past the warmup grace window and Next is still not ready: escalate to
   // degraded so health gates stop treating a stuck frontend as acceptable.
