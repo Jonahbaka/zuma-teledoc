@@ -80,10 +80,10 @@ function canAccessRx(role, rx, { providerId, pharmacyId, patientUserId }) {
   if (PATIENT.has(role)) return rx.patient_user_id === patientUserId;
   if (PRESCRIBER.has(role)) return Boolean(providerId && rx.provider_id === providerId);
   if (PHARMACIST.has(role)) {
-    return Boolean(
-      pharmacyId &&
-      [rx.preferred_pharmacy_id, rx.routed_pharmacy_id, rx.dispensed_by_pharmacy_id].includes(pharmacyId)
-    );
+    // A preferred pharmacy is not authorized to view or dispense this
+    // prescription until the clinician signs and routes it there.
+    return Boolean(pharmacyId && rx.routed_pharmacy_id === pharmacyId
+      && rx.signed_at && ['sent_to_pharmacy', 'received', 'partially_dispensed', 'fully_dispensed', 'completed'].includes(rx.lifecycle_status));
   }
   return false;
 }
