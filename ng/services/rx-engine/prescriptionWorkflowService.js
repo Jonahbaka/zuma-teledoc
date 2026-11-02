@@ -77,6 +77,41 @@ function generateRxNumber(now = new Date()) {
  *   items: [{ drug_id?, drug_name, generic_name?, brand_name?, dosage,
  *             frequency, duration_days?, quantity?, refills_authorized?, notes? }]
  */
+async function verifyClinicalAiRxProvenance(client, input) {
+  const suggestionId = input.clinical_ai_source_suggestion_id;
+  const encounterId = input.clinical_ai_source_encounter_id;
+  if (suggestionId == null && encounterId == null) return null;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuid.test(String(suggestionId)) || !uuid.test(String(encounterId))) {
+    const err = new Error('A valid AI draft and PHC encounter must be selected together.');
+    err.code = 'CLINICAL_AI_RX_SOURCE_INVALID'; err.statusCode = 400; throw err;
+  }
+  // Identity and programme scope are resolved from server-side clinician
+  // membership and the PHC encounter. Never trust user-supplied scope.
+  const row = (await client.query(
+    `SELECT e.id, e.programme_id, e.facility_id, e.patient_user_id, p.user_id AS clinician_user_id
+       FROM ng_clinical_encounters e
+       JOIN ng_providers p ON p.id=$1
+      WHERE e.id=$2 AND e.patient_user_id=$3 LIMIT 1`,
+    [input.provider_id, encounterId, input.patient_user_id]
+  )).rows[0];
+  if (!row) {
+    const err = new Error('Prescription context does not match the selected clinician and PHC patient.');
+    err.code = 'CLINICAL_AI_RX_CONTEXT_DENIED'; err.statusCode = 403; throw err;
+  }
+  const { assertProgrammeScope } = require('../phc/programmeScopeService');
+  const context = await assertProgrammeScope(client, { id: row.clinician_user_id }, {
+    programmeId: row.programme_id, facilityId: row.facility_id,
+    patientUserId: row.patient_user_id, requireEnrollment: true,
+    allowedRoles: ['remote_clinician'],
+  });
+  await require('../phc/clinicalAiService').assertAcceptedCareActionSource(client, context, {
+    suggestionId, stageType: 'prescription_review',
+    patientUserId: row.patient_user_id, encounterId: row.id,
+  });
+  return { suggestionId, encounterId };
+}
+
 async function createDraft(input, existing = null) {
   if (!input.provider_id)     throw new Error('provider_id required');
   if (!input.patient_user_id) throw new Error('patient_user_id required');
@@ -89,12 +124,13 @@ async function createDraft(input, existing = null) {
   // were separate autocommit writes, so a failure partway through the item loop
   // left an orphaned prescription header with partial items and no audit event.
   const run = async (client) => {
+    const verifiedAiSource = await verifyClinicalAiRxProvenance(client, input);
     const r = await client.query(
       `INSERT INTO ng_digital_prescriptions
          (provider_id, patient_user_id, appointment_id, prescription_number,
           items, preferred_pharmacy_id, diagnosis, notes, is_controlled,
-          lifecycle_status)
-       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,COALESCE($9,false),'drafted')
+          lifecycle_status, clinical_ai_source_suggestion_id, clinical_ai_source_encounter_id)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,COALESCE($9,false),'drafted',$10,$11)
        RETURNING *`,
       [
         input.provider_id, input.patient_user_id, input.appointment_id || null,
@@ -104,6 +140,7 @@ async function createDraft(input, existing = null) {
         input.diagnosis || null,
         input.notes || null,
         input.is_controlled || false,
+        verifiedAiSource?.suggestionId || null, verifiedAiSource?.encounterId || null,
       ]
     );
     const rx = r.rows[0];
