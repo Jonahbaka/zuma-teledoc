@@ -253,3 +253,10 @@ test('central AI care stages cover the PHC care journey with source-linking and 
   assert.match(careStages.prescription_review.prompt, /Do not suggest or validate any medicine/);
   assert.match(careStages.triage_review.prompt, /Do not assign a triage level/);
 });
+
+test('Clinical Copilot read endpoints filter clinician-only stages from nurse worklists', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../services/phc/clinicalAiService.js'), 'utf8');
+  assert.match(source, /result\.rows\.filter\(\(row\) => careStages\[row\.suggestion_type\]\?\.roles\.includes\(context\.programmeRole\)\)/);
+  assert.match(source, /if \(!careStages\[row\.suggestion_type\]\?\.roles\.includes\(context\.programmeRole\)\)/);
+  assert.match(source, /CLINICAL_AI_STAGE_ROLE_DENIED/);
+});
