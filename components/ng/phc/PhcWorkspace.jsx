@@ -37,6 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ConnectivityBanner, EmptyState, ErrorState, Skeleton, StatusPill } from '@/components/ui/clinic-states';
 import { Textarea } from '@/components/ui/textarea';
 import { phcAPI } from '@/lib/api';
+import careStages from '@/shared/clinicalAiStages.json';
 import PhcTrainingManual from '@/components/ng/phc/PhcTrainingManual';
 import {
   applyOfflineSyncResults,
@@ -726,13 +727,14 @@ export default function PhcWorkspace({ standalone = false }) {
   }, [selectedPatient?.id, activeEncounter?.id, clearAiSuggestion]);
 
   const requestAiDraft = async (encounterId, suggestionType = aiDraftType, view = 'intake') => {
+    const stageType = careStages[suggestionType]?.roles.includes(programmeRole) ? suggestionType : (programmeRole === 'remote_clinician' ? 'consultation_brief' : 'intake_review');
     const requestVersion = ++aiRequestVersion.current;
     setAiSuggestion(null);
     setAiEditedOutput(null);
     setAiTaskOptions({});
     const response = await run(`ai-${encounterId}`, () => phcAPI.createAiSuggestion(context, {
       encounterId,
-      suggestionType,
+      suggestionType: stageType,
     }));
     if (response && requestVersion === aiRequestVersion.current) {
       const suggestion = response.data.suggestion;
@@ -949,9 +951,9 @@ export default function PhcWorkspace({ standalone = false }) {
               <div className="mb-4">
                 <Label htmlFor="clinical-ai-type">Clinical draft type</Label>
                 <select id="clinical-ai-type" className="ml-3 rounded border p-2" value={aiDraftType} onChange={(event) => setAiDraftType(event.target.value)}>
-                  <option value="soap_draft">SOAP draft</option>
-                  <option value="encounter_summary">Encounter summary</option>
-                  <option value="follow_up_draft">Follow-up proposals</option>
+                   {Object.entries(careStages).filter(([, stage]) => stage.roles.includes(programmeRole)).map(([type, stage]) => (
+                     <option key={type} value={type}>{stage.label}</option>
+                   ))}
                 </select>
               </div>
             )}
