@@ -205,6 +205,38 @@ test('approved referral brief links to clinician-created referral without turnin
   assert.equal(rows.rows[0].n, 1);
 });
 
+test('Nigeria eRx draft requires matching approved clinical review and remains unsigned', async () => {
+  const rx = require('../services/rx-engine/prescriptionWorkflowService');
+  const provider = (await pool.query('SELECT id FROM ng_providers WHERE user_id=$1', [doctor.id])).rows[0];
+  assert.ok(provider?.id);
+  const encounter = await encounterFor();
+  const source = await ai.createSuggestion(pool, request, doctorContext,
+    { encounterId: encounter.id, suggestionType: 'prescription_review' }, modelCaller);
+  const input = {
+    provider_id: provider.id, patient_user_id: patient.id,
+    items: [{ drug_name: 'Synthetic fixture medicine - not for use',
+      dosage: 'test fixture only', frequency: 'test fixture only', quantity: 1 }],
+    notes: 'Synthetic, clinician-written draft. No actual medication ordered.',
+    clinical_ai_source_suggestion_id: source.id,
+    clinical_ai_source_encounter_id: encounter.id,
+  };
+  await assert.rejects(rx.createDraft(input),
+    { code: 'CLINICAL_AI_CARE_ACTION_REVIEW_REQUIRED' });
+  await review(encounter, source);
+  const drafted = await rx.createDraft(input);
+  assert.equal(drafted.clinical_ai_source_suggestion_id, source.id);
+  assert.equal(drafted.clinical_ai_source_encounter_id, encounter.id);
+  assert.equal(drafted.lifecycle_status, 'drafted');
+  assert.equal(drafted.signed_at, null);
+  assert.equal(drafted.routed_pharmacy_id, null);
+  await assert.rejects(rx.createDraft({
+    ...input, patient_user_id: otherPatient.id,
+  }), { code: 'CLINICAL_AI_RX_CONTEXT_DENIED' });
+  await assert.rejects(rx.createDraft({
+    ...input, clinical_ai_source_encounter_id: crypto.randomUUID(),
+  }), { code: 'CLINICAL_AI_RX_CONTEXT_DENIED' });
+});
+
 test('actual encrypted AI generation, clinician edits, canonical unsigned SOAP import and reviewed follow-up replay', async () => {
   const encounter = await encounterFor();
   const draft = await draftFor(encounter);
