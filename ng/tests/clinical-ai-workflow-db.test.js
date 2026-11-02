@@ -272,3 +272,83 @@ test('migration 033 upgrades legacy follow-up titles without losing plaintext or
     try { await client.query('ROLLBACK'); } finally { client.release(); }
   }
 });
+
+test('follow-up lifecycle enforces owner, optimistic concurrency, encrypted outcome and single closure audit', async () => {
+  const encounter = await encounterFor();
+  const task = await workflow.createFollowUp(pool, request, doctorContext, {
+    patientUserId: patient.id, encounterId: encounter.id, taskType: 'clinical_review',
+    title: 'Synthetic lifecycle task', instructions: 'Review fictional documentation only.',
+    assignedUserId: doctorContext.userId, assignedRole: 'remote_clinician', idempotencyKey: key(),
+  });
+  const change = { taskId: task.id, toStatus: 'in_progress', expectedVersion: task.record_version };
+  await assert.rejects(workflow.transitionFollowUp(pool, request, nurseContext, change), { code: 'FOLLOW_UP_ASSIGNEE_REQUIRED' });
+  await assert.rejects(workflow.transitionFollowUp(pool, request, { ...doctorContext, facility_id: key() }, change), { code: 'FOLLOW_UP_AUTHORITY_REVOKED' });
+  const started = await workflow.transitionFollowUp(pool, request, doctorContext, change);
+  assert.equal(started.status, 'in_progress'); assert.equal(started.completed_at, null);
+  const finish = { taskId: task.id, toStatus: 'completed', expectedVersion: started.record_version, outcome: 'Human confirmed synthetic documentation check.' };
+  // Both transactions read the same caller version; exactly one may commit.
+  const attempts = await Promise.allSettled([
+    workflow.transitionFollowUp(pool, request, doctorContext, finish),
+    workflow.transitionFollowUp(pool, request, doctorContext, finish),
+  ]);
+  assert.equal(attempts.filter(result => result.status === 'fulfilled').length, 1);
+  assert.equal(attempts.find(result => result.status === 'rejected').reason.code, 'FOLLOW_UP_VERSION_CONFLICT');
+  const closed = attempts.find(result => result.status === 'fulfilled').value;
+  assert.equal(closed.status, 'completed'); assert.equal(closed.completed_by, doctorContext.userId);
+  assert.ok(closed.completed_at); assert.equal(closed.closure_outcome, finish.outcome);
+  assert.deepEqual(closed.allowed_transitions, []);
+  const row = (await pool.query('SELECT * FROM ng_follow_up_tasks WHERE id=$1', [task.id])).rows[0];
+  assert.equal(row.record_version, task.record_version + 2);
+  assert.equal(JSON.stringify(row.closure_evidence_json).includes(finish.outcome), false);
+  assert.ok(row.closure_evidence_json.encrypted && row.closure_evidence_json.iv && row.closure_evidence_json.tag);
+  const audit = (await pool.query("SELECT metadata_json FROM ng_programme_audit_events WHERE resource_id=$1 AND action='follow_up_transition' ORDER BY created_at", [task.id])).rows;
+  assert.equal(audit.length, 2); assert.equal(JSON.stringify(audit).includes(finish.outcome), false);
+  const reloaded = (await workflow.listFollowUps(pool, doctorContext, { patientUserId: patient.id })).find(item => item.id === task.id);
+  assert.equal(reloaded.closure_outcome, finish.outcome); assert.equal(reloaded.closure_evidence_json, undefined);
+  await assert.rejects(workflow.transitionFollowUp(pool, request, doctorContext, { ...finish, expectedVersion: closed.record_version, toStatus: 'cancelled' }), { code: 'INVALID_FOLLOW_UP_TRANSITION' });
+});
+
+test('membership revocation serializes against task writes and stale middleware context is rejected', { timeout: 30000 }, async () => {
+  const task = await workflow.createFollowUp(pool, request, doctorContext, {
+    patientUserId: patient.id, taskType: 'review', title: 'Synthetic authority race',
+    assignedUserId: doctorContext.userId, assignedRole: 'remote_clinician', idempotencyKey: key(),
+  });
+  const held = deferred(), release = deferred();
+  let transitionPid, paused = false, result;
+  const transactional = barrierPool(pool, {
+    onConnect(pid) { transitionPid = pid; },
+    async afterQuery(sql) {
+      if (!paused && sql.includes('FROM ng_follow_up_tasks') && sql.includes('FOR UPDATE')) {
+        paused = true; held.resolve(); await release.promise;
+      }
+    },
+  });
+  const transition = workflow.transitionFollowUp(transactional, request, doctorContext, {
+    taskId: task.id, toStatus: 'in_progress', expectedVersion: task.record_version,
+  }).then(value => { result = { value }; }, error => { result = { error }; held.resolve(); });
+  const revoker = await pool.connect();
+  let revocation, revokeError;
+  try {
+    await held.promise; if (result?.error) throw result.error;
+    await revoker.query("SET statement_timeout='15000ms'");
+    revocation = revoker.query("UPDATE ng_programme_memberships SET expires_at=clock_timestamp()-INTERVAL '1 second' WHERE id=$1", [doctorContext.membershipId])
+      .catch(error => { revokeError = error; });
+    await assertBlockedBy(revoker.processID, transitionPid);
+  } finally {
+    release.resolve(); await transition;
+    if (revocation) await revocation;
+    revoker.release();
+  }
+  try {
+    if (result?.error) throw result.error;
+    if (revokeError) throw revokeError;
+    await assert.rejects(workflow.transitionFollowUp(pool, request, doctorContext, {
+      taskId: task.id, toStatus: 'completed', expectedVersion: result.value.record_version, outcome: 'Synthetic completion must be rejected.',
+    }), { code: 'FOLLOW_UP_AUTHORITY_REVOKED' });
+    const row = (await pool.query('SELECT status,record_version FROM ng_follow_up_tasks WHERE id=$1', [task.id])).rows[0];
+    assert.equal(row.status, 'in_progress'); assert.equal(row.record_version, task.record_version + 1);
+    assert.equal(Number((await pool.query("SELECT count(*) FROM ng_programme_audit_events WHERE resource_id=$1 AND action='follow_up_transition'", [task.id])).rows[0].count), 1);
+  } finally {
+    await pool.query('UPDATE ng_programme_memberships SET expires_at=NULL WHERE id=$1', [doctorContext.membershipId]);
+  }
+});

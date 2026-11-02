@@ -472,6 +472,27 @@ router.get(
   })
 );
 
+const followUpTransitionSchema = z.object({
+  toStatus: z.enum(['in_progress', 'completed', 'cancelled']),
+  expectedVersion: z.number().int().min(1),
+  outcome: z.string().trim().max(5000).nullable().optional(),
+}).strict();
+
+router.patch(
+  '/follow-ups/:id/status',
+  scoped(followUpRoles),
+  validate(followUpTransitionSchema),
+  asyncHandler(async (req, res) => {
+    if (!uuid.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Invalid task identifier.', code: 'VALIDATION_ERROR' });
+    }
+    const task = await workflow.transitionFollowUp(
+      getPool(), req, req.programmeContext, { taskId: req.params.id, ...req.validatedBody }
+    );
+    res.json({ ok: true, task });
+  })
+);
+
 const referralSchema = z.object({
   patientUserId: uuid,
   encounterId: uuid,

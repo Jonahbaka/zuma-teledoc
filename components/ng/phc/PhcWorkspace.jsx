@@ -204,6 +204,52 @@ function ClinicalAiEditor({ output, onChange }) {
   );
 }
 
+function FollowUpTaskCard({ task, online, busy, onTransition }) {
+  const outcomeId = useId();
+  const [outcome, setOutcome] = useState('');
+  const allowedTransitions = Array.isArray(task.allowed_transitions) ? task.allowed_transitions : [];
+  const terminal = ['completed', 'cancelled', 'waived'].includes(task.status);
+  const overdue = !terminal && task.due_at && new Date(task.due_at).getTime() < Date.now();
+  const assigneeName = [task.assignee_first_name, task.assignee_last_name].filter(Boolean).join(' ');
+  const owner = assigneeName || (task.assigned_user_id ? 'Assigned team member' : task.assigned_role ? titleCase(task.assigned_role) : 'Task creator');
+  const act = async (toStatus) => {
+    if (await onTransition(task, toStatus, outcome.trim())) setOutcome('');
+  };
+  return (
+    <div data-testid={`follow-up-${task.id}`} className="rounded-xl border border-slate-200 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold">{task.title}</p>
+          <p className="mt-1 text-sm text-slate-600">{task.patient_first_name} {task.patient_last_name} · {task.local_patient_number || 'No local number'}</p>
+        </div>
+        <Badge variant={task.status === 'completed' ? 'success' : 'outline'}>{titleCase(task.status)}</Badge>
+      </div>
+      {task.instructions && <p className="mt-3 whitespace-pre-wrap text-sm">{task.instructions}</p>}
+      <p className="mt-3 text-xs text-slate-600">Responsible: {owner}{assigneeName && task.assigned_role ? ` · ${titleCase(task.assigned_role)}` : ''}</p>
+      <p className="mt-2 flex items-center gap-2 text-xs text-slate-500"><Clock3 className="h-3.5 w-3.5" /> Due {readableDate(task.due_at)}{overdue && <Badge variant="warning">Overdue</Badge>}</p>
+      {task.completed_at && <p className="mt-2 text-xs text-slate-600">Completed {readableDate(task.completed_at)}</p>}
+      {terminal && task.closure_outcome && <p className="mt-3 whitespace-pre-wrap text-sm"><span className="font-medium">Recorded outcome: </span>{task.closure_outcome}</p>}
+      {!terminal && allowedTransitions.length > 0 && (
+        <div className="mt-4 space-y-3 border-t pt-3">
+          {(allowedTransitions.includes('completed') || allowedTransitions.includes('cancelled')) && (
+            <div>
+              <Label htmlFor={outcomeId}>Outcome or cancellation reason for {task.title}</Label>
+              <Textarea id={outcomeId} className="mt-1" value={outcome} onChange={(event) => setOutcome(event.target.value)} maxLength={5000} disabled={!online || busy} placeholder="Record what was done, or why this task is being cancelled." />
+              <p className="mt-1 text-xs text-slate-500">An explicit outcome is required to complete or cancel. Completion is recorded only when you confirm it.</p>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {allowedTransitions.includes('in_progress') && <Button type="button" size="sm" variant="outline" disabled={!online || busy} onClick={() => act('in_progress')}>Start task</Button>}
+            {allowedTransitions.includes('completed') && <Button type="button" size="sm" disabled={!online || busy || outcome.trim().length < 3} onClick={() => act('completed')}>Complete task</Button>}
+            {allowedTransitions.includes('cancelled') && <Button type="button" size="sm" variant="outline" disabled={!online || busy || outcome.trim().length < 3} onClick={() => act('cancelled')}>Cancel task</Button>}
+          </div>
+          {!online && <p className="text-xs text-slate-600">Reconnect to update this task. Status changes are not queued offline.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PhcWorkspace({ standalone = false }) {
   const taskFieldId = useId();
   const router = useRouter();
@@ -228,6 +274,8 @@ export default function PhcWorkspace({ standalone = false }) {
   const [followUps, setFollowUps] = useState([]);
   const [followUpTitle, setFollowUpTitle] = useState('');
   const [followUpDueAt, setFollowUpDueAt] = useState('');
+  const followUpTransitionPending = useRef(false);
+  const [followUpTransitionBusy, setFollowUpTransitionBusy] = useState(false);
   const [reportPeriod, setReportPeriod] = useState(new Date().toISOString().slice(0, 7));
   const [reportPreview, setReportPreview] = useState(null);
   const [reports, setReports] = useState([]);
@@ -259,6 +307,7 @@ export default function PhcWorkspace({ standalone = false }) {
   )) || contexts[0] || null, [contexts, contextKey]);
   const currentContext = useRef(context);
   currentContext.current = context;
+  const worklistRequestVersion = useRef(0);
   const programmeRole = context?.programme_role;
   const canViewQueue = CLINICAL_QUEUE_ROLES.has(programmeRole);
   const canIntake = programmeRole === 'phc_nurse' || programmeRole === 'remote_clinician';
@@ -320,8 +369,11 @@ export default function PhcWorkspace({ standalone = false }) {
   }, [context, ownerUserId]);
 
   const refreshWorklists = useCallback(async () => {
-    if (!context) return;
+    if (!context || currentContext.current !== context) return;
     const requestedContext = context;
+    const requestedVersion = ++worklistRequestVersion.current;
+    const isCurrentRequest = () => currentContext.current === requestedContext
+      && worklistRequestVersion.current === requestedVersion;
     setBusy('refresh');
     setError('');
     try {
@@ -339,15 +391,15 @@ export default function PhcWorkspace({ standalone = false }) {
           ? phcAPI.listReferrals(context)
           : Promise.resolve({ data: { referrals: [] } }),
       ]);
-      if (currentContext.current !== requestedContext) return;
+      if (!isCurrentRequest()) return;
       setQueue(queueResponse.data.entries || []);
       setFollowUps(followUpResponse.data.tasks || []);
       setReports(reportResponse.data.reports || []);
       setReferrals(referralResponse.data.referrals || []);
     } catch (requestError) {
-      if (currentContext.current === requestedContext) setError(errorMessage(requestError, 'Worklists could not be refreshed.'));
+      if (isCurrentRequest()) setError(errorMessage(requestError, 'Worklists could not be refreshed.'));
     } finally {
-      if (currentContext.current === requestedContext) setBusy('');
+      if (isCurrentRequest()) setBusy('');
     }
   }, [context]);
 
@@ -600,6 +652,43 @@ export default function PhcWorkspace({ standalone = false }) {
       setFollowUpTitle('');
       setFollowUpDueAt('');
       await refreshWorklists();
+    }
+  };
+
+  const transitionFollowUp = async (task, toStatus, outcome) => {
+    if (!online || !context || busy || followUpTransitionPending.current) return false;
+    if (!task.allowed_transitions?.includes(toStatus)) return false;
+    if (['completed', 'cancelled'].includes(toStatus) && outcome.length < 3) {
+      setError('Record an outcome or cancellation reason of at least three characters.');
+      return false;
+    }
+    const requestedContext = context;
+    followUpTransitionPending.current = true;
+    setFollowUpTransitionBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const { data } = await phcAPI.transitionFollowUp(requestedContext, task.id, {
+        toStatus, expectedVersion: task.record_version,
+        ...(['completed', 'cancelled'].includes(toStatus) ? { outcome } : {}),
+      });
+      if (currentContext.current !== requestedContext) return false;
+      // An older GET must not replace this confirmed mutation with a stale task.
+      worklistRequestVersion.current += 1;
+      setFollowUps((tasks) => tasks.map((entry) => entry.id === task.id ? { ...entry, ...data.task } : entry));
+      setNotice(`Follow-up task ${toStatus === 'in_progress' ? 'started' : toStatus}.`);
+      await refreshWorklists();
+      return currentContext.current === requestedContext;
+    } catch (requestError) {
+      if (currentContext.current === requestedContext) {
+        // Reload after conflicts without allowing the reload to erase the useful error.
+        if (requestError?.response?.status === 409) await refreshWorklists();
+        if (currentContext.current === requestedContext) setError(errorMessage(requestError, 'Task status could not be updated.'));
+      }
+      return false;
+    } finally {
+      followUpTransitionPending.current = false;
+      setFollowUpTransitionBusy(false);
     }
   };
 
@@ -1212,21 +1301,12 @@ export default function PhcWorkspace({ standalone = false }) {
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-lg">Care continuity worklist</CardTitle>
-                      <CardDescription>Open and scheduled tasks for patients enrolled in this programme.</CardDescription>
+                      <CardDescription>Assigned care tasks and recorded outcomes for patients enrolled in this programme.</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="grid gap-3 lg:grid-cols-2">
                         {followUps.map((task) => (
-                          <div key={task.id} className="rounded-xl border border-slate-200 p-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-semibold">{task.title}</p>
-                                <p className="mt-1 text-sm text-slate-600">{task.patient_first_name} {task.patient_last_name} · {task.local_patient_number || 'No local number'}</p>
-                              </div>
-                              <Badge variant={task.status === 'completed' ? 'success' : 'outline'}>{titleCase(task.status)}</Badge>
-                            </div>
-                            <p className="mt-3 flex items-center gap-2 text-xs text-slate-500"><Clock3 className="h-3.5 w-3.5" /> Due {readableDate(task.due_at)}</p>
-                          </div>
+                          <FollowUpTaskCard key={`${contextKey}:${task.id}`} task={task} online={online} busy={Boolean(busy) || followUpTransitionBusy} onTransition={transitionFollowUp} />
                         ))}
                         {followUps.length === 0 && (
                 <EmptyState

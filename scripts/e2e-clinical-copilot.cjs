@@ -227,6 +227,76 @@ async function main() {
   await expect(page.getByLabel('Encounter summary', { exact: true })).toHaveValue(b.complaint);
   pass('late encounter A generation cannot overwrite the displayed encounter B draft');
   await page.screenshot({ path: path.join(ART, 'stale-context-protected.png'), fullPage: true });
+  // The creating doctor cannot act on a task assigned to the nurse role.
+  await page.getByRole('tab', { name: /follow-ups/i }).click();
+  const doctorTask = page.getByTestId(`follow-up-${taskRow[0].id}`);
+  await expect(doctorTask).toBeVisible();
+  await expect(doctorTask.getByRole('button', { name: 'Start task', exact: true })).toHaveCount(0);
+  await expect(doctorTask.getByRole('button', { name: 'Complete task', exact: true })).toHaveCount(0);
+  const forbiddenTransition = await context.request.patch(`/api/ng/phc/follow-ups/${taskRow[0].id}/status`, {
+    headers: apiHeaders, data: { toStatus: 'in_progress', expectedVersion: taskRow[0].record_version },
+  });
+  assert.equal(forbiddenTransition.status(), 403);
+  pass('non-responsible clinician has no task actions and direct transition is rejected');
+
+  const nurseBrowser = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 1000 } });
+  await nurseBrowser.tracing.start({ screenshots: true, snapshots: true, sources: true });
+  try {
+    await nurseBrowser.route('**/*', async route => {
+      const req = route.request();
+      if (isOfflineFontFixture(req.url(), req.method(), req.resourceType())) {
+        return route.fulfill({ status: 200, contentType: 'text/css', body: '/* offline */' });
+      }
+      if (new URL(req.url()).origin !== BASE) { external.push(req.url()); return route.abort('blockedbyclient'); }
+      return route.continue();
+    });
+    const nurseLogin = await nurseBrowser.request.post('/api/auth/login', { data: { email: nurse.email, password: PASSWORD, role: 'provider' } });
+    assert.equal(nurseLogin.ok(), true, `Synthetic nurse login failed ${nurseLogin.status()}`);
+    const nurseSession = await nurseLogin.json(); assert.equal(nurseSession.success, true);
+    await nurseBrowser.addInitScript(({ accessToken, refreshToken, user }) => {
+      localStorage.setItem('accessToken', accessToken); localStorage.setItem('refreshToken', refreshToken); localStorage.setItem('user', JSON.stringify(user));
+    }, { accessToken: nurseSession.accessToken, refreshToken: nurseSession.refreshToken, user: nurseSession.user });
+    const nursePage = await nurseBrowser.newPage(); nursePage.setDefaultTimeout(15000);
+    nursePage.on('pageerror', error => pageErrors.push(error.message));
+    const taskWrites = [];
+    nursePage.on('request', req => {
+      if (req.method() === 'PATCH' && req.url().endsWith(`/follow-ups/${taskRow[0].id}/status`)) taskWrites.push(req.postDataJSON());
+    });
+    await nursePage.goto('/ng/phc', { waitUntil: 'networkidle' });
+    await nursePage.getByRole('tab', { name: /follow-ups/i }).click();
+    const card = nursePage.getByTestId(`follow-up-${taskRow[0].id}`);
+    await expect(card.getByText('Clinician edited synthetic follow-up.', { exact: true })).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Complete task', exact: true })).toBeDisabled();
+    await card.getByRole('button', { name: 'Start task', exact: true }).click();
+    await expect(card.getByText('In Progress', { exact: true })).toBeVisible();
+    assert.equal(taskWrites.length, 1);
+    assert.deepEqual(taskWrites[0], { toStatus: 'in_progress', expectedVersion: taskRow[0].record_version });
+    const syntheticOutcome = 'Synthetic nurse confirmed documentation review; no live patient involved.';
+    await card.getByLabel(`Outcome or cancellation reason for ${taskRow[0].title || 'Synthetic documentation check A'}`).fill(syntheticOutcome);
+    // Same-render repeated clicks exercise the synchronous client in-flight guard.
+    await card.getByRole('button', { name: 'Complete task', exact: true }).evaluate(button => { button.click(); button.click(); });
+    await expect(card.getByText('Completed', { exact: true })).toBeVisible();
+    assert.equal(taskWrites.length, 2);
+    assert.equal(taskWrites[1].expectedVersion, taskRow[0].record_version + 1);
+    const closed = (await pool.query('SELECT * FROM ng_follow_up_tasks WHERE id=$1', [taskRow[0].id])).rows[0];
+    assert.equal(closed.status, 'completed'); assert.equal(closed.completed_by, nurse.id); assert.ok(closed.completed_at);
+    assert.equal(closed.record_version, taskRow[0].record_version + 2);
+    assert.ok(closed.closure_evidence_json.encrypted && closed.closure_evidence_json.iv && closed.closure_evidence_json.tag);
+    assert.equal(JSON.stringify(closed.closure_evidence_json).includes(syntheticOutcome), false);
+    assert.equal(require('../lib/encryption').decrypt(closed.closure_evidence_json.encrypted, closed.closure_evidence_json.iv, closed.closure_evidence_json.tag), syntheticOutcome);
+    const audit = (await pool.query("SELECT metadata_json FROM ng_programme_audit_events WHERE resource_type='follow_up_task' AND resource_id=$1 AND action='follow_up_transition'", [closed.id])).rows;
+    assert.equal(audit.length, 2); assert.equal(JSON.stringify(audit).includes(syntheticOutcome), false);
+    await nursePage.reload({ waitUntil: 'networkidle' });
+    await nursePage.getByRole('tab', { name: /follow-ups/i }).click();
+    await expect(card.getByText('Completed', { exact: true })).toBeVisible();
+    await expect(card.getByText(syntheticOutcome, { exact: false })).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Complete task', exact: true })).toHaveCount(0);
+    await nursePage.screenshot({ path: path.join(ART, 'completed-follow-up.png'), fullPage: true });
+    pass('responsible nurse starts and explicitly completes once; encrypted outcome, actor, audit and terminal state survive reload');
+  } finally {
+    await nurseBrowser.tracing.stop({ path: path.join(ART, 'follow-up-trace.zip') });
+    await nurseBrowser.close();
+  }
   assert.deepEqual(pageErrors, []); assert.deepEqual(external, []);
   pass('no uncaught browser errors or unexpected external requests; named font stylesheet fulfilled offline');
 }
