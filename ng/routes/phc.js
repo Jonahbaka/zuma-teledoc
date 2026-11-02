@@ -428,6 +428,8 @@ router.patch(
 );
 
 const followUpSchema = z.object({
+  sourceSuggestionId: uuid.optional(),
+  sourceDraftIndex: z.number().int().min(0).max(9).optional(),
   patientUserId: uuid,
   encounterId: uuid.nullable().optional(),
   referralId: uuid.nullable().optional(),
@@ -467,6 +469,27 @@ router.get(
       metadata: { count: tasks.length },
     });
     res.json({ ok: true, tasks, count: tasks.length });
+  })
+);
+
+const followUpTransitionSchema = z.object({
+  toStatus: z.enum(['in_progress', 'completed', 'cancelled']),
+  expectedVersion: z.number().int().min(1),
+  outcome: z.string().trim().max(5000).nullable().optional(),
+}).strict();
+
+router.patch(
+  '/follow-ups/:id/status',
+  scoped(followUpRoles),
+  validate(followUpTransitionSchema),
+  asyncHandler(async (req, res) => {
+    if (!uuid.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Invalid task identifier.', code: 'VALIDATION_ERROR' });
+    }
+    const task = await workflow.transitionFollowUp(
+      getPool(), req, req.programmeContext, { taskId: req.params.id, ...req.validatedBody }
+    );
+    res.json({ ok: true, task });
   })
 );
 
@@ -646,6 +669,7 @@ router.get(
 );
 
 const aiReviewSchema = z.object({
+  expectedEncounterId: uuid,
   decision: z.enum(['accepted', 'accepted_with_edits', 'rejected']),
   editedOutput: clinicalAi.suggestionOutputSchema.nullable().optional(),
   rejectionReason: z.string().trim().max(2000).nullable().optional(),

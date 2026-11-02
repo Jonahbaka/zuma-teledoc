@@ -44,6 +44,10 @@ test('PostgreSQL PHC metadata and advertised HTTP reads retain current authentic
         AND e.programme_id=$1 AND e.facility_id=$2 AND e.status='active' AND e.consent_status='granted' LIMIT 1`, [nurse.programme_id, nurse.facility_id])).rows[0];
     const government = (await client.query("SELECT id FROM users WHERE email='government@demo.doctarx.com' AND is_active=TRUE LIMIT 1")).rows[0];
     assert.ok(enrollment && government, 'Existing provisioned patient enrollment and government account are required');
+    const doctor = (await client.query(`SELECT u.id FROM users u JOIN ng_programme_memberships m ON m.user_id=u.id
+      WHERE u.email='doctor@demo.doctarx.com' AND u.is_active=TRUE AND m.role='remote_clinician'
+        AND m.status='active' AND m.programme_id=$1 AND (m.facility_id=$2 OR m.facility_id IS NULL) LIMIT 1`, [nurse.programme_id, nurse.facility_id])).rows[0];
+    assert.ok(doctor, 'Existing provisioned clinician membership is required');
     const encounterId = crypto.randomUUID();
     await client.query(`INSERT INTO ng_clinical_encounters
       (id,patient_user_id,hospital_id,facility_id,programme_id,programme_facility_id,enrollment_id,opened_by_user_id,status)
@@ -54,6 +58,19 @@ test('PostgreSQL PHC metadata and advertised HTTP reads retain current authentic
       (id,programme_id,facility_id,patient_user_id,encounter_id,observation_code,display_name,value_type,value_numeric,unit,method,status,observed_at,entered_by,idempotency_key)
       VALUES ($1,$2,$3,$4,$5,'8310-5','Body temperature','numeric',37.1,'Cel','manual','final',$6,$7,$8)`,
     [id, nurse.programme_id, nurse.facility_id, enrollment.patient_user_id, encounterId, new Date(Date.now() + index * 1000), nurse.id, crypto.randomUUID()]);
+
+    const referralIds = [crypto.randomUUID(), crypto.randomUUID()];
+    const insertReferral = async (id, overrides = {}) => client.query(`INSERT INTO ng_referrals
+      (id,patient_user_id,provider_user_id,encounter_id,programme_id,facility_id,status,priority,created_at,target_name,reason_encrypted,due_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,'routine',$8,'Private synthetic recipient','not-decrypted-by-metadata',NOW()+INTERVAL '1 day')`,
+      [id, overrides.patient || enrollment.patient_user_id, doctor.id,
+        overrides.otherEncounter ? null : encounterId,
+        overrides.otherProgramme ? null : nurse.programme_id,
+        overrides.otherFacility ? null : nurse.facility_id,
+        overrides.status || 'sent', new Date(Date.now() + (overrides.order || 0) * 1000)]);
+    await insertReferral(referralIds[0]); await insertReferral(referralIds[1], { status:'completed', order:1 });
+    for (const mismatch of [{ otherEncounter:true }, { otherProgramme:true }, { otherFacility:true }, { patient:government.id }]) await insertReferral(crypto.randomUUID(), mismatch);
+    const referralSnapshot = (await client.query('SELECT * FROM ng_referrals WHERE id=ANY($1::uuid[]) ORDER BY id', [referralIds])).rows;
 
     const originalLoad = Module._load;
     let router; let authenticate;
@@ -107,12 +124,38 @@ test('PostgreSQL PHC metadata and advertised HTTP reads retain current authentic
     assert.equal((await request('Observation/' + observationIds[0])).status, 404);
     assert.equal((await request('Patient/' + enrollment.patient_user_id, { method: 'POST' })).status, 404);
 
+    const referralQuery = { encounter:encounterId, _count:'1' };
+    const referralRequest = options => request('ServiceRequest', { userId:doctor.id, query:referralQuery, ...options });
+    const firstReferral = await referralRequest();
+    assert.equal(firstReferral.status,200); assert.equal(firstReferral.headers.get('cache-control'),'private, no-store');
+    assert.equal(firstReferral.body.entry[0].fullUrl,'urn:uuid:'+referralIds[0]);
+    assert.equal(firstReferral.body.entry[0].resource.subject.identifier.value,enrollment.patient_user_id);
+    assert.equal(firstReferral.body.entry.length,1); assert.equal(firstReferral.body.entry[0].resource.id,referralIds[0]);
+    assert.equal(firstReferral.body.entry[0].resource.status,'active'); assert.equal(firstReferral.body.total,undefined);
+    assert.ok(firstReferral.body.link[0].url.includes('_offset=1'));
+    assert.ok(!JSON.stringify(firstReferral.body).includes('Private synthetic') && !JSON.stringify(firstReferral.body).includes('not-decrypted'));
+    assert.deepEqual(Object.keys(firstReferral.body.entry[0].resource).sort(), ['resourceType','id','status','intent','priority','subject','encounter','requester','authoredOn'].sort());
+    const secondReferral=await referralRequest({query:{...referralQuery,_offset:'1'}});
+    assert.equal(secondReferral.body.entry[0].resource.id,referralIds[1]); assert.equal(secondReferral.body.link,undefined);
+    for (const userId of [nurse.id,government.id,enrollment.patient_user_id]) assert.equal((await referralRequest({userId})).status,403);
+    assert.equal((await referralRequest({query:{...referralQuery,facilityId:crypto.randomUUID()}})).status,403);
+    assert.equal((await referralRequest({query:{encounter:crypto.randomUUID()}})).status,404);
+    assert.equal((await referralRequest({query:{...referralQuery,_count:'201'}})).status,400);
+    assert.equal((await referralRequest({method:'POST'})).status,404);
+    await client.query('SAVEPOINT declined_referral');
+    await client.query("UPDATE ng_referrals SET status='declined' WHERE id=$1",[referralIds[0]]);
+    const declined=await referralRequest(); assert.equal(declined.status,503); assert.equal(declined.body.resourceType,'OperationOutcome');
+    assert.ok(!JSON.stringify(declined.body).includes(enrollment.patient_user_id));
+    await client.query('ROLLBACK TO SAVEPOINT declined_referral'); await client.query('RELEASE SAVEPOINT declined_referral');
+    assert.deepEqual((await client.query('SELECT * FROM ng_referrals WHERE id=ANY($1::uuid[]) ORDER BY id',[referralIds])).rows,referralSnapshot);
+
     await client.query('SAVEPOINT consent_denial');
     await client.query("UPDATE ng_programme_patient_enrollments SET consent_status='revoked' WHERE id=$1", [enrollment.id]);
     // Metadata contains no patient material and does not depend on any selected
     // patient's consent; all advertised clinical reads still enforce it.
     assert.equal((await request('metadata')).status, 200);
     for (const [resource, query] of [['Patient/' + enrollment.patient_user_id, {}], ['Encounter/' + encounterId, {}], ['Observation', { encounter: encounterId }]]) assert.equal((await request(resource, { query })).status, 409);
+    assert.equal((await referralRequest()).status,409);
     await client.query('ROLLBACK TO SAVEPOINT consent_denial'); await client.query('RELEASE SAVEPOINT consent_denial');
     await client.query('SAVEPOINT membership_denial');
     await client.query("UPDATE ng_programme_memberships SET expires_at=NOW()-INTERVAL '1 second' WHERE id=$1", [nurse.membership_id]);
@@ -122,6 +165,7 @@ test('PostgreSQL PHC metadata and advertised HTTP reads retain current authentic
     const unavailable = await request('Patient/' + enrollment.patient_user_id);
     assert.equal(unavailable.status, 500); assert.equal(unavailable.body.resourceType, 'OperationOutcome');
     assert.equal(JSON.stringify(unavailable.body).includes(enrollment.patient_user_id), false);
+    const referralAuditDenied=await referralRequest(); assert.equal(referralAuditDenied.status,500); assert.ok(!JSON.stringify(referralAuditDenied.body).includes(enrollment.patient_user_id));
     auditFailure = false;
     const audited = (await client.query("SELECT count(*)::int AS count FROM ng_programme_audit_events WHERE action='fhir_read' AND actor_user_id=$1 AND resource_id=ANY($2::uuid[])", [nurse.id, [encounterId, enrollment.patient_user_id]])).rows[0];
     assert.ok(audited.count >= 4);

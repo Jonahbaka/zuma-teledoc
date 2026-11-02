@@ -8,6 +8,7 @@ const logger = require('../middleware/logger');
 
 // Triage levels with priority scores
 const TRIAGE_LEVELS = {
+  UNASSESSED: { level: 'UNASSESSED', priority: null, color: 'gray', maxWaitMinutes: null },
   EMERGENT: { level: 'EMERGENT', priority: 100, color: 'red', maxWaitMinutes: 0 },
   URGENT: { level: 'URGENT', priority: 80, color: 'orange', maxWaitMinutes: 15 },
   SEMI_URGENT: { level: 'SEMI_URGENT', priority: 60, color: 'yellow', maxWaitMinutes: 60 },
@@ -214,15 +215,17 @@ class AITriageEngine {
       const analysis = {
         isEmergency: false,
         emergencyFlags: [],
-        severity: 1,
-        triageLevel: 'NON_URGENT',
+        severity: null,
+        triageLevel: 'UNASSESSED',
+        assessmentStatus: 'unassessed',
+        requiresClinicalReview: true,
         affectedBodySystems: [],
         suggestedSpecialty: 'Primary Care',
         clinicalFlags: [],
         suggestedMedications: [],
         differentialDiagnosis: [],
         recommendedTests: [],
-        confidenceScore: 85,
+        confidenceScore: null,
         soapDraft: '',
         requiresImmediateAttention: false,
         routing: null
@@ -239,6 +242,27 @@ class AITriageEngine {
         this._analyzeVitals(vitals, analysis);
       }
       
+      // No rule match is not evidence of low urgency. Do not create an automatic
+      // care recommendation or queue priority when this ruleset cannot assess it.
+      if (analysis.severity == null) {
+        analysis.isEmergency = null;
+        analysis.suggestedMedications = [];
+        analysis.recommendedTests = [];
+        analysis.differentialDiagnosis = [];
+        analysis.suggestedSpecialty = null;
+        analysis.priorityScore = null;
+        analysis.reviewMessage = 'This tool could not assess urgency. Please contact a healthcare professional for assessment. If you think this may be an emergency, seek emergency care now.';
+        analysis.soapDraft = 'UNASSESSED: Professional assessment required. No automated severity or care recommendations were generated.';
+        analysis.routing = { specialty: null, urgency: 'UNASSESSED', autoRoute: false, reason: analysis.reviewMessage };
+        return analysis;
+      }
+      analysis.assessmentStatus = 'rule_matched_requires_review';
+      // Keep emergency severity and attention indicators consistent with existing rules.
+      if (analysis.isEmergency || analysis.severity >= 5) {
+        analysis.isEmergency = true;
+        analysis.requiresImmediateAttention = true;
+      }
+
       // Step 4: Generate differential diagnosis
       this._generateDifferentials(analysis);
       
@@ -563,7 +587,7 @@ class AITriageEngine {
    * Get triage level info
    */
   getTriageLevelInfo(level) {
-    return TRIAGE_LEVELS[level] || TRIAGE_LEVELS.NON_URGENT;
+    return TRIAGE_LEVELS[level] || TRIAGE_LEVELS.UNASSESSED;
   }
   
   /**

@@ -182,7 +182,7 @@ test('stuck finite transitions fail rather than being skipped while unchanged in
 
 test('both ordinary head metadata and Next 15 streamed body metadata are valid while duplicate titles remain a failure', async () => {
   const { state, page } = renderedDocument('/');
-  state.title = 'DoctaRx | Connected Virtual Care'; state.titles = [state.title]; state.titleParent = 'HEAD';
+  state.title = 'DoctaRx | Telehealth AI & Connected Care'; state.titles = [state.title]; state.titleParent = 'HEAD';
   assert.equal((await waitForRenderedPage(page, { timeoutMs: 1000 })).titles[0].parent, 'HEAD');
   state.titleParent = 'BODY';
   assert.equal((await waitForRenderedPage(page, { timeoutMs: 1000 })).titles[0].parent, 'BODY');
@@ -370,4 +370,22 @@ test('a connected browser that closes normally cannot hide a surviving owned bro
     return true;
   });
   assert.equal(closes, 1); assert.equal(serverCloses, 1); assert.equal(kills, 1);
+});
+
+
+test('Copilot browser offline font fixture accepts only the exact known static stylesheet', () => {
+  const copilot = fs.readFileSync(path.resolve(__dirname, '../../scripts/e2e-clinical-copilot.cjs'), 'utf8');
+  const declaration = copilot.match(/const OFFLINE_FONT_STYLESHEET = '[^']+';/)[0];
+  const helper = copilot.match(/function isOfflineFontFixture\([^)]*\) \{[^}]+\}/)[0];
+  const context = {};
+  vm.runInNewContext(`${declaration}\n${helper}\nglobalThis.url = OFFLINE_FONT_STYLESHEET; globalThis.matches = isOfflineFontFixture;`, context);
+  assert.ok(fs.readFileSync(path.resolve(__dirname, '../../app/layout.js'), 'utf8').includes(context.url));
+  assert.equal(context.matches(context.url, 'GET', 'stylesheet'), true);
+  for (const url of [context.url + '&extra=1', context.url.replace('fonts.googleapis.com', 'fonts.googleapis.com.evil.invalid'), context.url.replace('/css2?', '/other?'), context.url.replace('https:', 'http:'), 'https://api.anthropic.com/v1/messages']) {
+    assert.equal(context.matches(url, 'GET', 'stylesheet'), false);
+  }
+  assert.equal(context.matches(context.url, 'POST', 'stylesheet'), false);
+  assert.equal(context.matches(context.url, 'GET', 'fetch'), false);
+  assert.match(copilot, /if \(url.origin !== BASE\) \{ external.push\(url.href\); return await route.abort/);
+  assert.match(copilot, /assert.deepEqual\(external, \[\]\)/);
 });

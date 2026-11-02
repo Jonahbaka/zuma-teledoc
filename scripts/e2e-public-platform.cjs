@@ -217,8 +217,8 @@ async function settle(page, { resourceTimeoutMs = 30000 } = {}) {
 async function waitForRenderedPage(page, { timeoutMs = 10000 } = {}) {
   const pathname = new URL(page.url()).pathname;
   const expectedTitle = {
-    '/': 'DoctaRx | Connected Virtual Care',
-    '/ng': 'Online Doctor Consultation and Pharmacy Access in Nigeria',
+    '/': 'DoctaRx | Telehealth AI & Connected Care',
+    '/ng': 'Telehealth AI and Connected Care in Nigeria',
     '/pharmacies': 'Pharmacy directory',
     '/ng/pharmacies': 'Pharmacy directory',
     '/ng/provider/call': 'DoctaRx | Virtual Care, Prescriptions, and Pharmacy Coordination',
@@ -344,7 +344,7 @@ async function publicScope(browser, scope, width) {
   let priorError;
   try {
     await page.goto(web + scope.home);
-    await page.getByRole('heading', { level: 1, name: /Good care\.\s*Closer to you\./ }).waitFor();
+    await page.getByRole('heading', { level: 1, name: /Connected care\.\s*People first\./ }).waitFor();
     await page.getByText('Device location is unavailable. Choose an area to continue.', { exact: true }).waitFor();
     check(await page.getByText('Using your device location', { exact: true }).count() === 0, scope.market + ': denied permission must not claim a device location.');
     check(await page.getByRole('contentinfo').count() === 1, scope.market + ': public homepage has one shared footer.');

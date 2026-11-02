@@ -39,6 +39,11 @@ const pool = {
         display_name: 'Body temperature', value_type: 'numeric', value_numeric: '37.1', unit: '°C', observed_at: new Date('2026-10-01T12:00:00Z'), entered_by: ids.actor })) };
     }
     if(sql.includes('FROM ng_patient_allergies') || sql.includes('FROM ng_problem_list_items')) {assert.equal(params[0],ids.patient);return{rows:[]};}
+    if (sql.includes('FROM ng_referrals')) {
+      assert.deepEqual(params.slice(0, 4), [ids.programme, ids.facility, ids.encounter, ids.patient]);
+      assert.ok(!sql.includes('SELECT *') && !/reason|clinical_notes|response_summary|target_name|due_at/.test(sql));
+      return { rows: state.referralRawRows || (state.referrals || []).slice(params[5], params[5] + params[4]) };
+    }
     if(sql.includes('FROM ng_lab_results')) {assert.deepEqual(params,[ids.encounter,ids.patient]);return{rows:[]};}
     if (sql.includes('FROM users u')) return { rows: [{ id: ids.patient, first_name: 'Private', last_name: 'Patient fixture', email: 'private-patient@example.invalid', is_active: true, updated_at: new Date('2026-10-01T12:00:00Z') }] };
     if (sql.includes('INSERT INTO ng_programme_audit_events')) {
@@ -81,8 +86,9 @@ test('CapabilityStatement advertises exactly the active PHC Patient/Encounter re
   assert.equal(statement.kind, 'instance'); assert.ok(statement.date && statement.implementation.description && statement.software.name.includes('DoctaRx'));
   assert.deepEqual(statement.format, ['application/fhir+json']);
   assert.deepEqual(statement.rest[0].resource.map(resource => [resource.type, resource.interaction.map(operation => operation.code)]),
-    [['Patient', ['read']], ['Encounter', ['read']], ['Observation', ['search-type']], ['AllergyIntolerance',['search-type']], ['Condition',['search-type']], ['DiagnosticReport',['search-type']]]);
+    [['Patient', ['read']], ['Encounter', ['read']], ['Observation', ['search-type']], ['AllergyIntolerance',['search-type']], ['Condition',['search-type']], ['DiagnosticReport',['search-type']], ['ServiceRequest',['search-type']]]);
   assert.deepEqual(statement.rest[0].resource[2].searchParam.map(parameter => [parameter.name, parameter.type]), [['encounter', 'reference']]);
+  assert.equal(statement.rest[0].resource.find(resource => resource.type === 'ServiceRequest').searchParam[0].definition, 'http://hl7.org/fhir/SearchParameter/clinical-encounter');
   assert.equal(statement.rest[0].resource[2].searchParam[0].definition, 'http://hl7.org/fhir/SearchParameter/clinical-encounter');
   assert.deepEqual(router.stack.filter(layer => layer.route).map(layer => layer.route.path), ['/metadata', ...Object.values(capability.RESOURCE_PATHS)]);
   assert.ok(statement.rest[0].resource.every(resource => !resource.profile && !resource.supportedProfile && !resource.operation));
@@ -140,5 +146,57 @@ test('advertised HTTP resource operations still require actual enrollment, conse
     state.consent = 'granted'; state.encounter = false; assert.equal((await get('Observation', { query: { encounter: ids.encounter } })).status, 404);
     assert.equal((await get('Patient', { query: { name: 'Private' } })).status, 404);
     assert.equal((await get('Patient/' + ids.patient, { method: 'POST' })).status, 404);
+  });
+});
+
+const referralFixture = (overrides = {}) => ({ id: ids.observation, patient_user_id: ids.patient,
+  encounter_id: ids.encounter, provider_user_id: ids.actor, status: 'sent', priority: 'routine',
+  created_at: '2026-10-01T12:00:00Z', ...overrides });
+
+test('minimal referral mapping uses actual request state, never a receiver rejection or deadline as a completed/scheduled service', () => {
+  const { toServiceRequest } = require('../services/interop/clinicalFhirService');
+  for (const [local, expected] of Object.entries({ draft: 'draft', sent: 'active', accepted: 'active', completed: 'completed', cancelled: 'revoked' })) {
+    const result = toServiceRequest(referralFixture({ status: local, reason: 'Private reason', clinical_notes: 'Private notes', due_at: '2026-11-03', target_name: 'Private recipient' }));
+    assert.equal(result.status, expected); assert.equal(result.intent, 'order');
+    assert.deepEqual(result.subject,{type:'Patient',identifier:{system:'urn:doctarx:patient-user',value:ids.patient}});
+    assert.equal(result.encounter.identifier.value,ids.encounter); assert.equal(result.requester.identifier.value,ids.actor);
+    assert.deepEqual(Object.keys(result).sort(), ['resourceType','id','status','intent','priority','subject','encounter','requester','authoredOn'].sort());
+    assert.ok(!JSON.stringify(result).includes('Private'));
+  }
+  for (const [local, expected] of Object.entries({ routine: 'routine', urgent: 'urgent', emergency: 'stat' })) assert.equal(toServiceRequest(referralFixture({ priority: local })).priority, expected);
+  for (const override of [{ status: 'declined' }, { status: 'unknown' }, { status: '__proto__' }, { priority: 'asap' }, { provider_user_id: null }, { id: '../Patient/private' }, { created_at: 'bad date' }]) {
+    assert.throws(() => toServiceRequest(referralFixture(override)), error => error.statusCode === 503 && !error.message.includes('Private'));
+  }
+});
+
+test('ServiceRequest HTTP enforces referral role, bounded scope and current consent with minimal paged metadata', async () => {
+  reset({ role: 'remote_clinician', referrals: [referralFixture(), referralFixture({ id: ids.observation.slice(0,-1)+'7', status:'completed' })] });
+  await withHTTP(async get => {
+    const query = { encounter: ids.encounter, _count: '1' };
+    const first = await get('ServiceRequest', { query });
+    assert.equal(first.status, 200); assert.equal(first.headers.get('cache-control'), 'private, no-store');
+    assert.equal(first.body.entry[0].fullUrl, 'urn:uuid:'+ids.observation);
+    assert.equal(first.body.entry.length, 1); assert.equal(first.body.entry[0].resource.status, 'active');
+    assert.equal(first.body.total, undefined); assert.ok(first.body.link[0].url.includes('_offset=1'));
+    assert.ok(first.body.link[0].url.includes('programmeId='+ids.programme));
+    assert.equal((await get('ServiceRequest', { query: { ...query, _offset: '1' } })).body.entry[0].resource.status, 'completed');
+    for (const bad of [{ _count:'0' }, { _count:'201' }, { _count:'1tail' }, { _count:'1.5' }, { _offset:'-1' }, { _offset:'1000001' }]) assert.equal((await get('ServiceRequest', { query: { ...query, ...bad } })).status, 400);
+    state.referralRawRows = [referralFixture(), referralFixture()];
+    assert.equal((await get('ServiceRequest', { query: { ...query, _offset: '1000000' } })).status, 400);
+    delete state.referralRawRows;
+    assert.equal((await get('ServiceRequest')).status, 400);
+    assert.equal((await get('ServiceRequest/'+ids.observation, { query })).status, 404);
+    assert.equal((await get('ServiceRequest', { query, method:'POST' })).status, 404);
+    for (const role of ['phc_nurse', 'clinical_supervisor', 'on_call_clinician', 'referral_coordinator', 'government_analyst']) {
+      state.role=role; const before=calls.filter(call=>call.sql.includes('FROM ng_referrals')).length;
+      assert.equal((await get('ServiceRequest', { query })).status,403);
+      assert.equal(calls.filter(call=>call.sql.includes('FROM ng_referrals')).length,before);
+    }
+    state.role='remote_clinician'; state.consent='revoked'; assert.equal((await get('ServiceRequest',{query})).status,409);
+    state.consent='granted'; state.enrollment=false; assert.equal((await get('ServiceRequest',{query})).status,403);
+    state.enrollment=true; state.encounter=false; assert.equal((await get('ServiceRequest',{query})).status,404);
+    state.encounter=true; state.referrals=[]; const empty=await get('ServiceRequest',{query}); assert.equal(empty.status,200); assert.deepEqual(empty.body.entry,[]);
+    state.referrals=[referralFixture({status:'declined'})]; const unsupported=await get('ServiceRequest',{query}); assert.equal(unsupported.status,503); assert.equal(unsupported.body.resourceType,'OperationOutcome'); assert.ok(!JSON.stringify(unsupported.body).includes(ids.patient));
+    state.referrals=[referralFixture()]; state.auditFailure=true; const denied=await get('ServiceRequest',{query}); assert.equal(denied.status,500); assert.ok(!JSON.stringify(denied.body).includes(ids.patient));
   });
 });

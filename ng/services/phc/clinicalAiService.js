@@ -6,7 +6,7 @@ const { getProgrammeCapabilities } = require('./offlineSyncService');
 const { recordProgrammeAudit, scopeError } = require('./programmeScopeService');
 const workflow = require('./phcWorkflowService');
 
-const PROMPT_VERSION = 'phc-grounded-draft-v1';
+const PROMPT_VERSION = 'phc-source-linked-draft-v3';
 const SUPPORTED_TYPES = new Set(['encounter_summary', 'soap_draft', 'missing_information', 'follow_up_draft']);
 const sourceReferenceSchema = z.string().min(1).max(120);
 const suggestionOutputSchema = z.object({
@@ -21,6 +21,17 @@ const suggestionOutputSchema = z.object({
     sourceRefs: z.array(sourceReferenceSchema).min(1).max(12),
   })).max(50),
   uncertainties: z.array(z.string().min(1).max(500)).max(30),
+  soapDraft: z.object({
+    subjective: z.string().max(6000),
+    objective: z.string().max(6000),
+    assessment: z.string().max(6000),
+    plan: z.string().max(6000),
+  }).strict().optional(),
+  followUpDrafts: z.array(z.object({
+    title: z.string().trim().min(1).max(255),
+    instructions: z.string().trim().max(5000),
+    sourceRefs: z.array(sourceReferenceSchema).max(12),
+  }).strict()).max(10).optional(),
 }).strict();
 
 function encryptionKey() {
@@ -71,7 +82,7 @@ function buildGroundedInput(encounter, observations) {
       reasonForVisit: encounter.reason_for_visit ? safeClinicalText(encounter.reason_for_visit) : 'not recorded',
       status: encounter.status || 'unknown',
     },
-    observations: observations.map((observation) => ({
+    observations: [...observations].sort((left, right) => String(left.id).localeCompare(String(right.id))).map((observation) => ({
       sourceRef: `observation:${observation.id}`,
       displayName: safeClinicalText(observation.display_name, 255),
       valueType: observation.value_type,
@@ -117,7 +128,46 @@ function validateGrounding(output, sources) {
       }
     }
   }
+  // References establish provenance, not semantic agreement with the record.
+  // Do not allow uncited prose to bypass the assertion-level reference checks.
+  const assertionTexts = new Set(output.assertions.map((assertion) => assertion.text.trim()));
+  for (const narrative of [output.summary, output.handoverDraft, ...Object.values(output.soapDraft || {})]) {
+    const lines = narrative.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (lines.some((line) => !assertionTexts.has(line))) {
+      throw scopeError(502, 'Clinical AI narrative contains text without source-linked assertions.', 'CLINICAL_AI_NARRATIVE_REJECTED');
+    }
+  }
+  for (const task of output.followUpDrafts || []) {
+    if (!task.sourceRefs.length || task.sourceRefs.some((reference) => !sources.has(reference))) {
+      throw scopeError(502, 'Clinical AI follow-up proposal has no available source reference.', 'CLINICAL_AI_GROUNDING_REJECTED');
+    }
+  }
   return output;
+}
+
+function validationStatus(output) {
+  return {
+    schemaValidated: true,
+    sourceReferencesValidated: true,
+    narrativeLinkedToAssertions: true,
+    groundingValidated: false,
+    semanticGrounding: 'not_validated',
+    requiresClinicianReview: true,
+    assertionCount: output.assertions.length,
+  };
+}
+
+function normalizeValidation(row) {
+  return {
+    ...row,
+    validation_json: {
+      ...(row.validation_json || {}),
+      groundingValidated: false,
+      semanticGrounding: 'not_validated',
+      requiresClinicianReview: true,
+      ...(row.prompt_version !== PROMPT_VERSION ? { narrativeLinkedToAssertions: false, legacyValidation: true } : {}),
+    },
+  };
 }
 
 async function assertAiEnabled(pool, context) {
@@ -148,7 +198,10 @@ Never invent a symptom, history, allergy, medicine, diagnosis, measurement, resu
 When information is absent, state "not recorded" or add it to missingInformation.
 Do not diagnose, prescribe, approve, sign, or claim certainty.
 Every factual assertion must cite one or more sourceRefs from this exact allow-list: ${allowedSourceRefs.join(', ')}.
-Return JSON only with exactly these keys: summary, handoverDraft, missingInformation, assertions, uncertainties.
+summary and handoverDraft must contain only exact assertion text, one assertion per line; no headings or additional prose. Use empty strings when there are no supported assertions. Citation membership is not factual validation; a clinician must verify every claim.
+Return JSON only with these keys: summary, handoverDraft, missingInformation, assertions, uncertainties, soapDraft, followUpDrafts.
+soapDraft contains subjective, objective, assessment, plan strings. Every nonempty line must exactly repeat a source-linked assertion. Leave fields empty when unsupported; never invent a diagnosis or plan.
+followUpDrafts is an array of proposals with title, instructions, sourceRefs. Propose only documentation clarification or follow-up explicitly supported by the record; never invent a prescription, treatment plan, due date, assignee or completed outcome. Return [] if no supported proposal exists. All proposals require clinician review before task creation.
 missingInformation items contain field and reason. assertions items contain text and sourceRefs. No markdown and no chain-of-thought.`;
 }
 
@@ -190,8 +243,11 @@ async function createSuggestion(pool, req, context, { encounterId, suggestionTyp
     allowedSourceRefs: [...sources.keys()],
   });
   const output = validateGrounding(parseModelJson(modelResponse.text), sources);
+  if (suggestionType === 'soap_draft' && !output.soapDraft) {
+    throw scopeError(502, 'Clinical AI did not return structured SOAP fields.', 'CLINICAL_AI_SOAP_MISSING');
+  }
   const protectedOutput = encryptJson(output);
-  const citations = [...new Set(output.assertions.flatMap((assertion) => assertion.sourceRefs))]
+  const citations = [...new Set([...output.assertions.flatMap((assertion) => assertion.sourceRefs), ...(output.followUpDrafts || []).flatMap((task) => task.sourceRefs)])]
     .map((reference) => ({ reference, ...sources.get(reference) }));
   const result = await pool.query(
     `INSERT INTO ng_clinical_ai_suggestions
@@ -221,7 +277,7 @@ async function createSuggestion(pool, req, context, { encounterId, suggestionTyp
       protectedOutput.tag,
       JSON.stringify(citations),
       JSON.stringify([]),
-      JSON.stringify({ schemaValidated: true, groundingValidated: true, assertionCount: output.assertions.length }),
+      JSON.stringify(validationStatus(output)),
       context.userId,
     ]
   );
@@ -240,7 +296,7 @@ async function createSuggestion(pool, req, context, { encounterId, suggestionTyp
       sourceCount: citations.length,
     },
   });
-  return { ...result.rows[0], output, aiDraft: true, requiresHumanReview: true };
+  return { ...result.rows[0], encounter_id: encounter.id, patient_user_id: encounter.patient_user_id, output, aiDraft: true, requiresHumanReview: true };
 }
 
 async function listSuggestions(pool, context, encounterId) {
@@ -256,7 +312,7 @@ async function listSuggestions(pool, context, encounterId) {
       ORDER BY created_at DESC LIMIT 25`,
     [context.programme_id, context.facility_id, encounterId, encounter.patient_user_id]
   );
-  return result.rows;
+  return result.rows.map(normalizeValidation);
 }
 
 async function getSuggestion(pool, context, suggestionId) {
@@ -293,7 +349,7 @@ async function getSuggestion(pool, context, suggestionId) {
   ]);
   const safe = Object.fromEntries(Object.entries(row).filter(([key]) => !hidden.has(key)));
   return {
-    ...safe,
+    ...normalizeValidation(safe),
     rejection_reason: protectedRejection?.text || row.rejection_reason || null,
     output,
     editedOutput,
@@ -302,7 +358,33 @@ async function getSuggestion(pool, context, suggestionId) {
   };
 }
 
-async function reviewSuggestion(pool, req, context, suggestionId, { decision, editedOutput = null, rejectionReason = null }) {
+function assertReviewFreshness(suggestion, encounter, observations, expectedEncounterId, now = Date.now()) {
+  if (!expectedEncounterId || String(suggestion.encounter_id) !== String(expectedEncounterId)
+    || String(encounter.id) !== String(expectedEncounterId)
+    || String(suggestion.patient_user_id) !== String(encounter.patient_user_id)) {
+    throw scopeError(409, 'The draft does not belong to the selected encounter.', 'CLINICAL_AI_ENCOUNTER_MISMATCH');
+  }
+  const expiry = new Date(suggestion.expires_at).getTime();
+  if (!Number.isFinite(expiry) || expiry <= now) {
+    throw scopeError(409, 'This draft has expired. Generate a new draft before accepting.', 'CLINICAL_AI_DRAFT_EXPIRED');
+  }
+  const { input } = buildGroundedInput(encounter, observations);
+  const currentHash = crypto.createHash('sha256').update(JSON.stringify(input)).digest('hex');
+  if (!suggestion.input_hash || suggestion.input_hash !== currentHash) {
+    throw scopeError(409, 'The encounter has changed. Generate a new draft before accepting.', 'CLINICAL_AI_SOURCE_CHANGED');
+  }
+}
+
+async function reviewSuggestion(pool, req, context, suggestionId, { decision, expectedEncounterId, editedOutput = null, rejectionReason = null }) {
+  if (context.programmeRole !== 'remote_clinician') {
+    throw scopeError(403, 'Clinical AI drafts require review by the assigned clinician.', 'ASSIGNED_CLINICIAN_REQUIRED');
+  }
+  if (!['accepted', 'accepted_with_edits', 'rejected'].includes(decision)) {
+    throw scopeError(400, 'Invalid clinical AI review decision.', 'CLINICAL_AI_REVIEW_INVALID');
+  }
+  if (decision !== 'accepted_with_edits' && editedOutput != null) {
+    throw scopeError(400, 'Edited output requires the accepted-with-edits decision.', 'CLINICAL_AI_EDIT_DECISION_REQUIRED');
+  }
   if (decision === 'accepted_with_edits' && !editedOutput) {
     throw scopeError(400, 'Edited output is required for this decision.', 'CLINICAL_AI_EDIT_REQUIRED');
   }
@@ -322,10 +404,30 @@ async function reviewSuggestion(pool, req, context, suggestionId, { decision, ed
     if (!suggestion) throw scopeError(404, 'Clinical AI draft not found.', 'CLINICAL_AI_SUGGESTION_NOT_FOUND');
     const accessResult = await client.query(
       `SELECT assigned_provider_user_id FROM ng_phc_queue_entries
-        WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3 LIMIT 1`,
+        WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3 LIMIT 1 FOR UPDATE`,
       [suggestion.encounter_id, context.programme_id, context.facility_id]
     );
     await assertEncounterAiAccess(client, context, accessResult.rows[0] || {});
+    if (!expectedEncounterId || String(suggestion.encounter_id) !== String(expectedEncounterId)) {
+      throw scopeError(409, 'The draft does not belong to the selected encounter.', 'CLINICAL_AI_ENCOUNTER_MISMATCH');
+    }
+    if (decision !== 'rejected') {
+      // Match the queue -> encounter lock order used by queue transitions. The
+      // encounter lock also serializes observation capture and source updates.
+      await client.query(
+        `SELECT id FROM ng_clinical_encounters
+          WHERE id=$1 AND programme_id=$2 AND facility_id=$3 FOR UPDATE`,
+        [expectedEncounterId, context.programme_id, context.facility_id]
+      );
+      await client.query(
+        `SELECT id FROM ng_clinical_observations
+          WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3 FOR SHARE`,
+        [expectedEncounterId, context.programme_id, context.facility_id]
+      );
+      const encounter = await workflow.getEncounter(client, context, expectedEncounterId);
+      const { observations } = await workflow.listObservations(client, context, expectedEncounterId);
+      assertReviewFreshness(suggestion, encounter, observations, expectedEncounterId);
+    }
     if (suggestion.status !== 'drafted') {
       throw scopeError(409, 'Clinical AI draft already has a final review.', 'CLINICAL_AI_ALREADY_REVIEWED');
     }
@@ -388,6 +490,49 @@ async function reviewSuggestion(pool, req, context, suggestionId, { decision, ed
   }
 }
 
+async function assertAcceptedFollowUpSource(client, context, { suggestionId, draftIndex, patientUserId, encounterId, title, instructions }) {
+  if (context.programmeRole !== 'remote_clinician') {
+    throw scopeError(403, 'Only the assigned clinician may create a reviewed AI follow-up.', 'ASSIGNED_CLINICIAN_REQUIRED');
+  }
+  const result = await client.query(
+    `SELECT s.*, r.decision, r.reviewer_user_id, r.edited_output_encrypted, r.edited_output_iv, r.edited_output_tag
+       FROM ng_clinical_ai_suggestions s
+       JOIN ng_clinical_ai_reviews r ON r.suggestion_id=s.id
+      WHERE s.id=$1 AND s.programme_id=$2 AND s.facility_id=$3 FOR UPDATE OF s`,
+    [suggestionId, context.programme_id, context.facility_id]
+  );
+  const suggestion = result.rows[0];
+  if (!suggestion || suggestion.status !== 'accepted' || String(suggestion.reviewer_user_id) !== String(context.userId)) {
+    throw scopeError(409, 'An accepted draft reviewed by this clinician is required.', 'CLINICAL_AI_ACCEPTED_REVIEW_REQUIRED');
+  }
+  if (String(suggestion.patient_user_id) !== String(patientUserId) || String(suggestion.encounter_id) !== String(encounterId)) {
+    throw scopeError(409, 'The reviewed draft does not belong to this patient and encounter.', 'CLINICAL_AI_ENCOUNTER_MISMATCH');
+  }
+  const assignment = await client.query(
+    `SELECT assigned_provider_user_id FROM ng_phc_queue_entries
+      WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3 LIMIT 1 FOR UPDATE`,
+    [encounterId, context.programme_id, context.facility_id]
+  );
+  await assertEncounterAiAccess(client, context, assignment.rows[0] || {});
+  await client.query(`SELECT id FROM ng_clinical_encounters WHERE id=$1 AND programme_id=$2 AND facility_id=$3 FOR UPDATE`, [encounterId, context.programme_id, context.facility_id]);
+  await client.query(`SELECT id FROM ng_clinical_observations WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3 FOR SHARE`, [encounterId, context.programme_id, context.facility_id]);
+  const encounter = await workflow.getEncounter(client, context, encounterId);
+  const { observations } = await workflow.listObservations(client, context, encounterId);
+  assertReviewFreshness(suggestion, encounter, observations, encounterId);
+  if (!['accepted', 'accepted_with_edits'].includes(suggestion.decision)
+    || (suggestion.decision === 'accepted_with_edits' && !suggestion.edited_output_encrypted)) {
+    throw scopeError(409, 'The accepted review content is unavailable.', 'CLINICAL_AI_ACCEPTED_REVIEW_REQUIRED');
+  }
+  const output = decryptJson(suggestion.decision === 'accepted_with_edits'
+    ? { encrypted: suggestion.edited_output_encrypted, iv: suggestion.edited_output_iv, tag: suggestion.edited_output_tag }
+    : { encrypted: suggestion.output_encrypted, iv: suggestion.output_iv, tag: suggestion.output_tag });
+  const proposal = Number.isInteger(draftIndex) ? output.followUpDrafts?.[draftIndex] : null;
+  if (!proposal || proposal.title !== title || (proposal.instructions || '') !== (instructions || '')) {
+    throw scopeError(409, 'Task content must match the clinician-reviewed proposal.', 'CLINICAL_AI_FOLLOW_UP_MISMATCH');
+  }
+  return { suggestionId, draftIndex };
+}
+
 module.exports = {
   PROMPT_VERSION,
   SUPPORTED_TYPES,
@@ -402,4 +547,8 @@ module.exports = {
   reviewSuggestion,
   suggestionOutputSchema,
   validateGrounding,
+  validationStatus,
+  normalizeValidation,
+  assertReviewFreshness,
+  assertAcceptedFollowUpSource,
 };

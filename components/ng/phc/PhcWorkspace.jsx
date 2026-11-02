@@ -1,8 +1,9 @@
-﻿'use client';
+'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { v5 as uuidV5 } from 'uuid';
 import Image from 'next/image';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import {
@@ -161,7 +162,96 @@ function WorkspaceShell({ children, user, context, online, pendingCount, onSync,
   );
 }
 
+function ClinicalAiEvidence({ suggestion }) {
+  return (
+    <div className="mt-3 space-y-2 text-sm">
+      <p className="font-medium text-amber-900">AI-generated content is unverified. Check every claim, including missing information and uncertainties, against the original record before accepting.</p>
+      <p className="text-xs text-slate-600">Source encounter: {suggestion.encounter_id}. Source references identify records; they do not prove that a claim is correct.</p>
+      <details>
+        <summary className="cursor-pointer font-medium">Inspect claims and source references</summary>
+        <ul className="mt-2 space-y-2">
+          {(suggestion.output?.assertions || []).map((assertion, index) => (
+            <li key={index}><p>{assertion.text}</p><p className="text-xs text-slate-600">Sources: {assertion.sourceRefs.join(', ')}</p></li>
+          ))}
+        </ul>
+      </details>
+    </div>
+  );
+}
+
+function ClinicalAiEditor({ output, onChange }) {
+  const fieldId = useId();
+  if (!output) return null;
+  const updateTask = (index, key, value) => onChange({ ...output, followUpDrafts: (output.followUpDrafts || []).map((task, taskIndex) => taskIndex === index ? { ...task, [key]: value } : task) });
+  return (
+    <div className="mt-4 space-y-3 rounded-lg border bg-white p-4">
+      <p className="font-semibold">Review and edit before acceptance</p>
+      <div><Label htmlFor={`${fieldId}-summary`}>Encounter summary</Label><Textarea id={`${fieldId}-summary`} value={output.summary} onChange={(event) => onChange({ ...output, summary: event.target.value })} /></div>
+      <div><Label htmlFor={`${fieldId}-handover`}>Handover</Label><Textarea id={`${fieldId}-handover`} value={output.handoverDraft} onChange={(event) => onChange({ ...output, handoverDraft: event.target.value })} /></div>
+      {['subjective', 'objective', 'assessment', 'plan'].map((field) => (
+        <div key={field}><Label htmlFor={`${fieldId}-${field}`}>{titleCase(field)}</Label><Textarea id={`${fieldId}-${field}`} value={output.soapDraft?.[field] || ''} onChange={(event) => onChange({ ...output, soapDraft: { subjective: '', objective: '', assessment: '', plan: '', ...output.soapDraft, [field]: event.target.value } })} /></div>
+      ))}
+      <p className="text-sm">Clinical assessment and plans remain your responsibility. Accepting does not save or sign a chart note.</p>
+      {(output.followUpDrafts || []).map((task, index) => (
+        <div key={index} className="space-y-2 border-t pt-3">
+          <div><Label htmlFor={`${fieldId}-task-${index}-title`}>Follow-up title</Label><Input id={`${fieldId}-task-${index}-title`} value={task.title} onChange={(event) => updateTask(index, 'title', event.target.value)} /></div>
+          <div><Label htmlFor={`${fieldId}-task-${index}-instructions`}>Follow-up instructions</Label><Textarea id={`${fieldId}-task-${index}-instructions`} value={task.instructions} onChange={(event) => updateTask(index, 'instructions', event.target.value)} /></div>
+          <Button variant="outline" size="sm" onClick={() => onChange({ ...output, followUpDrafts: output.followUpDrafts.filter((_task, taskIndex) => taskIndex !== index) })}>Remove proposal</Button>
+        </div>
+      ))}
+      <Button variant="outline" size="sm" disabled={(output.followUpDrafts || []).length >= 10} onClick={() => onChange({ ...output, followUpDrafts: [...(output.followUpDrafts || []), { title: '', instructions: '', sourceRefs: [] }] })}>Add clinician follow-up proposal</Button>
+    </div>
+  );
+}
+
+function FollowUpTaskCard({ task, online, busy, onTransition }) {
+  const outcomeId = useId();
+  const [outcome, setOutcome] = useState('');
+  const allowedTransitions = Array.isArray(task.allowed_transitions) ? task.allowed_transitions : [];
+  const terminal = ['completed', 'cancelled', 'waived'].includes(task.status);
+  const overdue = !terminal && task.due_at && new Date(task.due_at).getTime() < Date.now();
+  const assigneeName = [task.assignee_first_name, task.assignee_last_name].filter(Boolean).join(' ');
+  const owner = assigneeName || (task.assigned_user_id ? 'Assigned team member' : task.assigned_role ? titleCase(task.assigned_role) : 'Task creator');
+  const act = async (toStatus) => {
+    if (await onTransition(task, toStatus, outcome.trim())) setOutcome('');
+  };
+  return (
+    <div data-testid={`follow-up-${task.id}`} className="rounded-xl border border-slate-200 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold">{task.title}</p>
+          <p className="mt-1 text-sm text-slate-600">{task.patient_first_name} {task.patient_last_name} · {task.local_patient_number || 'No local number'}</p>
+        </div>
+        <Badge variant={task.status === 'completed' ? 'success' : 'outline'}>{titleCase(task.status)}</Badge>
+      </div>
+      {task.instructions && <p className="mt-3 whitespace-pre-wrap text-sm">{task.instructions}</p>}
+      <p className="mt-3 text-xs text-slate-600">Responsible: {owner}{assigneeName && task.assigned_role ? ` · ${titleCase(task.assigned_role)}` : ''}</p>
+      <p className="mt-2 flex items-center gap-2 text-xs text-slate-500"><Clock3 className="h-3.5 w-3.5" /> Due {readableDate(task.due_at)}{overdue && <Badge variant="warning">Overdue</Badge>}</p>
+      {task.completed_at && <p className="mt-2 text-xs text-slate-600">Completed {readableDate(task.completed_at)}</p>}
+      {terminal && task.closure_outcome && <p className="mt-3 whitespace-pre-wrap text-sm"><span className="font-medium">Recorded outcome: </span>{task.closure_outcome}</p>}
+      {!terminal && allowedTransitions.length > 0 && (
+        <div className="mt-4 space-y-3 border-t pt-3">
+          {(allowedTransitions.includes('completed') || allowedTransitions.includes('cancelled')) && (
+            <div>
+              <Label htmlFor={outcomeId}>Outcome or cancellation reason for {task.title}</Label>
+              <Textarea id={outcomeId} className="mt-1" value={outcome} onChange={(event) => setOutcome(event.target.value)} maxLength={5000} disabled={!online || busy} placeholder="Record what was done, or why this task is being cancelled." />
+              <p className="mt-1 text-xs text-slate-500">An explicit outcome is required to complete or cancel. Completion is recorded only when you confirm it.</p>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {allowedTransitions.includes('in_progress') && <Button type="button" size="sm" variant="outline" disabled={!online || busy} onClick={() => act('in_progress')}>Start task</Button>}
+            {allowedTransitions.includes('completed') && <Button type="button" size="sm" disabled={!online || busy || outcome.trim().length < 3} onClick={() => act('completed')}>Complete task</Button>}
+            {allowedTransitions.includes('cancelled') && <Button type="button" size="sm" variant="outline" disabled={!online || busy || outcome.trim().length < 3} onClick={() => act('cancelled')}>Cancel task</Button>}
+          </div>
+          {!online && <p className="text-xs text-slate-600">Reconnect to update this task. Status changes are not queued offline.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PhcWorkspace({ standalone = false }) {
+  const taskFieldId = useId();
   const router = useRouter();
   const { user, loading: authLoading, isAuthenticated, logout } = useAuth();
   const [online, setOnline] = useState(true);
@@ -184,11 +274,23 @@ export default function PhcWorkspace({ standalone = false }) {
   const [followUps, setFollowUps] = useState([]);
   const [followUpTitle, setFollowUpTitle] = useState('');
   const [followUpDueAt, setFollowUpDueAt] = useState('');
+  const followUpTransitionPending = useRef(false);
+  const [followUpTransitionBusy, setFollowUpTransitionBusy] = useState(false);
   const [reportPeriod, setReportPeriod] = useState(new Date().toISOString().slice(0, 7));
   const [reportPreview, setReportPreview] = useState(null);
   const [reports, setReports] = useState([]);
   const [dhis2Preview, setDhis2Preview] = useState(null);
   const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [aiEditedOutput, setAiEditedOutput] = useState(null);
+  const [aiDraftType, setAiDraftType] = useState('soap_draft');
+  const [aiTaskOptions, setAiTaskOptions] = useState({});
+  const aiRequestVersion = useRef(0);
+  const clearAiSuggestion = useCallback(() => {
+    aiRequestVersion.current += 1;
+    setAiSuggestion(null);
+    setAiEditedOutput(null);
+    setAiTaskOptions({});
+  }, []);
   const [referrals, setReferrals] = useState([]);
   const [referralEntry, setReferralEntry] = useState(null);
   const [referralTarget, setReferralTarget] = useState('');
@@ -205,6 +307,7 @@ export default function PhcWorkspace({ standalone = false }) {
   )) || contexts[0] || null, [contexts, contextKey]);
   const currentContext = useRef(context);
   currentContext.current = context;
+  const worklistRequestVersion = useRef(0);
   const programmeRole = context?.programme_role;
   const canViewQueue = CLINICAL_QUEUE_ROLES.has(programmeRole);
   const canIntake = programmeRole === 'phc_nurse' || programmeRole === 'remote_clinician';
@@ -266,8 +369,11 @@ export default function PhcWorkspace({ standalone = false }) {
   }, [context, ownerUserId]);
 
   const refreshWorklists = useCallback(async () => {
-    if (!context) return;
+    if (!context || currentContext.current !== context) return;
     const requestedContext = context;
+    const requestedVersion = ++worklistRequestVersion.current;
+    const isCurrentRequest = () => currentContext.current === requestedContext
+      && worklistRequestVersion.current === requestedVersion;
     setBusy('refresh');
     setError('');
     try {
@@ -285,15 +391,15 @@ export default function PhcWorkspace({ standalone = false }) {
           ? phcAPI.listReferrals(context)
           : Promise.resolve({ data: { referrals: [] } }),
       ]);
-      if (currentContext.current !== requestedContext) return;
+      if (!isCurrentRequest()) return;
       setQueue(queueResponse.data.entries || []);
       setFollowUps(followUpResponse.data.tasks || []);
       setReports(reportResponse.data.reports || []);
       setReferrals(referralResponse.data.referrals || []);
     } catch (requestError) {
-      if (currentContext.current === requestedContext) setError(errorMessage(requestError, 'Worklists could not be refreshed.'));
+      if (isCurrentRequest()) setError(errorMessage(requestError, 'Worklists could not be refreshed.'));
     } finally {
-      if (currentContext.current === requestedContext) setBusy('');
+      if (isCurrentRequest()) setBusy('');
     }
   }, [context]);
 
@@ -304,7 +410,10 @@ export default function PhcWorkspace({ standalone = false }) {
     setPatients([]);
     setReportPreview(null);
     setDhis2Preview(null);
+    aiRequestVersion.current += 1;
     setAiSuggestion(null);
+    setAiEditedOutput(null);
+    setAiTaskOptions({});
     setReferralEntry(null);
     setQueue([]); setFollowUps([]); setReports([]); setReferrals([]);
     setCapabilities({ offlineClinicalSyncEnabled: false, clinicalAiEnabled: false, deviceCaptureEnabled: false });
@@ -546,6 +655,43 @@ export default function PhcWorkspace({ standalone = false }) {
     }
   };
 
+  const transitionFollowUp = async (task, toStatus, outcome) => {
+    if (!online || !context || busy || followUpTransitionPending.current) return false;
+    if (!task.allowed_transitions?.includes(toStatus)) return false;
+    if (['completed', 'cancelled'].includes(toStatus) && outcome.length < 3) {
+      setError('Record an outcome or cancellation reason of at least three characters.');
+      return false;
+    }
+    const requestedContext = context;
+    followUpTransitionPending.current = true;
+    setFollowUpTransitionBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const { data } = await phcAPI.transitionFollowUp(requestedContext, task.id, {
+        toStatus, expectedVersion: task.record_version,
+        ...(['completed', 'cancelled'].includes(toStatus) ? { outcome } : {}),
+      });
+      if (currentContext.current !== requestedContext) return false;
+      // An older GET must not replace this confirmed mutation with a stale task.
+      worklistRequestVersion.current += 1;
+      setFollowUps((tasks) => tasks.map((entry) => entry.id === task.id ? { ...entry, ...data.task } : entry));
+      setNotice(`Follow-up task ${toStatus === 'in_progress' ? 'started' : toStatus}.`);
+      await refreshWorklists();
+      return currentContext.current === requestedContext;
+    } catch (requestError) {
+      if (currentContext.current === requestedContext) {
+        // Reload after conflicts without allowing the reload to erase the useful error.
+        if (requestError?.response?.status === 409) await refreshWorklists();
+        if (currentContext.current === requestedContext) setError(errorMessage(requestError, 'Task status could not be updated.'));
+      }
+      return false;
+    } finally {
+      followUpTransitionPending.current = false;
+      setFollowUpTransitionBusy(false);
+    }
+  };
+
   const previewAggregateReport = async () => {
     const response = await run('report-preview', () => phcAPI.previewReport(context, reportPeriod));
     if (response) setReportPreview(response.data.preview);
@@ -575,21 +721,75 @@ export default function PhcWorkspace({ standalone = false }) {
     }
   };
 
-  const requestAiDraft = async (encounterId, suggestionType = 'encounter_summary') => {
+  useEffect(() => {
+    clearAiSuggestion();
+  }, [selectedPatient?.id, activeEncounter?.id, clearAiSuggestion]);
+
+  const requestAiDraft = async (encounterId, suggestionType = aiDraftType, view = 'intake') => {
+    const requestVersion = ++aiRequestVersion.current;
+    setAiSuggestion(null);
+    setAiEditedOutput(null);
+    setAiTaskOptions({});
     const response = await run(`ai-${encounterId}`, () => phcAPI.createAiSuggestion(context, {
       encounterId,
       suggestionType,
-    }), 'AI draft created from the displayed encounter sources. Human review is required.');
-    if (response) setAiSuggestion(response.data.suggestion);
+    }));
+    if (response && requestVersion === aiRequestVersion.current) {
+      const suggestion = response.data.suggestion;
+      if (String(suggestion.encounter_id) !== String(encounterId)) {
+        setError('The returned draft does not match the requested encounter.');
+        return;
+      }
+      setAiSuggestion({ ...suggestion, reviewView: view });
+      setAiEditedOutput(JSON.parse(JSON.stringify(suggestion.output)));
+      setNotice('Source-linked AI draft ready. A clinician must verify every claim.');
+    }
   };
 
   const reviewAiDraft = async (decision) => {
     if (!aiSuggestion) return;
+    const suggestionId = aiSuggestion.id;
+    const requestVersion = aiRequestVersion.current;
     const response = await run('ai-review', () => phcAPI.reviewAiSuggestion(context, aiSuggestion.id, {
       decision,
+      expectedEncounterId: aiSuggestion.encounter_id,
+      editedOutput: decision === 'accepted_with_edits' ? aiEditedOutput : null,
       rejectionReason: decision === 'rejected' ? 'Clinician rejected this draft after review.' : null,
-    }), decision === 'rejected' ? 'AI draft rejected.' : 'AI draft accepted as reviewed; it was not automatically written to the medical record.');
-    if (response) setAiSuggestion((current) => ({ ...current, status: response.data.review.status }));
+    }));
+    if (response && requestVersion === aiRequestVersion.current) {
+      setAiSuggestion((current) => current?.id === suggestionId ? { ...current, status: response.data.review.status, output: decision === 'accepted_with_edits' ? aiEditedOutput : current.output } : current);
+      setNotice(decision === 'rejected' ? 'AI draft rejected.' : 'AI draft accepted as reviewed; it was not automatically written to the medical record.');
+    }
+  };
+
+  const createReviewedAiFollowUp = async (index) => {
+    if (!aiSuggestion || aiSuggestion.status !== 'accepted' || programmeRole !== 'remote_clinician') return;
+    const proposal = aiSuggestion.output?.followUpDrafts?.[index];
+    const options = aiTaskOptions[index];
+    if (!proposal || !options?.dueAt || !options?.assignedRole) {
+      setError('Choose a due date and responsible role before creating this task.');
+      return;
+    }
+    const suggestionId = aiSuggestion.id;
+    const version = aiRequestVersion.current;
+    const response = await run(`ai-task-${index}`, () => phcAPI.createFollowUp(context, {
+      patientUserId: aiSuggestion.patient_user_id,
+      encounterId: aiSuggestion.encounter_id,
+      sourceSuggestionId: suggestionId,
+      sourceDraftIndex: index,
+      taskType: 'care_follow_up',
+      title: proposal.title,
+      instructions: proposal.instructions || null,
+      priority: 'routine',
+      assignedRole: options.assignedRole,
+      dueAt: new Date(options.dueAt).toISOString(),
+      idempotencyKey: uuidV5(`clinical-ai-follow-up:${suggestionId}:${index}`, uuidV5.URL),
+    }));
+    if (response && version === aiRequestVersion.current) {
+      setAiTaskOptions((current) => ({ ...current, [index]: { ...current[index], createdTaskId: response.data.task.id } }));
+      setNotice('Reviewed follow-up task created. It remains open until its outcome is recorded.');
+      await refreshWorklists();
+    }
   };
 
   const createReferral = async (event) => {
@@ -745,6 +945,16 @@ export default function PhcWorkspace({ standalone = false }) {
               </div>
             )}
 
+            {capabilities.clinicalAiEnabled && canIntake && online && (
+              <div className="mb-4">
+                <Label htmlFor="clinical-ai-type">Clinical draft type</Label>
+                <select id="clinical-ai-type" className="ml-3 rounded border p-2" value={aiDraftType} onChange={(event) => setAiDraftType(event.target.value)}>
+                  <option value="soap_draft">SOAP draft</option>
+                  <option value="encounter_summary">Encounter summary</option>
+                  <option value="follow_up_draft">Follow-up proposals</option>
+                </select>
+              </div>
+            )}
             <Tabs defaultValue={canIntake ? 'intake' : canViewQueue ? 'queue' : canFollowUp ? 'follow-ups' : 'reporting'}>
               <TabsList className="mb-4 h-auto w-full justify-start gap-1 overflow-x-auto bg-white p-1.5 shadow-sm">
                 {canIntake && <TabsTrigger value="intake" className="gap-2"><UserRound className="h-4 w-4" /> Patient intake</TabsTrigger>}
@@ -776,7 +986,7 @@ export default function PhcWorkspace({ standalone = false }) {
                             <button
                               type="button"
                               key={patient.id}
-                              onClick={() => { setSelectedPatient(patient); setActiveEncounter(null); }}
+                              onClick={() => { clearAiSuggestion(); setSelectedPatient(patient); setActiveEncounter(null); }}
                               className={`w-full rounded-xl border p-3 text-left transition ${selectedPatient?.id === patient.id ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'}`}
                             >
                               <div className="flex items-start justify-between gap-2">
@@ -889,20 +1099,21 @@ export default function PhcWorkspace({ standalone = false }) {
                         <Card className="border-violet-200 bg-violet-50/40">
                           <CardHeader>
                             <CardTitle className="text-lg">AI-assisted handover draft</CardTitle>
-                            <CardDescription>Generated only from encounter fields and saved observations. It never signs or changes the medical record.</CardDescription>
+                            <CardDescription>Drafted using encounter fields and saved observations. Every claim requires verification; it never signs or changes the medical record.</CardDescription>
                           </CardHeader>
                           <CardContent>
                             <Button variant="outline" onClick={() => requestAiDraft(activeEncounter.id)} disabled={busy === `ai-${activeEncounter.id}`}>
                               {busy === `ai-${activeEncounter.id}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                              Prepare grounded draft
+                              Prepare source-linked draft
                             </Button>
-                            {aiSuggestion && (
+                            {aiSuggestion?.reviewView === 'intake' && String(aiSuggestion.encounter_id) === String(activeEncounter.id) && (
                               <div className="mt-4 rounded-xl border border-violet-200 bg-white p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <Badge className="bg-violet-700 text-white hover:bg-violet-700">AI draft · human review required</Badge>
                                   <Badge variant="outline">{titleCase(aiSuggestion.status)}</Badge>
                                 </div>
-                                <p className="mt-3 whitespace-pre-wrap text-sm text-slate-800">{aiSuggestion.output?.handoverDraft || aiSuggestion.output?.summary}</p>
+                                <ClinicalAiEvidence suggestion={aiSuggestion} />
+                          <p className="mt-3 whitespace-pre-wrap text-sm text-slate-800">{aiSuggestion.output?.handoverDraft || aiSuggestion.output?.summary}</p>
                                 {(aiSuggestion.output?.missingInformation || []).length > 0 && (
                                   <div className="mt-4 rounded-lg bg-violet-50 p-3">
                                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Missing information</p>
@@ -984,7 +1195,7 @@ export default function PhcWorkspace({ standalone = false }) {
                                 {canClaim && capabilities.clinicalAiEnabled
                                   && String(entry.assigned_provider_user_id || '') === String(ownerUserId || '')
                                   && ['claimed', 'called', 'in_consultation'].includes(entry.status) && (
-                                    <Button size="sm" variant="outline" onClick={() => requestAiDraft(entry.encounter_id)} disabled={busy === `ai-${entry.encounter_id}`}>
+                                    <Button size="sm" variant="outline" onClick={() => requestAiDraft(entry.encounter_id, aiDraftType, 'queue')} disabled={busy === `ai-${entry.encounter_id}`}>
                                       AI draft
                                     </Button>
                                   )}
@@ -1012,15 +1223,16 @@ export default function PhcWorkspace({ standalone = false }) {
             )}
                       </div>
 
-                      {aiSuggestion && (
+                      {aiSuggestion?.reviewView === 'queue' && (
                         <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50 p-5">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                               <Badge className="bg-violet-700 text-white hover:bg-violet-700">AI draft · human review required</Badge>
-                              <h3 className="mt-3 font-semibold">Grounded encounter handover</h3>
+                              <h3 className="mt-3 font-semibold">Source-linked encounter handover</h3>
                             </div>
                             <Badge variant="outline">{titleCase(aiSuggestion.status)}</Badge>
                           </div>
+                          <ClinicalAiEvidence suggestion={aiSuggestion} />
                           <p className="mt-3 whitespace-pre-wrap text-sm text-slate-800">{aiSuggestion.output?.handoverDraft || aiSuggestion.output?.summary}</p>
                           {(aiSuggestion.output?.missingInformation || []).length > 0 && (
                             <div className="mt-4 rounded-lg bg-white p-3">
@@ -1030,10 +1242,29 @@ export default function PhcWorkspace({ standalone = false }) {
                               ))}
                             </div>
                           )}
+                          {programmeRole === 'remote_clinician' && aiSuggestion.status === 'drafted' && <ClinicalAiEditor output={aiEditedOutput} onChange={setAiEditedOutput} />}
                           {programmeRole === 'remote_clinician' && aiSuggestion.status === 'drafted' && (
                             <div className="mt-4 flex gap-2">
-                              <Button size="sm" onClick={() => reviewAiDraft('accepted')} disabled={busy === 'ai-review'}>Accept reviewed draft</Button>
+                              <Button size="sm" onClick={() => reviewAiDraft('accepted')} disabled={busy === 'ai-review'}>Accept original draft</Button>
+                              <Button size="sm" onClick={() => reviewAiDraft('accepted_with_edits')} disabled={busy === 'ai-review'}>Accept edited draft</Button>
                               <Button size="sm" variant="outline" onClick={() => reviewAiDraft('rejected')} disabled={busy === 'ai-review'}>Reject</Button>
+                            </div>
+                          )}
+                          {programmeRole === 'remote_clinician' && aiSuggestion.status === 'accepted' && (
+                            <div className="mt-4 space-y-4">
+                              {aiSuggestion.output?.soapDraft && queue.find((entry) => entry.encounter_id === aiSuggestion.encounter_id)?.canonical_encounter_id && (
+                                <Button variant="outline" asChild><Link href={`/ng/provider/encounters/${queue.find((entry) => entry.encounter_id === aiSuggestion.encounter_id).canonical_encounter_id}?aiSuggestionId=${encodeURIComponent(aiSuggestion.id)}`}>Open chart to import reviewed SOAP</Link></Button>
+                              )}
+                              {(aiSuggestion.output?.followUpDrafts || []).map((proposal, index) => (
+                                <div key={index} className="space-y-2 rounded border bg-white p-3">
+                                  <p className="font-medium">{proposal.title}</p><p className="whitespace-pre-wrap text-sm">{proposal.instructions}</p>
+                                  <div><Label htmlFor={`${taskFieldId}-${index}-due`}>Due date</Label><Input id={`${taskFieldId}-${index}-due`} type="datetime-local" value={aiTaskOptions[index]?.dueAt || ''} disabled={Boolean(aiTaskOptions[index]?.createdTaskId)} onChange={(event) => setAiTaskOptions((current) => ({ ...current, [index]: { ...current[index], dueAt: event.target.value } }))} /></div>
+                                  <div><Label htmlFor={`${taskFieldId}-${index}-role`}>Responsible role</Label><select id={`${taskFieldId}-${index}-role`} className="ml-2 rounded border p-2" value={aiTaskOptions[index]?.assignedRole || ''} disabled={Boolean(aiTaskOptions[index]?.createdTaskId)} onChange={(event) => setAiTaskOptions((current) => ({ ...current, [index]: { ...current[index], assignedRole: event.target.value } }))}>
+                                    <option value="">Choose a role</option><option value="phc_nurse">PHC nurse</option><option value="remote_clinician">Remote clinician</option><option value="referral_coordinator">Referral coordinator</option>
+                                  </select></div>
+                                  <Button size="sm" disabled={busy === `ai-task-${index}` || Boolean(aiTaskOptions[index]?.createdTaskId)} onClick={() => createReviewedAiFollowUp(index)}>{aiTaskOptions[index]?.createdTaskId ? 'Task created' : 'Create reviewed task'}</Button>
+                                </div>
+                              ))}
                             </div>
                           )}
                           <p className="mt-3 text-xs text-slate-500">Acceptance records a review decision only. Clinical documentation still requires the normal clinician-controlled workflow and sign-off.</p>
@@ -1070,21 +1301,12 @@ export default function PhcWorkspace({ standalone = false }) {
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-lg">Care continuity worklist</CardTitle>
-                      <CardDescription>Open and scheduled tasks for patients enrolled in this programme.</CardDescription>
+                      <CardDescription>Assigned care tasks and recorded outcomes for patients enrolled in this programme.</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="grid gap-3 lg:grid-cols-2">
                         {followUps.map((task) => (
-                          <div key={task.id} className="rounded-xl border border-slate-200 p-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-semibold">{task.title}</p>
-                                <p className="mt-1 text-sm text-slate-600">{task.patient_first_name} {task.patient_last_name} · {task.local_patient_number || 'No local number'}</p>
-                              </div>
-                              <Badge variant={task.status === 'completed' ? 'success' : 'outline'}>{titleCase(task.status)}</Badge>
-                            </div>
-                            <p className="mt-3 flex items-center gap-2 text-xs text-slate-500"><Clock3 className="h-3.5 w-3.5" /> Due {readableDate(task.due_at)}</p>
-                          </div>
+                          <FollowUpTaskCard key={`${contextKey}:${task.id}`} task={task} online={online} busy={Boolean(busy) || followUpTransitionBusy} onTransition={transitionFollowUp} />
                         ))}
                         {followUps.length === 0 && (
                 <EmptyState

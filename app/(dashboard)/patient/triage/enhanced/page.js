@@ -206,6 +206,11 @@ export default function EnhancedTriagePage() {
         }
       }
     } catch (error) {
+      if (error.response?.data?.code === 'TRIAGE_REQUIRES_CLINICAL_REVIEW') {
+        setAnalysis(error.response.data.analysis);
+        setStep(3);
+        return;
+      }
       console.error('Triage analysis error:', error);
       toast({
         title: 'Analysis Failed',
@@ -513,7 +518,18 @@ export default function EnhancedTriagePage() {
       )}
       
       {/* Step 3: Results */}
-      {step === 3 && analysis && (
+      {step === 3 && analysis?.assessmentStatus === 'unassessed' && (
+        <Card role="status">
+          <CardHeader><CardTitle>Professional assessment needed</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <p>{analysis.reviewMessage}</p>
+            <p>No urgency score or waiting time has been assigned, and you have not been added to a triage queue.</p>
+            <Button onClick={() => router.push('/patient/appointments')}>Arrange a consultation</Button>
+            <Button variant="outline" onClick={() => setStep(1)}>Review my information</Button>
+          </CardContent>
+        </Card>
+      )}
+      {step === 3 && analysis && analysis.assessmentStatus !== 'unassessed' && (
         <div className="space-y-6">
           {/* Emergency Banner */}
           {analysis.isEmergency && (

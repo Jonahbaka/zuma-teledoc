@@ -94,10 +94,12 @@ class TriageService {
   /**
    * Get triage data for appointment
    */
-  async getTriageForAppointment(appointmentId) {
+  async getTriageForAppointment(appointmentId, actor, queryable = db.pool) {
+    // Identity alone is not permission to read another patient's triage.
+    if (!actor?.id || !['patient', 'provider'].includes(actor.role)) return null;
     try {
       // Check if metadata column exists
-      const checkColumn = await db.pool.query(
+      const checkColumn = await queryable.query(
         `SELECT column_name FROM information_schema.columns 
          WHERE table_name = 'appointments' AND column_name = 'metadata'`
       );
@@ -106,11 +108,13 @@ class TriageService {
         return null;
       }
       
-      const result = await db.pool.query(
+      const result = await queryable.query(
         `SELECT metadata->'triage' as triage_data
          FROM appointments
-         WHERE id = $1`,
-        [appointmentId]
+         WHERE id = $1
+           AND (($3 = 'patient' AND patient_id = $2)
+             OR ($3 = 'provider' AND provider_id = $2))`,
+        [appointmentId, actor.id, actor.role]
       );
       
       if (result.rows.length === 0 || !result.rows[0].triage_data || result.rows[0].triage_data === null) {

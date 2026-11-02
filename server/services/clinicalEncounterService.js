@@ -94,6 +94,66 @@ class ClinicalEncounterService {
     [providerId, action, type, row.id, row.patient_id, JSON.stringify(metadata)]);
   }
 
+  async _reviewedAiDraft(client, encounterId, providerId, suggestionId) {
+    this._references(encounterId, providerId, suggestionId);
+    const ai = require('../../ng/services/phc/clinicalAiService');
+    const workflow = require('../../ng/services/phc/phcWorkflowService');
+    const { assertProgrammeScope } = require('../../ng/services/phc/programmeScopeService');
+    const suggestion = (await client.query(`SELECT s.*, r.decision, r.reviewer_user_id,
+        r.edited_output_encrypted, r.edited_output_iv, r.edited_output_tag
+      FROM ng_clinical_ai_suggestions s
+      JOIN ng_clinical_ai_reviews r ON r.suggestion_id=s.id
+      JOIN ng_clinical_record_links l ON l.source_table='ng_clinical_encounters' AND l.source_id=s.encounter_id
+        AND l.canonical_table='clinical_encounters' AND l.migration_status IN ('linked','verified')
+      JOIN clinical_encounters ce ON ce.id=l.canonical_id AND ce.patient_id=s.patient_user_id
+      WHERE s.id=$1 AND ce.id=$2 AND ce.provider_id=$3
+        AND s.status='accepted' AND r.decision IN ('accepted','accepted_with_edits')
+      FOR UPDATE OF s`, [suggestionId, encounterId, providerId])).rows[0];
+    if (!suggestion) throw clinicalError(403, 'CLINICAL_AI_IMPORT_DENIED', 'A reviewed draft matching this encounter is required.');
+    const context = await assertProgrammeScope(client, { id: providerId }, {
+      programmeId: suggestion.programme_id, facilityId: suggestion.facility_id,
+      patientUserId: suggestion.patient_user_id, requireEnrollment: true, allowedRoles: ['remote_clinician'],
+    });
+    const assignment = (await client.query(`SELECT assigned_provider_user_id FROM ng_phc_queue_entries
+      WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3 FOR UPDATE`,
+    [suggestion.encounter_id, suggestion.programme_id, suggestion.facility_id])).rows[0];
+    await ai.assertEncounterAiAccess(client, context, assignment || {});
+    await client.query(`SELECT id FROM ng_clinical_encounters WHERE id=$1 AND programme_id=$2 AND facility_id=$3 FOR UPDATE`,
+      [suggestion.encounter_id, suggestion.programme_id, suggestion.facility_id]);
+    await client.query(`SELECT id FROM ng_clinical_observations WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3 FOR SHARE`,
+      [suggestion.encounter_id, suggestion.programme_id, suggestion.facility_id]);
+    const encounter = await workflow.getEncounter(client, context, suggestion.encounter_id);
+    const { observations } = await workflow.listObservations(client, context, suggestion.encounter_id);
+    ai.assertReviewFreshness(suggestion, encounter, observations, suggestion.encounter_id);
+    // An edited review is authoritative: never silently fall back to the original.
+    const edited = suggestion.decision === 'accepted_with_edits';
+    const output = ai.decryptJson({
+      encrypted: edited ? suggestion.edited_output_encrypted : suggestion.output_encrypted,
+      iv: edited ? suggestion.edited_output_iv : suggestion.output_iv,
+      tag: edited ? suggestion.edited_output_tag : suggestion.output_tag,
+    });
+    const soap = output.soapDraft;
+    if (!soap || !['subjective','objective','assessment','plan'].every(field => typeof soap[field] === 'string')
+      || !Object.values(soap).some(value => value.trim())) {
+      throw clinicalError(409, 'CLINICAL_AI_SOAP_REQUIRED', 'This reviewed draft has no structured SOAP content.');
+    }
+    return { aiSuggestionId: suggestionId, noteDraft: { noteType: 'soap', ...Object.fromEntries(['subjective','objective','assessment','plan'].map(field => [field, soap[field]])) } };
+  }
+
+  async getReviewedAiDraft(encounterId, providerId, suggestionId) {
+    this._references(encounterId, providerId, suggestionId);
+    const client = await db.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const draft = await this._reviewedAiDraft(client, encounterId, providerId, suggestionId);
+      const encounter = await this._lockEncounter(client, encounterId, providerId);
+      await this._audit(client, providerId, 'clinical_encounter', encounter, 'read', { operation: 'reviewed_ai_draft_import_preview', aiSuggestionId: suggestionId });
+      await client.query('COMMIT');
+      return draft;
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
+  }
+
   _recordRead(rows, type) {
     const context = clinicalReadContext.getStore();
     if (!context) throw clinicalError(403, 'CLINICAL_ACCESS_DENIED', 'A current clinical read transaction is required.');
@@ -319,8 +379,21 @@ class ClinicalEncounterService {
     try {
       await client.query('BEGIN');
       
+      if (noteData.aiSuggestionId) await this._reviewedAiDraft(client, encounterId, providerId, noteData.aiSuggestionId);
       const encounter = await this._lockEncounter(client, encounterId, providerId);
-      
+      const importHash = noteData.aiSuggestionId ? crypto.createHash('sha256').update(JSON.stringify(Object.keys(noteData).sort().map(key => [key, noteData[key]]))).digest('hex') : null;
+      if (noteData.aiSuggestionId) {
+        const prior = (await client.query(`SELECT n.*, a.new_values AS import_metadata FROM audit_logs a
+          JOIN clinical_notes n ON n.id::text=a.resource_id::text
+          WHERE a.resource_type='clinical_note' AND a.action='create' AND a.success=TRUE
+            AND a.new_values->>'aiSuggestionId'=$1 AND n.encounter_id=$2 AND n.provider_id=$3 LIMIT 1`,
+        [noteData.aiSuggestionId, encounterId, providerId])).rows[0];
+        if (prior) {
+          if (prior.import_metadata?.importHash !== importHash) throw clinicalError(409, 'CLINICAL_AI_ALREADY_IMPORTED', 'This draft has already been imported. Edit the existing unsigned note instead.');
+          await client.query('COMMIT');
+          return this._formatNote(prior);
+        }
+      }
       // Encrypt SOAP fields
       const subjective = noteData.subjective ? encrypt(noteData.subjective) : { encrypted: null, iv: null, tag: null };
       const objective = noteData.objective ? encrypt(noteData.objective) : { encrypted: null, iv: null, tag: null };
@@ -362,7 +435,7 @@ class ClinicalEncounterService {
       );
       
       if (!rows[0]) throw clinicalError(503, 'CLINICAL_RECORDING_UNAVAILABLE', 'Note recording could not be confirmed.');
-      await this._audit(client, providerId, 'clinical_note', rows[0], 'create', { encounterId, version: rows[0].version, signed: false });
+      await this._audit(client, providerId, 'clinical_note', rows[0], 'create', { encounterId, version: rows[0].version, signed: false, ...(noteData.aiSuggestionId ? { aiSuggestionId: noteData.aiSuggestionId, importHash } : {}) });
       await client.query('COMMIT');
 
       logger.info('Clinical note created', {
@@ -387,6 +460,7 @@ class ClinicalEncounterService {
    * Only allowed before signing
    */
   async updateNote(noteId, providerId, noteData) {
+    if (noteData.aiSuggestionId) throw clinicalError(409, 'CLINICAL_AI_NEW_NOTE_REQUIRED', 'Import into a new draft note; do not overwrite an existing note.');
     this._references(noteId, providerId);
     const client = await db.getPool().connect();
     try {
