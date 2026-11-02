@@ -174,6 +174,37 @@ test('PHC nurse cannot enumerate or retrieve clinician-only AI stages', async ()
   assert.equal((await ai.getSuggestion(pool, doctorContext, clinicianDraft.id)).id, clinicianDraft.id);
 });
 
+test('approved referral brief links to clinician-created referral without turning AI into an order', async () => {
+  const encounter = await encounterFor();
+  const draft = await ai.createSuggestion(pool, request, doctorContext,
+    { encounterId: encounter.id, suggestionType: 'referral_brief' }, modelCaller);
+  const idempotencyKey = key();
+  const manual = {
+    patientUserId: patient.id, encounterId: encounter.id,
+    targetName: 'Synthetic receiving clinic', destinationType: 'external',
+    reason: 'Clinician-written synthetic specialist referral',
+    priority: 'routine', idempotencyKey, sourceSuggestionId: draft.id,
+  };
+  await assert.rejects(workflow.createReferral(pool, request, doctorContext, manual),
+    { code: 'CLINICAL_AI_CARE_ACTION_REVIEW_REQUIRED' });
+  assert.equal(Number((await pool.query('SELECT COUNT(*) AS n FROM ng_referrals WHERE programme_id=$1 AND idempotency_key=$2',
+    [doctorContext.programme_id, idempotencyKey])).rows[0].n), 0);
+  await review(encounter, draft);
+  const referral = await workflow.createReferral(pool, request, doctorContext, manual);
+  assert.equal(referral.patient_user_id, patient.id);
+  assert.equal(referral.encounter_id, encounter.id);
+  assert.equal(referral.audit_metadata.sourceSuggestionId, draft.id);
+  const replay = await workflow.createReferral(pool, request, doctorContext, manual);
+  assert.equal(replay.id, referral.id);
+  await assert.rejects(workflow.createReferral(pool, request, doctorContext,
+    { ...manual, sourceSuggestionId: null }), { code: 'REFERRAL_IDEMPOTENCY_CONFLICT' });
+  await assert.rejects(workflow.createReferral(pool, request, doctorContext,
+    { ...manual, patientUserId: otherPatient.id, idempotencyKey: key() }),
+    { code: 'CLINICAL_AI_ENCOUNTER_MISMATCH' });
+  const rows = await pool.query('SELECT COUNT(*)::int AS n FROM ng_referrals WHERE id=$1', [referral.id]);
+  assert.equal(rows.rows[0].n, 1);
+});
+
 test('actual encrypted AI generation, clinician edits, canonical unsigned SOAP import and reviewed follow-up replay', async () => {
   const encounter = await encounterFor();
   const draft = await draftFor(encounter);
