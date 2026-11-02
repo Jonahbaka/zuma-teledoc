@@ -40,6 +40,10 @@ test('reviewed SQL migrations are loaded from the explicit allowlist', () => {
       file: '041_atomic_auth_sessions.sql',
     },
     {
+      name: '042_appointment_booking_intents',
+      file: '042_appointment_booking_intents.sql',
+    },
+    {
       name: '400_agent_orchestrator_schema',
       file: '400_agent_orchestrator_schema.sql',
     },

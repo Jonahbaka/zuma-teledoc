@@ -28,8 +28,10 @@ const { normalizeMarketScope } = require('../utils/marketScope');
 const { z } = require('zod');
 const { withProviderReservation } = require('../services/appointmentReservationService');
 const { patientFinancialAccess } = require('../middleware/financialRecordScope');
+const { withBookingIntent, readBookingIntent, bookingError } = require('../services/appointmentIntentService');
 
 const smartBookingSchema = z.object({
+  clientRequestId: z.string().uuid().optional(),
   category: z.string().trim().min(1).max(100),
   specialties: z.union([z.array(z.string().trim().min(1).max(100)).max(12), z.string().max(500)]).optional(),
   providerId: z.string().uuid().nullable().optional(),
@@ -499,6 +501,18 @@ router.get('/upcoming', authenticate, async (req, res) => {
  * Smart booking - auto-match provider based on category/symptoms
  * NOTE: This route MUST come BEFORE /:id routes
  */
+// Read-only recovery of this patient's opaque request key. No clinical request
+// text, notification resend, payment action or alternate booking is returned.
+router.get('/booking-requests/:clientRequestId', authenticate, requireRole('patient'),
+  auditMiddleware('read', 'appointment'), async (req, res) => {
+    try {
+      const appointment = await readBookingIntent(db, { actor: req.user, marketScope: getAuthenticatedMarketScope(req.user), clientRequestId: req.params.clientRequestId });
+      res.json({ success: true, appointment });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : 'Saved booking lookup is unavailable.', code: error.code });
+    }
+  });
+
 router.post('/smart-book',
   authenticate,
   requireRole('patient'),
@@ -557,14 +571,6 @@ router.post('/smart-book',
         });
       }
       
-      // Allow same-minute bookings with a short tolerance for client/server clock drift.
-      if (scheduledDate.getTime() < Date.now() - SAME_MINUTE_BUFFER_MS) {
-        return res.status(400).json({
-          success: false,
-          error: 'Appointment must be scheduled for now or a future date and time'
-        });
-      }
-      
       // Validate required fields
       if (!category || !reasonForVisit) {
         return res.status(400).json({
@@ -573,12 +579,18 @@ router.post('/smart-book',
         });
       }
       
+      const { rows, provider, providerId, deduplicated } = await withBookingIntent(db, {
+        actor: req.user, marketScope, data: parsed.data,
+      }, async transaction => {
+        if (scheduledDate.getTime() < Date.now() - SAME_MINUTE_BUFFER_MS) {
+          throw bookingError('Appointment must be scheduled for now or a future date and time', 400, 'BOOKING_DATE_INVALID');
+        }
       // Find available provider matching specialties
       let providerId = requestedProviderId || null;
       let provider = null;
 
       if (providerId) {
-        const { rows: requestedProviders } = await db.query(
+        const { rows: requestedProviders } = await transaction.query(
           `SELECT id, first_name, last_name, specialty, credentials
            FROM users
            WHERE id = $1
@@ -591,10 +603,7 @@ router.post('/smart-book',
         );
 
         if (requestedProviders.length === 0) {
-          return res.status(404).json({
-            success: false,
-            error: 'Selected provider is not available'
-          });
+          throw bookingError('Selected provider is not available', 404, 'BOOKING_PROVIDER_UNAVAILABLE');
         }
 
         provider = requestedProviders[0];
@@ -609,7 +618,7 @@ router.post('/smart-book',
       
       if (!providerId) {
         for (const specialty of specialtyList) {
-          const { rows: providers } = await db.query(
+          const { rows: providers } = await transaction.query(
             `SELECT id, first_name, last_name, specialty, credentials
              FROM users
              WHERE role = 'provider'
@@ -632,7 +641,7 @@ router.post('/smart-book',
       
       // Fallback: get any available provider
       if (!providerId) {
-        const { rows: anyProviders } = await db.query(
+        const { rows: anyProviders } = await transaction.query(
           `SELECT id, first_name, last_name, specialty, credentials
            FROM users
            WHERE role = 'provider'
@@ -650,10 +659,7 @@ router.post('/smart-book',
       }
       
       if (!providerId) {
-        return res.status(404).json({
-          success: false,
-          error: 'No available providers found. Please try again later.'
-        });
+        throw bookingError('No available providers found. Please try again later.', 404, 'BOOKING_PROVIDER_UNAVAILABLE');
       }
       
       // Generate room ID for video calls
@@ -678,7 +684,7 @@ router.post('/smart-book',
         paymentCompleted // $11
       ];
       
-      const { rows } = await withProviderReservation(db, {
+      const { rows } = await withProviderReservation(transaction, {
         patientId, providerId, marketScope, scheduledAt: scheduledDate, durationMinutes,
       }, (client) => client.query(
         `INSERT INTO appointments (
@@ -694,7 +700,10 @@ router.post('/smart-book',
         throw new Error('Failed to create appointment - no rows returned');
       }
       
-      const dispatch = scheduleAppointmentSideEffects(rows[0].id, async () => {
+        return { rows, provider, providerId };
+      });
+
+      const dispatch = deduplicated ? { status: 'not_repeated', note: 'Saved booking replayed; no notification or payment was repeated.' } : scheduleAppointmentSideEffects(rows[0].id, async () => {
         // Create notification for provider
         await db.query(
           `INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id)
@@ -762,7 +771,8 @@ router.post('/smart-book',
         requestedProviderId: requestedProviderId || null
       });
       
-      res.status(201).json({
+      res.status(deduplicated ? 200 : 201).json({
+        deduplicated,
         success: true,
         message: 'Appointment scheduled successfully',
         dispatch,

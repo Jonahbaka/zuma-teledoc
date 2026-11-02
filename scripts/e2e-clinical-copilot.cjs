@@ -302,8 +302,61 @@ async function main() {
   await exerciseConference({ doctor, nurse, patient, external, pageErrors, session });
   await exercisePatientMessaging({ doctor, patient, external, pageErrors });
   await exerciseReferralAuthority({ doctor, patient, external, pageErrors });
+  await exerciseBookingIntent({ patient, external, pageErrors });
   assert.deepEqual(pageErrors, []); assert.deepEqual(external, []);
   pass('no uncaught browser errors or unexpected external requests; named font stylesheet fulfilled offline');
+}
+
+async function exerciseBookingIntent({ patient, external, pageErrors }) {
+  const guest = await browser.newContext({ baseURL: BASE, viewport: { width: 1280, height: 960 } });
+  const writes = []; let saved;
+  try {
+    await guest.tracing.start({ screenshots: true, snapshots: true, sources: true });
+    await guest.route('**/*', async route => {
+      try {
+        const req = route.request(), url = new URL(req.url());
+        if (isOfflineFontFixture(url.href, req.method(), req.resourceType())) return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+        if (url.origin !== BASE) { external.push(url.href); return route.abort(); }
+        if (url.pathname === '/api/appointments/smart-book' && req.method() === 'POST') {
+          writes.push(req.postDataJSON()); const response = await route.fetch();
+          assert.equal(response.status(), 201); saved = await response.json();
+          // Only the response delivery is lost. Authority, selection, transaction,
+          // encryption and durable intent are the real application/backend.
+          return route.abort('failed');
+        }
+        return await route.continue();
+      } catch (error) { signalRouteFailure(error); await route.abort().catch(() => {}); }
+    });
+    const login = await guest.request.post('/api/auth/login', { data: { email: patient.email, password: PASSWORD, role: 'patient' } });
+    assert.equal(login.status(), 200); const session = await login.json();
+    await guest.addInitScript(({ accessToken, refreshToken, user }) => {
+      localStorage.setItem('accessToken', accessToken); localStorage.setItem('refreshToken', refreshToken); localStorage.setItem('user', JSON.stringify(user));
+    }, session);
+    const p = await guest.newPage(); p.setDefaultTimeout(20000); p.on('pageerror', error => pageErrors.push(error.message));
+    await p.goto('/ng/patient/appointments/book', { waitUntil: 'networkidle' });
+    await p.getByRole('button', { name: /General Health/ }).click(); await p.getByRole('button', { name: 'Continue', exact: true }).click();
+    await p.getByLabel('Describe your symptoms *', { exact: true }).fill('Synthetic routine booking integrity check');
+    await p.getByRole('button', { name: 'Continue', exact: true }).click();
+    await p.getByRole('button', { name: 'Continue', exact: true }).click();
+    await p.getByRole('button', { name: /^Choose date / }).nth(1).click();
+    await p.getByRole('button', { name: 'Choose time 12:00', exact: true }).click();
+    await p.getByRole('button', { name: 'Continue', exact: true }).click();
+    await expect(p.getByText(/Insurance saving and document uploads are unavailable/)).toBeVisible();
+    await p.getByRole('button', { name: 'Continue', exact: true }).click();
+    await p.getByRole('checkbox', { name: /I have reviewed this information/ }).check();
+    await p.getByRole('button', { name: 'Request Consultation', exact: true }).evaluate(button => { button.click(); button.click(); });
+    await expect(p.getByText(/Booking outcome is uncertain/)).toBeVisible(); assert.equal(writes.length, 1); assert.ok(saved.appointment.id);
+    await p.reload({ waitUntil: 'networkidle' }); await expect(p.getByText(`Appointment saved: ${saved.appointment.id}`, { exact: true })).toBeVisible();
+    assert.equal(writes.length, 1, 'Reload must not silently create a fresh booking intent');
+    const replay = await guest.request.post('/api/appointments/smart-book', { headers: { Authorization: `Bearer ${session.accessToken}` }, data: writes[0] });
+    assert.equal(replay.status(), 200); const replayed = await replay.json(); assert.equal(replayed.appointment.id, saved.appointment.id); assert.equal(replayed.dispatch.status, 'not_repeated');
+    const conflict = await guest.request.post('/api/appointments/smart-book', { headers: { Authorization: `Bearer ${session.accessToken}` }, data: { ...writes[0], reasonForVisit: 'Changed synthetic intent' } });
+    assert.equal(conflict.status(), 409);
+    const stored = (await pool.query('SELECT appointment_id,intent_envelope FROM appointment_booking_intents WHERE actor_id=$1 AND client_request_id=$2', [patient.id, writes[0].clientRequestId])).rows;
+    assert.equal(stored.length, 1); assert.equal(stored[0].appointment_id, saved.appointment.id); assert.ok(!JSON.stringify(stored[0]).includes(writes[0].reasonForVisit));
+    await p.screenshot({ path: path.join(ART, 'booking-uncertain-reload.png'), fullPage: true });
+    pass('booking actual UI/API: repeated submission writes once, lost response reload reconciles opaque actor request, encrypted intent replays same appointment and changed payload conflicts');
+  } finally { await guest.tracing.stop({ path: path.join(ART, 'booking-intent-trace.zip') }); await guest.close(); }
 }
 
 async function exerciseReferralAuthority({ doctor, patient, external, pageErrors }) {
