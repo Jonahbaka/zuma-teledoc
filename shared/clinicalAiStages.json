@@ -1,0 +1,76 @@
+{
+  "intake_review": {
+    "label": "Patient intake",
+    "roles": [
+      "phc_nurse",
+      "remote_clinician"
+    ],
+    "prompt": "Extract only recorded presenting concerns and identify missing intake facts. Do not infer history, clinical urgency, diagnoses, medications, or referral destinations."
+  },
+  "triage_review": {
+    "label": "Triage handover",
+    "roles": [
+      "phc_nurse",
+      "remote_clinician"
+    ],
+    "prompt": "Prepare a factual handover to a clinician from recorded symptoms and observations. Do not assign a triage level, urgency score, differential diagnosis, treatment, or routing. Existing deterministic emergency handling and human assessment remain authoritative."
+  },
+  "consultation_brief": {
+    "label": "Clinician consultation",
+    "roles": [
+      "remote_clinician"
+    ],
+    "prompt": "Summarize the recorded encounter and observations for the assigned clinician. List unanswered questions, not diagnoses or treatment plans. Never claim that a visit, examination, or video consultation occurred unless in the record."
+  },
+  "soap_draft": {
+    "label": "SOAP documentation",
+    "roles": [
+      "remote_clinician"
+    ],
+    "prompt": "Prepare source-linked SOAP documentation fields only. The clinician must review and edit; the application will save the result as an unsigned chart note only after separate explicit clinician action. Do not add unsupported assessments or treatment plans."
+  },
+  "encounter_summary": {
+    "label": "Encounter summary",
+    "roles": [
+      "phc_nurse",
+      "remote_clinician"
+    ],
+    "prompt": "Summarize only encounter fields and observations. Missing fields must be identified without speculation."
+  },
+  "missing_information": {
+    "label": "Missing documentation",
+    "roles": [
+      "phc_nurse",
+      "remote_clinician"
+    ],
+    "prompt": "Identify documentation gaps and conflicting recorded facts; do not supply missing facts or clinical recommendations."
+  },
+  "emr_reconciliation": {
+    "label": "EMR documentation review",
+    "roles": [
+      "remote_clinician"
+    ],
+    "prompt": "Identify only missing or inconsistent fields from this encounter snapshot and its recorded observations. Longitudinal medical records, allergies and medication lists are not included unless explicitly provided; do not claim to have reconciled the complete chart, changed the EMR, or verified diagnoses."
+  },
+  "prescription_review": {
+    "label": "Prescription documentation review",
+    "roles": [
+      "remote_clinician"
+    ],
+    "prompt": "List which clinical information would need clinician verification before any prescribing decision. The source snapshot contains no current medication orders, allergies, interaction database or drug formulary. Do not suggest or validate any medicine, dose, quantity, dispensing, contraindication, or prescription."
+  },
+  "referral_brief": {
+    "label": "Referral preparation",
+    "roles": [
+      "remote_clinician"
+    ],
+    "prompt": "Prepare a source-linked referral context brief and identify missing referral documentation. No destination selection, referral order, urgency assignment, send action, acceptance, or outcome may be invented or claimed."
+  },
+  "follow_up_draft": {
+    "label": "Follow-up planning",
+    "roles": [
+      "remote_clinician"
+    ],
+    "prompt": "Only suggest administrative clarification or follow-up tasks explicitly justified by recorded encounter facts. Never invent appointment dates, responsible staff, treatment plans or task completion; assigned clinician must approve each proposal before creation."
+  }
+}
