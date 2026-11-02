@@ -172,10 +172,14 @@ function normalizeValidation(row) {
   };
 }
 
-async function assertAiEnabled(pool, context) {
+function assertClinicalAiOperational() {
   if (process.env.CLINICAL_AI_KILL_SWITCH === 'true') {
     throw scopeError(503, 'Clinical AI is temporarily unavailable.', 'CLINICAL_AI_KILL_SWITCH');
   }
+}
+
+async function assertAiEnabled(pool, context) {
+  assertClinicalAiOperational();
   const capabilities = await getProgrammeCapabilities(pool, context);
   if (!capabilities.clinicalAiEnabled) {
     throw scopeError(403, 'Clinical AI is not enabled for this programme.', 'CLINICAL_AI_DISABLED');
@@ -384,6 +388,7 @@ function assertReviewFreshness(suggestion, encounter, observations, expectedEnco
 }
 
 async function reviewSuggestion(pool, req, context, suggestionId, { decision, expectedEncounterId, editedOutput = null, rejectionReason = null }) {
+  assertClinicalAiOperational();
   if (context.programmeRole !== 'remote_clinician') {
     throw scopeError(403, 'Clinical AI drafts require review by the assigned clinician.', 'ASSIGNED_CLINICIAN_REQUIRED');
   }
@@ -509,6 +514,7 @@ async function reviewSuggestion(pool, req, context, suggestionId, { decision, ex
 async function assertAcceptedCareActionSource(client, context, {
   suggestionId, stageType, patientUserId, encounterId,
 }) {
+  assertClinicalAiOperational();
   if (context.programmeRole !== 'remote_clinician' || !context.userId) {
     throw scopeError(403, 'An assigned clinician must authorize this care action.', 'ASSIGNED_CLINICIAN_REQUIRED');
   }
@@ -560,6 +566,7 @@ async function assertAcceptedCareActionSource(client, context, {
 }
 
 async function assertAcceptedFollowUpSource(client, context, { suggestionId, draftIndex, patientUserId, encounterId, title, instructions }) {
+  assertClinicalAiOperational();
   if (context.programmeRole !== 'remote_clinician') {
     throw scopeError(403, 'Only the assigned clinician may create a reviewed AI follow-up.', 'ASSIGNED_CLINICIAN_REQUIRED');
   }
