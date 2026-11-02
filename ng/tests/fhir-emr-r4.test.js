@@ -31,3 +31,18 @@ test('FHIR rejects an invalid dispense, and reports uploaded prescriptions witho
   const resource=medication.medicationRequest({id,drug_id:id,drug_name:'Recorded reviewed medicine',quantity:1},ctx);
   assertR4(resource);assert.equal(resource.reportedBoolean,true);assert.equal(resource.requester,undefined);
 });
+
+test('laboratory FHIR preserves recorded abnormal flags verbatim without inferring codes or thresholds', () => {
+  const row = { id, patient_user_id: patient, test_name: 'Synthetic laboratory test', result_value: 'Recorded result', status: 'final' };
+  for (const flag of ['critical', 'HH', 'Below local reference range', ' unknown local label ']) {
+    const report = clinical.toDiagnosticReport({ ...row, abnormal_flag: flag });
+    assertR4(report);
+    assert.deepEqual(report.contained[0].interpretation, [{ text: flag }]);
+    assert.equal(report.contained[0].interpretation[0].coding, undefined);
+  }
+  for (const flag of [undefined, null, '', '  ']) {
+    const report = clinical.toDiagnosticReport({ ...row, abnormal_flag: flag });
+    assertR4(report);
+    assert.equal(report.contained[0].interpretation, undefined);
+  }
+});

@@ -116,6 +116,9 @@ function toDiagnosticReport(row) {
   if(result!==null && result!==undefined && String(result).length)observation.valueString=String(result);
   else observation.dataAbsentReason=absent;
   if(row.reference_range)observation.referenceRange=[{text:row.reference_range}];
+  // Preserve the laboratory's recorded interpretation without inferring a code
+  // or reclassifying results against an invented clinical threshold.
+  if (typeof row.abnormal_flag === 'string' && row.abnormal_flag.trim()) observation.interpretation = [{ text: row.abnormal_flag }];
   if(row.unit && observation.valueString)observation.note=[{text:`Recorded result unit: ${row.unit}`}];
   return {resourceType:'DiagnosticReport',id:row.id,status:row.status,code,subject:{reference:`Patient/${row.patient_user_id}`},
     ...(row.encounter_id?{encounter:{reference:`Encounter/${row.encounter_id}`}}:{}),...(row.resulted_at?{issued:iso(row.resulted_at)}:{}),
