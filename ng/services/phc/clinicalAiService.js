@@ -212,7 +212,7 @@ async function callModel({ suggestionType, input, allowedSourceRefs, context }) 
   if (provider === 'groq') {
     return requestGroqDraft({
       context,
-      model,
+      model: model || 'openai/gpt-oss-120b',
       systemPrompt: systemPrompt(suggestionType, allowedSourceRefs),
       userPrompt: 'Structured encounter record:\n' + JSON.stringify(input),
     });
