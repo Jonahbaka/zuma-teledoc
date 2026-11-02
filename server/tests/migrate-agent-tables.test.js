@@ -18,6 +18,7 @@ test('npm run migrate includes the agent orchestrator schema migration', () => {
 
 test('reviewed SQL migrations are loaded from the explicit allowlist', () => {
   assert.deepEqual(migrate.SQL_FILE_MIGRATIONS, [
+    { name: '016_message_idempotency', file: '016_message_idempotency.sql' },
     {
       name: '037_encrypted_manual_insurance',
       file: '037_encrypted_manual_insurance.sql',
@@ -71,4 +72,16 @@ test('session migration is additive and preserves credential epoch and token-fam
   assert.match(migration.up, /credential_version INTEGER NOT NULL DEFAULT 0/);
   assert.match(migration.up, /family_id UUID NOT NULL DEFAULT uuid_generate_v4\(\)/);
   assert.doesNotMatch(migration.up, /DROP\s+(TABLE|COLUMN)|DELETE\s+FROM/i);
+});
+
+
+test('message retry schema runs through the ordinary migration entrypoint without destructive SQL', () => {
+  const all = migrate.getMigrations();
+  const migration = all.find(item => item.name === '016_message_idempotency');
+  assert.ok(migration);
+  assert.match(migration.up, /ADD COLUMN IF NOT EXISTS client_message_id UUID/);
+  assert.match(migration.up, /CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_sender_client_id/);
+  assert.match(migration.up, /WHERE client_message_id IS NOT NULL/);
+  assert.doesNotMatch(migration.up, /DROP\s+(TABLE|COLUMN)|DELETE\s+FROM|TRUNCATE/i);
+  assert.equal(all.filter(item => item.name === migration.name).length, 1);
 });

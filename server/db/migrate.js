@@ -3015,6 +3015,10 @@ const migrations = [
 
 const SQL_FILE_MIGRATIONS = [
   {
+    name: '016_message_idempotency',
+    file: '016_message_idempotency.sql'
+  },
+  {
     name: '037_encrypted_manual_insurance',
     file: '037_encrypted_manual_insurance.sql'
   },
