@@ -505,6 +505,7 @@ const referralSchema = z.object({
   priority: z.enum(['routine', 'urgent', 'emergency']).optional(),
   reason: z.string().trim().min(1).max(5000),
   clinicalNotes: z.string().trim().max(10000).nullable().optional(),
+  sourceSuggestionId: uuid.nullable().optional(),
   dueAt: z.string().datetime().nullable().optional(),
   idempotencyKey,
 });
