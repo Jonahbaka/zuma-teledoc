@@ -320,6 +320,35 @@ router.get('/patient/:patientId',
   }
 );
 
+// PHC-linked clinician Copilot. The canonical encounter ID is the only
+// locator accepted here; programme/facility and source are resolved server-side.
+const linkedPhcAi = require('../services/linkedPhcAiService');
+const careStages = require('../../shared/clinicalAiStages.json');
+const linkedDraftSchema = z.object({
+  suggestionType: z.enum(Object.keys(careStages)),
+}).strict();
+const linkedReviewSchema = z.object({
+  decision: z.enum(['accepted', 'accepted_with_edits', 'rejected']),
+  editedOutput: require('../../ng/services/phc/clinicalAiService').suggestionOutputSchema.nullable().optional(),
+  rejectionReason: z.string().max(2000).nullable().optional(),
+}).strict();
+
+router.post('/:encounterId/ai-review-drafts', authenticate, requireRole('provider'), async (req, res) => {
+  try {
+    const data = validate(linkedDraftSchema, req.body);
+    const draft = await linkedPhcAi.createLinkedDraft(req, req.params.encounterId, req.user.id, data.suggestionType);
+    res.set('Cache-Control', 'private, no-store').status(201).json({ success: true, suggestion: draft });
+  } catch (error) { return clinicalFailure(res, error); }
+});
+
+router.post('/:encounterId/ai-review-drafts/:suggestionId/review', authenticate, requireRole('provider'), async (req, res) => {
+  try {
+    const data = validate(linkedReviewSchema, req.body);
+    const review = await linkedPhcAi.reviewLinkedDraft(req, req.params.encounterId, req.user.id, req.params.suggestionId, data);
+    res.set('Cache-Control', 'private, no-store').json({ success: true, review });
+  } catch (error) { return clinicalFailure(res, error); }
+});
+
 // ============================================================================
 // CLINICAL NOTES
 // ============================================================================
