@@ -299,14 +299,15 @@ async function main() {
     await nurseBrowser.tracing.stop({ path: path.join(ART, 'follow-up-trace.zip') });
     await nurseBrowser.close();
   }
-  await exerciseConference({ doctor, nurse, patient, external, pageErrors });
+  await exerciseConference({ doctor, nurse, patient, external, pageErrors, session });
   assert.deepEqual(pageErrors, []); assert.deepEqual(external, []);
   pass('no uncaught browser errors or unexpected external requests; named font stylesheet fulfilled offline');
 }
 
-async function exerciseConference({ doctor, nurse, patient, external, pageErrors }) {
+async function exerciseConference({ doctor, nurse, patient, external, pageErrors, session }) {
   const guests=[]; let conference;
-  const request=async(ctx,route,data)=>{const response=await ctx.request.post(route,{data});assert.equal(response.ok(),true,`Synthetic conference API ${route}: ${response.status()}`);return response.json();};
+  const bearer=new Map([[context,session.accessToken]]);
+  const request=async(ctx,route,data)=>{const response=await ctx.request.post(route,{data,...(bearer.has(ctx)?{headers:{Authorization:`Bearer ${bearer.get(ctx)}`}}:{})});assert.equal(response.ok(),true,`Synthetic conference API ${route}: ${response.status()}`);return response.json();};
   const trackMedia=()=>{window.__conferenceStreams=[];const original=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=async options=>{const stream=await original(options);window.__conferenceStreams.push(stream);return stream;};};
   try {
     await context.grantPermissions(['camera','microphone']);await context.addInitScript(trackMedia);
@@ -318,6 +319,7 @@ async function exerciseConference({ doctor, nurse, patient, external, pageErrors
       const guest=await browser.newContext({baseURL:BASE,viewport:{width:1440,height:1000},permissions:['camera','microphone']});guests.push({context:guest,account});
       await guest.route('**/*',async route=>{const req=route.request();const url=req.url();if(url.startsWith(BASE)||url.startsWith('data:')||url.startsWith('blob:'))return route.continue();if(isOfflineFontFixture(url,req.method(),req.resourceType()))return route.fulfill({status:200,contentType:'text/css',body:''});external.push(url);return route.abort();});
       const login=await request(guest,'/api/auth/login',{email:account.email,password:PASSWORD,role:account.role});
+      bearer.set(guest,login.accessToken);
       await guest.addInitScript(({accessToken,refreshToken,user})=>{localStorage.setItem('accessToken',accessToken);localStorage.setItem('refreshToken',refreshToken);localStorage.setItem('user',JSON.stringify(user));},login);
       await guest.addInitScript(trackMedia);
       const guestPage=await guest.newPage();guestPage.setDefaultTimeout(20000);guestPage.on('pageerror',error=>pageErrors.push(error.message));guests[index].page=guestPage;
@@ -343,7 +345,7 @@ async function exerciseConference({ doctor, nurse, patient, external, pageErrors
     await page.screenshot({path:path.join(ART,'three-party-conference.png'),fullPage:true});
     await request(context,`/api/ng/conference/rooms/${conference.id}/participants/${guests[1].participant.id}/remove`,{});
     await expect.poll(()=>guests[1].page.evaluate(()=>window.__conferenceStreams.length>0&&window.__conferenceStreams.every(stream=>stream.getTracks().every(track=>track.readyState==='ended'))),{timeout:20000}).toBe(true);
-    const rejoin=await guests[1].context.request.post(`/api/ng/conference/rooms/${conference.id}/join`,{data:{role:'host'}});assert.equal(rejoin.status(),403);
+    const rejoin=await guests[1].context.request.post(`/api/ng/conference/rooms/${conference.id}/join`,{data:{role:'host'},headers:{Authorization:`Bearer ${bearer.get(guests[1].context)}`}});assert.equal(rejoin.status(),403);
     await guests[0].page.getByTitle('Leave call',{exact:true}).click();
     await expect.poll(async()=>(await pool.query('SELECT status FROM ng_conf_participants WHERE id=$1',[guests[0].participant.id])).rows[0].status).toBe('left');
     page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'End room',exact:true}).click();

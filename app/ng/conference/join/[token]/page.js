@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { conf } from '@/components/ng/conference/conferenceApi';
 import { Loader2, CheckCircle2, AlertCircle, LogIn } from 'lucide-react';
 
 export default function JoinInvitePage({ params }) {
@@ -21,22 +22,16 @@ export default function JoinInvitePage({ params }) {
     const current = generation.current;
     setState({ phase: 'loading', error: null, participant: null });
     try {
-      const res = await fetch('/api/ng/conference/public/redeem-invite', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ token: params.token }),
-      });
-      const body = await res.json().catch(() => ({}));
+      const body = await conf.redeemInvite(params.token);
       if (current !== generation.current) return;
-      if (res.status === 401) {
-        setState({ phase: 'signin', error: null, participant: null });
-      } else if (!res.ok || !body.ok || !body.participant?.room_id) {
+      if (!body.ok || !body.participant?.room_id) {
         setState({ phase: 'error', error: body.error || 'The invitation could not be accepted.' });
       } else {
         setState({ phase: 'ok', participant: body.participant });
         router.replace(`/ng/conference/${body.participant.room_id}`);
       }
     } catch (error) {
-      if (current === generation.current) setState({ phase: 'error', error: error.message });
+      if (current === generation.current) setState(error.status === 401 ? { phase: 'signin', error: null, participant: null } : { phase: 'error', error: error.message });
     } finally { busy.current = false; }
   }
 
