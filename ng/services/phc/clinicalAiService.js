@@ -314,7 +314,10 @@ async function listSuggestions(pool, context, encounterId) {
       ORDER BY created_at DESC LIMIT 25`,
     [context.programme_id, context.facility_id, encounterId, encounter.patient_user_id]
   );
-  return result.rows.map(normalizeValidation);
+  // Restrict the draft index as well as individual retrieval: a PHC nurse
+  // must not discover clinician-only SOAP, prescribing or referral reviews.
+  return result.rows.filter((row) => careStages[row.suggestion_type]?.roles.includes(context.programmeRole))
+    .map(normalizeValidation);
 }
 
 async function getSuggestion(pool, context, suggestionId) {
@@ -331,6 +334,9 @@ async function getSuggestion(pool, context, suggestionId) {
   );
   const row = result.rows[0];
   if (!row) throw scopeError(404, 'Clinical AI draft not found.', 'CLINICAL_AI_SUGGESTION_NOT_FOUND');
+  if (!careStages[row.suggestion_type]?.roles.includes(context.programmeRole)) {
+    throw scopeError(403, 'This review stage is not available to this role.', 'CLINICAL_AI_STAGE_ROLE_DENIED');
+  }
   const encounter = await workflow.getEncounter(pool, context, row.encounter_id);
   await assertEncounterAiAccess(pool, context, encounter);
   const output = decryptJson({ encrypted: row.output_encrypted, iv: row.output_iv, tag: row.output_tag });
