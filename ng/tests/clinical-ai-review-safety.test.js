@@ -299,3 +299,31 @@ test('prescription mutations require clinical professional role; administration 
  assert.match(routes,/router\.post\('\/:id\/receive', requireRole\(PHARMACIST\)/);
  assert.match(routes,/router\.post\('\/:id\/items\/:itemId\/dispense', requireRole\(PHARMACIST\)/);
 });
+
+test('pharmacy inbox and status endpoints reject unsigned and merely preferred prescriptions', () => {
+ const fs=require('node:fs'),path=require('node:path');
+ const route=fs.readFileSync(path.join(__dirname,'../routes/pharmacy.js'),'utf8');
+ const inbox=route.slice(route.indexOf("router.get('/:pharmacyId/prescriptions'"),route.indexOf("router.get('/:pharmacyId/whatsapp-notifications'"));
+ const mutate=route.slice(route.indexOf("router.patch('/:pharmacyId/prescriptions/:prescriptionId'"),route.indexOf("router.get('/:pharmacyId/medication-requests'"));
+ assert.match(inbox,/WHERE rx\.routed_pharmacy_id = \$1/);
+ assert.match(inbox,/rx\.signed_at IS NOT NULL/);
+ assert.match(inbox,/rx\.lifecycle_status IN/);
+ assert.doesNotMatch(inbox,/OR rx\.preferred_pharmacy_id = \$1/);
+ assert.match(mutate,/req\.user\?\.role !== 'pharmacy'/);
+ assert.match(mutate,/routed_pharmacy_id = \$7/);
+ assert.match(mutate,/signed_at IS NOT NULL/);
+ assert.match(mutate,/\$1 <> 'fulfilled' OR lifecycle_status IN/);
+});
+test('main Nigeria provider saves normalized unsigned Rx, no WhatsApp before signing', () => {
+ const fs=require('node:fs'),path=require('node:path');
+ const src=fs.readFileSync(path.join(__dirname,'../routes/provider.js'),'utf8');
+ const start=src.indexOf("router.post('/prescriptions'");
+ const end=src.indexOf('// --- PROVIDER PROFILE ---',start);
+ const body=src.slice(start,end);
+ assert.match(body,/INSERT INTO ng_rx_items/);
+ assert.match(body,/lifecycle_status, clinical_ai_source_suggestion_id/);
+ assert.match(body,/'drafted'/);
+ assert.match(body,/routed_pharmacy_id, routed_at/);
+ assert.doesNotMatch(body,/createPharmacyPrescriptionNotification/);
+ assert.match(body,/whatsappNotification: null/);
+});
