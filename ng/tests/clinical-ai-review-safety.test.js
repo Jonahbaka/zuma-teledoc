@@ -241,3 +241,15 @@ test('Groq synthetic adapter never returns upstream failure bodies', async () =>
     ));
   }
 });
+
+
+test('central AI care stages cover the PHC care journey with source-linking and role restriction', () => {
+  const { careStages, SUPPORTED_TYPES, systemPrompt } = require('../services/phc/clinicalAiService');
+  for (const type of ['intake_review', 'triage_review', 'consultation_brief', 'soap_draft', 'emr_reconciliation', 'prescription_review', 'referral_brief', 'follow_up_draft']) {
+    assert.equal(SUPPORTED_TYPES.has(type), true);
+    assert.ok(careStages[type].roles.length > 0);
+    assert.match(systemPrompt(type, ['encounter:chief_complaint']), /sourceRefs/);
+  }
+  assert.match(careStages.prescription_review.prompt, /Do not suggest or validate any medicine/);
+  assert.match(careStages.triage_review.prompt, /Do not assign a triage level/);
+});
