@@ -14,9 +14,9 @@
  */
 
 const { WebSocketServer } = require('ws');
-const jwt = require('jsonwebtoken');
+const { createAdapterAuthenticator } = require('../services/openclawAdapterAuth');
+const authenticateToken = createAdapterAuthenticator();
 
-const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || 'doctarx-hive-gateway-token-2026';
 const PROTOCOL_VERSION = '1.0.0';
 
 // Active OpenClaw sessions: wsClientId → { ws, sessionKey, agentId, userId, role }
@@ -28,7 +28,9 @@ function nextSeq() { return ++seqCounter; }
 function send(ws, frame) {
   if (ws.readyState === ws.OPEN) {
     ws.send(JSON.stringify(frame));
+    return true;
   }
+  return false;
 }
 
 function sendRes(ws, id, payload, ok = true) {
@@ -40,7 +42,7 @@ function sendErr(ws, id, error) {
 }
 
 function sendEvent(ws, event, payload) {
-  send(ws, { type: 'event', event, payload, seq: nextSeq() });
+  return send(ws, { type: 'event', event, payload, seq: nextSeq() });
 }
 
 /**
@@ -48,22 +50,7 @@ function sendEvent(ws, event, payload) {
  * Accepts either the gateway token or a valid DoctaRx JWT.
  */
 function authenticate(params) {
-  const token = params?.auth?.token || params?.token;
-  if (!token) return { ok: false, error: 'No token provided' };
-
-  // Gateway token (server-to-server)
-  if (token === GATEWAY_TOKEN) {
-    return { ok: true, role: 'operator', userId: 'gateway', isGateway: true };
-  }
-
-  // DoctaRx JWT (user sessions)
-  try {
-    const secret = process.env.JWT_ACCESS_SECRET || 'dev-access-secret';
-    const payload = jwt.verify(token, secret);
-    return { ok: true, role: payload.role || 'patient', userId: payload.id || payload.sub };
-  } catch {
-    return { ok: false, error: 'Invalid token' };
-  }
+  return authenticateToken(params?.auth?.token || params?.token);
 }
 
 /**
@@ -81,7 +68,7 @@ function resolveAgentId(agentId) {
 function initOpenClawAdapter(httpServer, hiveRouteHandler) {
   // A ws.Server({server,path}) rejects every other upgrade path, corrupting
   // Socket.IO's handshake on the shared HTTP server. Only claim our own path.
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const upgrade = (request, socket, head) => {
     let pathname;
     try { pathname = new URL(request.url, 'http://localhost').pathname; } catch (_) { return; }
@@ -95,6 +82,13 @@ function initOpenClawAdapter(httpServer, hiveRouteHandler) {
     const clientId = `oc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     let authenticated = false;
     let session = null;
+    let credential = null;
+    let connecting = false;
+    const authDeadline = setTimeout(() => { if (!authenticated) ws.close(4001, 'Authentication required'); }, 30000);
+    const validateSession = async () => {
+      const current = await authenticateToken(credential);
+      return current.ok && current.userId === session?.userId && current.role === session?.role && (current.sessionId || null) === (session?.sessionId || null);
+    };
 
     // Send pre-connect challenge (OpenClaw protocol)
     send(ws, { nonce: clientId, timestamp: Date.now() });
@@ -108,18 +102,20 @@ function initOpenClawAdapter(httpServer, hiveRouteHandler) {
 
       // ── CONNECT (must be first frame) ─────────────────────────────
       if (method === 'connect' || (!authenticated && type === 'req')) {
-        if (authenticated) return sendErr(ws, id, 'Already connected');
-
-        const auth = authenticate(p);
+        if (authenticated || connecting) return sendErr(ws, id, 'Already connecting or connected');
+        connecting = true;
+        const auth = await authenticate(p);
+        connecting = false;
         if (!auth.ok) {
           sendErr(ws, id, auth.error);
           ws.close(4001, 'Unauthorized');
           return;
         }
 
-        authenticated = true;
-        session = { clientId, role: auth.role, userId: auth.userId, agentId: 'nova' };
-        ocSessions.set(clientId, { ws, ...session });
+        if (ws.readyState !== ws.OPEN) return;
+        authenticated = true;clearTimeout(authDeadline);credential = p?.auth?.token || p?.token;
+        session = { clientId, role: auth.role, userId: auth.userId, sessionId: auth.sessionId || null, agentId: 'nova' };
+        ocSessions.set(clientId, { ws, ...session, validateSession });
 
         sendRes(ws, id, {
           protocolVersion: PROTOCOL_VERSION,
@@ -134,6 +130,7 @@ function initOpenClawAdapter(httpServer, hiveRouteHandler) {
       }
 
       if (!authenticated) { sendErr(ws, id, 'Not authenticated'); return; }
+      if (!(await validateSession())) { sendErr(ws, id, 'Session is no longer valid'); ws.close(4001, 'Unauthorized'); return; }
 
       // ── SESSIONS LIST ─────────────────────────────────────────────
       if (method === 'sessions_list') {
@@ -156,7 +153,7 @@ function initOpenClawAdapter(httpServer, hiveRouteHandler) {
         const { sessionKey, message } = p;
         const agentId = resolveAgentId(sessionKey?.split(':')?.[1] || session.agentId);
         session.agentId = agentId;
-        ocSessions.set(clientId, { ws, ...session });
+        ocSessions.set(clientId, { ws, ...session, validateSession });
 
         // Emit thinking event
         sendEvent(ws, 'agent:turn:phase', { sessionKey, phase: 'thinking' });
@@ -231,6 +228,7 @@ function initOpenClawAdapter(httpServer, hiveRouteHandler) {
     });
 
     ws.on('close', () => {
+      clearTimeout(authDeadline);credential = null;
       ocSessions.delete(clientId);
     });
 
@@ -245,13 +243,19 @@ function initOpenClawAdapter(httpServer, hiveRouteHandler) {
 }
 
 /**
- * Broadcast an event to all connected OpenClaw clients.
- * Used by the hive to push real-time updates.
+ * Queue an event only for explicitly authorized recipient accounts.
+ * Caller must establish payload/care scope; no default global broadcast.
  */
-function broadcastToOpenClaw(event, payload) {
-  ocSessions.forEach(({ ws }) => {
-    sendEvent(ws, event, payload);
+async function broadcastToOpenClaw(event, payload, { recipientUserIds } = {}) {
+  return require('../services/scopedAdapterEvents').deliverScopedAdapterEvent({
+    sessions: Array.from(ocSessions.values()), event, payload, recipientUserIds, send: sendEvent,
   });
 }
 
-module.exports = { initOpenClawAdapter, broadcastToOpenClaw };
+function revokeAdapterSessions(userId,sessionId=null) {
+  for(const session of ocSessions.values()) {
+    if(session.userId===userId&&(!sessionId||session.sessionId===sessionId))session.ws.close(4001,'Session ended');
+  }
+}
+
+module.exports = { initOpenClawAdapter, broadcastToOpenClaw, revokeAdapterSessions };

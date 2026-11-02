@@ -29,7 +29,7 @@ test('actual membership/Stripe/payment HTTP routes require verified collection a
   const previous = Object.fromEntries(['NODE_ENV', 'DATABASE_URL', 'JWT_ACCESS_SECRET', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'NEXT_PUBLIC_APP_URL'].map(key => [key, process.env[key]]));
   Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: target, JWT_ACCESS_SECRET: 'doctarx-isolated-membership-http-test-secret',
     STRIPE_SECRET_KEY: 'sk_test_isolated', STRIPE_WEBHOOK_SECRET: 'whsec_isolated', NEXT_PUBLIC_APP_URL: 'http://127.0.0.1:3000' });
-  const db = require('../db'); const oldQuery = db.query; const oldPool = db.getPool;
+  const db = require('../db'); const oldQuery = db.query; const oldPool = db.getPool; const oldTransaction = db.transaction;
   let serial = 0; let failAudit = false; let failFinancialRead = false; let server;
   const routePool = { query(sql, parameters) {
     if (failFinancialRead && sql.includes('JOIN payments p ON p.subscription_id=s.id')) throw new Error('Isolated financial storage outage');
@@ -51,6 +51,9 @@ test('actual membership/Stripe/payment HTTP routes require verified collection a
   let restoreStripe;
   try {
     await client.query('BEGIN'); db.query = routePool.query; db.getPool = () => routePool;
+    // Auth issuance now uses db.transaction; keep it inside the same isolated
+    // rollback fixture rather than opening a connection that cannot see users.
+    db.transaction = async work => { const transactionClient = await routePool.connect(); try { await transactionClient.query('BEGIN'); const result = await work(transactionClient); await transactionClient.query('COMMIT'); return result; } catch (error) { await transactionClient.query('ROLLBACK'); throw error; } finally { transactionClient.release(); } };
     for (const file of cache.keys()) delete require.cache[file];
     const usId = crypto.randomUUID(); const providerId = crypto.randomUUID(); const staffId = crypto.randomUUID(); const ngControlId = crypto.randomUUID();
     const customerId = 'cus_isolated_' + crypto.randomUUID().replace(/-/g, '');
@@ -392,7 +395,7 @@ test('actual membership/Stripe/payment HTTP routes require verified collection a
     const refunded = await request('payments/appointment/' + appointmentId); assert.equal(refunded.body.paymentVerified, false); assert.equal(refunded.body.paymentCompleted, false); assert.equal(refunded.body.recordedPayment.status, 'refunded');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve)); if (restoreStripe) restoreStripe();
-    db.query = oldQuery; db.getPool = oldPool; ops.notifyStripeWebhookFailure = oldNotify;
+    db.query = oldQuery; db.getPool = oldPool; db.transaction = oldTransaction; ops.notifyStripeWebhookFailure = oldNotify;
     for (const [file, cached] of cache) { if (cached) require.cache[file] = cached; else delete require.cache[file]; }
     await client.query('ROLLBACK'); client.release(); await pool.end();
     for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }

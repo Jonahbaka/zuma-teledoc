@@ -51,7 +51,7 @@ async function revokeSession(userId,refreshToken,sessionId) {
     if(family)await client.query('UPDATE refresh_tokens SET revoked_at=COALESCE(revoked_at,NOW()) WHERE user_id=$1 AND family_id=$2',[userId,family]);
     return family;
   });
-  if(family)require('./socketService').revokeUserSessions(userId,family);
+  if(family){ require('./socketService').revokeUserSessions(userId,family);require('../routes/openclawAdapter').revokeAdapterSessions(userId,family); }
 }
 async function assertCurrentSession(client,decoded,user) {
   if(!user?.is_active || version(decoded.sessionVersion)!==version(user.credential_version))throw rejected();
@@ -78,6 +78,7 @@ async function changeCredentials({userId,expectedPasswordHash,newPasswordHash,re
     return {user:updated,tokens};
   });
   require('./socketService').revokeUserSessions(userId);
+  require('../routes/openclawAdapter').revokeAdapterSessions(userId);
   return result;
 }
 module.exports={issueSession,rotateSession,revokeSession,assertCurrentSession,changeCredentials};

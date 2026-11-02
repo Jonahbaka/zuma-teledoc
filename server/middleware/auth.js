@@ -111,8 +111,6 @@ const authenticate = async (req, res, next) => {
     }
     
     const user = rows[0];
-    await assertCurrentSession(db, decoded, user);
-    req.authSessionId = decoded.sessionId || null;
     
     // Check if user is active
     if (!user.is_active) {
@@ -122,6 +120,9 @@ const authenticate = async (req, res, next) => {
       });
     }
     
+    await assertCurrentSession(db, decoded, user);
+    req.authSessionId = decoded.sessionId || null;
+
     const isPasswordChangeAllowed = isPasswordChangeAllowedRequest(req);
 
     // Check provider status. Pending providers may still read their session and

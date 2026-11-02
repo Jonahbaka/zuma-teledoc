@@ -65,3 +65,15 @@ test('PostgreSQL refresh/logout/password changes serialize with one successor an
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM audit_logs WHERE user_id=$1 AND resource_type='user'",[id])).rows[0].n,2);
  }finally{db.transaction=original;await pool.query('DELETE FROM audit_logs WHERE user_id=$1',[id]);await pool.query('DELETE FROM users WHERE id=$1',[id]);await pool.end();}
 });
+
+
+test('actual HTTP authentication preserves deactivated-account403 while stale sessions return401',async()=>{
+ const fs=require('node:fs'),vm=require('node:vm');const source=fs.readFileSync(require.resolve('../middleware/auth'),'utf8');const start=source.indexOf('const authenticate =');const end=source.indexOf('\n/**',start);
+ for(const active of [false,true]){
+  let checked=0,status,body;const context={jwt:{verify:()=>({userId:'synthetic'})},ACCESS_TOKEN_SECRET:'synthetic',db:{query:async()=>({rows:[{id:'synthetic',is_active:active}]})},assertCurrentSession:async()=>{checked++;throw Object.assign(new Error('stale'),{statusCode:401});}};
+  vm.runInNewContext(source.slice(start,end)+';this.handler=authenticate;',context);
+  const response={status(value){status=value;return this;},json(value){body=value;return this;}};
+  await context.handler({headers:{authorization:'Bearer synthetic'},cookies:{}},response,()=>assert.fail('Denied request continued'));
+  assert.equal(status,active?401:403);assert.equal(checked,active?1:0);assert.equal(body.success,false);
+ }
+});
