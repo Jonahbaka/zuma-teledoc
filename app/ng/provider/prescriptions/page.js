@@ -84,7 +84,7 @@ function PrescriptionWorkspace() {
       if (!response.prescription?.id) throw new Error();
       if (generation.current !== current) return;
       setData((old) => ({ ...old, prescriptions: { rows: [response.prescription, ...(old.prescriptions?.rows || [])] } }));
-      setNotice(response.prescription.status === 'routed' ? 'Prescription created. The selected pharmacy has not yet confirmed fulfillment.' : 'Prescription created. Pharmacy fulfillment has not been requested.');
+      setNotice('Unsigned draft saved. Review, sign and explicitly send it from the prescription detail. The pharmacy has not been notified.');
       setForm((old) => ({ ...old, items: [blankItem()], diagnosis: '', notes: '' }));
     } catch (error) { if (generation.current === current) setSubmitError(error.response?.data?.error || 'The prescription could not be confirmed. Check prescription activity before submitting again.'); }
     finally { if (generation.current === current) setSaving(false); }
@@ -93,7 +93,7 @@ function PrescriptionWorkspace() {
   const prescriptions = data.prescriptions?.rows || [];
   const field = 'mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base';
   return <div className="space-y-6">
-    <PortalPageHeader eyebrow="DoctaRx · Clinical workspace" title="Prescriptions" description="Prescribe for an assigned patient and follow the recorded pharmacy response.">
+    <PortalPageHeader eyebrow="DoctaRx · Clinical workspace" title="Prescriptions" description="Create a clinician-authored draft, then sign and explicitly send it before pharmacy fulfilment.">
       <Link href="/ng/provider/patients"><Button variant="outline">Patient charts</Button></Link>
       <Button variant="outline" disabled={loading || saving} onClick={() => setRevision((value) => value + 1)}><RefreshCw className="mr-2 h-5 w-5" aria-hidden="true" />Refresh</Button>
     </PortalPageHeader>
@@ -117,7 +117,7 @@ function PrescriptionWorkspace() {
           <Button type="submit" className="w-full bg-blue-600 text-white hover:bg-blue-700" disabled={saving || Boolean(data.patients?.error) || !form.patientUserId}>{saving ? 'Creating prescription…' : 'Create prescription'}</Button>
         </fieldset></form>}
       </section>
-      <section className="portal-surface"><h2 className="text-xl font-semibold">Prescription activity</h2>{loading ? <p role="status" className="mt-4">Loading prescriptions…</p> : data.prescriptions?.error ? <p className="mt-4 text-slate-600">Activity is temporarily unavailable.</p> : !prescriptions.length ? <p className="portal-empty mt-4">No prescriptions have been recorded.</p> : <ul className="mt-4 divide-y divide-slate-200">{prescriptions.map((row) => <li key={row.id} className="space-y-2 py-4"><p className="font-semibold">{row.prescription_number || 'Prescription'}</p><p>{[row.patient_first_name,row.patient_last_name].filter(Boolean).join(' ') || patientName(patients.find((patient) => patient.id === row.patient_user_id) || {})}</p><p className="text-slate-600">Pharmacy: {row.pharmacy_name || 'No confirmed pharmacy response'}</p><p className="text-slate-600">Status: {String(row.pharmacy_response_status || row.dispense_status || row.status || 'Unknown').replace(/_/g,' ')}</p></li>)}</ul>}</section>
+      <section className="portal-surface"><h2 className="text-xl font-semibold">Prescription activity</h2>{loading ? <p role="status" className="mt-4">Loading prescriptions…</p> : data.prescriptions?.error ? <p className="mt-4 text-slate-600">Activity is temporarily unavailable.</p> : !prescriptions.length ? <p className="portal-empty mt-4">No prescriptions have been recorded.</p> : <ul className="mt-4 divide-y divide-slate-200">{prescriptions.map((row) => <li key={row.id} className="space-y-2 py-4"><p className="font-semibold">{row.prescription_number || 'Prescription'}</p><p>{[row.patient_first_name,row.patient_last_name].filter(Boolean).join(' ') || patientName(patients.find((patient) => patient.id === row.patient_user_id) || {})}</p><p className="text-slate-600">Pharmacy: {row.pharmacy_name || 'Not yet routed'}</p><Link href={`/ng/prescriptions/${row.id}`} className="text-blue-700 underline">Review, sign and route prescription</Link><p className="text-slate-600">Status: {String(row.pharmacy_response_status || row.dispense_status || row.status || 'Unknown').replace(/_/g,' ')}</p></li>)}</ul>}</section>
     </div>
   </div>;
 }
