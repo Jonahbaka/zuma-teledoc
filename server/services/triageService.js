@@ -61,15 +61,15 @@ class TriageService {
         RETURNING *
       `;
       
-      // SAFE SERIALIZATION: Ensure we never pass 'undefined' to JSON.stringify
-      const flagsJson = JSON.stringify(Array.isArray(triageResult.flags) ? triageResult.flags : []);
-      const medsJson = JSON.stringify(Array.isArray(triageResult.suggestedMeds) ? triageResult.suggestedMeds : []);
+      // Client-entered triage is intake only: no user-supplied clinical severity, medication, SOAP, or priority is authoritative.
+      const flagsJson = JSON.stringify([]);
+      const medsJson = JSON.stringify([]);
       
       const result = await client.query(updateQuery, [
-        triageResult.severity || 0,
-        triageResult.soapDraft || '',
-        triageResult.triageLevel || (triageResult.severity >= 4 ? 'URGENT' : 'ROUTINE'),
-        triageResult.suggestedSpecialty || 'Primary Care',
+        null,
+        '',
+        'UNASSESSED',
+        null,
         flagsJson, // $5 passed as string, cast to ::jsonb in SQL
         medsJson,  // $6 passed as string, cast to ::jsonb in SQL
         symptoms,
