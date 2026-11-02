@@ -25,3 +25,14 @@ No patient PHI is authorized for the free tier. Do not merge to production or tu
 ## Boundary of this increment
 
 This connects all eight PHC **review stages** through one provider service and UI. It does not convert the separate US patient triage engine, legacy `/api/ai-assist` routes, pharmacy fulfilment, or hospital EHR system into autonomous AI clinical decision-makers. Those should be migrated only after their data authority and record/review models are reconciled. No production deployment is performed by this PR.
+
+## Canonical provider encounter bridge (added)
+
+- `server/services/linkedPhcAiService.js` verifies the currently assigned clinician and an explicit PHC-to-canonical EHR record link. It rejects ordinary encounters without an authorized PHC linkage.
+- `POST /api/clinical-encounters/:encounterId/ai-review-drafts` creates a centrally configured source-linked draft for an authorized clinician. `POST /api/clinical-encounters/:encounterId/ai-review-drafts/:suggestionId/review` records the clinician's decision after verifying draft ownership.
+- The provider encounter chart adds review controls for consultation, SOAP, EMR documentation gaps, prescription documentation gaps, referral context and follow-up proposals. These draft/review actions do not write or sign clinical records.
+- Existing EHR import remains a separate reviewed SOAP action, retaining the normal chart signing process. Tests enforce canonical linkage and verify the absence of AI-driven prescription or signature calls in the draft UI.
+
+## Outstanding integration and release work
+
+Legacy US patient-side triage, old unscoped AI-assist routes, pharmacies, prescribing and independent referral-network workflows remain separate systems with different authorization contracts. Do not call the current implementation a complete cross-market AI rollout. Next: adapt each pathway to this protected service only where an actual authorized source record can be linked. Complete synthetic PostgreSQL tests, browser E2E, CI, provider privacy review, signed-off clinical testing and release approval before production activation.
