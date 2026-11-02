@@ -296,6 +296,7 @@ export default function PhcWorkspace({ standalone = false }) {
   const [referralEntry, setReferralEntry] = useState(null);
   const [referralTarget, setReferralTarget] = useState('');
   const [referralReason, setReferralReason] = useState('');
+  const [attachReviewedReferral, setAttachReviewedReferral] = useState(false);
   const [referralOutcome, setReferralOutcome] = useState('');
   const [capabilities, setCapabilities] = useState({
     offlineClinicalSyncEnabled: false,
@@ -797,6 +798,8 @@ export default function PhcWorkspace({ standalone = false }) {
   const createReferral = async (event) => {
     event.preventDefault();
     if (!referralEntry || !referralReason.trim()) return;
+    const approvedReferralReview = aiSuggestion?.status === 'accepted' && aiSuggestion?.suggestion_type === 'referral_brief' && String(aiSuggestion?.encounter_id) === String(referralEntry.encounter_id) && String(aiSuggestion?.patient_user_id) === String(referralEntry.patient_user_id) ? aiSuggestion.id : null;
+    if (attachReviewedReferral && !approvedReferralReview) { setError('The selected referral review is no longer available for this patient and encounter.'); return; }
     const response = await run('referral-create', () => phcAPI.createReferral(context, {
       patientUserId: referralEntry.patient_user_id,
       encounterId: referralEntry.encounter_id,
@@ -805,12 +808,14 @@ export default function PhcWorkspace({ standalone = false }) {
       referralType: 'specialist',
       priority: referralEntry.priority === 'emergency' ? 'emergency' : referralEntry.priority === 'urgent' ? 'urgent' : 'routine',
       reason: referralReason.trim(),
+      ...(attachReviewedReferral && approvedReferralReview ? { sourceSuggestionId: approvedReferralReview } : {}),
       idempotencyKey: uuid(),
     }), 'Referral draft created. It must be sent, accepted and closed through the referral worklist.');
     if (response) {
       setReferralEntry(null);
       setReferralTarget('');
       setReferralReason('');
+      setAttachReviewedReferral(false);
       await refreshWorklists();
     }
   };
@@ -1210,7 +1215,7 @@ export default function PhcWorkspace({ standalone = false }) {
                                   )}
                                 {canClaim && entry.assigned_provider_user_id
                                   && String(entry.assigned_provider_user_id) === String(ownerUserId || '') && (
-                                    <Button size="sm" variant="outline" onClick={() => setReferralEntry(entry)}>Refer</Button>
+                                    <Button size="sm" variant="outline" onClick={() => { setAttachReviewedReferral(false); setReferralEntry(entry); }}>Refer</Button>
                                   )}
                               </div>
                             </div>
@@ -1287,6 +1292,14 @@ export default function PhcWorkspace({ standalone = false }) {
                               <Textarea id="referral-reason" className="mt-1.5" value={referralReason} onChange={(event) => setReferralReason(event.target.value)} />
                             </div>
                           </div>
+                          {aiSuggestion?.status === 'accepted' && aiSuggestion?.suggestion_type === 'referral_brief'
+                            && String(aiSuggestion?.encounter_id) === String(referralEntry.encounter_id)
+                            && String(aiSuggestion?.patient_user_id) === String(referralEntry.patient_user_id) && (
+                              <label className="mt-3 flex items-center gap-2 text-sm">
+                                <input type="checkbox" checked={attachReviewedReferral} onChange={(event) => setAttachReviewedReferral(event.target.checked)} />
+                                Attach this clinician-approved AI referral review as audit provenance (does not send or authorize referral)
+                              </label>
+                            )}
                           <div className="mt-3 flex gap-2">
                             <Button type="submit" disabled={!referralReason.trim() || busy === 'referral-create'}>Create draft</Button>
                             <Button type="button" variant="ghost" onClick={() => setReferralEntry(null)}>Cancel</Button>
