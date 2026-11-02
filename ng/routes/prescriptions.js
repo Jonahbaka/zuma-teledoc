@@ -231,7 +231,21 @@ router.post('/:id/send', requireRole(PRESCRIBER), express.json(), async (req, re
     if (!pid) return res.status(400).json({ ok: false, error: 'pharmacy_id required' });
     const rx = await getScopedPrescription(req, pool, [PRESCRIBER]);
     if (!rx) return res.status(404).json({ ok: false, error: 'Not found' });
-    res.json({ ok: true, prescription: await svc.sendToPharmacy(req.params.id, pid, actor(req), pool) });
+    const prescription = await svc.sendToPharmacy(req.params.id, pid, actor(req), pool);
+    // Pharmacy notification is permitted only after a signed, routed Rx.
+    // The notification service independently rechecks those conditions.
+    let pharmacyNotification = null;
+    try {
+      pharmacyNotification = await require('../services/whatsapp/whatsappDispenseService')
+        .createPharmacyPrescriptionNotification({
+          prescriptionId: prescription.id, pharmacyId: pid,
+          createdByUserId: req.user.id,
+        });
+    } catch (_notificationError) {
+      // Sending was committed; do not falsely report that the Rx failed.
+      // The pharmacy dashboard remains the authoritative inbox.
+    }
+    res.json({ ok: true, prescription, pharmacyNotification });
   } catch (e) { handleError(res, e); }
 });
 
