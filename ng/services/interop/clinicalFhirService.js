@@ -139,4 +139,48 @@ async function diagnosticReports(pool,context,encounterId) {
   const rows=(await pool.query('SELECT * FROM ng_lab_results WHERE encounter_id=$1 AND patient_user_id=$2 ORDER BY created_at,id',[encounter.id,encounter.patient_user_id])).rows;
   return rows.map(toDiagnosticReport);
 }
-module.exports = { patient, encounter, observations, allergies, conditions, diagnosticReports, toObservation, toEncounter, toAllergy, toCondition, toDiagnosticReport };
+// This is a metadata-only representation of clinician-authored PHC referrals,
+// not authorization or transport for an external partner.
+function toServiceRequest(row) {
+  const statuses = { draft: 'draft', sent: 'active', accepted: 'active', completed: 'completed', cancelled: 'revoked' };
+  const priorities = { routine: 'routine', urgent: 'urgent', emergency: 'stat' };
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const date = new Date(row.created_at);
+  // Receiver rejection does not prove that the originating order was revoked.
+  // Do not invent a FHIR status or silently omit an unrepresentable referral.
+  if (!Object.hasOwn(statuses, row.status) || !Object.hasOwn(priorities, row.priority) ||
+      ![row.id, row.patient_user_id, row.encounter_id, row.provider_user_id].every(value => typeof value === 'string' && uuid.test(value)) ||
+      !row.created_at || !Number.isFinite(date.getTime())) {
+    const error = new Error('Referral metadata cannot be represented by this FHIR subset.');
+    error.statusCode = 503; throw error;
+  }
+  return {
+    resourceType: 'ServiceRequest', id: row.id, status: statuses[row.status], intent: 'order',
+    priority: priorities[row.priority],
+    subject: { type: 'Patient', identifier: { system: 'urn:doctarx:patient-user', value: row.patient_user_id } },
+    encounter: { type: 'Encounter', identifier: { system: 'urn:doctarx:clinical-encounter', value: row.encounter_id } },
+    requester: { type: 'Practitioner', identifier: { system: 'urn:doctarx:practitioner-user', value: row.provider_user_id } }, authoredOn: date.toISOString(),
+  };
+}
+async function serviceRequests(pool, context, encounterId, { count = 50, offset = 0 } = {}) {
+  // Intersection of existing referral worklist roles and internal FHIR roles.
+  if (context.programmeRole !== 'remote_clinician') {
+    const error = new Error('Clinical referral read role required.'); error.statusCode = 403; throw error;
+  }
+  if (!Number.isSafeInteger(count) || count < 1 || count > 200 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) {
+    const error = new Error('Invalid referral pagination.'); error.statusCode = 400; throw error;
+  }
+  const encounter = await authorizedEncounter(pool, context, encounterId);
+  const rows = (await pool.query(
+    `SELECT id, patient_user_id, encounter_id, provider_user_id, status, priority, created_at
+       FROM ng_referrals
+      WHERE programme_id=$1 AND facility_id=$2 AND encounter_id=$3 AND patient_user_id=$4
+      ORDER BY created_at,id LIMIT $5 OFFSET $6`,
+    [context.programme_id, context.facility_id, encounter.id, encounter.patient_user_id, count + 1, offset]
+  )).rows;
+  // Validate the lookahead too; never imply a successful partial page when an
+  // unsupported source state is already known in this result set.
+  const resources = rows.map(toServiceRequest);
+  return { resources: resources.slice(0, count), hasNext: resources.length > count };
+}
+module.exports = { serviceRequests, toServiceRequest, patient, encounter, observations, allergies, conditions, diagnosticReports, toObservation, toEncounter, toAllergy, toCondition, toDiagnosticReport };
