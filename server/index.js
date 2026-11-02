@@ -384,6 +384,15 @@ app.get('/api/health', (req, res) => {
     buildId,                                 // id of the served frontend bundles (.next/BUILD_ID)
     gitCommit: readGitCommitId() || null,    // git HEAD — may differ from buildId after a chunked-upload deploy
     nemoClaw,
+    // Operational state only: never expose API keys, prompts, patient data, or
+    // programme membership in a public health endpoint.
+    clinicalAi: {
+      inferenceAvailable: process.env.CLINICAL_AI_KILL_SWITCH !== 'true'
+        && process.env.NODE_ENV !== 'production',
+      killSwitchActive: process.env.CLINICAL_AI_KILL_SWITCH === 'true',
+      providerConfigured: Boolean(process.env.CLINICAL_AI_PROVIDER),
+      productionClinicalAiAllowed: false
+    },
     // Cloud Run metadata (helps diagnose load balancer / revision split)
     service: process.env.K_SERVICE,
     revision: process.env.K_REVISION,
