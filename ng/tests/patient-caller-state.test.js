@@ -443,8 +443,8 @@ test('same-mounted successful recovery retires previous text key before a genuin
 });
 
 const ngProvider = { id: 'provider-a', role: 'provider', marketScope: 'NG' };
-function manualReferralView(api, props = {}, auth = { value: { user: ngProvider, loading: false } }, exportName = 'NigeriaProviderReferralsWorkspace') {
-  return viewHarness('app/ng/provider/referrals/page.js', auth, api, undefined, exportName, props);
+function manualReferralView(api, props = {}, auth = { value: { user: ngProvider, loading: false } }, exportName = 'NigeriaProviderReferralsWorkspace', storage) {
+  return viewHarness('app/ng/provider/referrals/page.js', auth, api, undefined, exportName, props, storage);
 }
 function manualReferralResponse(url) {
   return { data: url === '/providers/me/patients' ? { success: true, patients: [{ id: patientA.id, firstName: 'Synthetic patient' }] } : { ok: true, referrals: [{ id: 'ref-a', status: 'draft', reason: 'Synthetic referral reason', target_name: 'Synthetic destination' }] } };
@@ -503,4 +503,146 @@ test('manual referral stale save failure never displays the prior clinician erro
   pending.reject({ response: { data: { error: 'PRIOR CLINICIAN PRIVATE ERROR' } } }); await action; await flush(view);
   assert.equal(view.toasts.length, 0);
   assert.ok(!view.text().includes('PRIOR CLINICIAN PRIVATE ERROR'));
+});
+
+const referralStorageKey = 'doctarx:referral-unresolved:A';
+const savedReferral = { data: { ok: true, referral: { id: submissionId, status: 'draft' } } };
+function referralReason(view, value) {
+  view.find('textarea').find(node => node.props.id === 'referral-reason').props.onChange({ target: { value } }); view.render();
+}
+async function saveReferral(view) { await view.find('form')[0].props.onSubmit(event); await flush(view); }
+
+test('manual referral lost-response reload reconciles an opaque account marker without resubmitting or storing PHI', async () => {
+  const storage = new Map(); let writes = 0, key;
+  const api = {
+    async get(url) { return url.includes('/requests/') ? savedReferral : manualReferralResponse(url); },
+    async post(url, body, options) {
+      writes++; key = options.headers['Idempotency-Key'];
+      assert.equal(url, '/ng/clinical/referrals');
+      assert.deepEqual(JSON.parse(storage.get(referralStorageKey)), { requestId: key });
+      assert.match(key, /^[0-9a-f-]{36}$/);
+      assert.equal(body.reason, 'PRIVATE SYNTHETIC REASON');
+      throw new Error('Lost response after commit');
+    },
+  };
+  const first = manualReferralView(api, { accountKey: 'A' }, undefined, undefined, storage);
+  first.render(); await flush(first); fillManualReferral(first);
+  referralReason(first, 'PRIVATE SYNTHETIC REASON'); first.input('referral-destination', 'PRIVATE SYNTHETIC DESTINATION');
+  await saveReferral(first);
+  assert.deepEqual(JSON.parse(storage.get(referralStorageKey)), { requestId: key });
+  assert.ok(!JSON.stringify([...storage]).includes('PRIVATE')); assert.ok(!JSON.stringify([...storage]).includes(patientA.id));
+  first.unmount();
+  const reloaded = manualReferralView(api, { accountKey: 'A' }, undefined, undefined, storage);
+  reloaded.render(); await flush(reloaded);
+  assert.equal(writes, 1); assert.equal(storage.size, 0);
+  assert.ok(reloaded.toasts.some(toast => toast.title === 'Saved referral found'));
+  assert.ok(!reloaded.button('Check saved referral'));
+});
+
+test('manual referral missing, malformed or failed receipts preserve reload barrier and never create', async () => {
+  for (const response of [null, { data: { ok: true, referral: { id: 'bad', status: 'draft' } } }, { data: { ok: true, referral: { id: submissionId } } }]) {
+    const storage = new Map([[referralStorageKey, JSON.stringify({ requestId: submissionId })]]); let writes = 0;
+    const view = manualReferralView({ async get(url) { if (url.includes('/requests/')) { if (!response) throw { response: { status: 404 } }; return response; } return manualReferralResponse(url); }, async post() { writes++; } }, { accountKey: 'A' }, undefined, undefined, storage);
+    view.render(); await flush(view); fillManualReferral(view);
+    assert.equal(view.button('Save referral draft').props.disabled, true);
+    await saveReferral(view); await view.button('Check saved referral').props.onClick(); await flush(view);
+    assert.equal(storage.size, 1); assert.equal(writes, 0); assert.equal(view.toasts.length, 0);
+  }
+});
+
+test('manual referral unchanged canonical retry reuses key, changed intent remains blocked until reconciliation', async () => {
+  const keys = [];
+  const view = manualReferralView({ async get(url) { return url.includes('/requests/') ? savedReferral : manualReferralResponse(url); }, async post(_url, _body, options) { keys.push(options.headers['Idempotency-Key']); throw new Error('Lost response'); } }, { accountKey: 'A' });
+  view.render(); await flush(view); fillManualReferral(view); await saveReferral(view);
+  referralReason(view, '  Synthetic new referral  '); await saveReferral(view);
+  assert.equal(keys.length, 2); assert.equal(keys[0], keys[1]);
+  referralReason(view, 'Newer synthetic reason'); assert.equal(view.button('Save referral draft').props.disabled, true); await saveReferral(view);
+  assert.equal(keys.length, 2);
+  await view.button('Check saved referral').props.onClick(); await flush(view);
+  assert.equal(view.find('textarea').find(node => node.props.id === 'referral-reason').props.value, 'Newer synthetic reason');
+  // Even identical content after reconciliation is a genuinely new intent.
+  referralReason(view, 'Synthetic new referral'); await saveReferral(view);
+  assert.equal(keys.length, 3); assert.notEqual(keys[0], keys[2]);
+});
+
+test('manual referral only certified first-attempt validation rejection clears marker', async () => {
+  for (const ambiguous of [false, true]) {
+    const keys = [];
+    const view = manualReferralView({ async get(url) { return manualReferralResponse(url); }, async post(_url, _body, options) {
+      keys.push(options.headers['Idempotency-Key']);
+      if (ambiguous && keys.length === 1) throw new Error('Lost');
+      throw { response: { status: 400, data: { submissionNotStarted: true, error: 'Invalid details' } } };
+    } }, { accountKey: 'A' });
+    view.render(); await flush(view); fillManualReferral(view); await saveReferral(view);
+    if (ambiguous) await saveReferral(view);
+    assert.equal(view.storage.size, ambiguous ? 1 : 0);
+    referralReason(view, 'Corrected synthetic reason'); await saveReferral(view);
+    assert.equal(keys.length, 2);
+    if (ambiguous) assert.equal(keys[0], keys[1]);
+    else assert.notEqual(keys[0], keys[1]);
+  }
+});
+
+
+test('manual referral generic 400, storage failure and different account fail safely', async () => {
+  let writes = 0; const reads = [];
+  const storage = new Map([[referralStorageKey, JSON.stringify({ requestId: submissionId })]]);
+  const api = { async get(url) { reads.push(url); return manualReferralResponse(url); }, async post() { writes++; throw { response: { status: 400, data: { error: 'Invalid' } } }; } };
+  const view = manualReferralView(api, { accountKey: 'B' }, undefined, undefined, storage);
+  view.render(); await flush(view); fillManualReferral(view);
+  assert.ok(!reads.some(url => url.includes('/requests/')));
+  await saveReferral(view); assert.equal(storage.size, 2);
+  assert.ok(view.button('Check saved referral'));
+  storage.set = () => { throw new Error('Storage unavailable'); };
+  await saveReferral(view); assert.equal(writes, 1); assert.ok(storage.has(referralStorageKey));
+});
+
+test('manual referral successful POST preserves newer entered form and mints a new subsequent intent', async () => {
+  const pending = deferred(), keys = [];
+  const view = manualReferralView({ async get(url) { return manualReferralResponse(url); }, post(_url, _body, options) { keys.push(options.headers['Idempotency-Key']); return keys.length === 1 ? pending.promise : Promise.resolve(savedReferral); } }, { accountKey: 'A' });
+  view.render(); await flush(view); fillManualReferral(view);
+  const action = view.find('form')[0].props.onSubmit(event);
+  referralReason(view, 'Newer unsaved synthetic reason'); pending.resolve(savedReferral); await action; await flush(view);
+  assert.equal(view.find('textarea').find(node => node.props.id === 'referral-reason').props.value, 'Newer unsaved synthetic reason');
+  assert.equal(view.storage.size, 0);
+  await saveReferral(view); assert.notEqual(keys[0], keys[1]);
+});
+
+test('manual referral stale recovery cannot clear another account marker or expose receipt', async () => {
+  const lookup = deferred(), session = { current: 'A' }, storage = new Map([[referralStorageKey, JSON.stringify({ requestId: submissionId })]]);
+  const view = manualReferralView({ async get(url) { return url.includes('/requests/') ? lookup.promise : manualReferralResponse(url); } }, { accountKey: 'A', session }, undefined, undefined, storage);
+  view.render(); await flush(view); session.current = 'B'; lookup.resolve(savedReferral); await flush(view);
+  assert.equal(storage.size, 1); assert.equal(view.toasts.length, 0);
+});
+
+test('manual referral unavailable storage prevents the first mutation and removal cannot erase a known pending barrier', async () => {
+  let writes = 0;
+  const api = { async get(url) { return manualReferralResponse(url); }, async post() { writes++; throw new Error('Lost response'); } };
+  const denied = manualReferralView(api, { accountKey: 'A' });
+  denied.render(); await flush(denied); fillManualReferral(denied);
+  denied.storage.set = () => { throw new Error('Storage unavailable'); };
+  await saveReferral(denied); assert.equal(writes, 0);
+  denied.storage.set = Map.prototype.set;
+  await denied.button('Check saved referral').props.onClick(); await flush(denied);
+  referralReason(denied, 'Corrected never-transmitted reason'); await saveReferral(denied);
+  assert.equal(writes, 1); assert.equal(denied.storage.size, 1);
+  const pending = manualReferralView(api, { accountKey: 'A' });
+  pending.render(); await flush(pending); fillManualReferral(pending); await saveReferral(pending);
+  pending.storage.clear();
+  await pending.button('Check saved referral').props.onClick(); await flush(pending);
+  referralReason(pending, 'Different synthetic reason'); await saveReferral(pending);
+  assert.equal(writes, 2); assert.equal(pending.button('Save referral draft').props.disabled, true);
+  assert.ok(pending.text().includes('recovery reference is missing'));
+});
+
+
+test('manual referral replay confirmation describes current completed or cancelled status without claiming a new draft', async () => {
+  for (const status of ['completed', 'cancelled']) {
+    const view = manualReferralView({ async get(url) { return manualReferralResponse(url); }, async post() { return { data: { ok: true, referral: { id: submissionId, status } } }; } }, { accountKey: 'A' });
+    view.render(); await flush(view); fillManualReferral(view); await saveReferral(view);
+    const confirmation = view.toasts.find(toast => toast.title === 'Referral save confirmed');
+    assert.ok(confirmation); assert.ok(confirmation.description.includes('Current recorded status: ' + status));
+    assert.ok(!confirmation.description.includes('Review the destination'));
+    assert.equal(view.storage.size, 0);
+  }
 });

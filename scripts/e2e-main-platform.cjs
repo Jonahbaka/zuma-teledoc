@@ -10,6 +10,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const { checkVideoPreflightLayout } = require('./e2e-main-video-preflight.cjs');
 const { checkPrescriptionRecovery } = require('./e2e-prescription-recovery.cjs');
+const { checkManualReferralRecovery } = require('./e2e-manual-referral-recovery.cjs');
 
 const target = process.env.SIMULATION_DATABASE_URL;
 if (!target || !['localhost','127.0.0.1'].includes(new URL(target).hostname) || !new URL(target).pathname.endsWith('_test')) throw new Error('Use an isolated loopback database ending in _test.');
@@ -252,6 +253,7 @@ async function main() {
       assert.equal(await providerPage.locator('main .portal-error').count(),0,name+' must load actual data');
       console.log('Verified:',name);
     }
+    await checkManualReferralRecovery(providerPage, db);
     await providerPage.goto('http://127.0.0.1:3003/ng/provider/call');
     await providerPage.getByRole('button',{name:'Start New Consultation',exact:true}).waitFor();
     await checkVideoPreflightLayout(providerPage);

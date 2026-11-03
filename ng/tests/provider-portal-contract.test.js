@@ -178,7 +178,7 @@ test('provider referral form matches the active draft contract without invented 
     assert.match(page, escaped(field + ':'));
     assert.match(route, escaped(field));
   }
-  assert.match(page, /Referral draft saved/);
+  assert.match(page, /Referral save confirmed/);
   assert.match(page, /patientResult\.status === 'fulfilled'/);
   assert.match(page, /referralResult\.status === 'fulfilled'/);
   assert.match(page, /errors\.patients/);
