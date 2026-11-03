@@ -9,6 +9,7 @@ const pharmacyOnboardingService = require('../services/pharmacy/pharmacyOnboardi
 const inventoryService = require('../services/pharmacy/inventoryService');
 const { previewCatalogue } = require('../services/pharmacy/cataloguePreviewService');
 const orderService = require('../services/pharmacy/orderService');
+const medicationRequests = require('../services/pharmacy/medicationRequestService');
 const medicationDelivery = require('../services/logistics/medicationDeliveryWorkflowService');
 const walletService = require('../services/pharmacy/walletService');
 const complianceService = require('../services/compliance/complianceService');
@@ -579,121 +580,21 @@ router.patch('/:pharmacyId/prescriptions/:prescriptionId', async (req, res) => {
   }
 });
 
-// Get medication availability requests routed to this pharmacy.
+// Availability responses are scoped and audited independently of fulfillment.
+router.use('/:pharmacyId/medication-requests', (_req, res, next) => {
+  res.set('Cache-Control', 'private, no-store');
+  next();
+});
 router.get('/:pharmacyId/medication-requests', async (req, res) => {
   try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-
-    const pool = getPool();
-    const params = [req.params.pharmacyId];
-    const where = ['(r.preferred_pharmacy_id = $1 OR r.assigned_pharmacy_id = $1)'];
-
-    if (req.query.status) {
-      params.push(String(req.query.status).trim());
-      where.push(`r.status = $${params.length}`);
-    }
-
-    const result = await pool.query(
-      `SELECT r.*,
-              d.source_name,
-              d.source_type,
-              d.source_reference,
-              d.source_quality_status,
-              preferred.name AS preferred_pharmacy_name,
-              assigned.name AS assigned_pharmacy_name
-         FROM ng_medication_requests r
-         LEFT JOIN ng_drug_catalog d ON d.id = r.medicine_catalog_id
-         LEFT JOIN ng_pharmacies preferred ON preferred.id = r.preferred_pharmacy_id
-         LEFT JOIN ng_pharmacies assigned ON assigned.id = r.assigned_pharmacy_id
-        WHERE ${where.join(' AND ')}
-        ORDER BY
-          CASE r.status
-            WHEN 'pending_pharmacy_confirmation' THEN 1
-            WHEN 'pharmacy_reviewing' THEN 2
-            WHEN 'clarification_requested' THEN 3
-            WHEN 'available' THEN 4
-            WHEN 'unavailable' THEN 5
-            WHEN 'fulfilled' THEN 6
-            WHEN 'completed' THEN 7
-            WHEN 'cancelled' THEN 8
-            ELSE 9
-          END,
-          r.created_at DESC
-        LIMIT 100`,
-      params
-    );
-
-    res.json(result.rows);
-  } catch (err) {
-    const status = err.statusCode || (err.code === '42703' || err.code === '42P01' ? 503 : 400);
-    res.status(status).json({
-      error: status === 503 ? 'Nigeria medication request tables are not migrated yet.' : err.message,
-    });
-  }
+    res.json(await medicationRequests.listPharmacyRequests(getPool(), req.user, req.params.pharmacyId, req.query.status));
+  } catch (error) { medicationRequests.sendError(res, error); }
 });
-
-// Let a routed pharmacy respond to an availability request without verifying global live inventory.
 router.patch('/:pharmacyId/medication-requests/:requestId', async (req, res) => {
   try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-
-    const allowedStatuses = new Set([
-      'pharmacy_reviewing',
-      'available',
-      'unavailable',
-      'clarification_requested',
-      'fulfilled',
-      'completed',
-    ]);
-    const nextStatus = String(req.body.status || '').trim();
-
-    if (!allowedStatuses.has(nextStatus)) {
-      return res.status(400).json({ error: 'Unsupported pharmacy medication request status.' });
-    }
-
-    const confirmedPrice = req.body.confirmedPriceNgn === undefined || req.body.confirmedPriceNgn === '' || req.body.confirmedPriceNgn === null
-      ? null
-      : Number(req.body.confirmedPriceNgn);
-    if (confirmedPrice !== null && !Number.isFinite(confirmedPrice)) {
-      return res.status(400).json({ error: 'Confirmed price must be a number.' });
-    }
-
-    const pool = getPool();
-    const result = await pool.query(
-      `UPDATE ng_medication_requests
-          SET status = $1,
-              pharmacy_response_notes = $2,
-              confirmed_price_ngn = $3,
-              pharmacy_notes = $4,
-              clarification_request = $5,
-              pharmacy_responded_at = NOW(),
-              assigned_pharmacy_id = COALESCE(assigned_pharmacy_id, $6),
-              updated_at = NOW()
-        WHERE id = $7
-          AND (preferred_pharmacy_id = $6 OR assigned_pharmacy_id = $6)
-        RETURNING *`,
-      [
-        nextStatus,
-        req.body.pharmacyResponseNotes || null,
-        confirmedPrice,
-        req.body.pharmacyNotes || null,
-        req.body.clarificationRequest || null,
-        req.params.pharmacyId,
-        req.params.requestId,
-      ]
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Medication request not found for this pharmacy.' });
-    }
-
-    res.json({ request: result.rows[0] });
-  } catch (err) {
-    const status = err.statusCode || (err.code === '42703' || err.code === '42P01' ? 503 : 400);
-    res.status(status).json({
-      error: status === 503 ? 'Nigeria medication request tables are not migrated yet.' : err.message,
-    });
-  }
+    const request = await medicationRequests.updateRequest(getPool(), req.user, req.params.requestId, req.body, req.params.pharmacyId);
+    res.json({ request });
+  } catch (error) { medicationRequests.sendError(res, error); }
 });
 
 // Confirm order (start preparing)
