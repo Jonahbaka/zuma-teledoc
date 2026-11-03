@@ -60,10 +60,10 @@ test('actual response bridge emits cancellation IDs without narrative or false b
   assert.equal(events.filter(e => e[0] === 'patient.appointment.booked').length, 2);
 });
 test('Nova appointment reminder never calls a model or copies clinical/profile narratives', async () => {
-  const notifications = []; let modelCalls = 0;
+  const notifications = [], queries = []; let modelCalls = 0;
   const api = load('../services/agentNotificationService.js', {
     '@anthropic-ai/sdk': class { constructor() { this.messages = { create: async () => { modelCalls++; throw new Error('Model must not be called'); } }; } },
-    '../db': { query: async sql => ({ rows: /SELECT u.first_name/.test(sql) ? [{ first_name: 'Test', role: 'patient' }] : /SELECT known_facts/.test(sql) ? [{ known_facts: [secret] }] : [] }) },
+    '../db': { query: async (sql, params) => { queries.push({ sql, params }); return { rows: /SELECT u.role/.test(sql) ? [{ first_name: 'Test', role: 'patient' }] : /SELECT known_facts/.test(sql) ? [{ known_facts: [secret] }] : [] }; } },
     '../middleware/logger': { info() {}, warn() {} },
     './notifications': { createNotification: async value => notifications.push(value) }
   }, { ANTHROPIC_API_KEY: 'synthetic-not-a-real-key' });
@@ -71,4 +71,49 @@ test('Nova appointment reminder never calls a model or copies clinical/profile n
   assert.equal(modelCalls, 0); assert.equal(notifications.length, 1);
   assert.ok(!JSON.stringify(notifications).includes(secret));
   assert.match(notifications[0].message, /Sign in/);
+  const touch = queries.find(q => /INSERT INTO nova_user_profiles/.test(q.sql));
+  assert.deepEqual(Array.from(touch.params), [id]);
+  assert.ok(!touch.sql.includes('known_facts'));
+  assert.ok(!queries.some(q => /SELECT known_facts/.test(q.sql)));
+});
+
+test('Nova check-ins preserve throttle and role navigation without reading or transmitting profile narratives', async () => {
+  for (const scenario of [
+    { role: 'patient', has: false, last: null, url: '/patient/appointments/book', label: 'Book Your First Visit' },
+    { role: 'patient', has: true, last: new Date(Date.now() - 73 * 3600000), url: '/patient/dashboard', label: 'View Dashboard' },
+    { role: 'provider', has: false, last: null, url: '/provider/dashboard', label: 'View Dashboard' },
+    { role: 'patient', has: true, last: new Date(), throttled: true },
+    { missing: true }
+  ]) {
+    const notifications = [], queries = []; let modelCalls = 0;
+    const api = load('../services/agentNotificationService.js', {
+      '@anthropic-ai/sdk': class { constructor() { this.messages = { create: async () => { modelCalls++; return { content: [{ text: secret }] }; } }; } },
+      '../db': { query: async (sql, params) => {
+        queries.push({ sql, params });
+        if (/SELECT u.role/.test(sql)) return { rows: scenario.missing ? [] : [{ role: scenario.role, has_appointments: scenario.has, known_facts: [secret], first_name: secret }] };
+        if (/SELECT last_contact/.test(sql)) return { rows: [{ last_contact: scenario.last }] };
+        if (/SELECT known_facts/.test(sql)) throw new Error('Routine check-in must not read profile narratives');
+        return { rows: [] };
+      } },
+      '../middleware/logger': { info() {}, warn() {} },
+      './notifications': { createNotification: async value => notifications.push(value) }
+    }, { ANTHROPIC_API_KEY: 'synthetic-not-a-real-key' });
+    await api.sendCheckInFromNova(id);
+    assert.equal(modelCalls, 0);
+    assert.ok(!queries.some(q => /SELECT known_facts|reason_for_visit|patient_notes/.test(q.sql)));
+    assert.ok(!JSON.stringify(notifications).includes(secret));
+    if (scenario.throttled || scenario.missing) {
+      assert.equal(notifications.length, 0);
+      assert.ok(!queries.some(q => /INSERT INTO nova_user_profiles/.test(q.sql)));
+    } else {
+      assert.equal(notifications.length, 1);
+      assert.equal(notifications[0].userId, id);
+      assert.equal(notifications[0].actionUrl, scenario.url);
+      assert.equal(notifications[0].actionText, scenario.label);
+      const touch = queries.find(q => /INSERT INTO nova_user_profiles/.test(q.sql));
+      assert.ok(touch);
+      assert.deepEqual(Array.from(touch.params), [id]);
+      assert.ok(!touch.sql.includes('known_facts'));
+    }
+  }
 });

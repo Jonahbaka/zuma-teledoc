@@ -35,3 +35,9 @@ The next local slice removes cancellation narratives from routine notifications 
 These changes prevent new copies on the covered paths; they do not delete existing notification/chat/event records, activate appointment encryption, or claim the latent Nova/bridge paths were live disclosures. Historical retention cleanup and the coordinated encryption writer/reader conversion remain separate work.
 
 The workflow notification remains an operator scheduling summary, not per-provider delivery. Other Nova check-in paths and historical profile data are outside this slice.
+
+## Local Nova check-in minimization follow-on
+
+The next local slice keeps optional Nova check-ins available with deterministic nonclinical text and the existing 72-hour throttle. Reminder/check-in context reads only user role and booking existence; it no longer loads names, location, specialty, appointment history or remembered free-text facts. Reminder contact tracking no longer writes a future appointment as a past-event fact. Provider and returning-patient dashboard buttons now match their labels; first-time patients retain the booking action. No source caller was found for these optional reminder/check-in/learning exports, so this is latent-path hardening, not evidence of an active production disclosure.
+
+This changes notification personalization, not clinical decision logic. Welcome generation, arbitrary learning/profile storage, historical records, and atomic concurrent check-in throttling remain separate review areas. No production profile records are changed or removed.

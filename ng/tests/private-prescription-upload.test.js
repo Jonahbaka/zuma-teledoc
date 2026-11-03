@@ -112,3 +112,60 @@ test('PostgreSQL private submission preserves encryption, pending review, retry 
     await assert.rejects(service.readProviderSubmission(providerPool, providerReq, account.id, first.prescriptionId), (error) => error.status === 404);
   } finally { await client.query('ROLLBACK'); client.release(); await pool.end(); if(previous===undefined) delete process.env.ENCRYPTION_KEY; else process.env.ENCRYPTION_KEY=previous; }
 });
+
+test('PostgreSQL submission contention and receipt lookup preserve exact intent without content deduplication', { skip: !target }, async () => {
+  const url = new URL(target);
+  assert.ok(['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'));
+  const { Pool } = require('pg'); const pool = new Pool({ connectionString: target, statement_timeout: 15000 });
+  const first = await pool.connect(), second = await pool.connect();
+  const key = crypto.randomUUID(), newKey = crypto.randomUUID(); let patient, secondPromise;
+  const previous = process.env.ENCRYPTION_KEY;
+  process.env.ENCRYPTION_KEY ||= '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  try {
+    patient = (await pool.query("SELECT id FROM users WHERE email='patient@demo.doctarx.com' AND role='patient' AND market_scope='NG' AND is_active=true")).rows[0]; assert.ok(patient);
+    const req = { user: { id: patient.id }, headers: { 'idempotency-key': key } };
+    await first.query('BEGIN');
+    const held = { query: (sql, params) => ['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql) ? Promise.resolve({ rows: [] }) : first.query(sql, params), release() {} };
+    const saved = await service.saveSubmission({ connect: async () => held }, req, { text: 'Synthetic concurrency prescription instructions' });
+    await assert.rejects(service.readSubmissionReceipt(pool, req, key), error => error.status === 404);
+    const pid = (await second.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    const competing = { query: (sql, params) => second.query(sql, params), release() {} };
+    secondPromise = service.saveSubmission({ connect: async () => competing }, req, { text: 'Synthetic concurrency prescription instructions' });
+    // Observe a real blocked unique-index lock before releasing the first writer.
+    let blocked = false; const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const lock = await pool.query('SELECT 1 FROM pg_locks WHERE pid=$1 AND NOT granted', [pid]);
+      if (lock.rows.length) { blocked = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal(blocked, true, 'same-key writer must contend on the in-flight insert');
+    await first.query('COMMIT');
+    const repeat = await secondPromise; secondPromise = null;
+    assert.equal(repeat.prescriptionId, saved.prescriptionId);
+    assert.equal((await service.readSubmissionReceipt(pool, req, key)).prescriptionId, saved.prescriptionId);
+    await assert.rejects(service.saveSubmission(pool, req, { text: 'Changed synthetic intent' }), error => error.status === 409);
+    const distinct = await service.saveSubmission(pool, { ...req, headers: { 'idempotency-key': newKey } }, { text: 'Synthetic concurrency prescription instructions' });
+    assert.notEqual(distinct.prescriptionId, saved.prescriptionId, 'a genuinely new key is not global content deduplication');
+  } finally {
+    await first.query('ROLLBACK');
+    if (secondPromise) await secondPromise.catch(() => {});
+    if (patient) {
+      await pool.query("DELETE FROM audit_logs WHERE resource_type='prescription_submission' AND resource_id IN (SELECT id FROM ng_prescriptions WHERE patient_user_id=$1 AND submission_key=ANY($2::uuid[]))", [patient.id, [key, newKey]]);
+      await pool.query('DELETE FROM ng_prescriptions WHERE patient_user_id=$1 AND submission_key=ANY($2::uuid[])', [patient.id, [key, newKey]]);
+    }
+    first.release(); second.release(); await pool.end();
+    if (previous === undefined) delete process.env.ENCRYPTION_KEY; else process.env.ENCRYPTION_KEY = previous;
+  }
+});
+test('only validation failures before database mutation certify an unstarted submission', async () => {
+  const previous = process.env.ENCRYPTION_KEY; process.env.ENCRYPTION_KEY ||= '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  try {
+    let connects = 0; const pool = { connect() { connects++; throw new Error('Database unavailable'); } };
+    const req = { user: { id: crypto.randomUUID() }, headers: { 'idempotency-key': crypto.randomUUID() } };
+    for (const payload of [{ image: { buffer: Buffer.from('invalid'), mimetype: 'image/png' } }, { text: ' ' }]) {
+      await assert.rejects(service.saveSubmission(pool, req, payload), error => error.status === 400 && error.submissionNotStarted === true);
+    }
+    assert.equal(connects, 0);
+    await assert.rejects(service.saveSubmission(pool, req, { text: 'Synthetic valid input' }), error => error.submissionNotStarted === undefined);
+  } finally { if (previous === undefined) delete process.env.ENCRYPTION_KEY; else process.env.ENCRYPTION_KEY = previous; }
+});

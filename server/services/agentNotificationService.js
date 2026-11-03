@@ -62,40 +62,16 @@ async function ensureNovaProfileTable() {
 // ─── Build User Context ────────────────────────────────────────────────────
 async function getUserContext(userId) {
   try {
+    // Operational reminders/check-ins need only routing and whether a booking
+    // exists. Never load remembered free text or clinical history into this path.
     const { rows } = await db.query(`
-      SELECT u.first_name, u.last_name, u.role, u.specialty,
-             u.city, u.state, u.created_at,
-             COUNT(a.id)::int          AS appointment_count,
-             MAX(a.scheduled_at)       AS last_appointment_at
-      FROM users u
-      LEFT JOIN appointments a
-        ON (a.patient_id = u.id OR a.provider_id = u.id)
-      WHERE u.id = $1
-      GROUP BY u.id
+      SELECT u.role,
+             EXISTS (SELECT 1 FROM appointments a
+                     WHERE a.patient_id = u.id OR a.provider_id = u.id) AS has_appointments
+      FROM users u WHERE u.id = $1
     `, [userId]);
-
     if (!rows.length) return null;
-    const u = rows[0];
-
-    const { rows: profiles } = await db.query(
-      'SELECT known_facts, message_count FROM nova_user_profiles WHERE user_id = $1',
-      [userId]
-    );
-    const prof = profiles[0] || { known_facts: [], message_count: 0 };
-
-    return {
-      firstName:        u.first_name,
-      lastName:         u.last_name,
-      role:             u.role,
-      specialty:        u.specialty,
-      city:             u.city,
-      state:            u.state,
-      appointmentCount: u.appointment_count || 0,
-      lastAppointmentAt: u.last_appointment_at,
-      memberSince:      u.created_at,
-      knownFacts:       prof.known_facts || [],
-      messageCount:     prof.message_count || 0
-    };
+    return { role: rows[0].role, hasAppointments: rows[0].has_appointments === true };
   } catch (err) {
     logger.warn('Nova: getUserContext error', err.message);
     return null;
@@ -271,7 +247,7 @@ async function sendAppointmentReminderFromNova(appointment, userId) {
       actionText: 'View Details'
     });
 
-    await touchNovaProfile(userId, `Had appointment on ${formattedDate}`);
+    await touchNovaProfile(userId);
     logger.info('Nova: appointment reminder sent', { userId });
   } catch (err) {
     logger.warn('Nova: sendAppointmentReminderFromNova error (non-fatal)', err.message);
@@ -279,9 +255,9 @@ async function sendAppointmentReminderFromNova(appointment, userId) {
 }
 
 /**
- * Periodic check-in. Called when a user loads their dashboard
- * if Nova hasn't reached out in 3+ days.
- * Nova grows more personalized as she learns more.
+ * Optional periodic check-in entrypoint; no production caller is wired here.
+ * Sends only if Nova has not reached out in 3+ days.
+ * Uses nonclinical copy; profile narratives stay out of routine notifications.
  */
 async function sendCheckInFromNova(userId) {
   try {
@@ -299,15 +275,11 @@ async function sendCheckInFromNova(userId) {
       if (hours < 72) return;
     }
 
-    const message = await generateNovaMessage(context, {
-      type:        'check_in',
-      description: `Friendly check-in. ${context.appointmentCount > 0
-        ? `They have had ${context.appointmentCount} appointment(s). Reference their journey subtly.`
-        : "They haven't booked any appointments yet — gently encourage their first visit."
-      } Keep it brief and genuinely caring. Never feel like a marketing message.`,
-      tone:        'genuinely caring, brief, human',
-      length:      '1-2 sentences'
-    });
+    // Routine notifications must not repeat clinical/profile facts or send them
+    // to a model. Keep the check-in available using bounded, nonclinical copy.
+    const message = context.role === 'provider'
+      ? "Nova here. Sign in to your dashboard to review your schedule and care tasks."
+      : "Nova here, checking in. Sign in whenever you need to book a visit or review your care.";
 
     const notificationService = require('./notifications');
     await notificationService.createNotification({
@@ -315,8 +287,9 @@ async function sendCheckInFromNova(userId) {
       type:       'system',
       title:      '💙 Nova is checking in',
       message,
-      actionUrl:  context.role === 'provider' ? '/provider/dashboard' : '/patient/appointments/book',
-      actionText: context.appointmentCount === 0 ? 'Book Your First Visit' : 'View Dashboard'
+      actionUrl: context.role === 'provider' ? '/provider/dashboard'
+        : context.hasAppointments ? '/patient/dashboard' : '/patient/appointments/book',
+      actionText: context.role === 'provider' || context.hasAppointments ? 'View Dashboard' : 'Book Your First Visit'
     });
 
     await touchNovaProfile(userId);
