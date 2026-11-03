@@ -1,10 +1,10 @@
 'use strict';
+const { sqlDateEndUtc } = require('../shared/sqlDate');
 
 // Shared by operational checkout and clinical reads. An approved licence is
 // insufficient after a pharmacy account is suspended or its ownership changes.
 function isClinicalPharmacyActive(pharmacy, now = Date.now()) {
-  const expiry = new Date(pharmacy?.pcn_license_expiry);
-  const expiryEnd = Date.UTC(expiry.getUTCFullYear(), expiry.getUTCMonth(), expiry.getUTCDate() + 1);
+  const expiryEnd = sqlDateEndUtc(pharmacy?.pcn_license_expiry);
   return Boolean(pharmacy?.status === 'approved' && pharmacy.account_status === 'active'
     && pharmacy.verified_at && String(pharmacy.pcn_license_number || '').trim()
     && String(pharmacy.superintendent_pcn_number || '').trim()

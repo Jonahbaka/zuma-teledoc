@@ -23,7 +23,7 @@ function fixture() {
       const matches = sql.includes('JOIN ng_digital_prescriptions') ? params[0]===state.rx.id && state.rx.routed_pharmacy_id===state.p.id && state.p.owner_user_id===params[1] : state.p.owner_user_id===params[0] && (!params[1] || params[1]===state.p.id);
       return { rows: matches ? [state.p] : [] };
     }
-    if (sql.startsWith('SELECT id,expires_at FROM ng_digital_prescriptions')) {
+    if (sql.startsWith('SELECT id,to_char(expires_at')) {
       assert.match(sql, /routed_pharmacy_id=\$2 AND signed_at IS NOT NULL/); assert.match(sql, /FOR (UPDATE|SHARE)/);
       return { rows: state.rx.id===params[0] && state.rx.routed_pharmacy_id===params[1] && state.rx.signed_at && ['sent_to_pharmacy','received','partially_dispensed','fully_dispensed','completed'].includes(state.rx.lifecycle_status) ? [{ id: state.rx.id, expires_at: state.rx.expires_at }] : [] };
     }

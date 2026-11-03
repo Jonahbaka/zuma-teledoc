@@ -52,7 +52,7 @@ async function context(client,orderId) {
   const order=(await client.query('SELECT * FROM ng_orders WHERE id=$1',[orderId])).rows[0];
   const f=(await client.query('SELECT * FROM ng_medication_fulfillments WHERE order_id=$1',[orderId])).rows[0];
   if (!order || !f) throw fail(404,'Medication record not found.');
-  const pharmacy=(await client.query('SELECT * FROM ng_pharmacies WHERE id=$1 FOR SHARE',[order.pharmacy_id])).rows[0];
+  const pharmacy=(await client.query("SELECT *,to_char(pcn_license_expiry,'YYYY-MM-DD') AS pcn_license_expiry FROM ng_pharmacies WHERE id=$1 FOR SHARE",[order.pharmacy_id])).rows[0];
   const rx=f.digital_prescription_id ? (await client.query('SELECT * FROM ng_digital_prescriptions WHERE id=$1',[f.digital_prescription_id])).rows[0] : null;
   const items=rx ? (await client.query('SELECT * FROM ng_rx_items WHERE prescription_id=$1 ORDER BY position',[rx.id])).rows : order.items.map(item=>({...item,id:stable(`reported:${order.prescription_id}:${item.drug_id}`),drug_name:item.drug_name || item.name}));
   const prescriber=rx?.provider_id ? (await client.query('SELECT u.id,u.first_name,u.last_name FROM ng_providers p JOIN users u ON u.id=p.user_id WHERE p.id=$1',[rx.provider_id])).rows[0] : null;

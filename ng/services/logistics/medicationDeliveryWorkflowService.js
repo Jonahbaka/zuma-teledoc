@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { sqlDateEndUtc } = require('../shared/sqlDate');
 const { requiresQuantityReview, hasCompleteDispensingEvidence, orderQuantitiesMatch, isQuantityReviewHeld } = require('../rx-engine/dispenseQuantityPolicy');
 const { getPool } = require('../../../server/db');
 const { encrypt, decrypt } = require('../../../lib/encryption');
@@ -13,7 +14,7 @@ const { isClinicalPharmacyActive, assertClinicalPharmacyActive } = require('../p
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const dayEnd = value => { const date = new Date(value); return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1); };
+const dayEnd = sqlDateEndUtc;
 function fail(status, message, code = 'MEDICATION_WORKFLOW_REJECTED') { return Object.assign(new Error(message), { status, code }); }
 function id(value) { if (!UUID.test(value || '')) throw fail(400, 'A valid record identifier is required.'); return value; }
 function key(value) { if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(value)) throw fail(400, 'A stable idempotency key is required.'); return value; }
@@ -71,7 +72,7 @@ function createMedicationDeliveryWorkflowService(options = {}) {
     if (!order) throw fail(404, 'Order not found.');
     const f = (await client.query(`SELECT *,EXISTS(SELECT 1 FROM ng_medication_events e WHERE e.order_id=ng_medication_fulfillments.order_id AND e.action='handover_requires_clinical_review') AS clinical_review_required FROM ng_medication_fulfillments WHERE order_id=$1 ${lock ? 'FOR UPDATE' : ''}`, [orderId])).rows[0];
     if (!f) throw fail(409, 'This earlier order requires pharmacy support before using medication checkout.');
-    const p = (await client.query('SELECT * FROM ng_pharmacies WHERE id=$1 FOR SHARE', [order.pharmacy_id])).rows[0];
+    const p = (await client.query("SELECT *,to_char(pcn_license_expiry,'YYYY-MM-DD') AS pcn_license_expiry FROM ng_pharmacies WHERE id=$1 FOR SHARE", [order.pharmacy_id])).rows[0];
     let actorUser = null;
     if (!system) {
       actorUser = await user(client, actor);
@@ -89,8 +90,9 @@ function createMedicationDeliveryWorkflowService(options = {}) {
   async function rxValid(client, ctx) {
     const { order, f } = ctx;
     if (f.digital_prescription_id) {
-      const rx = (await client.query('SELECT * FROM ng_digital_prescriptions WHERE id=$1 FOR UPDATE', [f.digital_prescription_id])).rows[0];
-      if (!rx?.signed_at || !['sent_to_pharmacy', 'received', 'partially_dispensed', 'fully_dispensed'].includes(rx.lifecycle_status) || rx.patient_user_id !== order.patient_user_id || rx.routed_pharmacy_id !== order.pharmacy_id || dayEnd(rx.expires_at) <= now()) throw fail(409, 'A current signed prescription routed to this pharmacy is required.');
+      const rx = (await client.query("SELECT *,to_char(expires_at,'YYYY-MM-DD') AS expires_at FROM ng_digital_prescriptions WHERE id=$1 FOR UPDATE", [f.digital_prescription_id])).rows[0];
+      const expiryEnd = dayEnd(rx?.expires_at);
+      if (!rx?.signed_at || !['sent_to_pharmacy', 'received', 'partially_dispensed', 'fully_dispensed'].includes(rx.lifecycle_status) || rx.patient_user_id !== order.patient_user_id || rx.routed_pharmacy_id !== order.pharmacy_id || !Number.isFinite(expiryEnd) || expiryEnd <= now()) throw fail(409, 'A current signed prescription routed to this pharmacy is required.');
       const allItems = (await client.query('SELECT * FROM ng_rx_items WHERE prescription_id=$1 ORDER BY position FOR SHARE', [rx.id])).rows;
       const claimed = allItems.filter(item => item.fulfillment_order_id === order.id);
       if (!claimed.length || claimed.some(item => !['pending', 'available'].includes(item.status)) || requiresQuantityReview(allItems)
@@ -233,7 +235,7 @@ function createMedicationDeliveryWorkflowService(options = {}) {
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [createKey]);
       const old = (await client.query('SELECT order_id,create_digest FROM ng_medication_fulfillments WHERE create_key=$1', [createKey])).rows[0];
       if (old) { if (old.create_digest !== digest) throw fail(409, 'This checkout key already belongs to a different order.'); const ctx = await load(client, old.order_id, actor); return { order: ctx.order, checkout: await dto(client, ctx) }; }
-      const p = (await client.query('SELECT * FROM ng_pharmacies WHERE id=$1 FOR SHARE', [id(input.pharmacyId)])).rows[0];
+      const p = (await client.query("SELECT *,to_char(pcn_license_expiry,'YYYY-MM-DD') AS pcn_license_expiry FROM ng_pharmacies WHERE id=$1 FOR SHARE", [id(input.pharmacyId)])).rows[0];
       if (!p) throw fail(404, 'Pharmacy not found.');
       pharmacyValid(p);
       const commercialSnapshot = await commercialProfiles.forPharmacy(client,p.id);
@@ -242,8 +244,9 @@ function createMedicationDeliveryWorkflowService(options = {}) {
       if (!!input.digitalPrescriptionId === !!input.prescriptionId) throw fail(422, 'Select one verified prescription.');
       let rxItems;
       if (input.digitalPrescriptionId) {
-        const rx = (await client.query('SELECT * FROM ng_digital_prescriptions WHERE id=$1 FOR UPDATE', [id(input.digitalPrescriptionId)])).rows[0];
-        if (!rx || rx.patient_user_id !== patient.id || !rx.signed_at || !['sent_to_pharmacy', 'received'].includes(rx.lifecycle_status) || rx.routed_pharmacy_id !== p.id || dayEnd(rx.expires_at) <= now()) throw fail(409, 'Choose a current signed prescription routed to this pharmacy.');
+        const rx = (await client.query("SELECT *,to_char(expires_at,'YYYY-MM-DD') AS expires_at FROM ng_digital_prescriptions WHERE id=$1 FOR UPDATE", [id(input.digitalPrescriptionId)])).rows[0];
+        const expiryEnd = dayEnd(rx?.expires_at);
+        if (!rx || rx.patient_user_id !== patient.id || !rx.signed_at || !['sent_to_pharmacy', 'received'].includes(rx.lifecycle_status) || rx.routed_pharmacy_id !== p.id || !Number.isFinite(expiryEnd) || expiryEnd <= now()) throw fail(409, 'Choose a current signed prescription routed to this pharmacy.');
         if (rx.is_controlled) throw fail(422, 'Controlled medicines require the existing supervised dispensing process.');
         if ((await client.query('SELECT 1 FROM ng_medication_fulfillments WHERE digital_prescription_id=$1 AND prescription_claim_active=true', [rx.id])).rows.length) throw fail(409, 'This prescription already has an active medication order.');
         const allItems = (await client.query('SELECT drug_id,quantity,status,dispensed_quantity,fulfillment_order_id FROM ng_rx_items WHERE prescription_id=$1 FOR UPDATE', [rx.id])).rows;

@@ -53,7 +53,7 @@ test('PostgreSQL pharmacist gateway serializes suspension/rerouting and never co
     });
     await t.test('account authority stays locked through clinical read and audit, then new reads see suspension',async()=>{
       const atRead=pause(),proceed=pause();
-      const paused={async connect(){const client=await pool.connect();return{release:()=>client.release(),async query(sql,values){if(sql.startsWith('SELECT id,expires_at FROM ng_digital_prescriptions')){atRead.resolve();await proceed.promise;}return client.query(sql,values);}};}};
+      const paused={async connect(){const client=await pool.connect();return{release:()=>client.release(),async query(sql,values){if(sql.startsWith('SELECT id,to_char(expires_at')){atRead.resolve();await proceed.promise;}return client.query(sql,values);}};}};
       const reading=service.read(paused,f.pharmacist,f.prescriptionId);let suspending;
       try{
         await Promise.race([atRead.promise,reading]);let done=false;

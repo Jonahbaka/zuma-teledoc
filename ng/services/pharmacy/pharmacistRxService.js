@@ -3,6 +3,7 @@
 // Public pharmacist API boundary. Trusted medication-order reconciliation keeps
 // using the internal workflow directly; no request flag can select that path.
 const { z } = require('zod');
+const { sqlDateEndUtc } = require('../shared/sqlDate');
 const workflow = require('../rx-engine/prescriptionWorkflowService');
 const compliance = require('../compliance/complianceService');
 const { assertClinicalPharmacyActive } = require('./clinicalPharmacyAuthorization');
@@ -12,7 +13,7 @@ const dispense = z.object({ quantity: z.number().int().positive().max(Number.MAX
 const unavailable = z.object({ notes: note.nullable().optional() }).strict();
 const filters = z.object({ pharmacy_id: uuid.optional(), status: z.enum(Object.keys(workflow.TRANSITIONS)).optional(),
   since: z.string().datetime({ offset: true }).optional(), limit: z.string().regex(/^[1-9]\d{0,2}$/).transform(Number).refine(value => value <= 500).optional() }).strict();
-const pharmacyFields = 'p.id,p.owner_user_id,p.status,p.account_status,p.verified_at,p.pcn_license_expiry,p.pcn_license_number,p.superintendent_pcn_number';
+const pharmacyFields = "p.id,p.owner_user_id,p.status,p.account_status,p.verified_at,to_char(p.pcn_license_expiry,'YYYY-MM-DD') AS pcn_license_expiry,p.pcn_license_number,p.superintendent_pcn_number";
 const permitted = "'sent_to_pharmacy','received','partially_dispensed','fully_dispensed','completed'";
 function fail(status, message) { return Object.assign(new Error(message), { status, code: 'PHARMACIST_RX_REJECTED' }); }
 function parse(schema, input) { const result = schema.safeParse(input); if (!result.success) throw fail(400, 'Supply valid prescription identifiers, filters and bounded clinical fields.'); return result.data; }
@@ -38,7 +39,7 @@ async function scoped(client, user, prescriptionId, mutation) {
     WHERE rx.id=$1 AND p.owner_user_id=$2 FOR SHARE OF p`, [prescriptionId, user.id])).rows[0];
   if (!p) throw fail(404, 'Prescription not found for this pharmacy.');
   assertClinicalPharmacyActive(p);
-  const rx = (await client.query(`SELECT id,expires_at FROM ng_digital_prescriptions
+  const rx = (await client.query(`SELECT id,to_char(expires_at,'YYYY-MM-DD') AS expires_at FROM ng_digital_prescriptions
     WHERE id=$1 AND routed_pharmacy_id=$2 AND signed_at IS NOT NULL AND lifecycle_status IN (${permitted})
     FOR ${mutation ? 'UPDATE' : 'SHARE'}`, [prescriptionId, p.id])).rows[0];
   if (!rx) throw fail(404, 'Prescription not found for this pharmacy.');
@@ -82,7 +83,7 @@ async function mutate(pool, actor, prescriptionId, action, raw = {}, itemId = nu
   return tx(pool, async client => {
     const user = await account(client, actor); const { p, rx } = await scoped(client, user, prescriptionId, true);
     if (action === 'dispense') {
-      const expiry = new Date(rx.expires_at); const end = Date.UTC(expiry.getUTCFullYear(), expiry.getUTCMonth(), expiry.getUTCDate() + 1);
+      const end = sqlDateEndUtc(rx.expires_at);
       if (!rx.expires_at || !Number.isFinite(end) || end <= Date.now()) throw fail(409, 'A current unexpired signed prescription is required for new dispensing.');
     }
     const professional = { user_id: user.id, kind: 'pharmacist' };

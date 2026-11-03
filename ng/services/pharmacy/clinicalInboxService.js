@@ -32,7 +32,7 @@ async function assertCurrentClinicalPharmacyAccess(client, actor, pharmacyId) {
   if (!uuid.safeParse(actor?.id).success || actor?.role !== 'pharmacy') throw fail(403, 'Current pharmacy professional access is required.');
   const user = (await client.query("SELECT id,role FROM users WHERE id=$1 AND role='pharmacy' AND is_active=TRUE AND account_status='active' AND market_scope='NG' FOR SHARE", [actor.id])).rows[0];
   if (!user) throw fail(403, 'Current pharmacy professional access is required.');
-  const p = (await client.query('SELECT * FROM ng_pharmacies WHERE id=$1 AND owner_user_id=$2 FOR SHARE', [validId(pharmacyId), user.id])).rows[0];
+  const p = (await client.query("SELECT *,to_char(pcn_license_expiry,'YYYY-MM-DD') AS pcn_license_expiry FROM ng_pharmacies WHERE id=$1 AND owner_user_id=$2 FOR SHARE", [validId(pharmacyId), user.id])).rows[0];
   assertClinicalPharmacyActive(p);
   return user;
 }

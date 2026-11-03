@@ -194,7 +194,7 @@ class OrderService {
       await client.query('BEGIN');
       const account = (await client.query("SELECT id FROM users WHERE id=$1 AND role='pharmacy' AND is_active=TRUE AND account_status='active' AND market_scope='NG' FOR SHARE", [actor.id])).rows[0];
       if (!account) throw denied();
-      const pharmacy = (await client.query('SELECT * FROM ng_pharmacies WHERE id=$1 AND owner_user_id=$2 FOR SHARE', [pharmacyId, account.id])).rows[0];
+      const pharmacy = (await client.query("SELECT *,to_char(pcn_license_expiry,'YYYY-MM-DD') AS pcn_license_expiry FROM ng_pharmacies WHERE id=$1 AND owner_user_id=$2 FOR SHARE", [pharmacyId, account.id])).rows[0];
       assertClinicalPharmacyActive(pharmacy);
       const result = await client.query(`SELECT o.*, u.first_name, u.last_name, u.phone AS phone_number
         FROM ng_orders o JOIN users u ON u.id=o.patient_user_id

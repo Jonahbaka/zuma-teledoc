@@ -49,7 +49,7 @@ function createReturnCustodyService(options = {}) {
     return row;
   }
   async function pharmacy(client, pharmacyId) {
-    const row = (await client.query('SELECT * FROM ng_pharmacies WHERE id=$1 FOR SHARE', [uuid(pharmacyId)])).rows[0];
+    const row = (await client.query("SELECT *,to_char(pcn_license_expiry,'YYYY-MM-DD') AS pcn_license_expiry FROM ng_pharmacies WHERE id=$1 FOR SHARE", [uuid(pharmacyId)])).rows[0];
     if (!row) throw fail(404, 'Custody pharmacy not found.');
     return row;
   }
