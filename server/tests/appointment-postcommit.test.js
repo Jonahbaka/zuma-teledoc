@@ -10,7 +10,7 @@ const providerId = '00000000-0000-4000-8000-000000000003';
 function fixture({ status = 'scheduled', enrichmentFails = false, notification, persistenceFails = false, scopeDenied = false } = {}) {
   const filename = path.resolve(__dirname, '../routes/appointments.js'), actual = createRequire(filename), routes = new Map();
   const router = {}; for (const method of ['get', 'post', 'put', 'patch', 'delete', 'use']) router[method] = (p, ...handlers) => routes.set(`${method} ${p}`, handlers.at(-1));
-  const state = { row: { id: '00000000-0000-4000-8000-000000000001', patient_id: patientId, provider_id: providerId, status, scheduled_at: new Date('2030-01-01T12:00:00Z'), duration_minutes: 30, reservation_revision: '1' }, writes: 0, notifications: 0, warnings: 0 };
+  const state = { row: { id: '00000000-0000-4000-8000-000000000001', patient_id: patientId, provider_id: providerId, status, scheduled_at: new Date('2030-01-01T12:00:00Z'), duration_minutes: 30, reservation_revision: '1' }, writes: 0, notifications: 0, notificationValues: [], warnings: 0 };
   const db = { async query(sql, values = []) {
     if (/SELECT \*, xmin|SELECT \* FROM appointments WHERE id/.test(sql)) return { rows: [{ ...state.row }] };
     if (/SELECT id, first_name, last_name FROM users/.test(sql)) return { rows: [{ id: providerId }] };
@@ -25,7 +25,7 @@ function fixture({ status = 'scheduled', enrichmentFails = false, notification, 
       state.writes++; state.row = { ...state.row, status: /status = 'cancelled'/.test(sql) ? 'cancelled' : values[0], cancellation_reason: /status = 'cancelled'/.test(sql) ? values[1] : state.row.cancellation_reason };
       return { rows: [{ ...state.row }] };
     }
-    if (/INSERT INTO notifications/.test(sql)) { state.notifications++; if (notification) return notification(); throw new Error('Synthetic notification outage'); }
+    if (/INSERT INTO notifications/.test(sql)) { state.notifications++; state.notificationValues.push(values); if (notification) return notification(); throw new Error('Synthetic notification outage'); }
     throw new Error(`Unexpected synthetic SQL: ${sql}`);
   } };
   const dependencies = {
@@ -99,4 +99,16 @@ test('same-status replay still enforces current patient/market scope before retu
   const response = await f.call('put /:id', { status: 'confirmed' }, 'admin');
   assert.equal(response.statusCode, 403); assert.equal(response.body.appointment, undefined);
   assert.equal(f.state.writes, 0); assert.equal(f.state.notifications, 0);
+});
+
+test('cancellation preserves clinical reason in appointment but never copies it to routine notification', async () => {
+  const secret = 'SYNTHETIC private clinical cancellation narrative';
+  const f = fixture({ notification: async () => ({ rows: [] }) });
+  const result = await f.call('post /:id/cancel', { reason: secret });
+  await flush();
+  assert.equal(result.statusCode, 200);
+  assert.equal(f.state.row.cancellation_reason, secret);
+  assert.equal(f.state.notificationValues.length, 1);
+  assert.ok(!JSON.stringify(f.state.notificationValues).includes(secret));
+  assert.match(f.state.notificationValues[0][1], /cancelled/);
 });

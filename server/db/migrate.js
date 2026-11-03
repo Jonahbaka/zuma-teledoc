@@ -3043,6 +3043,10 @@ const SQL_FILE_MIGRATIONS = [
     file: '042_appointment_booking_intents.sql'
   },
   {
+    name: '043_appointment_protected_payload',
+    file: '043_appointment_protected_payload.sql'
+  },
+  {
     name: '400_agent_orchestrator_schema',
     file: '400_agent_orchestrator_schema.sql'
   }

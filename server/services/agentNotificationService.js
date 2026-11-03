@@ -257,12 +257,9 @@ async function sendAppointmentReminderFromNova(appointment, userId) {
     const formattedDate = apptDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     const formattedTime = apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
-    const message = await generateNovaMessage(context, {
-      type:        'appointment_reminder',
-      description: `Appointment reminder for ${formattedDate} at ${formattedTime}.${appointment.type ? ' Visit type: ' + appointment.type + '.' : ''}${appointment.reason_for_visit ? ' Reason: ' + appointment.reason_for_visit + '.' : ''} Make it feel warm and reassuring — the user should feel prepared and at ease.`,
-      tone:        'friendly, calm, reassuring',
-      length:      '2-3 sentences'
-    });
+    // Routine reminders must not copy clinical narratives or profile facts to an
+    // external model or the notification store. Details stay in the signed-in record.
+    const message = `Your appointment is coming up on ${formattedDate} at ${formattedTime}. Sign in to view the details.`;
 
     const notificationService = require('./notifications');
     await notificationService.createNotification({

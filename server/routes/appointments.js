@@ -1179,7 +1179,7 @@ router.post('/:id/cancel', authenticate, requireRole('patient', 'provider', 'adm
          VALUES ($1, 'appointment', 'Appointment Cancelled', $2, 'appointment', $3)`,
         [
           notifyUserId,
-          reason ? `Appointment cancelled. Reason: ${reason}` : 'Your appointment has been cancelled',
+          'Your appointment has been cancelled. Sign in to view appointment details.',
           id
         ]
       );
