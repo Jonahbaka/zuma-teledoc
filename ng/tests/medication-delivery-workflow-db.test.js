@@ -490,8 +490,8 @@ test('real PostgreSQL medication checkout, payment, courier and refund workflows
       for (const method of ['dispatch','collect']) for (const conflict of ['quantity','duplicate','hold']) {
         const f = await fixture(); const orderId = method==='dispatch' ? await quoted(f) : await prepared(f);
         if (conflict==='quantity') await pool.query('UPDATE ng_rx_items SET quantity=2 WHERE prescription_id=$1',[f.prescriptionId]);
-        if (conflict==='duplicate') await pool.query(`INSERT INTO ng_rx_items(prescription_id,drug_id,drug_name,dosage,frequency,quantity,status,pharmacy_id,fulfillment_order_id)
-          VALUES($1,$2,'Isolated second item','Isolated directions','Isolated schedule',1,'available',$3,$4)`,[f.prescriptionId,f.drugId,f.pharmacyId,orderId]);
+        if (conflict==='duplicate') await pool.query(`INSERT INTO ng_rx_items(prescription_id,drug_id,drug_name,dosage,frequency,quantity,status,pharmacy_id,fulfillment_order_id,position)
+          VALUES($1,$2,'Isolated second item','Isolated directions','Isolated schedule',1,'available',$3,$4,2)`,[f.prescriptionId,f.drugId,f.pharmacyId,orderId]);
         if (conflict==='hold') await pool.query("INSERT INTO ng_medication_events(order_id,action,details) VALUES($1,'handover_requires_clinical_review',$2)",[orderId,JSON.stringify({prescriptionId:f.prescriptionId,reason:'order_quantity_conflict'})]);
         const before=(await pool.query('SELECT status FROM ng_orders WHERE id=$1',[orderId])).rows[0].status;
         await assert.rejects(act(f,orderId,method,f.pharmacist,{attest:true}),{status:409});
@@ -510,8 +510,8 @@ test('real PostgreSQL medication checkout, payment, courier and refund workflows
         const orderId = await quoted(f); await act(f, orderId, 'dispatch', f.pharmacist);
         if (duplicate) {
           await pool.query('UPDATE ng_rx_items SET quantity=1 WHERE prescription_id=$1', [f.prescriptionId]);
-          await pool.query(`INSERT INTO ng_rx_items(prescription_id,drug_id,drug_name,dosage,frequency,quantity,status,pharmacy_id,fulfillment_order_id)
-            VALUES($1,$2,'Isolated additional signed item','Isolated distinct directions','Isolated schedule',1,'available',$3,$4)`, [f.prescriptionId,f.drugId,f.pharmacyId,orderId]);
+          await pool.query(`INSERT INTO ng_rx_items(prescription_id,drug_id,drug_name,dosage,frequency,quantity,status,pharmacy_id,fulfillment_order_id,position)
+            VALUES($1,$2,'Isolated additional signed item','Isolated distinct directions','Isolated schedule',1,'available',$3,$4,2)`, [f.prescriptionId,f.drugId,f.pharmacyId,orderId]);
         } else await pool.query('UPDATE ng_rx_items SET quantity=2 WHERE prescription_id=$1', [f.prescriptionId]);
         const before = (await pool.query('SELECT id,status,quantity,dispensed_quantity FROM ng_rx_items WHERE prescription_id=$1 ORDER BY id', [f.prescriptionId])).rows;
         const lifecycleBefore = (await pool.query('SELECT lifecycle_status FROM ng_digital_prescriptions WHERE id=$1', [f.prescriptionId])).rows[0].lifecycle_status;
