@@ -27,7 +27,7 @@ function fixture() {
       return { rows: state.rx.id===params[0] && state.rx.routed_pharmacy_id===params[1] && state.rx.signed_at && ['sent_to_pharmacy','received','partially_dispensed','fully_dispensed','completed'].includes(state.rx.lifecycle_status) ? [{ id: state.rx.id, expires_at: state.rx.expires_at }] : [] };
     }
     if (sql.startsWith('SELECT rx.*')) {
-      assert.match(sql, /rx.routed_pharmacy_id=\$1 AND rx.signed_at IS NOT NULL/); assert.match(sql, /FOR SHARE OF rx/); assert.doesNotMatch(sql, /preferred_pharmacy_id/);
+      assert.match(sql, /rx.routed_pharmacy_id=\$1 AND rx.signed_at IS NOT NULL/); assert.match(sql, /\$2::ng_rx_status IS NULL OR rx.lifecycle_status=\$2::ng_rx_status/); assert.match(sql, /FOR SHARE OF rx/); assert.doesNotMatch(sql, /preferred_pharmacy_id/);
       return { rows: state.rx.routed_pharmacy_id===params[0] && state.rx.signed_at && ['sent_to_pharmacy','received','partially_dispensed','fully_dispensed','completed'].includes(state.rx.lifecycle_status) && (!params[1] || state.rx.lifecycle_status===params[1]) ? [structuredClone(state.rx)] : [] };
     }
     if (sql.startsWith('SELECT * FROM ng_digital_prescriptions')) return { rows: [structuredClone(state.rx)] };

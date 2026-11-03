@@ -13,6 +13,12 @@ test('PostgreSQL pharmacist gateway serializes suspension/rerouting and never co
   const pool = new Pool({ connectionString: target, max: 8 });
   try {
     const f = await createBrowserFixture({ pool }); const other = await createBrowserFixture({ pool });
+    await t.test('nullable and explicit lifecycle filters use the PostgreSQL prescription enum consistently', async () => {
+      assert.equal((await service.list(pool,f.pharmacist)).some(rx=>rx.id===f.prescriptionId),true);
+      assert.equal((await service.list(pool,f.pharmacist,{status:'sent_to_pharmacy'})).some(rx=>rx.id===f.prescriptionId),true);
+      for (const status of ['received','partially_dispensed','fully_dispensed','completed']) assert.equal((await service.list(pool,f.pharmacist,{status})).some(rx=>rx.id===f.prescriptionId),false);
+      assert.equal((await service.list(pool,f.pharmacist,{status:'sent_to_pharmacy',since:'2099-01-01T00:00:00Z'})).length,0);
+    });
     await t.test('low-level Rx events and lifecycle mutation roll back on gateway compliance failure', async () => {
       const bad = { async connect() { const client=await pool.connect(); return {release:()=>client.release(),query(sql,values){if(sql.includes('INSERT INTO ng_compliance_audit_log'))throw new Error('Isolated gateway audit failure');return client.query(sql,values);}};}};
       await assert.rejects(service.mutate(bad,f.pharmacist,f.prescriptionId,'receive'),/Isolated gateway audit failure/);

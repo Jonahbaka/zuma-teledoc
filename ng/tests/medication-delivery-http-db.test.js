@@ -254,7 +254,9 @@ test('real medication HTTP routes enforce current JWT account roles, pharmacy sc
       const received = await http(`/api/ng/prescriptions/${f.prescriptionId}/receive`, { actor: f.pharmacist, method: 'POST', body: {} }); assert.equal(received.status, 200, JSON.stringify(received.body));
       const item = (await pool.query('SELECT id FROM ng_rx_items WHERE prescription_id=$1', [f.prescriptionId])).rows[0];
       const attempted = await http(`/api/ng/prescriptions/${f.prescriptionId}/items/${item.id}/dispense`, { actor: f.pharmacist, method: 'POST', body: { quantity: 1, fulfillment_order_id: orderId } });
-      assert.equal(attempted.status, 409, JSON.stringify(attempted.body));
+      assert.equal(attempted.status, 400, JSON.stringify(attempted.body));
+      const permittedBody = await http(`/api/ng/prescriptions/${f.prescriptionId}/items/${item.id}/dispense`, { actor: f.pharmacist, method: 'POST', body: { quantity: 1 } });
+      assert.equal(permittedBody.status, 409, JSON.stringify(permittedBody.body));
       assert.equal((await pool.query('SELECT status FROM ng_rx_items WHERE id=$1', [item.id])).rows[0].status, 'available');
       assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM ng_medication_payment_attempts WHERE order_id=$1', [orderId])).rows[0].count, 0);
     });

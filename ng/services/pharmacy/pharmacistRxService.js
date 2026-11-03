@@ -57,7 +57,7 @@ async function list(pool, actor, query = {}) {
       (SELECT COUNT(*) FROM ng_rx_items i WHERE i.prescription_id=rx.id) AS item_count,
       (SELECT COUNT(*) FROM ng_rx_items i WHERE i.prescription_id=rx.id AND i.status='dispensed') AS dispensed_count
       FROM ng_digital_prescriptions rx WHERE rx.routed_pharmacy_id=$1 AND rx.signed_at IS NOT NULL
-        AND rx.lifecycle_status IN (${permitted}) AND ($2::text IS NULL OR rx.lifecycle_status=$2)
+        AND rx.lifecycle_status IN (${permitted}) AND ($2::ng_rx_status IS NULL OR rx.lifecycle_status=$2::ng_rx_status)
         AND ($3::timestamptz IS NULL OR rx.created_at>=$3)
       ORDER BY CASE rx.lifecycle_status WHEN 'sent_to_pharmacy' THEN 1 WHEN 'received' THEN 2 WHEN 'partially_dispensed' THEN 3 ELSE 4 END,
         rx.created_at DESC,rx.id LIMIT $4 FOR SHARE OF rx`, [p.id, data.status || null, data.since || null, data.limit || 50])).rows;
