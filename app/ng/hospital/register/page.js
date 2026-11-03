@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Link from 'next/link';
 import {
   Hospital, CheckCircle, ArrowRight, ChevronLeft,
@@ -14,7 +14,8 @@ export default function HospitalRegisterPage() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const [success, setSuccess] = useState(null);
+  const saving = useRef(false);
   const [departments, setDepartments] = useState(['General Medicine', 'Emergency']);
   const [deptInput, setDeptInput] = useState('');
   const [form, setForm] = useState({
@@ -43,6 +44,8 @@ export default function HospitalRegisterPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (saving.current) return;
+    saving.current = true;
     setError('');
     setLoading(true);
     try {
@@ -55,11 +58,13 @@ export default function HospitalRegisterPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed');
-      setSuccess(true);
-      setTimeout(() => window.location.href = '/ng/hospital/dashboard', 2500);
+      if (!data.hospital?.id) throw new Error('The registration response could not be confirmed.');
+      if (data.owner_linked === true) localStorage.setItem('ng_hospital_id', data.hospital.id);
+      setSuccess({ ownerLinked: data.owner_linked === true });
     } catch (err) {
       setError(err.message);
     } finally {
+      saving.current = false;
       setLoading(false);
     }
   };
@@ -71,7 +76,12 @@ export default function HospitalRegisterPage() {
           <CheckCircle size={32} className="text-rose-500" />
         </div>
         <h2 className="text-2xl font-bold text-foreground">Hospital registered!</h2>
-        <p className="text-muted-foreground text-sm">Your facility is under review. We'll notify you once verified. This typically takes 2–5 business days.</p>
+        <p className="text-muted-foreground text-sm">Your facility application is awaiting review.
+          {success.ownerLinked ? ' It is linked to your signed-in account.' : ' This public application is not linked to an account. Administrator review is required before account access can be arranged.'}
+        </p>
+        <Link href={success.ownerLinked ? '/ng/hospital/dashboard' : '/ng'} className="inline-block text-rose-500 font-medium">
+          {success.ownerLinked ? 'Open facility dashboard' : 'Return to DoctaRx Nigeria'}
+        </Link>
       </div>
     </div>
   );

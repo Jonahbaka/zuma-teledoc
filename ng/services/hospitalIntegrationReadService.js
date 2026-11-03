@@ -1,5 +1,6 @@
 'use strict';
 const decisions = require('./adminVerificationService');
+const { requireHospitalAccess } = require('./hospitalAccessService');
 const { writeIntegrityAudit } = require('./clinical/clinicalRecordIntegrityService');
 const LAB_UNAVAILABLE = 'Lab order transmission, result ingestion, specimen tracking and automatic critical-result alerts are not implemented. Existing recorded-result reads do not establish a live laboratory connection.';
 function integrationMetadata(row) {
@@ -20,14 +21,7 @@ async function readIntegrations(pool, req, hospitalId) {
   const actorId = req.user?.id || req.user?.userId || req.user?.sub;
   decisions.validateId(actorId);
   return decisions.withActionTransaction(pool,async client=>{
-    const actor = await decisions.requireCurrentNGActor(client,actorId,false);
-    const hospital = (await client.query('SELECT id,owner_user_id FROM ng_hospitals WHERE id=$1 FOR SHARE',[hospitalId])).rows[0];
-    if (!hospital) throw decisions.actionError(404,'Hospital not found.');
-    await decisions.requireNGRecordOwner(client,hospital.owner_user_id,'Hospital');
-    if (!['admin','super_admin'].includes(actor.role) && hospital.owner_user_id !== actor.id) {
-      const staff = (await client.query("SELECT id FROM ng_hospital_staff WHERE hospital_id=$1 AND user_id=$2 AND status='active' ORDER BY id LIMIT 1 FOR SHARE",[hospitalId,actor.id])).rows[0];
-      if (!staff) throw decisions.actionError(404,'Hospital not found.');
-    }
+    const { actor } = await requireHospitalAccess(client,req,hospitalId);
     const rows = (await client.query('SELECT id,integration_type,status,last_test_at,last_sync_at FROM ng_hospital_integrations WHERE hospital_id=$1 ORDER BY integration_type,id',[hospitalId])).rows;
     await writeIntegrityAudit(client,{actorUserId:actor.id,action:'view',resourceType:'hospital_integration_status',resourceId:hospitalId,request:req,metadata:{recordCount:rows.length}});
     return rows.map(integrationMetadata);
@@ -38,12 +32,7 @@ async function updateStaff(pool, req, hospitalId, staffId) {
   const actorId=req.user?.id || req.user?.userId || req.user?.sub;
   decisions.validateId(actorId);
   return decisions.withActionTransaction(pool,async client=>{
-    const actor=await decisions.requireCurrentNGActor(client,actorId,false);
-    const hospital=(await client.query('SELECT id,owner_user_id FROM ng_hospitals WHERE id=$1 FOR SHARE',[hospitalId])).rows[0];
-    if (!hospital) throw decisions.actionError(404,'Hospital not found.');
-    await decisions.requireNGRecordOwner(client,hospital.owner_user_id,'Hospital');
-    // Membership cannot grant the ability to reinstate itself or change roles.
-    if (!['admin','super_admin'].includes(actor.role) && hospital.owner_user_id!==actor.id) throw decisions.actionError(404,'Hospital not found.');
+    const { actor } = await requireHospitalAccess(client,req,hospitalId,{manage:true});
     const {status,department,designation,role}=req.body || {};
     const row=(await client.query(`UPDATE ng_hospital_staff SET
       status=COALESCE($1,status),department=COALESCE($2,department),
