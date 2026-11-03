@@ -51,9 +51,14 @@ test('PostgreSQL manual referral intent locks, receipts, rollback and current au
     const distinct = await service.save(pool, { ...req, headers: { 'idempotency-key': keys[1] } });
     assert.notEqual(distinct.id, saved.id, 'A deliberate new key remains a distinct referral even for identical content');
     assert.equal((await pool.query('SELECT count(*) FROM ng_referrals WHERE provider_user_id=$1 AND manual_request_key=$2', [provider.id, keys[0]])).rows[0].count, '1');
-    const audits = (await pool.query("SELECT metadata_json FROM ng_audit_lineage WHERE resource_type='manual_referral_request' AND resource_id=$1", [saved.id])).rows;
+    const audits = (await pool.query("SELECT action,metadata_json FROM ng_audit_lineage WHERE resource_type='manual_referral_request' AND resource_id=$1", [saved.id])).rows;
     assert.ok(audits.length);
-    for (const audit of audits) assert.deepEqual(audit.metadata_json, { requestId: keys[0] }, 'Audit stores no referral narrative');
+    assert.ok(audits.some(audit => audit.action === 'submit'), 'Actual PostgreSQL accepts a submission audit for the saved request');
+    assert.ok(audits.some(audit => audit.action === 'view'), 'Receipt reads retain their view audit');
+    for (const audit of audits) {
+      assert.ok(['submit', 'view'].includes(audit.action), 'Use the existing constrained audit vocabulary');
+      assert.deepEqual(audit.metadata_json, { requestId: keys[0] }, 'Audit stores no referral narrative');
+    }
 
     // A real service transaction must roll back its insert if the audit cannot be written.
     const brokenAuditPool = { connect: async () => {

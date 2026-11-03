@@ -44,6 +44,7 @@ test('same request preserves current status, compares every original field and u
   assert.deepEqual(insert.params.slice(-2),[actor,key]);
   assert.ok(f.log.findIndex(x=>x.sql.includes('FROM users')) < f.log.findIndex(x=>x.sql.includes('INSERT INTO ng_referrals')));
   const audit=f.log.find(x=>x.sql.includes('INSERT INTO ng_audit_lineage'));
+  assert.equal(audit.params[1],'submit', 'Saved referral requests use the existing submission audit vocabulary');
   assert.ok(!JSON.stringify(audit.params).includes('Synthetic referral'));
   assert.equal(f.log.at(-1).sql,'COMMIT');
 });

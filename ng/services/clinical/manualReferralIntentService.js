@@ -81,7 +81,7 @@ async function save(pool, req) {
       DO UPDATE SET manual_request_key=EXCLUDED.manual_request_key WHERE ${same}
       RETURNING id,status`, [...fields.map(field=>input[field]),actorId,key])).rows[0];
     if (!row) throw fail(409,'This referral reference was already used for different details.');
-    await writeIntegrityAudit(client,{actorUserId:actorId,action:'create',resourceType:'manual_referral_request',resourceId:row.id,request:req,metadata:{requestId:key}});
+    await writeIntegrityAudit(client,{actorUserId:actorId,action:'submit',resourceType:'manual_referral_request',resourceId:row.id,request:req,metadata:{requestId:key}});
     return row;
   });
 }
