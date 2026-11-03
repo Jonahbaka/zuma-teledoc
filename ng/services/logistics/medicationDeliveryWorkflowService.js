@@ -8,6 +8,7 @@ const { assertMinor, decimalToMinor, minorToDecimalString, buildPricing, stageAm
 const paystack = require('../payments/paystackService');
 const compliance = require('../compliance/complianceService');
 const commercialProfiles = require('../pharmacy/commercialProfileService');
+const { isClinicalPharmacyActive, assertClinicalPharmacyActive } = require('../pharmacy/clinicalPharmacyAuthorization');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -55,8 +56,8 @@ function createMedicationDeliveryWorkflowService(options = {}) {
   }
   async function user(client, actor) {
     id(actor?.id);
-    const row = (await client.query('SELECT id,role,email,is_active FROM users WHERE id=$1', [actor.id])).rows[0];
-    if (!row?.is_active) throw fail(403, 'An active account is required.');
+    const row = (await client.query('SELECT id,role,email,is_active,market_scope,account_status FROM users WHERE id=$1 FOR SHARE', [actor.id])).rows[0];
+    if (!row?.is_active || row.market_scope !== 'NG' || row.account_status !== 'active') throw fail(403, 'An active Nigeria account is required.');
     return row;
   }
   async function audit(client, order, actor, action, details = {}) {
@@ -69,19 +70,20 @@ function createMedicationDeliveryWorkflowService(options = {}) {
     if (!order) throw fail(404, 'Order not found.');
     const f = (await client.query(`SELECT * FROM ng_medication_fulfillments WHERE order_id=$1 ${lock ? 'FOR UPDATE' : ''}`, [orderId])).rows[0];
     if (!f) throw fail(409, 'This earlier order requires pharmacy support before using medication checkout.');
-    const p = (await client.query('SELECT * FROM ng_pharmacies WHERE id=$1', [order.pharmacy_id])).rows[0];
+    const p = (await client.query('SELECT * FROM ng_pharmacies WHERE id=$1 FOR SHARE', [order.pharmacy_id])).rows[0];
     let actorUser = null;
     if (!system) {
       actorUser = await user(client, actor);
       const admin = ['admin', 'super_admin'].includes(actorUser.role);
       const owns = actorUser.id === order.patient_user_id;
-      const manages = p.owner_user_id === actorUser.id && actorUser.role === 'pharmacy';
+      const manages = p?.owner_user_id === actorUser.id && actorUser.role === 'pharmacy';
+      if (manages) pharmacyValid(p);
       if ((patient && !owns) || (pharmacy && !manages) || (!patient && !pharmacy && !owns && !manages && !admin)) throw fail(404, 'Order not found.');
     }
     return { order, f, p, actor: actorUser };
   }
   function pharmacyValid(p) {
-    if (p.status !== 'approved' || !p.verified_at || !p.pcn_license_number || !p.superintendent_pcn_number || !p.pcn_license_expiry || dayEnd(p.pcn_license_expiry) <= now()) throw fail(403, 'An approved pharmacy with current professional authorization is required.');
+    assertClinicalPharmacyActive(p, now());
   }
   async function rxValid(client, ctx) {
     const { order, f } = ctx;
@@ -138,15 +140,16 @@ function createMedicationDeliveryWorkflowService(options = {}) {
     const approved = !!f.pharmacy_confirmed_at;
     const pharmacyQuoteExpired = !!f.pharmacy_quote_expires_at && new Date(f.pharmacy_quote_expires_at).getTime() <= now();
     const checkoutEnabled = env.NG_MEDICATION_CHECKOUT_ENABLED === 'true';
+    const pharmacyActive = isClinicalPharmacyActive(p, now());
     const canResume = stage => attempts.some(a => a.stage === stage && a.status === 'pending' && a.authorization_url && f[`${stage}_approval`] && a.approval_digest === hash(f[`${stage}_approval`]));
-    const canQuote = !ended && !booking && order.delivery_type === 'delivery' && !!f.pharmacy_ready_at && medicinesPaid && !!f.address_encrypted && !!f.contact_consent_at && f.package_category === 'sealed_ambient_medication' && provider.getAvailability().available;
+    const canQuote = pharmacyActive && !ended && !booking && order.delivery_type === 'delivery' && !!f.pharmacy_ready_at && medicinesPaid && !!f.address_encrypted && !!f.contact_consent_at && f.package_category === 'sealed_ambient_medication' && provider.getAvailability().available;
     const payment = stage => {
       const a = attempts.find(a => a.stage === stage);
       const verified = stage === 'medicines' ? medicinesPaid : deliveryPaid;
       return { status: verified ? (ctx.f[`${stage}_approval`]?.patientMinor === 0 ? 'covered' : 'verified') : a?.status || 'unpaid', amountMinor: stageAmounts(price, stage).patientMinor, recordedAmountMinor: a ? assertMinor(a.amount_minor) : null, reference: a?.provider_reference || null };
     };
     return { orderId: order.id, orderNumber: order.order_number, version: f.version, status: order.status, cancellationPending: !!f.cancellation_requested_at && !closed, deliveryType: order.delivery_type,
-      pharmacy: { id: p.id, name: p.name, phone: p.phone, address: [p.address_line1, p.city, p.state].filter(Boolean).join(', ') },
+      pharmacy: { id: p.id, name: p.name, active: pharmacyActive, phone: p.phone, address: [p.address_line1, p.city, p.state].filter(Boolean).join(', ') },
       items: order.items.map(it => ({ drugId: it.drug_id, name: it.name, quantity: it.quantity, unitPriceMinor: it.unitPriceMinor, lineTotalMinor: it.lineTotalMinor })), pricing: price,
       pharmacyConfirmedAt: f.pharmacy_confirmed_at, pharmacyReadyAt: f.pharmacy_ready_at,
       pharmacyQuote: f.pharmacy_quote_reference ? { reference: f.pharmacy_quote_reference, expiresAt: f.pharmacy_quote_expires_at, expired: pharmacyQuoteExpired } : null,
@@ -154,20 +157,20 @@ function createMedicationDeliveryWorkflowService(options = {}) {
       quote: q ? { id: q.id, provider: q.provider, providerName: 'Uber Direct', fareMinor: assertMinor(q.fare_minor), expiresAt: q.expires_at, pickupEta: q.normalized.pickupEta, dropoffEta: q.normalized.dropoffEta, expired } : null,
       payment: { medicines: payment('medicines'), delivery: payment('delivery') },
       delivery: booking ? { trackingId: booking.id, status: booking.status, provider: booking.provider, providerName: 'Uber Direct', estimatedDeliveryAt: booking.normalized?.dropoffEta || null, updatedAt: booking.updated_at, trackingUrl: booking.normalized?.trackingUrl || null, pickupProof: booking.pickup_proof, deliveryProof: booking.delivery_proof } : null,
-      actions: { canChoose: !ended && !booking && !pending && !f.delivery_approval,
+      actions: { canChoose: pharmacyActive && !ended && !booking && !pending && !f.delivery_approval,
         canSetCoverage: !ended && !booking && !pending && !f.delivery_approval,
         canRefreshRefund: attempts.some(a => a.status === 'refund_pending'),
         canReceiveReturn: ['returned','return_pending'].includes(booking?.status) && !f.return_received_at,
         canApproveReturnRefund: !!f.return_received_at && !f.return_refund_approval_reference,
-        canPrice: !ended && (!approved || pharmacyQuoteExpired && !medicinesPaid) && !pending, canConfirm: !ended && order.status === 'pending' && medicinesPaid,
-        canReady: !ended && order.status === 'preparing' && medicinesPaid,
-        canApproveMedicines: !ended && approved && !pharmacyQuoteExpired && !medicinesPaid && !pending,
-        canPayMedicines: checkoutEnabled && !ended && !pharmacyQuoteExpired && !!f.medicines_approval && !medicinesPaid && (!pending || canResume('medicines')),
+        canPrice: pharmacyActive && !ended && (!approved || pharmacyQuoteExpired && !medicinesPaid) && !pending, canConfirm: pharmacyActive && !ended && order.status === 'pending' && medicinesPaid,
+        canReady: pharmacyActive && !ended && order.status === 'preparing' && medicinesPaid,
+        canApproveMedicines: pharmacyActive && !ended && approved && !pharmacyQuoteExpired && !medicinesPaid && !pending,
+        canPayMedicines: pharmacyActive && checkoutEnabled && !ended && !pharmacyQuoteExpired && !!f.medicines_approval && !medicinesPaid && (!pending || canResume('medicines')),
         canRequestQuote: canQuote && !pending, canApproveQuote: canQuote && !!q && !expired && !deliveryPaid && !pending && !f.delivery_repricing_refund_required,
         canPayDelivery: checkoutEnabled && canQuote && !!f.delivery_approval && !expired && !deliveryPaid && (!pending || canResume('delivery')) && !f.delivery_repricing_refund_required,
         canDispatch: canQuote && !!q && !expired && deliveryPaid && !!f.delivery_approval && !f.delivery_repricing_refund_required,
         canCancel: !closed && (!booking || ['booked', 'courier_assigned'].includes(booking.status) || booking.status === 'booking_failed' && !booking.provider_delivery_id),
-        canMarkCollected: !ended && order.delivery_type === 'pickup' && !!f.pharmacy_ready_at && medicinesPaid,
+        canMarkCollected: pharmacyActive && !ended && order.delivery_type === 'pickup' && !!f.pharmacy_ready_at && medicinesPaid,
         canRefresh: !!booking && !ended }, couriers: provider.getAvailability(),
       coordination: { authorized: f.coordination.authorized === true, payer: f.coordination.payer || null, reference: f.coordination.authorizationReference || null, includedElsewhere: f.coordination.includedElsewhere === true },
       checkout: { enabled: checkoutEnabled },
@@ -226,7 +229,7 @@ function createMedicationDeliveryWorkflowService(options = {}) {
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [createKey]);
       const old = (await client.query('SELECT order_id,create_digest FROM ng_medication_fulfillments WHERE create_key=$1', [createKey])).rows[0];
       if (old) { if (old.create_digest !== digest) throw fail(409, 'This checkout key already belongs to a different order.'); const ctx = await load(client, old.order_id, actor); return { order: ctx.order, checkout: await dto(client, ctx) }; }
-      const p = (await client.query('SELECT * FROM ng_pharmacies WHERE id=$1', [id(input.pharmacyId)])).rows[0];
+      const p = (await client.query('SELECT * FROM ng_pharmacies WHERE id=$1 FOR SHARE', [id(input.pharmacyId)])).rows[0];
       if (!p) throw fail(404, 'Pharmacy not found.');
       pharmacyValid(p);
       const commercialSnapshot = await commercialProfiles.forPharmacy(client,p.id);
@@ -284,6 +287,7 @@ function createMedicationDeliveryWorkflowService(options = {}) {
   async function getCheckout(orderId, actor) { return tx(async client => { const ctx = await load(client, orderId, actor); await audit(client, ctx.order, ctx.actor, 'checkout_viewed'); return dto(client, ctx); }); }
   async function setFulfillment(orderId, actor, input) {
     return operation(orderId, actor, input, 'fulfillment_selected', { patient: true }, async (client, ctx) => {
+      pharmacyValid(ctx.p);
       await pendingPayments(client, orderId);
       if (await hasBooking(client, orderId) || ctx.f.delivery_approval) throw fail(409, 'Reconcile the approved delivery before changing fulfilment.');
       if (!['pickup', 'delivery'].includes(input.deliveryType) || input.consent !== true) throw fail(422, 'Confirm the fulfilment choice.');
@@ -325,6 +329,7 @@ function createMedicationDeliveryWorkflowService(options = {}) {
   }
   async function approve(orderId, actor, input) {
     return operation(orderId, actor, input, `approved_${input.stage}`, { patient: true }, async (client, ctx) => {
+      pharmacyValid(ctx.p);
       if (input.consent !== true || !['medicines', 'delivery'].includes(input.stage)) throw fail(422, 'Explicit approval of the itemized charges is required.');
       if (!ctx.f.pharmacy_confirmed_at) throw fail(409, 'The pharmacy must confirm the final medicine prices first.');
       if (input.stage === 'medicines' && ctx.f.pharmacy_quote_expires_at && new Date(ctx.f.pharmacy_quote_expires_at).getTime() <= now()) throw fail(409,'The pharmacy quote expired. Request a fresh confirmed quote before approval.');
@@ -389,6 +394,7 @@ function createMedicationDeliveryWorkflowService(options = {}) {
     const reserved = await tx(async client => {
       const ctx = await load(client, orderId, actor, { lock: true, patient: true });
       const stage = input.stage;
+      pharmacyValid(ctx.p);
       if (!['medicines', 'delivery'].includes(stage) || !ctx.f[`${stage}_approval`] || ctx.f.cancellation_requested_at || ['cancelled', 'refunded', 'delivered'].includes(ctx.order.status)) throw fail(409, 'Approve the current itemized charges before payment.');
       await commercialProfiles.authorizeOrder(client,ctx.p.id,ctx.f.commercial_snapshot);
       if (stage === 'medicines' && ctx.f.pharmacy_quote_expires_at && new Date(ctx.f.pharmacy_quote_expires_at).getTime() <= now()) throw fail(409,'The pharmacy quote expired. Obtain a fresh quote and approve it before payment.');
@@ -634,18 +640,19 @@ function createMedicationDeliveryWorkflowService(options = {}) {
   async function getOrderOptions(actor) {
     return tx(async client => {
       const patient = await user(client, actor);
+      if (patient.role !== 'patient') throw fail(403, 'Patient access is required.');
       const rows = (await client.query(`SELECT r.id,r.routed_pharmacy_id AS pharmacy_id,p.name AS pharmacy_name,
         jsonb_agg(jsonb_build_object('drugId',i.drug_id,'name',i.drug_name,'quantity',i.quantity) ORDER BY i.position) AS items
         FROM ng_digital_prescriptions r JOIN ng_pharmacies p ON p.id=r.routed_pharmacy_id JOIN ng_rx_items i ON i.prescription_id=r.id
         WHERE r.patient_user_id=$1 AND r.signed_at IS NOT NULL AND r.lifecycle_status IN ('sent_to_pharmacy','received') AND r.expires_at>=CURRENT_DATE
-        AND p.status='approved' AND p.pcn_license_expiry>=CURRENT_DATE AND p.verified_at IS NOT NULL AND NOT r.is_controlled
+        AND p.status='approved' AND p.account_status='active' AND p.pcn_license_expiry>=CURRENT_DATE AND p.verified_at IS NOT NULL AND NOT r.is_controlled
         AND i.drug_id IS NOT NULL AND i.quantity>0 AND i.status IN ('pending','available')
         AND NOT EXISTS(SELECT 1 FROM ng_medication_fulfillments f WHERE f.digital_prescription_id=r.id AND f.prescription_claim_active=true)
         GROUP BY r.id,p.id ORDER BY r.created_at DESC LIMIT 30`, [patient.id])).rows;
       const uploaded = (await client.query(`SELECT r.id,r.items,p.id AS pharmacy_id,p.name AS pharmacy_name FROM ng_prescriptions r
         JOIN ng_pharmacies p ON p.owner_user_id=r.verified_by_pharmacist
         WHERE r.patient_user_id=$1 AND r.verified_at IS NOT NULL AND r.status IN ('verified','matched') AND r.expires_at>now()
-        AND NOT r.is_controlled_substance AND p.status='approved' AND p.pcn_license_expiry>=CURRENT_DATE AND p.verified_at IS NOT NULL
+        AND NOT r.is_controlled_substance AND p.status='approved' AND p.account_status='active' AND p.pcn_license_expiry>=CURRENT_DATE AND p.verified_at IS NOT NULL
         AND NOT EXISTS(SELECT 1 FROM ng_orders o WHERE o.prescription_id=r.id AND o.status NOT IN ('cancelled','refunded')) ORDER BY r.created_at DESC LIMIT 30`, [patient.id])).rows;
       return { prescriptions: [...rows.map(r => ({ id: r.id, kind: 'digital', pharmacyId: r.pharmacy_id, pharmacyName: r.pharmacy_name, items: r.items })),
         ...uploaded.map(r => ({ id: r.id, kind: 'uploaded', pharmacyId: r.pharmacy_id, pharmacyName: r.pharmacy_name, items: Array.isArray(r.items) ? r.items.filter(it => UUID.test(it.drug_id || it.drugId || '') && Number.isInteger(it.quantity) && it.quantity > 0).map(it => ({ drugId: it.drug_id || it.drugId, name: it.name || it.drug_name || 'Verified medicine', quantity: it.quantity })) : [] })).filter(r => r.items.length)] };

@@ -76,10 +76,12 @@ async function assertCurrentClinicalPharmacyAccess(req, pharmacyId) {
     throw error;
   }
   const active = await getPool().query(
-    `SELECT id FROM ng_pharmacies
-      WHERE id=$1 AND owner_user_id=$2
-        AND status='approved' AND account_status='active'
-        AND pcn_license_expiry>=CURRENT_DATE
+    `SELECT p.id FROM ng_pharmacies p JOIN users owner ON owner.id=p.owner_user_id
+      WHERE p.id=$1 AND p.owner_user_id=$2
+        AND p.status='approved' AND p.account_status='active'
+        AND p.pcn_license_expiry>=CURRENT_DATE
+        AND owner.role='pharmacy' AND owner.is_active=TRUE
+        AND owner.account_status='active' AND owner.market_scope='NG'
       LIMIT 1`,
     [pharmacyId, actorUserId]
   );
@@ -388,15 +390,14 @@ router.use('/:pharmacyId/orders', (_req, res, next) => {
 // Get pharmacy orders
 router.get('/:pharmacyId/orders', async (req, res) => {
   try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
     const result = await orderService.listPharmacyOrders(req.params.pharmacyId, {
       page: parseInt(req.query.page) || 1,
       limit: parseInt(req.query.limit) || 20,
       status: req.query.status,
-    });
+    }, req.user);
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    handleMedicationOrderError(res, err);
   }
 });
 

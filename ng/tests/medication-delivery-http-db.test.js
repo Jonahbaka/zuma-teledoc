@@ -66,6 +66,44 @@ test('real medication HTTP routes enforce current JWT account roles, pharmacy sc
       return mutate(`/api/ng/admin/medication-delivery/${orderId}`, f.admin, 'coverage', { partnerId, authorizationReference: 'Isolated patient benefit authorization', evidenceReference: 'Isolated approval receipt', expiresAt: new Date(f.state.now + 3600000).toISOString(), allocations: { medicinesMinor: 900000 }, ...extra });
     }
 
+    await t.test('suspended pharmacies lose order and FHIR access while patient receipts and cancellation remain recoverable', async () => {
+      const f = await fixture(); const orderId = await make(f); await confirmPrice(f, orderId);
+      await mutate(patientBase(orderId), f.patient, 'fulfillment', { deliveryType: 'pickup', consent: true });
+      await mutate(patientBase(orderId), f.patient, 'approve', { stage: 'medicines', consent: true });
+      const payment = await mutate(patientBase(orderId), f.patient, 'pay', { stage: 'medicines' });
+      assert.equal(payment.status, 200);
+      assert.equal((await http(`/api/ng/pharmacy/${f.pharmacyId}/orders`, { actor: f.pharmacist })).status, 200);
+      await pool.query("UPDATE ng_pharmacies SET account_status='suspended' WHERE id=$1", [f.pharmacyId]);
+      assert.equal((await http(`/api/ng/pharmacy/${f.pharmacyId}/orders`, { actor: f.pharmacist })).status, 403);
+      assert.equal((await http(`${pharmacyBase(f, orderId)}/checkout`, { actor: f.pharmacist })).status, 403);
+      assert.equal((await http(`/api/ng/medication-fhir/Bundle/${orderId}`, { actor: f.pharmacist })).status, 403);
+      for (const action of ['confirm', 'ready', 'collect', 'delivery/dispatch']) {
+        assert.equal((await http(`${pharmacyBase(f, orderId)}/${action}`, { actor: f.pharmacist, method: 'POST', body: { version: 1, idempotencyKey: crypto.randomUUID(), attest: true } })).status, 403);
+      }
+      const patientView = await http(`${patientBase(orderId)}/checkout`, { actor: f.patient });
+      assert.equal(patientView.status, 200); assert.equal(patientView.body.pharmacy.active, false); assert.equal(patientView.body.actions.canCancel, true);
+      for (const action of ['canChoose', 'canApproveMedicines', 'canPayMedicines', 'canRequestQuote', 'canApproveQuote', 'canPayDelivery', 'canDispatch', 'canMarkCollected']) assert.equal(patientView.body.actions[action], false);
+      assert.equal((await mutate(patientBase(orderId), f.patient, 'pay', { stage: 'medicines' })).status, 403);
+      assert.equal((await mutate(patientBase(orderId), f.patient, 'approve', { stage: 'medicines', consent: true })).status, 403);
+      const receipt = await http(`${patientBase(orderId)}/payments/${payment.body.reference}/verify`, { actor: f.patient, method: 'POST', body: {} });
+      assert.equal(receipt.status, 200); assert.equal(receipt.body.payment.medicines.status, 'verified');
+      assert.equal((await http(`/api/ng/medication-fhir/Bundle/${orderId}`, { actor: f.patient })).status, 200);
+      const cancelled = await mutate(patientBase(orderId), f.patient, 'cancel', { reason: 'Pharmacy unavailable' });
+      assert.equal(cancelled.status, 200); assert.equal(cancelled.body.status, 'cancelled');
+      assert.equal(f.state.initializeCalls, 1); assert.equal(f.state.bookCalls, 0); assert.equal(f.state.refundCalls, 1);
+      assert.equal((await pool.query('SELECT quantity_reserved FROM ng_pharmacy_inventory WHERE id=$1', [f.inventoryId])).rows[0].quantity_reserved, 0);
+      assert.equal((await pool.query('SELECT count(*)::int AS count FROM ng_fhir_medication_dispenses WHERE order_id=$1', [orderId])).rows[0].count, 0);
+    });
+
+    await t.test('suspended user accounts cannot read pharmacy availability, prescription or notification records with a still-active workspace', async () => {
+      const f = await fixture();
+      await pool.query("UPDATE users SET account_status='suspended' WHERE id=$1", [f.pharmacist.id]);
+      for (const suffix of ['orders', 'medication-requests', 'prescriptions', 'whatsapp-notifications']) {
+        const response = await http(`/api/ng/pharmacy/${f.pharmacyId}/${suffix}`, { actor: f.pharmacist });
+        assert.equal(response.status, 403, suffix);
+      }
+    });
+
     await t.test('commercial administration requires a current super administrator and cannot activate unsigned proposals or assign draft branches',async()=>{
       const f=await fixture();const base='/api/ng/admin/pharmacy-integrations';
       const profile={code:`isolated-${crypto.randomUUID()}`,displayName:'Isolated draft agreement',status:'draft',fees:{currency:'NGN',orderServiceMinor:100000,deliverySupportMinor:50000},approvals:{},settings:{mode:'pharmacist_portal'}};

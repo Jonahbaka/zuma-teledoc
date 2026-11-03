@@ -33,7 +33,7 @@ async function transaction(pool, operation) {
 }
 async function actorScope(client, actor, admin) {
   if (!uuid.safeParse(actor?.id).success || !(admin ? ['admin', 'super_admin'] : ['pharmacy']).includes(actor?.role)) throw fail(403, 'MEDICATION_REQUEST_FORBIDDEN', 'Current authorized workspace access is required.');
-  const current = (await client.query(`SELECT id,role FROM users WHERE id=$1 AND role=$2 AND is_active=TRUE AND market_scope='NG' FOR SHARE`, [actor.id, actor.role])).rows[0];
+  const current = (await client.query(`SELECT id,role FROM users WHERE id=$1 AND role=$2 AND is_active=TRUE AND account_status='active' AND market_scope='NG' FOR SHARE`, [actor.id, actor.role])).rows[0];
   if (!current) throw fail(403, 'MEDICATION_REQUEST_FORBIDDEN', 'Current authorized workspace access is required.');
   return current;
 }

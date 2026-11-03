@@ -88,7 +88,7 @@ function pageHarness(checkoutValue, file = 'MedicationCheckout') {
   const Component = compile(`components/ng/delivery/${file}.jsx`, dependencies).default;
   const find = type => { const result = []; function walk(node) { if (Array.isArray(node)) return node.forEach(walk); if (!node || typeof node !== 'object') return; if (node.type === type) result.push(node); walk(node.props?.children); } walk(tree); return result; };
   const text = node => Array.isArray(node) ? node.map(text).join('') : typeof node === 'string' ? node : node?.props ? text(node.props.children) : '';
-  return { render() { tree = state.render(() => Component({ orderId: 'owned-order', pharmacyId: 'approved-pharmacy' })); }, button(label) { return find('button').find(button => text(button.props.children).includes(label)); }, writes, unmount: state.unmount };
+  return { render() { tree = state.render(() => Component({ orderId: 'owned-order', pharmacyId: 'approved-pharmacy' })); }, button(label) { return find('button').find(button => text(button.props.children).includes(label)); }, text: () => text(tree), writes, unmount: state.unmount };
 }
 
 test('expired quote cannot render delivery approval, payment or dispatch buttons', () => {
@@ -115,4 +115,16 @@ test('pending medicine and delivery stages explicitly resume through the existin
     const button = view.button(stage === 'medicines' ? 'Resume medicine payment securely' : 'Resume delivery payment securely'); assert.ok(button); button.props.onClick();
     assert.equal(view.writes.length, 1); assert.equal(view.writes[0][0], 'pay'); assert.equal(view.writes[0][1].stage, stage); assert.equal(Object.keys(view.writes[0][1]).join(), 'stage'); view.unmount();
   }
+});
+
+test('suspended pharmacy checkout explains the hold and preserves existing payment verification', () => {
+  const base = checkout();
+  const value = checkout({ pharmacy: { ...base.pharmacy, active: false },
+    payment: { ...base.payment, medicines: { status: 'pending', reference: 'existing-receipt' } },
+    actions: Object.fromEntries(Object.keys(base.actions).map(name => [name, name === 'canCancel'])) });
+  const view = pageHarness(value); view.render();
+  assert.match(view.text(), /This pharmacy is unavailable for new fulfillment/);
+  assert.equal(view.button('Pay for medicines securely'), undefined); assert.equal(view.button('Pay approved delivery amount'), undefined);
+  const verify = view.button('Verify with payment provider'); assert.ok(verify); verify.props.onClick();
+  assert.equal(view.writes[0][0], 'payments/existing-receipt/verify'); view.unmount();
 });

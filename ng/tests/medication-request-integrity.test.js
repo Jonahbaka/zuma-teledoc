@@ -15,7 +15,7 @@ function poolFor({ actor = true, pharmacy = true, request = true, status = 'pend
   const client = { released: false, release() { this.released = true; }, async query(sql, values = []) {
     calls.push({ sql, values });
     if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [] };
-    if (sql.includes('FROM users')) { assert.match(sql, /is_active=TRUE AND market_scope='NG' FOR SHARE/); return { rows: actor ? [{ id: values[0], role: values[1] }] : [] }; }
+    if (sql.includes('FROM users')) { assert.match(sql, /is_active=TRUE AND account_status='active' AND market_scope='NG' FOR SHARE/); return { rows: actor ? [{ id: values[0], role: values[1] }] : [] }; }
     if (sql.includes('FROM ng_pharmacies')) { assert.match(sql, /account_status='active'/); assert.match(sql, /verified_at IS NOT NULL AND pcn_license_expiry>=CURRENT_DATE FOR SHARE/); return { rows: pharmacy ? [{ id: values[0] }] : [] }; }
     if (sql.startsWith('SELECT r.*')) { assert.match(sql, /COALESCE\(r.assigned_pharmacy_id,r.preferred_pharmacy_id\)=\$2\) FOR UPDATE/); return { rows: request ? [{ ...existing }] : [] }; }
     if (sql.includes('FROM ng_medication_requests r')) { assert.match(sql, /COALESCE\(r.assigned_pharmacy_id,r.preferred_pharmacy_id\)=\$1/); assert.match(sql, /FOR SHARE OF r/); assert.match(sql, /ORDER BY CASE r.status[\s\S]*WHEN 'pending_pharmacy_confirmation' THEN 1[\s\S]*WHEN 'pharmacy_reviewing' THEN 2[\s\S]*WHEN 'clarification_requested' THEN 3[\s\S]*WHEN 'available' THEN 4[\s\S]*r.created_at DESC,r.id LIMIT 100/); assert.doesNotMatch(sql, /r\.\*|session_id|admin_notes|prescription_attachment_url|location_latitude/); return { rows: request ? [{ ...existing }] : [] }; }

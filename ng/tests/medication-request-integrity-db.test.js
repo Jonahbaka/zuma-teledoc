@@ -25,6 +25,10 @@ test('PostgreSQL availability response scope, audit rollback, reassignment and s
     const prioritized = await service.listPharmacyRequests(pool, first.pharmacist, first.pharmacyId);
     assert.equal(prioritized.length, 100);
     assert.equal(prioritized[0].id, requestId, 'The oldest pending request remains visible ahead of more than 100 newer resolved requests');
+    await pool.query("UPDATE users SET account_status='suspended' WHERE id=$1", [first.pharmacist.id]);
+    await assert.rejects(service.listPharmacyRequests(pool, first.pharmacist, first.pharmacyId), error => error.statusCode === 403);
+    await assert.rejects(service.updateRequest(pool, first.pharmacist, requestId, { status: 'available' }, first.pharmacyId), error => error.statusCode === 403);
+    await pool.query("UPDATE users SET account_status='active' WHERE id=$1", [first.pharmacist.id]);
     const response = await service.updateRequest(pool, first.pharmacist, requestId, { status: 'available', confirmedPriceNgn: '2300.25', pharmacyNotes: 'Private patient note' }, first.pharmacyId);
     assert.equal(response.status, 'available'); assert.equal(response.confirmed_price_ngn, '2300.25');
     for (const key of ['admin_notes', 'session_id', 'prescription_attachment_url', 'source_snapshot', 'location_latitude']) assert.equal(Object.prototype.hasOwnProperty.call(response, key), false);

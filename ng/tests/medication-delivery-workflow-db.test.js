@@ -60,6 +60,23 @@ test('real PostgreSQL medication checkout, payment, courier and refund workflows
     f.profile=profile;f.input.pharmacyDataConsent=true;return f;
   };
   try {
+    await t.test('pharmacy authorization reads wait for a concurrent suspension and then deny the owner', async () => {
+      const f = await fixture(); const made = await f.service.createOrder(f.input, f.patient);
+      const revoker = await pool.connect(); let pending;
+      try {
+        await revoker.query('BEGIN');
+        await revoker.query("UPDATE ng_pharmacies SET account_status='suspended' WHERE id=$1", [f.pharmacyId]);
+        let settled = false;
+        pending = f.service.getCheckout(made.order.id, f.pharmacist).then(value => { settled = true; return { value }; }, error => { settled = true; return { error }; });
+        await new Promise(resolve => setTimeout(resolve, 75));
+        assert.equal(settled, false, 'The old pharmacy approval cannot be read through an uncommitted suspension');
+        await revoker.query('COMMIT');
+        assert.equal((await pending).error?.status, 403);
+        const patient = await f.service.getCheckout(made.order.id, f.patient);
+        assert.equal(patient.pharmacy.active, false); assert.equal(patient.actions.canCancel, true);
+      } finally { await revoker.query('ROLLBACK'); revoker.release(); if (pending) await pending; }
+    });
+
     await t.test('commercial pharmacy orders require explicit data consent and current verified stock', async () => {
       const f=await partnerFixture();
       await assert.rejects(f.service.createOrder({...f.input,pharmacyDataConsent:false},f.patient),{status:422});
