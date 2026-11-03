@@ -66,6 +66,34 @@ test('real medication HTTP routes enforce current JWT account roles, pharmacy sc
       return mutate(`/api/ng/admin/medication-delivery/${orderId}`, f.admin, 'coverage', { partnerId, authorizationReference: 'Isolated patient benefit authorization', evidenceReference: 'Isolated approval receipt', expiresAt: new Date(f.state.now + 3600000).toISOString(), allocations: { medicinesMinor: 900000 }, ...extra });
     }
 
+    await t.test('alternate pharmacist Rx endpoints hide drafts and enforce current user/workspace authority', async () => {
+      const f = await fixture(); const other = await createBrowserFixture({ pool });
+      const hidden = [];
+      for (const [routed, signed, lifecycle] of [[null, null, 'drafted'], [other.pharmacyId, new Date(), 'sent_to_pharmacy']]) {
+        hidden.push((await pool.query(`INSERT INTO ng_digital_prescriptions(patient_user_id,preferred_pharmacy_id,routed_pharmacy_id,signed_at,lifecycle_status,items)
+          VALUES($1,$2,$3,$4,$5,'[]') RETURNING id`, [f.patient.id, f.pharmacyId, routed, signed, lifecycle])).rows[0].id);
+      }
+      const base = `/api/ng/prescriptions/${f.prescriptionId}`;
+      const list = await http('/api/ng/prescriptions', { actor: f.pharmacist }); assert.equal(list.status, 200, JSON.stringify(list.body));
+      assert.ok(list.body.prescriptions.some(rx => rx.id === f.prescriptionId));
+      for (const id of hidden) { assert.equal(list.body.prescriptions.some(rx => rx.id === id), false); assert.equal((await http(`/api/ng/prescriptions/${id}`, { actor: f.pharmacist })).status, 404); }
+      assert.equal((await http(base, { actor: f.pharmacist })).headers.get('cache-control'), 'private, no-store');
+      const itemId = (await pool.query('SELECT id FROM ng_rx_items WHERE prescription_id=$1', [f.prescriptionId])).rows[0].id;
+      await pool.query("UPDATE users SET account_status='suspended' WHERE id=$1", [f.pharmacist.id]);
+      for (const path of ['/api/ng/prescriptions', base, `${base}/events`]) assert.equal((await http(path, { actor: f.pharmacist })).status, 403, path);
+      for (const path of [`${base}/receive`, `${base}/complete`, `${base}/items/${itemId}/dispense`, `${base}/items/${itemId}/unavailable`]) assert.equal((await http(path, { actor: f.pharmacist, method: 'POST', body: {} })).status, 403, path);
+      await pool.query("UPDATE users SET account_status='active' WHERE id=$1", [f.pharmacist.id]);
+      assert.equal((await http(`${base}/receive`, { actor: f.pharmacist, method: 'POST', body: {} })).status, 200);
+      assert.equal((await http(`${base}/items/${itemId}/dispense`, { actor: f.pharmacist, method: 'POST', body: { quantity: 1, fulfillment_order_id: crypto.randomUUID() } })).status, 400);
+      await pool.query("UPDATE ng_digital_prescriptions SET expires_at=CURRENT_DATE-1 WHERE id=$1", [f.prescriptionId]);
+      assert.equal((await http(`${base}/items/${itemId}/dispense`, { actor: f.pharmacist, method: 'POST', body: { quantity: 1 } })).status, 409);
+      await pool.query("UPDATE ng_digital_prescriptions SET expires_at=CURRENT_DATE+30 WHERE id=$1", [f.prescriptionId]);
+      const dispensed = await http(`${base}/items/${itemId}/dispense`, { actor: f.pharmacist, method: 'POST', body: { quantity: 1, substitute_drug_id: null, substitute_reason: null, notes: 'Isolated witnessed dispense note' } });
+      assert.equal(dispensed.status, 200, JSON.stringify(dispensed.body)); assert.equal(dispensed.body.prescription.lifecycle_status, 'fully_dispensed');
+      assert.equal((await pool.query("SELECT count(*)::int AS count FROM ng_rx_events WHERE prescription_id=$1 AND event_kind='dispense_note_recorded' AND notes='Isolated witnessed dispense note'", [f.prescriptionId])).rows[0].count, 1);
+      assert.equal((await http(`${base}/complete`, { actor: f.pharmacist, method: 'POST', body: {} })).status, 200);
+    });
+
     await t.test('proposed custody routes require authentication and stay unavailable without activation', async () => {
       const f = await fixture(); const path = `/api/ng/pharmacy/${f.pharmacyId}/return-custody`;
       assert.equal((await http(path)).status, 401);

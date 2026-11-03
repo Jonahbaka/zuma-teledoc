@@ -332,9 +332,13 @@ test('pharmacy notifications and pharmacist Rx access are restricted to signed e
  const notifications=fs.readFileSync(path.join(__dirname,'../services/whatsapp/whatsappDispenseService.js'),'utf8');
  const routes=fs.readFileSync(path.join(__dirname,'../routes/prescriptions.js'),'utf8');
  const service=fs.readFileSync(path.join(__dirname,'../services/rx-engine/prescriptionWorkflowService.js'),'utf8');
+ const pharmacist=fs.readFileSync(path.join(__dirname,'../services/pharmacy/pharmacistRxService.js'),'utf8');
  assert.match(notifications,/rx\.signed_at IS NOT NULL/);
  assert.match(notifications,/rx\.routed_pharmacy_id = \$2/);
- assert.match(routes,/rx\.routed_pharmacy_id === pharmacyId/);
+ assert.match(routes,/pharmacistRx\.read/);
+ assert.match(pharmacist,/routed_pharmacy_id=\$2 AND signed_at IS NOT NULL/);
+ assert.match(pharmacist,/rx\.routed_pharmacy_id=\$1 AND rx\.signed_at IS NOT NULL/);
+ assert.doesNotMatch(pharmacist,/preferred_pharmacy_id/);
  assert.doesNotMatch(routes,/\[rx\.preferred_pharmacy_id, rx\.routed_pharmacy_id/);
  const send=routes.slice(routes.indexOf("router.post('/:id/send'"),routes.indexOf("router.post('/:id/receive'"));
  assert.ok(send.indexOf('svc.sendToPharmacy') < send.indexOf('createPharmacyPrescriptionNotification'));

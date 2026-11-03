@@ -473,6 +473,21 @@ test('real PostgreSQL medication checkout, payment, courier and refund workflows
       assert.equal(f.state.refundCalls, 0);
     });
 
+    await t.test('suspended pharmacist API access cannot block recording verified courier handover and delivery', async () => {
+      const f = await fixture(); const orderId = await quoted(f); await act(f, orderId, 'dispatch', f.pharmacist);
+      const pharmacistRx = require('../services/pharmacy/pharmacistRxService');
+      await pool.query("UPDATE users SET account_status='suspended' WHERE id=$1", [f.pharmacist.id]);
+      await assert.rejects(pharmacistRx.read(pool, f.pharmacist, f.prescriptionId), error => error.status === 403);
+      const calls = { book: f.state.bookCalls, initialize: f.state.initializeCalls, quote: f.state.quoteCalls };
+      await f.advanceDelivery('picked_up'); await f.service.refresh(orderId, f.patient);
+      assert.equal((await pool.query('SELECT status FROM ng_rx_items WHERE prescription_id=$1', [f.prescriptionId])).rows[0].status, 'dispensed');
+      await f.advanceDelivery('delivered'); await f.service.refresh(orderId, f.patient);
+      assert.equal((await pool.query('SELECT lifecycle_status FROM ng_digital_prescriptions WHERE id=$1', [f.prescriptionId])).rows[0].lifecycle_status, 'completed');
+      assert.equal((await pool.query('SELECT count(*)::int AS count FROM ng_fhir_medication_dispenses WHERE order_id=$1', [orderId])).rows[0].count, 1);
+      assert.deepEqual({ book: f.state.bookCalls, initialize: f.state.initializeCalls, quote: f.state.quoteCalls }, calls);
+      await assert.rejects(pharmacistRx.read(pool, f.pharmacist, f.prescriptionId), error => error.status === 403);
+    });
+
     await t.test('physical returned medicines are quarantined and only a super-admin can approve a merchant-funded refund', async () => {
       const f = await fixture(); const orderId = await quoted(f); await act(f, orderId, 'dispatch', f.pharmacist);
       await f.advanceDelivery('returned'); await f.service.refresh(orderId, f.pharmacist);
