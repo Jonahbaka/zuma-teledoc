@@ -20,7 +20,18 @@ const transitions = {
 };
 
 export default function NigeriaProviderReferralsPage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  const accountId = user?.id || user?.userId;
+  const market = user?.marketScope || user?.market_scope;
+  const ready = !loading && accountId && user?.role === 'provider' && market === 'NG';
+  const accountKey = ready ? JSON.stringify([accountId, user.role, market]) : null;
+  const session = useRef(accountKey);
+  session.current = accountKey;
+  if (!ready) return <p role="status">{loading ? 'Loading referrals…' : 'Sign in with your Nigeria provider account to view referrals.'}</p>;
+  return <NigeriaProviderReferralsWorkspace key={accountKey} session={session} accountKey={accountKey} />;
+}
+
+export function NigeriaProviderReferralsWorkspace({ session, accountKey } = {}) {
   const [patients, setPatients] = useState([]);
   const [referrals, setReferrals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,10 +42,11 @@ export default function NigeriaProviderReferralsPage() {
   const [outcomes, setOutcomes] = useState({});
   const request = useRef(null);
   const busy = useRef(false);
-  const currentUser = useRef(user?.id);
-  currentUser.current = user?.id;
+  const mounted = useRef(true);
+  const isCurrent = useCallback(() => mounted.current && (!session || session.current === accountKey), [session, accountKey]);
 
   const loadData = useCallback(async () => {
+    if (!isCurrent()) return;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -46,7 +58,7 @@ export default function NigeriaProviderReferralsPage() {
       api.get('/providers/me/patients', { signal: controller.signal }),
       api.get('/ng/clinical/referrals', { signal: controller.signal }),
     ]);
-    if (controller.signal.aborted) return;
+    if (!isCurrent() || controller.signal.aborted) return;
     const nextErrors = {};
     const patientResult = result[0];
     if (patientResult.status === 'fulfilled' && patientResult.value.data?.success && Array.isArray(patientResult.value.data.patients)) {
@@ -59,17 +71,17 @@ export default function NigeriaProviderReferralsPage() {
     else nextErrors.referrals = 'Referral tracking could not be loaded. Refresh to check the latest status.';
     setErrors(nextErrors);
     setLoading(false);
-  }, []);
+  }, [isCurrent]);
 
   useEffect(() => {
-    currentUser.current = user?.id;
+    mounted.current = true;
     setSubmitting(false);
     setForm(emptyForm());
     setOutcomes({});
     setSearchTerm('');
     loadData();
-    return () => { request.current?.abort(); currentUser.current = null; };
-  }, [loadData, user?.id]);
+    return () => { request.current?.abort(); mounted.current = false; };
+  }, [loadData]);
 
   const filteredPatients = useMemo(() => patients.filter((patient) => {
     if (!searchTerm.trim()) return true;
@@ -81,12 +93,11 @@ export default function NigeriaProviderReferralsPage() {
 
   const submitReferral = async (event) => {
     event.preventDefault();
-    if (busy.current || loading || errors.patients) return;
+    if (!isCurrent() || busy.current || loading || errors.patients) return;
     if (!patients.some((patient) => patient.id === form.patientUserId) || !form.reason.trim()) {
       toast({ title: 'Missing referral details', description: 'Select a patient and enter the referral reason.', variant: 'destructive' });
       return;
     }
-    const actor = user?.id;
     busy.current = true;
     setSubmitting(true);
     try {
@@ -99,43 +110,42 @@ export default function NigeriaProviderReferralsPage() {
         clinical_notes: form.clinicalNotes.trim() || null,
         destination_type: 'internal',
       });
-      if (currentUser.current !== actor) return;
+      if (!isCurrent()) return;
       if (!data.ok || !data.referral?.id) throw new Error('Submission not confirmed');
       toast({ title: 'Referral draft saved', description: 'Review the destination and coordinate delivery before recording that it was sent.' });
       setForm(emptyForm());
       await loadData();
     } catch (failure) {
-      if (currentUser.current !== actor) return;
+      if (!isCurrent()) return;
       toast({ title: 'Referral save not confirmed', description: failure.response?.data?.error || 'Refresh referral tracking before retrying. Your entered details are preserved.', variant: 'destructive' });
     } finally {
       busy.current = false;
-      if (currentUser.current === actor) setSubmitting(false);
+      if (isCurrent()) setSubmitting(false);
     }
   };
 
   const updateReferralStatus = async (referral, status) => {
-    if (busy.current || !transitions[referral.status]?.some(([allowed]) => allowed === status)) return;
+    if (!isCurrent() || busy.current || !transitions[referral.status]?.some(([allowed]) => allowed === status)) return;
     const summary = (outcomes[referral.id] || '').trim();
     if (!summary) {
       toast({ title: 'Outcome required', description: 'Record the communication, receiving decision, or closure outcome before changing this status.', variant: 'destructive' });
       return;
     }
-    const actor = user?.id;
     busy.current = true;
     setSubmitting(true);
     try {
       const { data } = await api.patch('/ng/clinical/referrals/' + referral.id + '/status', { status, response_summary: summary, reason: summary });
-      if (currentUser.current !== actor) return;
+      if (!isCurrent()) return;
       if (!data.ok || data.referral?.status !== status) throw new Error('Update not confirmed');
       toast({ title: 'Referral status recorded', description: 'The recorded status is ' + status.replaceAll('_', ' ') + '.' });
       setOutcomes((current) => ({ ...current, [referral.id]: '' }));
       await loadData();
     } catch (failure) {
-      if (currentUser.current !== actor) return;
+      if (!isCurrent()) return;
       toast({ title: 'Status update not confirmed', description: failure.response?.data?.error || 'Refresh referral tracking before trying again.', variant: 'destructive' });
     } finally {
       busy.current = false;
-      if (currentUser.current === actor) setSubmitting(false);
+      if (isCurrent()) setSubmitting(false);
     }
   };
 

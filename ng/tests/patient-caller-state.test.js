@@ -13,7 +13,7 @@ const event = { preventDefault() {} };
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 
 function viewHarness(filename, auth, api, guidance = async () => { throw new Error('Unavailable'); }, exportName = 'default', componentProps = {}, storage = new Map()) {
-  const slots = []; const effects = []; let cursor = 0; let dirty = false; let tree;
+  const toasts = []; const slots = []; const effects = []; let cursor = 0; let dirty = false; let tree;
   const react = {
     useState(initial) {
       const index = cursor++; if (!slots[index]) slots[index] = { value: typeof initial === 'function' ? initial() : initial };
@@ -23,6 +23,11 @@ function viewHarness(filename, auth, api, guidance = async () => { throw new Err
       const index = cursor++; const previous = slots[index];
       if (!previous || dependencies.some((value, offset) => value !== previous.dependencies[offset])) slots[index] = { callback, dependencies };
       return slots[index].callback;
+    },
+    useMemo(callback, dependencies) {
+      const index = cursor++; const previous = slots[index];
+      if (!previous || dependencies.some((value, offset) => value !== previous.dependencies[offset])) slots[index] = { value: callback(), dependencies };
+      return slots[index].value;
     },
     useRef(initial) { const index = cursor++; if (!slots[index]) slots[index] = { value: { current: initial } }; return slots[index].value; },
     useEffect(callback, dependencies) {
@@ -40,7 +45,10 @@ function viewHarness(filename, auth, api, guidance = async () => { throw new Err
     'lucide-react': new Proxy({}, { get: (_target, name) => Symbol(String(name)) }),
     '@/lib/api': { __esModule: true, default: api },
     '@/components/ui/button': { Button: 'button' },
-    '@/components/ui/card': { Card: 'section', CardContent: 'div', CardHeader: 'header', CardTitle: 'h2' },
+    '@/components/ui/card': { Card: 'section', CardContent: 'div', CardHeader: 'header', CardTitle: 'h2', CardDescription: 'p' },
+    '@/components/ui/input': { Input: 'input' },
+    '@/components/ui/label': { Label: 'label' },
+    '@/components/ui/use-toast': { toast(value) { toasts.push(value); } },
     '@/lib/utils': { formatRelativeTime: () => 'Synthetic relative time' },
     '@/lib/doctaService': { DoctaService: { runAITriage: guidance } },
     '@/components/providers/AuthProvider': { useAuth: () => auth.value },
@@ -52,6 +60,7 @@ function viewHarness(filename, auth, api, guidance = async () => { throw new Err
   vm.runInNewContext(compiled, { module: sourceModule, exports: sourceModule.exports, require(name) { assert.ok(name in dependencies, name); return dependencies[name]; }, AbortController, FormData, sessionStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }, crypto: { randomUUID: crypto.randomUUID } });
   const Component = sourceModule.exports[exportName];
   const view = {
+    toasts,
     storage,
     render(runEffects = true) {
       do { cursor = 0; dirty = false; tree = Component(componentProps); if (runEffects) for (const effect of effects.splice(0)) effect(); } while (runEffects && dirty);
@@ -431,4 +440,67 @@ test('same-mounted successful recovery retires previous text key before a genuin
   await view.button('Check saved submission').props.onClick(); await flush(view);
   await view.button('Submit Prescription').props.onClick(); await flush(view);
   assert.equal(keys.length, 2); assert.notEqual(keys[0], keys[1]);
+});
+
+const ngProvider = { id: 'provider-a', role: 'provider', marketScope: 'NG' };
+function manualReferralView(api, props = {}, auth = { value: { user: ngProvider, loading: false } }, exportName = 'NigeriaProviderReferralsWorkspace') {
+  return viewHarness('app/ng/provider/referrals/page.js', auth, api, undefined, exportName, props);
+}
+function manualReferralResponse(url) {
+  return { data: url === '/providers/me/patients' ? { success: true, patients: [{ id: patientA.id, firstName: 'Synthetic patient' }] } : { ok: true, referrals: [{ id: 'ref-a', status: 'draft', reason: 'Synthetic referral reason', target_name: 'Synthetic destination' }] } };
+}
+function fillManualReferral(view) {
+  view.button('Synthetic patient').props.onClick(); view.render();
+  view.find('textarea').find(node => node.props.id === 'referral-reason').props.onChange({ target: { value: 'Synthetic new referral' } }); view.render();
+}
+test('manual referral shell gates trusted NG provider auth and replaces clinician workspace synchronously', () => {
+  const auth = { value: { user: ngProvider, loading: true } }, view = manualReferralView({}, {}, auth, 'default');
+  assert.equal(typeof view.render().type, 'string');
+  for (const user of [null, ngPatientA, { ...ngProvider, marketScope: 'US' }]) { auth.value = { user, loading: false }; assert.equal(typeof view.render().type, 'string'); }
+  auth.value = { user: ngProvider, loading: false }; const first = view.render();
+  auth.value = { user: { ...ngProvider, id: 'provider-b' }, loading: false }; const second = view.render(false);
+  assert.notEqual(first.key, second.key); assert.notEqual(first.props.session.current, first.props.accountKey);
+});
+test('manual referral old account reads and captured handlers cannot expose data or issue writes', async () => {
+  const requests = [], session = { current: 'A' }; let writes = 0;
+  const view = manualReferralView({ get(url) { const req = { url, ...deferred() }; requests.push(req); return req.promise; }, async post() { writes++; }, async patch() { writes++; } }, { session, accountKey: 'A' });
+  view.render(); requests.forEach(req => req.resolve(manualReferralResponse(req.url))); await flush(view); fillManualReferral(view);
+  const submit = view.find('form')[0].props.onSubmit, refresh = view.button('Refresh').props.onClick;
+  view.find('textarea').find(node => node.props.id === 'referral-outcome-ref-a').props.onChange({ target: { value: 'Synthetic communication recorded' } }); view.render();
+  const update = view.button('Record sending').props.onClick;
+  const refreshing = refresh(); session.current = 'B';
+  requests.slice(2).forEach(req => req.resolve({ data: { ok: true, referrals: [{ id: 'old', reason: 'STALE SECRET' }] } })); await refreshing; await flush(view);
+  await submit(event); await update(); await refresh();
+  assert.equal(requests.length, 4); assert.equal(writes, 0); assert.ok(!view.text().includes('STALE SECRET'));
+});
+test('manual referral in-flight save ignores old clinician completion and duplicate clicks', async () => {
+  const pending = deferred(), session = { current: 'A' }; let reads = 0, writes = 0;
+  const view = manualReferralView({ async get(url) { reads++; return manualReferralResponse(url); }, post() { writes++; return pending.promise; } }, { session, accountKey: 'A' });
+  view.render(); await flush(view); fillManualReferral(view);
+  const submit = view.find('form')[0].props.onSubmit;
+  const first = submit(event); await submit(event); session.current = 'B';
+  pending.resolve({ data: { ok: true, referral: { id: 'saved' } } }); await first; await flush(view);
+  assert.equal(writes, 1); assert.equal(reads, 2);
+  assert.equal(view.find('textarea').find(node => node.props.id === 'referral-reason').props.value, 'Synthetic new referral');
+});
+test('manual referral unmount discards pending status completion without old-account refresh', async () => {
+  const pending = deferred(); let reads = 0, writes = 0;
+  const view = manualReferralView({ async get(url) { reads++; return manualReferralResponse(url); }, patch() { writes++; return pending.promise; } });
+  view.render(); await flush(view);
+  view.find('textarea').find(node => node.props.id === 'referral-outcome-ref-a').props.onChange({ target: { value: 'Synthetic sending record' } }); view.render();
+  const handler = view.button('Record sending').props.onClick;
+  const first = handler(); await handler(); view.unmount();
+  pending.resolve({ data: { ok: true, referral: { id: 'ref-a', status: 'sent' } } }); await first; await flush(view);
+  assert.equal(writes, 1); assert.equal(reads, 2);
+  assert.equal(view.find('textarea').find(node => node.props.id === 'referral-outcome-ref-a').props.value, 'Synthetic sending record');
+});
+
+test('manual referral stale save failure never displays the prior clinician error', async () => {
+  const pending = deferred(), session = { current: 'A' };
+  const view = manualReferralView({ async get(url) { return manualReferralResponse(url); }, post() { return pending.promise; } }, { session, accountKey: 'A' });
+  view.render(); await flush(view); fillManualReferral(view);
+  const action = view.find('form')[0].props.onSubmit(event); session.current = 'B';
+  pending.reject({ response: { data: { error: 'PRIOR CLINICIAN PRIVATE ERROR' } } }); await action; await flush(view);
+  assert.equal(view.toasts.length, 0);
+  assert.ok(!view.text().includes('PRIOR CLINICIAN PRIVATE ERROR'));
 });
