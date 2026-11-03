@@ -4,9 +4,9 @@ const nigeriaStructuredData = [
   {
     '@context': 'https://schema.org',
     '@type': 'WebPage',
-    name: 'DoctaRx Nigeria | Telehealth AI & Connected Care',
+    name: 'DoctaRx Nigeria | AI-First Telehealth & Language Voice',
     description:
-      'Explore DoctaRx care, health records, messaging, and pharmacy options in Nigeria. Services and availability are confirmed before booking.',
+      'Discover AI-first telehealth, language voice and clinician-connected care with DoctaRx Nigeria.',
     url: 'https://doctarx.com/ng',
     inLanguage: 'en-NG',
     isPartOf: {
@@ -73,9 +73,9 @@ const nigeriaStructuredData = [
 ];
 
 export const metadata = {
-  title: 'Telehealth AI and Connected Care in Nigeria',
+  title: 'AI-First Telehealth and Language Voice in Nigeria',
   description:
-    'DoctaRx is a Telehealth AI company connecting care, health records, messaging, and pharmacy options in Nigeria. Explore services available for your account.',
+    'AI-first telehealth for Nigeria, built around your voice. Explore multilingual conversations, clinician-led care, health records and pharmacy coordination.',
   keywords: [
     'telehealth in Nigeria',
     'online doctor Nigeria',
@@ -103,9 +103,9 @@ export const metadata = {
     },
   },
   openGraph: {
-    title: 'DoctaRx Nigeria | Telehealth AI & Connected Care',
+    title: 'DoctaRx Nigeria | AI-First Telehealth & Language Voice',
     description:
-      'Explore care, health records, messaging, and pharmacy options in Nigeria. Services and availability are confirmed before booking.',
+      'Discover AI-first telehealth, language voice and clinician-connected care with DoctaRx Nigeria.',
     url: 'https://doctarx.com/ng',
     siteName: 'DoctaRx Nigeria',
     locale: 'en_NG',
@@ -115,9 +115,9 @@ export const metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DoctaRx Nigeria | Telehealth AI & Connected Care',
+    title: 'DoctaRx Nigeria | AI-First Telehealth & Language Voice',
     description:
-      'Care, health records, messaging, and pharmacy options for Nigeria. Explore services available for your account.',
+      'AI-first telehealth for Nigeria. Your voice, your language, and a more connected care experience.',
     images: ['/ng/opengraph-image'],
   },
   other: {

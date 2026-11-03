@@ -10,10 +10,12 @@ const homepage = read('components/marketing/MarketHomepage.jsx');
 const css = read('components/marketing/MarketHomepage.module.css');
 const us = read('app/page.js');
 const ng = read('app/ng/page.js');
-// Public copy must not advertise unfinished or unverified clinical AI functions.
-test('homepage retains company identity without advertising unverified AI functionality', () => {
-  assert.match(homepage, /DoctaRx · Telehealth AI company/);
-  assert.match(homepage, /Connected care.<br \/>People first./);
+// Launch copy is held locally until the separate voice release gates are met.
+test('homepage leads with AI-first identity and clinician-led care', () => {
+  assert.match(homepage, /DOCTARX · AI-FIRST TELEHEALTH/);
+  assert.match(homepage, /AI-first telehealth\.<br \/><span>Human care\.<\/span>/);
+  assert.match(homepage, /Clinician-led care/);
+  assert.match(homepage, /care team for review, clinical decisions/);
   for (const source of [homepage, us, ng]) {
     assert.doesNotMatch(source, /in development|coming soon|planned workflow|beta|Clinical Copilot|clinical-copilot/i);
     assert.doesNotMatch(source, /autonomous diagnosis|AI diagnoses|AI prescribes|automated prescribing/i);
@@ -29,12 +31,13 @@ test('US and Nigeria entrypoints, location privacy, and core care routes are ret
   assert.match(homepage, /nigeria\?'\/ng\/find-care'/);
   assert.match(homepage, /nigeria\?'\/ng\/pharmacies':'\/pharmacies'/);
   assert.match(homepage, /careLocation.location.mode==='manual'\?new URLSearchParams/);
-  assert.match(homepage, /Services, availability, and costs are confirmed/);
+  assert.match(homepage, /Review services, coverage, and payment choices for your account/);
 });
 
 test('both markets use company positioning and preserve canonicals', () => {
   for (const source of [us, ng]) {
-    assert.match(source, /Telehealth AI/);
+    assert.match(source, /AI-First Telehealth/);
+    assert.match(source, /Language Voice/);
     assert.match(source, /'en-US': 'https:\/\/doctarx.com\/'/);
     assert.match(source, /'en-NG': 'https:\/\/doctarx.com\/ng'/);
   }
@@ -53,9 +56,37 @@ test('existing keyboard and responsive protections remain intact', () => {
 // Keep the actual desktop/mobile browser gate aligned with approved public copy.
 test('browser gate checks the approved headline and both exact metadata titles', () => {
   const browser = read('scripts/e2e-public-platform.cjs');
-  assert.ok(browser.includes('/Connected care\\.\\s*People first\\./'));
+  assert.ok(browser.includes('/AI-first telehealth\\.\\s*Human care\\./'));
   for (const [route, source] of [['/', us], ['/ng', ng]]) {
     const title = source.match(/export const metadata = \{[\s\S]*?title: '([^']+)'/)[1];
     assert.ok(browser.includes(`'${route}': '${title}'`));
   }
+});
+
+test('voice design has truthful clinician boundaries and no pretend live controls', () => {
+  assert.match(homepage, /id="language-voice"/);
+  assert.match(homepage, /href="#language-voice"/);
+  for (const language of ['English', 'Nigerian English', 'Hausa', 'Igbo', 'Yoruba']) {
+    assert.ok(homepage.includes(`<li>${language}</li>`), language);
+  }
+  assert.doesNotMatch(homepage, /getUserMedia|SpeechRecognition|\/api\/voice|href="\/voice-lab"|Start recording|Start voice session/);
+  assert.doesNotMatch(homepage, /all languages|every language|clinically validated|100%|instant diagnosis/i);
+});
+
+test('generated hero is local, described as a concept illustration and dimensioned', () => {
+  assert.match(homepage, /3D concept illustration/);
+  assert.match(homepage, /ai-language-voice-hero-v1\.webp/);
+  assert.match(homepage, /width=\{1536\} height=\{1024\} priority/);
+  const image = fs.readFileSync(path.join(root, 'public/marketing/doctarx/ai-language-voice-hero-v1.webp'));
+  assert.equal(image.toString('ascii', 0, 4), 'RIFF');
+  assert.equal(image.toString('ascii', 8, 12), 'WEBP');
+  assert.ok(image.length < 250000, 'hero remains suitable for mobile delivery');
+});
+
+test('launch claims have a separate explicit release gate', () => {
+  const gate = read('docs/HOMEPAGE_VOICE_LAUNCH_GATE.md');
+  assert.match(gate, /Not approved for deployment/);
+  assert.match(gate, /Hausa, Igbo and Yoruba/);
+  assert.match(gate, /actual DoctaRx/);
+  assert.match(gate, /clinical and privacy/);
 });
