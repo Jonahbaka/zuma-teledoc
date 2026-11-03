@@ -9,6 +9,10 @@ async function checkManualReferralRecovery(page, db) {
   const provider = (await db.query("SELECT u.id,p.id AS provider_id FROM users u JOIN ng_providers p ON p.user_id=u.id WHERE u.email='doctor@demo.doctarx.com' AND u.role='provider' AND u.market_scope='NG' AND u.is_active=true AND u.provider_status='approved' AND p.status='verified'")).rows[0];
   const patient = (await db.query("SELECT id FROM users WHERE email='patient@demo.doctarx.com' AND role='patient' AND market_scope='NG' AND is_active=true")).rows[0];
   assert.ok(provider && patient, 'Use existing provisioned demo accounts');
+  const coreBaseline = Number((await db.query('SELECT count(*) FROM appointments WHERE provider_id=$1 AND patient_id=$2', [provider.id, patient.id])).rows[0].count);
+  // Never add a core appointment to make the picker pass. The actual GET must
+  // expose this patient's existing/native care relationship through the API.
+  console.log('Manual referral picker core appointment baseline:', coreBaseline);
   const appointmentId = crypto.randomUUID(), keys = [];
   const reason = 'Synthetic browser referral recovery fixture', notes = 'Synthetic recovery supporting notes';
   const endpoint = '**/api/ng/clinical/referrals';
@@ -23,7 +27,16 @@ async function checkManualReferralRecovery(page, db) {
   page.on('request', observe);
   try {
     await db.query("INSERT INTO ng_appointments(id,patient_user_id,provider_id,scheduled_at,status,consult_fee,total_amount) VALUES($1,$2,$3,'2099-06-15T12:00:00Z','confirmed',0,0)", [appointmentId, patient.id, provider.provider_id]);
+    const patientListResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/providers/me/patients' && response.request().method() === 'GET');
+    patientListResponse.catch(() => {});
     await page.goto('http://127.0.0.1:3003/ng/provider/referrals');
+    const listed = await patientListResponse;
+    assert.equal(listed.status(), 200, 'Patient picker must use the actual authorized provider API');
+    const list = await listed.json();
+    assert.equal(list.success, true);
+    assert.ok(Array.isArray(list.patients) && list.patients.some(row => row.id === patient.id), 'Actual patient picker response must include the native-related demo patient on its visible page; do not seed a core appointment to bypass this check');
+    assert.equal(Number((await db.query('SELECT count(*) FROM appointments WHERE provider_id=$1 AND patient_id=$2', [provider.id, patient.id])).rows[0].count), coreBaseline, 'Browser fixture must leave core appointment membership unchanged');
+    console.log(coreBaseline === 0 ? 'Verified: native-only patient is exposed by actual provider patient GET' : 'Verified: actual provider patient GET includes fixture patient; core membership already exists, so native-only coverage belongs to the dedicated PostgreSQL test');
     await page.getByRole('heading', { level: 1, name: 'Referrals', exact: true }).waitFor();
     await fill();
     await page.route(endpoint, async route => {

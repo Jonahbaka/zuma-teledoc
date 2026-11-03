@@ -11,6 +11,7 @@ const { auditMiddleware } = require('../middleware/audit');
 const { validate, createScheduleSchema, createTimeOffSchema, paginationSchema } = require('../../lib/validation');
 const { keysToCamel, parseQueryParams, getPaginationMeta } = require('../../lib/utils');
 const { normalizeMarketScope } = require('../utils/marketScope');
+const { listNgProviderPatients } = require('../services/ngProviderPatientList');
 
 const getAuthenticatedMarketScope = (user = {}) =>
   normalizeMarketScope(user.marketScope || user.market_scope || user.region || user.country, 'US');
@@ -352,6 +353,11 @@ router.get('/me/patients',
       const offset = (page - 1) * limit;
       const marketScope = getAuthenticatedMarketScope(req.user);
       
+      if (marketScope === 'NG') {
+        const { rows, total } = await listNgProviderPatients(db, req.user.id, { limit, offset });
+        return res.json({ success: true, patients: rows.map(keysToCamel), pagination: getPaginationMeta(total, page, limit) });
+      }
+
       // Get patients who have had appointments with this provider
       const { rows: countResult } = await db.query(
         `SELECT COUNT(DISTINCT a.patient_id)

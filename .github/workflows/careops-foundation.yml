@@ -54,6 +54,7 @@ jobs:
           npm run test:ng:government-data:db
           npm run test:ng:phc:db
           node --test ng/tests/private-prescription-upload.test.js
+          node --test ng/tests/ng-provider-patient-list.test.js
           node --test ng/tests/manual-referral-intent-db.test.js
           node --test ng/tests/prescription-submission-navigation.test.js
           npm run test:platform:db
