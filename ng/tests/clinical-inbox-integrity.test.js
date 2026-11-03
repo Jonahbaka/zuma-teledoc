@@ -23,6 +23,8 @@ function fixture() {
     if (sql.includes('FROM ng_digital_prescriptions rx')) { assert.match(sql, /rx.routed_pharmacy_id=\$1 AND rx.signed_at IS NOT NULL/); assert.match(sql, /FOR SHARE OF rx/); assert.match(sql, /LIMIT 100/); return { rows: [structuredClone(state.rx)] }; }
     if (sql.includes('FROM ng_whatsapp_notification_log')) { assert.match(sql, /n.pharmacy_id=\$1 AND rx.routed_pharmacy_id=\$1 AND rx.signed_at IS NOT NULL/); assert.match(sql, /FOR SHARE OF n,rx/); assert.doesNotMatch(sql, /provider_response|metadata/); return { rows: [{ id: 'message-only-current-route' }] }; }
     if (sql.startsWith('UPDATE ng_digital_prescriptions')) {
+      assert.match(sql, /pharmacy_response_status=\$3::text/);
+      assert.equal([...sql.matchAll(/\$3(?![0-9])/g)].length, [...sql.matchAll(/\$3::text/g)].length, 'The shared status parameter must have one explicit PostgreSQL type everywhere.');
       state.rx.pharmacy_response_status = params[2]; state.rx.status = params[3]; state.rx.dispense_status = params[4];
       for (const field of ['confirmed_price_ngn', 'pharmacy_notes', 'clarification_request']) { const match = sql.match(new RegExp(`${field}=\\$(\\d+)`)); if (match) state.rx[field] = params[+match[1] - 1]; }
       return { rows: [structuredClone(state.rx)] };

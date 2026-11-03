@@ -20,6 +20,26 @@ test('PostgreSQL clinical inbox authority, rerouting and audit rollback are tran
     const updated = await service.updateStatus(pool, f.pharmacist, f.pharmacyId, f.prescriptionId, { status: 'accepted' });
     assert.equal(updated.prescription.confirmed_price_ngn, '1234.50'); assert.equal(updated.prescription.pharmacy_notes, 'Isolated private note');
 
+    await t.test('PostgreSQL status assignment and all conditional timestamp branches share a text parameter type', async () => {
+      const typed = await createBrowserFixture({ pool });
+      for (const status of ['pharmacy_reviewing', 'accepted', 'ready_for_pickup', 'out_for_delivery', 'unavailable', 'clarification_requested']) {
+        const result = await service.updateStatus(pool, typed.pharmacist, typed.pharmacyId, typed.prescriptionId,
+          { status, ...(status === 'clarification_requested' ? { clarificationRequest: 'Isolated typed clarification' } : {}) });
+        assert.equal(result.prescription.pharmacy_response_status, status);
+        if (status === 'ready_for_pickup') assert.ok(result.prescription.ready_at);
+      }
+      // Synthetic completed-quantity evidence solely exercises the conditional
+      // timestamp SQL; no real medication is dispensed by this fixture setup.
+      await pool.query("UPDATE ng_rx_items SET status='dispensed',dispensed_quantity=quantity WHERE prescription_id=$1", [typed.prescriptionId]);
+      await pool.query("UPDATE ng_digital_prescriptions SET lifecycle_status='fully_dispensed' WHERE id=$1", [typed.prescriptionId]);
+      const fulfilled = await service.updateStatus(pool, typed.pharmacist, typed.pharmacyId, typed.prescriptionId, { status: 'fulfilled' });
+      assert.ok(fulfilled.prescription.fulfilled_at); assert.ok(fulfilled.prescription.dispensed_at);
+      assert.equal(fulfilled.prescription.dispensed_by_pharmacy_id, typed.pharmacyId);
+      const cancel = await createBrowserFixture({ pool });
+      const cancelled = await service.updateStatus(pool, cancel.pharmacist, cancel.pharmacyId, cancel.prescriptionId, { status: 'cancelled' });
+      assert.ok(cancelled.prescription.cancelled_at);
+    });
+
     await t.test('failed compliance writes roll status and notes back instead of returning success', async () => {
       const failing = { async connect() { const client = await pool.connect(); return { release: () => client.release(), query(sql, values) { if (sql.includes('INSERT INTO ng_compliance_audit_log')) throw new Error('Isolated unavailable clinical audit'); return client.query(sql, values); } }; } };
       await assert.rejects(service.updateStatus(failing, f.pharmacist, f.pharmacyId, f.prescriptionId, { status: 'unavailable', pharmacyNotes: 'Should roll back' }), /Isolated unavailable/);

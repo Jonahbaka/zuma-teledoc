@@ -85,14 +85,14 @@ async function updateStatus(pool, actor, pharmacyId, prescriptionId, input) {
     if (['fulfilled', 'cancelled'].includes(existing.pharmacy_response_status)) throw fail(409, 'This pharmacy response is closed. Use the clinical workflow for further review.');
     if ((data.status === 'fulfilled' && !complete) || (complete && data.status !== 'fulfilled') || (data.status === 'cancelled' && existing.lifecycle_status !== 'sent_to_pharmacy')) throw fail(409, 'The prescription lifecycle does not permit that response.');
     const values = [prescriptionId, pharmacyId, data.status, ...states[data.status]];
-    const updates = ['pharmacy_response_status=$3', 'status=$4', 'dispense_status=$5'];
+    const updates = ['pharmacy_response_status=$3::text', 'status=$4', 'dispense_status=$5'];
     for (const [key, column] of Object.entries({ confirmedPriceNgn: 'confirmed_price_ngn', pharmacyNotes: 'pharmacy_notes', clarificationRequest: 'clarification_request' })) {
       if (Object.prototype.hasOwnProperty.call(data, key)) { values.push(data[key]); updates.push(`${column}=$${values.length}`); }
     }
-    updates.push("dispensed_by_pharmacy_id=CASE WHEN $3='fulfilled' THEN $2 ELSE dispensed_by_pharmacy_id END",
-      'pharmacy_responded_at=NOW()', "ready_at=CASE WHEN $3='ready_for_pickup' THEN NOW() ELSE ready_at END",
-      "fulfilled_at=CASE WHEN $3='fulfilled' THEN NOW() ELSE fulfilled_at END", "dispensed_at=CASE WHEN $3='fulfilled' THEN NOW() ELSE dispensed_at END",
-      "cancelled_at=CASE WHEN $3='cancelled' THEN NOW() ELSE cancelled_at END", 'updated_at=NOW()');
+    updates.push("dispensed_by_pharmacy_id=CASE WHEN $3::text='fulfilled' THEN $2 ELSE dispensed_by_pharmacy_id END",
+      'pharmacy_responded_at=NOW()', "ready_at=CASE WHEN $3::text='ready_for_pickup' THEN NOW() ELSE ready_at END",
+      "fulfilled_at=CASE WHEN $3::text='fulfilled' THEN NOW() ELSE fulfilled_at END", "dispensed_at=CASE WHEN $3::text='fulfilled' THEN NOW() ELSE dispensed_at END",
+      "cancelled_at=CASE WHEN $3::text='cancelled' THEN NOW() ELSE cancelled_at END", 'updated_at=NOW()');
     const result = await client.query(`UPDATE ng_digital_prescriptions SET ${updates.join(',')} WHERE id=$1 AND routed_pharmacy_id=$2 RETURNING *`, values);
     if (!result.rows[0]) throw fail(409, 'The prescription changed. Reload before responding.');
     await audit(client, current, pharmacyId, 'pharmacy.prescription_status_updated', prescriptionId, { fromStatus: existing.pharmacy_response_status, status: data.status });
