@@ -124,6 +124,44 @@ test('PostgreSQL PHC metadata and advertised HTTP reads retain current authentic
     assert.equal((await request('Observation/' + observationIds[0])).status, 404);
     assert.equal((await request('Patient/' + enrollment.patient_user_id, { method: 'POST' })).status, 404);
 
+    // Synthetic stored results exercise the real nullable legacy status column.
+    // No lab partner, ordering, result-ingestion or acknowledgment workflow is
+    // implied: these transient records and read audits roll back below.
+    const labIds = [crypto.randomUUID(), crypto.randomUUID()];
+    const insertLab = (id, patientId, encounter) => client.query(`INSERT INTO ng_lab_results
+      (id,patient_user_id,encounter_id,test_name,result_value,unit,abnormal_flag,status)
+      VALUES ($1,$2,$3,'Private synthetic laboratory result','0','synthetic units','Critical - recorded by source','final')`,
+    [id, patientId, encounter]);
+    for (const id of labIds) await insertLab(id, enrollment.patient_user_id, encounterId);
+    await insertLab(crypto.randomUUID(), government.id, encounterId);
+    await insertLab(crypto.randomUUID(), enrollment.patient_user_id, null);
+    const labQuery = { encounter: encounterId };
+    const labRead = () => request('DiagnosticReport', { query: labQuery });
+    const laboratory = await labRead();
+    assert.equal(laboratory.status, 200); assert.equal(laboratory.body.total, 2);
+    assert.deepEqual(laboratory.body.entry.map(entry => entry.resource.id).sort(), [...labIds].sort());
+    assert.equal(laboratory.body.entry[0].resource.contained[0].valueString, '0');
+    assert.equal(laboratory.body.entry[0].resource.contained[0].interpretation[0].text, 'Critical - recorded by source');
+    for (const state of ['registered', 'partial', 'final', 'amended', 'cancelled']) {
+      await client.query('UPDATE ng_lab_results SET status=$2 WHERE id=$1', [labIds[0], state]);
+      const response = await labRead(); assert.equal(response.status, 200);
+      const report = response.body.entry.find(entry => entry.resource.id === labIds[0]).resource;
+      assert.equal(report.status, state); assert.equal(report.contained[0].status, state === 'partial' ? 'preliminary' : state);
+    }
+    await client.query('SAVEPOINT malformed_laboratory');
+    await client.query('UPDATE ng_lab_results SET status=NULL WHERE id=$1', [labIds[0]]);
+    const missingStatus = await request('DiagnosticReport', { query: { ...labQuery, _count: '1' } });
+    assert.equal(missingStatus.status, 503); assert.equal(missingStatus.body.resourceType, 'OperationOutcome');
+    assert.ok(!JSON.stringify(missingStatus.body).includes(enrollment.patient_user_id));
+    assert.ok(!JSON.stringify(missingStatus.body).includes('Private synthetic laboratory result'));
+    await client.query("UPDATE ng_lab_results SET status='final',test_name='  ',loinc_code=NULL WHERE id=$1", [labIds[0]]);
+    assert.equal((await labRead()).status, 503);
+    await client.query('ROLLBACK TO SAVEPOINT malformed_laboratory'); await client.query('RELEASE SAVEPOINT malformed_laboratory');
+    await client.query("UPDATE ng_lab_results SET result_value='  ' WHERE id=$1", [labIds[0]]);
+    const blankResult = await labRead(); assert.equal(blankResult.status, 200);
+    const blankObservation = blankResult.body.entry.find(entry => entry.resource.id === labIds[0]).resource.contained[0];
+    assert.equal(blankObservation.valueString, undefined); assert.equal(blankObservation.dataAbsentReason.coding[0].code, 'unknown');
+
     const referralQuery = { encounter:encounterId, _count:'1' };
     const referralRequest = options => request('ServiceRequest', { userId:doctor.id, query:referralQuery, ...options });
     const firstReferral = await referralRequest();
@@ -156,6 +194,7 @@ test('PostgreSQL PHC metadata and advertised HTTP reads retain current authentic
     assert.equal((await request('metadata')).status, 200);
     for (const [resource, query] of [['Patient/' + enrollment.patient_user_id, {}], ['Encounter/' + encounterId, {}], ['Observation', { encounter: encounterId }]]) assert.equal((await request(resource, { query })).status, 409);
     assert.equal((await referralRequest()).status,409);
+    assert.equal((await labRead()).status,409);
     await client.query('ROLLBACK TO SAVEPOINT consent_denial'); await client.query('RELEASE SAVEPOINT consent_denial');
     await client.query('SAVEPOINT membership_denial');
     await client.query("UPDATE ng_programme_memberships SET expires_at=NOW()-INTERVAL '1 second' WHERE id=$1", [nurse.membership_id]);
@@ -166,6 +205,7 @@ test('PostgreSQL PHC metadata and advertised HTTP reads retain current authentic
     assert.equal(unavailable.status, 500); assert.equal(unavailable.body.resourceType, 'OperationOutcome');
     assert.equal(JSON.stringify(unavailable.body).includes(enrollment.patient_user_id), false);
     const referralAuditDenied=await referralRequest(); assert.equal(referralAuditDenied.status,500); assert.ok(!JSON.stringify(referralAuditDenied.body).includes(enrollment.patient_user_id));
+    const labAuditDenied = await labRead(); assert.equal(labAuditDenied.status, 500); assert.ok(!JSON.stringify(labAuditDenied.body).includes(enrollment.patient_user_id));
     auditFailure = false;
     const audited = (await client.query("SELECT count(*)::int AS count FROM ng_programme_audit_events WHERE action='fhir_read' AND actor_user_id=$1 AND resource_id=ANY($2::uuid[])", [nurse.id, [encounterId, enrollment.patient_user_id]])).rows[0];
     assert.ok(audited.count >= 4);

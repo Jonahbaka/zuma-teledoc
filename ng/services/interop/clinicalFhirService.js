@@ -109,11 +109,19 @@ function toCondition(row) {
   return resource;
 }
 function toDiagnosticReport(row) {
-  const code=coded(row.test_name,row.loinc_code,'http://loinc.org');
+  const testName = typeof row.test_name === 'string' && row.test_name.trim() ? row.test_name : undefined;
+  const loincCode = typeof row.loinc_code === 'string' && row.loinc_code.trim() ? row.loinc_code : undefined;
+  // The legacy table permits NULL status and blank test names. Never silently
+  // qualify such a report as final, or export a resource with no clinical state
+  // or test identity. Fail the read rather than return a misleading partial set.
+  if (!['registered', 'partial', 'final', 'amended', 'cancelled'].includes(row.status) || (!testName && !loincCode)) {
+    throw Object.assign(new Error('The laboratory report cannot be safely represented from its recorded state.'), { statusCode: 503 });
+  }
+  const code=coded(testName,loincCode,'http://loinc.org');
   const result=row.result_value_encrypted?decrypt(row.result_value_encrypted,row.result_value_iv,row.result_value_tag):row.result_value;
   if(row.result_value_encrypted && result===null)throw Object.assign(new Error('The laboratory result could not be securely read.'),{statusCode:503});
   const observation={resourceType:'Observation',id:'laboratory-result',status:row.status==='partial'?'preliminary':row.status,code,subject:{reference:`Patient/${row.patient_user_id}`},...(row.collected_at?{effectiveDateTime:iso(row.collected_at)}:{})};
-  if(result!==null && result!==undefined && String(result).length)observation.valueString=String(result);
+  if(result!==null && result!==undefined && String(result).trim().length)observation.valueString=String(result);
   else observation.dataAbsentReason=absent;
   if(row.reference_range)observation.referenceRange=[{text:row.reference_range}];
   // Preserve the laboratory's recorded interpretation without inferring a code
