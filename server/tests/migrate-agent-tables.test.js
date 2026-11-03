@@ -48,6 +48,10 @@ test('reviewed SQL migrations are loaded from the explicit allowlist', () => {
       file: '043_appointment_protected_payload.sql'
     },
     {
+      name: '044_clinical_narrative_encryption',
+      file: '044_clinical_narrative_encryption.sql'
+    },
+    {
       name: '400_agent_orchestrator_schema',
       file: '400_agent_orchestrator_schema.sql',
     },

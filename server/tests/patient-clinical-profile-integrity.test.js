@@ -138,6 +138,21 @@ test('actual clinical profile HTTP and PostgreSQL enforce current care and marke
     assert.equal((await service.updateProblem(problem.id, { priority: 'primary' }, providerId, provider)).priority, 'primary');
     assert.equal((await service.inactivateAllergy(allergy.id, providerId, 'Reviewed allergy correction', provider)).isActive, false);
     assert.equal((await service.discontinueMedication(medication.id, providerId, 'Reviewed medication correction', provider)).isActive, false);
+    for (const [table, id, field, expected, read] of [
+      ['patient_allergies', allergy.id, 'inactivation_reason', 'Reviewed allergy correction', () => service.getAllergies(patientId, true, patient)],
+      ['patient_medications', medication.id, 'discontinuation_reason', 'Reviewed medication correction', () => service.getMedications(patientId, true, patient)],
+    ]) {
+      const stored = (await client.query('SELECT * FROM ' + table + ' WHERE id=$1', [id])).rows[0];
+      assert.equal(stored[field], null); assert.ok(stored[field + '_encrypted'] && stored[field + '_iv'] && stored[field + '_tag']);
+      assert.ok(!JSON.stringify(stored).includes(expected));
+      const property = field.replace(/_([a-z])/g, (_match, letter) => letter.toUpperCase());
+      assert.equal((await read()).find(row => row.id === id)[property], expected);
+      await client.query('UPDATE ' + table + ' SET ' + field + '=$1,' + field + '_tag=$2 WHERE id=$3', ['Stale plaintext must not escape', '0'.repeat(32), id]);
+      const beforeFailure = await auditCount();
+      await assert.rejects(read(), { code: 'CLINICAL_DECRYPTION_UNAVAILABLE' });
+      assert.equal(await auditCount(), beforeFailure);
+      await client.query('UPDATE ' + table + ' SET ' + field + '=NULL,' + field + '_tag=$1 WHERE id=$2', [stored[field + '_tag'], id]);
+    }
     const summary = await service.getClinicalSummary(patientId, patientId, 'patient', patient); assert.equal(summary.profile.identityVerified, true); assert.equal(summary.problems.length, 1);
     assert.ok(!JSON.stringify((await client.query("SELECT new_values FROM audit_logs WHERE resource_type='patient_clinical_record' AND patient_id=$1", [patientId])).rows).includes('Reviewed medication correction'));
 
