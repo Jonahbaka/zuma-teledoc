@@ -180,3 +180,64 @@ test('clinical editor and task controls have explicit labels independent of init
   assert.match(source, /htmlFor=\{`\$\{taskFieldId\}-\$\{index\}-role`\}>Responsible role<\/Label><select id=/);
   assert.doesNotMatch(source, /<Label>Follow-up instructions<Textarea|<Label>Responsible role<select/);
 });
+
+
+test('Groq adapter refuses real patient, production and non-opted-in requests before HTTP', async () => {
+  const { requestGroqDraft } = require('../services/phc/clinicalAiGroqAdapter');
+  const env = { NODE_ENV: 'test', GROQ_API_KEY: 'synthetic-only-key', CLINICAL_AI_ALLOW_DEMO_GROQ: 'true' };
+  const args = { context: { demo_only: true }, model: 'openai/gpt-oss-120b', systemPrompt: 'Synthetic test', userPrompt: 'Synthetic record' };
+  let calls = 0;
+  const fetchImpl = async () => { calls++; return { ok: true, json: async () => ({ model: args.model, choices: [{ message: { content: '{}' } }] }) }; };
+  for (const [context, changedEnv] of [
+    [{ demo_only: false }, env],
+    [{ demo_only: 'true' }, env],
+    [args.context, { ...env, NODE_ENV: 'production' }],
+    [args.context, { ...env, NODE_ENV: 'staging' }],
+    [args.context, { ...env, CLINICAL_AI_ALLOW_DEMO_GROQ: 'false' }],
+  ]) {
+    await assert.rejects(
+      requestGroqDraft({ ...args, context }, { env: changedEnv, fetchImpl }),
+      { code: 'CLINICAL_AI_GROQ_DEMO_ONLY' }
+    );
+  }
+  assert.equal(calls, 0);
+});
+
+test('Groq synthetic adapter sends only to pinned endpoint and returns shaped output', async () => {
+  const { requestGroqDraft } = require('../services/phc/clinicalAiGroqAdapter');
+  const env = { NODE_ENV: 'test', GROQ_API_KEY: 'synthetic-only-key', CLINICAL_AI_ALLOW_DEMO_GROQ: 'true' };
+  const args = { context: { demo_only: true }, model: 'openai/gpt-oss-120b', systemPrompt: 'Safe synthetic system prompt', userPrompt: 'Synthetic encounter record' };
+  let captured;
+  const result = await requestGroqDraft(args, {
+    env,
+    fetchImpl: async (url, options) => {
+      captured = { url, options };
+      return { ok: true, json: async () => ({ model: args.model, choices: [{ message: { content: '{"summary":""}' } }] }) };
+    },
+  });
+  assert.equal(captured.url, 'https://api.groq.com/openai/v1/chat/completions');
+  assert.equal(captured.options.method, 'POST');
+  assert.equal(captured.options.headers.Authorization, 'Bearer synthetic-only-key');
+  const body = JSON.parse(captured.options.body);
+  assert.equal(body.model, args.model);
+  assert.deepEqual(body.messages.map(item => item.role), ['system', 'user']);
+  assert.equal(result.provider, 'groq');
+  assert.equal(result.text, '{"summary":""}');
+});
+
+test('Groq synthetic adapter never returns upstream failure bodies', async () => {
+  const { requestGroqDraft } = require('../services/phc/clinicalAiGroqAdapter');
+  const env = { NODE_ENV: 'test', GROQ_API_KEY: 'synthetic-only-key', CLINICAL_AI_ALLOW_DEMO_GROQ: 'true' };
+  const args = { context: { demo_only: true }, model: 'openai/gpt-oss-120b', systemPrompt: 'test', userPrompt: 'test' };
+  const cases = [
+    async () => ({ ok: false, status: 429, json: async () => ({ private: 'sensitive text' }) }),
+    async () => { throw new Error('sensitive text'); },
+    async () => ({ ok: true, json: async () => ({ choices: [] }) }),
+  ];
+  for (const fetchImpl of cases) {
+    await assert.rejects(requestGroqDraft(args, { env, fetchImpl }), error => (
+      error.code === 'CLINICAL_AI_PROVIDER_ERROR'
+      && !String(error.message).includes('sensitive text')
+    ));
+  }
+});

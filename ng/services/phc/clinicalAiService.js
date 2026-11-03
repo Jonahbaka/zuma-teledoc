@@ -5,6 +5,7 @@ const { z } = require('zod');
 const { getProgrammeCapabilities } = require('./offlineSyncService');
 const { recordProgrammeAudit, scopeError } = require('./programmeScopeService');
 const workflow = require('./phcWorkflowService');
+const { requestGroqDraft } = require('./clinicalAiGroqAdapter');
 
 const PROMPT_VERSION = 'phc-source-linked-draft-v3';
 const SUPPORTED_TYPES = new Set(['encounter_summary', 'soap_draft', 'missing_information', 'follow_up_draft']);
@@ -205,9 +206,17 @@ followUpDrafts is an array of proposals with title, instructions, sourceRefs. Pr
 missingInformation items contain field and reason. assertions items contain text and sourceRefs. No markdown and no chain-of-thought.`;
 }
 
-async function callModel({ suggestionType, input, allowedSourceRefs }) {
+async function callModel({ suggestionType, input, allowedSourceRefs, context }) {
   const provider = process.env.CLINICAL_AI_PROVIDER;
   const model = process.env.CLINICAL_AI_MODEL;
+  if (provider === 'groq') {
+    return requestGroqDraft({
+      context,
+      model: model || 'openai/gpt-oss-120b',
+      systemPrompt: systemPrompt(suggestionType, allowedSourceRefs),
+      userPrompt: 'Structured encounter record:\n' + JSON.stringify(input),
+    });
+  }
   if (provider !== 'anthropic' || !process.env.ANTHROPIC_API_KEY || !model) {
     throw scopeError(503, 'Approved clinical AI provider configuration is unavailable.', 'CLINICAL_AI_PROVIDER_UNAVAILABLE');
   }
@@ -241,6 +250,7 @@ async function createSuggestion(pool, req, context, { encounterId, suggestionTyp
     suggestionType,
     input,
     allowedSourceRefs: [...sources.keys()],
+    context,
   });
   const output = validateGrounding(parseModelJson(modelResponse.text), sources);
   if (suggestionType === 'soap_draft' && !output.soapDraft) {
