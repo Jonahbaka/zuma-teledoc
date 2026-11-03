@@ -12,6 +12,18 @@ import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/components/providers/AuthProvider';
 
 const emptyForm = () => ({ patientUserId: '', targetName: '', referralType: 'specialist', priority: 'routine', reason: '', clinicalNotes: '' });
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const referralPayload = (form) => ({
+  patient_user_id: form.patientUserId,
+  target_name: form.targetName.trim() || null,
+  referral_type: form.referralType,
+  priority: form.priority,
+  reason: form.reason.trim(),
+  clinical_notes: form.clinicalNotes.trim() || null,
+  destination_type: 'internal',
+});
+const confirmedReferral = (data) => data?.ok === true && uuid.test(data.referral?.id || '')
+  && ['draft', 'sent', 'accepted', 'declined', 'completed', 'cancelled'].includes(data.referral.status);
 const transitions = {
   draft: [['sent', 'Record sending'], ['cancelled', 'Cancel draft']],
   sent: [['accepted', 'Record acceptance'], ['declined', 'Record decline'], ['cancelled', 'Cancel referral']],
@@ -20,7 +32,18 @@ const transitions = {
 };
 
 export default function NigeriaProviderReferralsPage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  const accountId = user?.id || user?.userId;
+  const market = user?.marketScope || user?.market_scope;
+  const ready = !loading && accountId && user?.role === 'provider' && market === 'NG';
+  const accountKey = ready ? JSON.stringify([accountId, user.role, market]) : null;
+  const session = useRef(accountKey);
+  session.current = accountKey;
+  if (!ready) return <p role="status">{loading ? 'Loading referrals…' : 'Sign in with your Nigeria provider account to view referrals.'}</p>;
+  return <NigeriaProviderReferralsWorkspace key={accountKey} session={session} accountKey={accountKey} />;
+}
+
+export function NigeriaProviderReferralsWorkspace({ session, accountKey } = {}) {
   const [patients, setPatients] = useState([]);
   const [referrals, setReferrals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,12 +52,20 @@ export default function NigeriaProviderReferralsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [form, setForm] = useState(emptyForm);
   const [outcomes, setOutcomes] = useState({});
+  const [recovery, setRecovery] = useState(true);
+  const [recoveryError, setRecoveryError] = useState('');
+  const [checking, setChecking] = useState(false);
+  const pendingRequest = useRef(null);
+  const attempt = useRef(null);
+  const draftVersion = useRef(0);
+  const storageKey = `doctarx:referral-unresolved:${accountKey}`;
   const request = useRef(null);
   const busy = useRef(false);
-  const currentUser = useRef(user?.id);
-  currentUser.current = user?.id;
+  const mounted = useRef(true);
+  const isCurrent = useCallback(() => mounted.current && (!session || session.current === accountKey), [session, accountKey]);
 
   const loadData = useCallback(async () => {
+    if (!isCurrent()) return;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -46,7 +77,7 @@ export default function NigeriaProviderReferralsPage() {
       api.get('/providers/me/patients', { signal: controller.signal }),
       api.get('/ng/clinical/referrals', { signal: controller.signal }),
     ]);
-    if (controller.signal.aborted) return;
+    if (!isCurrent() || controller.signal.aborted) return;
     const nextErrors = {};
     const patientResult = result[0];
     if (patientResult.status === 'fulfilled' && patientResult.value.data?.success && Array.isArray(patientResult.value.data.patients)) {
@@ -59,17 +90,67 @@ export default function NigeriaProviderReferralsPage() {
     else nextErrors.referrals = 'Referral tracking could not be loaded. Refresh to check the latest status.';
     setErrors(nextErrors);
     setLoading(false);
-  }, []);
+  }, [isCurrent]);
+
+  const checkSavedSubmission = useCallback(async () => {
+    if (!isCurrent() || busy.current) return;
+    busy.current = true;
+    setChecking(true);
+    try {
+      const marker = sessionStorage.getItem(storageKey);
+      if (!marker) {
+        if (!pendingRequest.current && (!attempt.current || attempt.current.sends === 0)) {
+          // A failed storage reservation never reached the server and can be retired.
+          attempt.current = null; setRecovery(false); setRecoveryError('');
+        } else {
+          setRecovery(true);
+          setRecoveryError('The recovery reference is missing, but a previous save is still unresolved. Retry the unchanged details with the same reference before starting another referral.');
+        }
+        return;
+      }
+      const { requestId } = JSON.parse(marker);
+      if (!uuid.test(requestId || '')) throw new Error();
+      pendingRequest.current = requestId;
+      setRecovery(true);
+      const { data } = await api.get(`/ng/clinical/referrals/requests/${encodeURIComponent(requestId)}`);
+      if (!isCurrent() || sessionStorage.getItem(storageKey) !== marker) return;
+      if (!confirmedReferral(data)) throw new Error();
+      sessionStorage.removeItem(storageKey);
+      pendingRequest.current = null;
+      attempt.current = null;
+      setRecovery(false); setRecoveryError('');
+      // Reconciliation retires only the old attempt, never the current draft.
+      toast({ title: 'Saved referral found', description: 'Saved status: ' + data.referral.status + '. Saving a draft does not deliver it to a receiving team.' });
+      await loadData();
+    } catch {
+      if (isCurrent()) {
+        setRecovery(true);
+        setRecoveryError('A previous referral save is unresolved. Check its saved status before starting another. No clinical content is stored in this browser.');
+      }
+    } finally {
+      busy.current = false;
+      if (isCurrent()) setChecking(false);
+    }
+  }, [isCurrent, storageKey, loadData]);
+
+  const confirmSubmission = (key) => {
+    const marker = sessionStorage.getItem(storageKey);
+    if (!marker || JSON.parse(marker).requestId !== key) throw new Error('Recovery marker changed');
+    sessionStorage.removeItem(storageKey);
+    pendingRequest.current = null; attempt.current = null;
+    setRecovery(false); setRecoveryError('');
+  };
 
   useEffect(() => {
-    currentUser.current = user?.id;
+    mounted.current = true;
     setSubmitting(false);
     setForm(emptyForm());
     setOutcomes({});
     setSearchTerm('');
     loadData();
-    return () => { request.current?.abort(); currentUser.current = null; };
-  }, [loadData, user?.id]);
+    checkSavedSubmission();
+    return () => { request.current?.abort(); mounted.current = false; };
+  }, [loadData, checkSavedSubmission]);
 
   const filteredPatients = useMemo(() => patients.filter((patient) => {
     if (!searchTerm.trim()) return true;
@@ -77,65 +158,81 @@ export default function NigeriaProviderReferralsPage() {
     return ([patient.firstName, patient.lastName].filter(Boolean).join(' ') + ' ' + (patient.email || '')).toLowerCase().includes(query);
   }), [patients, searchTerm]);
 
-  const updateForm = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const updateForm = (field, value) => { draftVersion.current += 1; setForm((current) => ({ ...current, [field]: value })); };
+  const canonicalDraft = JSON.stringify(referralPayload(form));
+  const retryAllowed = attempt.current?.canonical === canonicalDraft;
 
   const submitReferral = async (event) => {
     event.preventDefault();
-    if (busy.current || loading || errors.patients) return;
+    if (!isCurrent() || busy.current || loading || errors.patients) return;
     if (!patients.some((patient) => patient.id === form.patientUserId) || !form.reason.trim()) {
       toast({ title: 'Missing referral details', description: 'Select a patient and enter the referral reason.', variant: 'destructive' });
       return;
     }
-    const actor = user?.id;
+    const canonical = JSON.stringify(referralPayload(form));
+    if (recovery && attempt.current?.canonical !== canonical) return;
+    const submittedVersion = draftVersion.current;
     busy.current = true;
     setSubmitting(true);
+    let currentAttempt;
     try {
-      const { data } = await api.post('/ng/clinical/referrals', {
-        patient_user_id: form.patientUserId,
-        target_name: form.targetName.trim() || null,
-        referral_type: form.referralType,
-        priority: form.priority,
-        reason: form.reason.trim(),
-        clinical_notes: form.clinicalNotes.trim() || null,
-        destination_type: 'internal',
-      });
-      if (currentUser.current !== actor) return;
-      if (!data.ok || !data.referral?.id) throw new Error('Submission not confirmed');
-      toast({ title: 'Referral draft saved', description: 'Review the destination and coordinate delivery before recording that it was sent.' });
-      setForm(emptyForm());
+      const marker = sessionStorage.getItem(storageKey);
+      if (!attempt.current) attempt.current = { canonical, key: crypto.randomUUID(), sends: 0, fresh: !marker && !pendingRequest.current };
+      currentAttempt = attempt.current;
+      if (currentAttempt.canonical !== canonical
+        || (marker && JSON.parse(marker).requestId !== currentAttempt.key)
+        || (pendingRequest.current && pendingRequest.current !== currentAttempt.key)) throw new Error('Earlier save unresolved');
+      // Only an opaque account-scoped UUID is persisted, before the mutation.
+      sessionStorage.setItem(storageKey, JSON.stringify({ requestId: currentAttempt.key }));
+      pendingRequest.current = currentAttempt.key; setRecovery(true);
+      currentAttempt.sends += 1;
+      const { data } = await api.post('/ng/clinical/referrals', JSON.parse(canonical), { headers: { 'Idempotency-Key': currentAttempt.key } });
+      if (!isCurrent()) return;
+      if (!confirmedReferral(data)) throw new Error('Submission not confirmed');
+      confirmSubmission(currentAttempt.key);
+      toast({ title: 'Referral save confirmed', description: 'Current recorded status: ' + data.referral.status + '. This confirmation does not establish delivery to a receiving team.' });
+      if (draftVersion.current === submittedVersion) setForm(emptyForm());
       await loadData();
     } catch (failure) {
-      if (currentUser.current !== actor) return;
-      toast({ title: 'Referral save not confirmed', description: failure.response?.data?.error || 'Refresh referral tracking before retrying. Your entered details are preserved.', variant: 'destructive' });
+      if (!isCurrent()) return;
+      let rejectedBeforeWrite = false;
+      if (failure.response?.status === 400 && failure.response?.data?.submissionNotStarted === true
+        && currentAttempt?.fresh && currentAttempt.sends === 1) {
+        try { confirmSubmission(currentAttempt.key); rejectedBeforeWrite = true; } catch { /* Keep the barrier if storage cannot be reconciled. */ }
+      }
+      if (!rejectedBeforeWrite) {
+        setRecovery(true);
+        setRecoveryError('Referral save is unresolved. Retry the unchanged details with the same reference or check saved status before starting another referral.');
+      }
+      toast({ title: 'Referral save not confirmed', description: failure.response?.data?.error || 'Your entered details are preserved. Check saved status before starting another referral.', variant: 'destructive' });
     } finally {
       busy.current = false;
-      if (currentUser.current === actor) setSubmitting(false);
+      if (isCurrent()) setSubmitting(false);
     }
   };
 
   const updateReferralStatus = async (referral, status) => {
-    if (busy.current || !transitions[referral.status]?.some(([allowed]) => allowed === status)) return;
+    if (!isCurrent() || busy.current || !transitions[referral.status]?.some(([allowed]) => allowed === status)) return;
     const summary = (outcomes[referral.id] || '').trim();
     if (!summary) {
       toast({ title: 'Outcome required', description: 'Record the communication, receiving decision, or closure outcome before changing this status.', variant: 'destructive' });
       return;
     }
-    const actor = user?.id;
     busy.current = true;
     setSubmitting(true);
     try {
       const { data } = await api.patch('/ng/clinical/referrals/' + referral.id + '/status', { status, response_summary: summary, reason: summary });
-      if (currentUser.current !== actor) return;
+      if (!isCurrent()) return;
       if (!data.ok || data.referral?.status !== status) throw new Error('Update not confirmed');
       toast({ title: 'Referral status recorded', description: 'The recorded status is ' + status.replaceAll('_', ' ') + '.' });
       setOutcomes((current) => ({ ...current, [referral.id]: '' }));
       await loadData();
     } catch (failure) {
-      if (currentUser.current !== actor) return;
+      if (!isCurrent()) return;
       toast({ title: 'Status update not confirmed', description: failure.response?.data?.error || 'Refresh referral tracking before trying again.', variant: 'destructive' });
     } finally {
       busy.current = false;
-      if (currentUser.current === actor) setSubmitting(false);
+      if (isCurrent()) setSubmitting(false);
     }
   };
 
@@ -143,6 +240,8 @@ export default function NigeriaProviderReferralsPage() {
     <PortalPageHeader eyebrow="DoctaRx · Clinical workspace" title="Referrals" description="Create a referral draft and keep the receiving decision, communication, and outcome with the care record." image="/marketing/ng/hero-image-container.png">
       <Button variant="outline" onClick={loadData} disabled={loading || submitting}><RefreshCw className="mr-2 h-5 w-5" aria-hidden="true" />Refresh</Button>
     </PortalPageHeader>
+    {recovery && <div className="portal-error"><p role="status">An earlier referral save may still be processing. Reconcile it before starting another referral.</p><Button disabled={checking || submitting} onClick={checkSavedSubmission}>{checking ? 'Checking saved status…' : 'Check saved referral'}</Button></div>}
+    {recoveryError && <p role="alert" className="portal-error">{recoveryError}</p>}
     {Object.values(errors).map((message) => <p key={message} role="alert" className="portal-error">{message}</p>)}
     <p className="rounded-2xl border border-blue-200 bg-blue-50 p-5 leading-7 text-blue-900">Saving a draft does not deliver it to a hospital or specialist. Coordinate through the approved channel and record the actual response and outcome.</p>
     {loading && <p role="status" className="flex items-center gap-3 text-slate-600"><Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />Loading patients and referrals…</p>}
@@ -164,7 +263,7 @@ export default function NigeriaProviderReferralsPage() {
           <div className="space-y-2"><Label htmlFor="referral-priority">Priority</Label><select id="referral-priority" value={form.priority} onChange={(event) => updateForm('priority', event.target.value)} className="min-h-12 w-full rounded-lg border border-slate-300 bg-white px-3"><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></select></div></div>
           <div className="space-y-2"><Label htmlFor="referral-reason">Reason for referral</Label><textarea id="referral-reason" value={form.reason} onChange={(event) => updateForm('reason', event.target.value)} rows={3} maxLength={6000} required className="w-full rounded-lg border border-slate-300 bg-white px-3 py-3" /></div>
           <div className="space-y-2"><Label htmlFor="referral-notes">Supporting clinical notes</Label><textarea id="referral-notes" value={form.clinicalNotes} onChange={(event) => updateForm('clinicalNotes', event.target.value)} rows={5} maxLength={10000} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-3" /></div>
-          <Button type="submit" disabled={!form.patientUserId || !form.reason.trim()} className="w-full bg-blue-600 text-white hover:bg-blue-700">{submitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" aria-hidden="true" /> : <Send className="mr-2 h-5 w-5" aria-hidden="true" />}Save referral draft</Button>
+          <Button type="submit" disabled={checking || !form.patientUserId || !form.reason.trim() || (recovery && !retryAllowed)} className="w-full bg-blue-600 text-white hover:bg-blue-700">{submitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" aria-hidden="true" /> : <Send className="mr-2 h-5 w-5" aria-hidden="true" />}Save referral draft</Button>
         </fieldset></form></CardContent>
       </Card>
     </div>

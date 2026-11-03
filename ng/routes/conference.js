@@ -1,7 +1,7 @@
 /**
  * ng/routes/conference.js
  * Multi-party conferencing control-plane API.
- * Mounted at /api/ng/conference (authenticated except /public/*).
+ * Mounted at /api/ng/conference (all operations authenticated, including invite redemption).
  */
 
 const express = require('express');
@@ -87,10 +87,10 @@ router.get('/rooms/code/:code', async (req, res) => {
 
 router.get('/rooms/:id', async (req, res) => {
   try {
-    await svc.assertRoomAccess(req.params.id, actor(req));
+    const access = await svc.assertRoomAccess(req.params.id, actor(req));
     const r = await svc.getRoom(req.params.id);
     if (!r) return res.status(404).json({ ok: false, error: 'Not found' });
-    res.json({ ok: true, room: r });
+    res.json({ ok: true, room: r, viewerUserId: req.user.id, viewerParticipantId: access.actor_participant_id || null });
   } catch (e) { handleError(res, e); }
 });
 

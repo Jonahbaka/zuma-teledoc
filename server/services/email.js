@@ -414,6 +414,9 @@ const sendWelcomeEmail = async (user) => {
  */
 const sendAppointmentNotification = async (appointment, recipient, type) => {
   try {
+    const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    const patientName = escapeHtml(`${appointment.patientFirstName || ''} ${appointment.patientLastName || ''}`.trim());
+    const providerName = escapeHtml(`${appointment.providerFirstName || ''} ${appointment.providerLastName || ''}`.trim());
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
     const scheduledDate = new Date(appointment.scheduledAt);
     const formattedDate = scheduledDate.toLocaleDateString('en-US', {
@@ -435,11 +438,11 @@ const sendAppointmentNotification = async (appointment, recipient, type) => {
         color: BRAND.secondary,
         colorEnd: BRAND.secondaryDark,
         subject: recipient.role === 'provider' 
-          ? `📅 New Appointment - ${appointment.patientFirstName} ${appointment.patientLastName}`
-          : `✅ Appointment Confirmed - Dr. ${appointment.providerFirstName} ${appointment.providerLastName}`,
+          ? '📅 New Appointment Scheduled'
+          : '✅ Appointment Confirmed',
         message: recipient.role === 'provider'
-          ? `A new appointment has been scheduled with <strong>${appointment.patientFirstName} ${appointment.patientLastName}</strong>.`
-          : `Your appointment with <strong>Dr. ${appointment.providerFirstName} ${appointment.providerLastName}</strong> has been confirmed.`
+          ? `A new appointment has been scheduled with <strong>${patientName}</strong>.`
+          : `Your appointment with <strong>Dr. ${providerName}</strong> has been confirmed.`
       },
       reminder: {
         icon: '⏰',
@@ -448,8 +451,8 @@ const sendAppointmentNotification = async (appointment, recipient, type) => {
         colorEnd: '#d97706',
         subject: `⏰ Reminder: Appointment on ${formattedDate}`,
         message: recipient.role === 'provider'
-          ? `Reminder: You have an upcoming appointment with <strong>${appointment.patientFirstName} ${appointment.patientLastName}</strong>.`
-          : `Reminder: Your appointment with <strong>Dr. ${appointment.providerFirstName} ${appointment.providerLastName}</strong> is coming up soon.`
+          ? `Reminder: You have an upcoming appointment with <strong>${patientName}</strong>.`
+          : `Reminder: Your appointment with <strong>Dr. ${providerName}</strong> is coming up soon.`
       },
       cancelled: {
         icon: '❌',
@@ -458,8 +461,8 @@ const sendAppointmentNotification = async (appointment, recipient, type) => {
         colorEnd: '#b91c1c',
         subject: '❌ Appointment Cancelled',
         message: recipient.role === 'provider'
-          ? `The appointment with <strong>${appointment.patientFirstName} ${appointment.patientLastName}</strong> has been cancelled.`
-          : `Your appointment with <strong>Dr. ${appointment.providerFirstName} ${appointment.providerLastName}</strong> has been cancelled.`
+          ? `The appointment with <strong>${patientName}</strong> has been cancelled.`
+          : `Your appointment with <strong>Dr. ${providerName}</strong> has been cancelled.`
       },
       updated: {
         icon: '🔄',
@@ -473,12 +476,12 @@ const sendAppointmentNotification = async (appointment, recipient, type) => {
 
     const config = configs[type] || configs.updated;
     const actionUrl = type === 'cancelled' 
-      ? `${appUrl}/${recipient.role}/appointments`
-      : `${appUrl}/${recipient.role}/appointments/${appointment.id}`;
+      ? `${appUrl}/${encodeURIComponent(recipient.role)}/appointments`
+      : `${appUrl}/${encodeURIComponent(recipient.role)}/appointments/${encodeURIComponent(appointment.id)}`;
 
     const bodyContent = `
       <p style="margin: 0 0 24px 0; font-size: 18px;">
-        Hello <strong>${recipient.firstName}</strong>,
+        Hello <strong>${escapeHtml(recipient.firstName)}</strong>,
       </p>
       
       <p style="margin: 0 0 24px 0;">
@@ -502,23 +505,16 @@ const sendAppointmentNotification = async (appointment, recipient, type) => {
           <tr>
             <td style="padding: 8px 0;">
               <span style="color: ${BRAND.gray}; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Duration</span><br>
-              <span style="font-size: 16px; font-weight: 600; color: ${BRAND.dark};">⏱️ ${appointment.durationMinutes || 30} minutes</span>
+              <span style="font-size: 16px; font-weight: 600; color: ${BRAND.dark};">⏱️ ${escapeHtml(appointment.durationMinutes || 30)} minutes</span>
             </td>
           </tr>
           <tr>
             <td style="padding: 8px 0;">
               <span style="color: ${BRAND.gray}; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Type</span><br>
-              <span style="font-size: 16px; font-weight: 600; color: ${BRAND.dark};">💻 ${appointment.type === 'video' ? 'Video Consultation' : appointment.type}</span>
+              <span style="font-size: 16px; font-weight: 600; color: ${BRAND.dark};">💻 ${escapeHtml(appointment.type === 'video' ? 'Video Consultation' : appointment.type)}</span>
             </td>
           </tr>
-          ${appointment.reasonForVisit ? `
-          <tr>
-            <td style="padding: 8px 0;">
-              <span style="color: ${BRAND.gray}; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Reason</span><br>
-              <span style="font-size: 16px; color: ${BRAND.dark};">📝 ${appointment.reasonForVisit}</span>
-            </td>
-          </tr>
-          ` : ''}
+
         </table>
       </div>
     `;
@@ -532,12 +528,12 @@ const sendAppointmentNotification = async (appointment, recipient, type) => {
       bodyContent,
       ctaButton: {
         text: type === 'cancelled' ? 'View All Appointments' : 'View Appointment Details',
-        url: actionUrl,
+        url: escapeHtml(actionUrl),
         color: config.color,
         colorEnd: config.colorEnd
       },
       footerNote: type === 'reminder' ? '⚡ <strong>Quick tip:</strong> Test your camera and microphone before the appointment for the best experience.' : '',
-      recipientEmail: recipient.email
+      recipientEmail: ''
     });
 
     await sendEmail({

@@ -1,10 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { 
   Calendar, Clock, User, FileText, Upload, CreditCard, 
   CheckCircle2, ChevronRight, ChevronLeft, Loader2, 
@@ -131,25 +129,6 @@ const TIME_SLOTS = [
 
 const SAME_MINUTE_BUFFER_MINUTES = 5;
 
-const insuranceSchema = z.object({
-  insuranceProvider: z.string().optional(),
-  policyNumber: z.string().optional(),
-  groupNumber: z.string().optional(),
-  subscriberName: z.string().optional(),
-  relationshipToSubscriber: z.enum(['self', 'spouse', 'child', 'other']).optional().default('self')
-}).refine((data) => {
-  // If any insurance field is provided, all required fields must be filled
-  const hasAnyField = !!(data.insuranceProvider || data.policyNumber || data.subscriberName);
-  if (hasAnyField) {
-    const hasAllRequired = !!(data.insuranceProvider && data.policyNumber && data.subscriberName);
-    return hasAllRequired;
-  }
-  return true; // All optional if nothing provided - can skip insurance
-}, {
-  message: 'Please provide all required insurance details (Provider, Policy Number, and Subscriber Name) or leave all fields empty to skip',
-  path: ['insuranceProvider']
-});
-
 function formatLocalDateKey(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -255,6 +234,16 @@ function getProviderLabel(provider) {
 }
 
 export default function BookAppointmentPage({ market = 'US' }) {
+  const { user, loading } = useAuth();
+  const userMarket = user?.marketScope || user?.market_scope;
+  const accountKey = !loading && user?.id && user.role === 'patient' && userMarket === market
+    ? JSON.stringify([user.id, user.role, userMarket, market]) : null;
+  const session = useRef(accountKey); session.current = accountKey;
+  if (!accountKey) return <p role="status">{loading ? 'Loading booking access…' : 'Sign in with a patient account for this portal to book.'}</p>;
+  return <BookingWorkspace key={accountKey} market={market} session={session} accountKey={accountKey} />;
+}
+
+export function BookingWorkspace({ market = 'US', session, accountKey }) {
   const router = useRouter();
   const config = MARKET_CONFIG[market] || MARKET_CONFIG.US;
   const steps = config.isNigeria
@@ -291,40 +280,97 @@ export default function BookAppointmentPage({ market = 'US' }) {
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
   const [providersError, setProvidersError] = useState('');
   
-  // Step 4: Insurance
-  const [insuranceFront, setInsuranceFront] = useState(null);
-  const [insuranceBack, setInsuranceBack] = useState(null);
-  const [hasExistingInsurance, setHasExistingInsurance] = useState(false);
-  
-  const insuranceForm = useForm({
-    resolver: zodResolver(insuranceSchema),
-    defaultValues: {
-      insuranceProvider: '',
-      policyNumber: '',
-      groupNumber: '',
-      subscriberName: '',
-      relationshipToSubscriber: 'self'
+  const [savedAppointment, setSavedAppointment] = useState(null);
+  const [bookingUncertain, setBookingUncertain] = useState(false);
+  const [storageUnavailable, setStorageUnavailable] = useState(false);
+  const [checkingSavedRequest, setCheckingSavedRequest] = useState(false);
+  const reconciliation = useRef(null);
+  const storageReady = useRef(false);
+  const storageKey = `doctarx:booking-unresolved:${accountKey}`;
+  const mounted = useRef(true);
+  const navigation = useRef(false);
+  const submission = useRef(null);
+  const bookingIntent = useRef(null);
+  const saved = useRef(null);
+  const uncertain = useRef(false);
+  const providersVersion = useRef(0);
+  const guidanceVersion = useRef(0);
+  const guidanceInput = useRef(symptoms); guidanceInput.current = symptoms;
+  const current = useCallback(() => mounted.current && !navigation.current && session.current === accountKey, [session, accountKey]);
+  const navigate = (url) => { if (!current()) return; navigation.current = true; router.push(url); };
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+
+  const checkSavedRequest = useCallback(async () => {
+    if (!current() || reconciliation.current || saved.current) return;
+    let marker;
+    let requestId;
+    try {
+      marker = sessionStorage.getItem(storageKey);
+      requestId = JSON.parse(marker)?.requestId;
+      if (!/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(requestId || '')) return;
+    } catch { return; }
+    const operation = {};
+    reconciliation.current = operation;
+    setCheckingSavedRequest(true);
+    try {
+      const response = await api.get(`/appointments/booking-requests/${requestId}`);
+      if (!current() || reconciliation.current !== operation) return;
+      // Match the exact pending identifier; never clear a newer tab operation.
+      if (sessionStorage.getItem(storageKey) !== marker) return;
+      const appointment = response.data?.appointment;
+      if (!response.data?.success || !/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(appointment?.id || '')) return;
+      try { sessionStorage.removeItem(storageKey); } catch { /* Saved result is still confirmed; reload can reconcile again. */ }
+      saved.current = appointment;
+      setSavedAppointment(appointment);
+      uncertain.current = false;
+      setBookingUncertain(false);
+    } catch {
+      // A missing record or failed read does not prove an earlier POST failed.
+    } finally {
+      if (reconciliation.current === operation) reconciliation.current = null;
+      if (current()) setCheckingSavedRequest(false);
     }
-  });
+  }, [current, storageKey]);
+
+  useEffect(() => {
+    try {
+      // Only an opaque retry identifier persists; never clinical form data.
+      if (sessionStorage.getItem(storageKey) !== null) {
+        uncertain.current = true;
+        setBookingUncertain(true);
+        void checkSavedRequest();
+      }
+      storageReady.current = true;
+    } catch {
+      storageReady.current = false;
+      setStorageUnavailable(true);
+    }
+  }, [storageKey, checkSavedRequest]);
 
   const runAITriage = useCallback(async () => {
-    if (!symptoms.trim()) return;
+    if (!current() || !symptoms.trim()) return;
+    const version = ++guidanceVersion.current;
+    const input = symptoms;
     
     setIsAnalyzing(true);
     try {
       setTriageResult(null);
       setGuidanceUnavailable('');
       await DoctaService.runAITriage(symptoms);
+      if (!current() || version !== guidanceVersion.current || guidanceInput.current !== input) return;
       setGuidanceUnavailable('Automated guidance could not be validated. Continue booking and share your symptoms with the clinician.');
     } catch (error) {
+      if (!current() || version !== guidanceVersion.current || guidanceInput.current !== input) return;
       setTriageResult(null);
       setGuidanceUnavailable(error.message || 'Optional automated guidance is unavailable. You can continue booking.');
     } finally {
-      setIsAnalyzing(false);
+      if (current() && version === guidanceVersion.current) setIsAnalyzing(false);
     }
-  }, [symptoms]);
+  }, [symptoms, current]);
 
   const loadProviders = useCallback(async () => {
+    if (!current()) return;
+    const version = ++providersVersion.current;
     setIsLoadingProviders(true);
     setProvidersError('');
 
@@ -335,6 +381,7 @@ export default function BookAppointmentPage({ market = 'US' }) {
         }
       });
 
+      if (!current() || version !== providersVersion.current) return;
       if (response.data?.success) {
         setProviders(response.data.providers || []);
       } else {
@@ -342,12 +389,13 @@ export default function BookAppointmentPage({ market = 'US' }) {
         setProvidersError('Unable to load providers right now.');
       }
     } catch (error) {
+      if (!current() || version !== providersVersion.current) return;
       setProviders([]);
       setProvidersError('Unable to load providers right now.');
     } finally {
-      setIsLoadingProviders(false);
+      if (current() && version === providersVersion.current) setIsLoadingProviders(false);
     }
-  }, []);
+  }, [current]);
 
   useEffect(() => {
     setHistoryReviewed(false);
@@ -394,28 +442,6 @@ export default function BookAppointmentPage({ market = 'US' }) {
     setAvailableDates(buildAvailableDates());
   }, []);
 
-  // Fetch existing insurance
-  useEffect(() => {
-    const fetchInsurance = async () => {
-      try {
-        const response = await api.get('/users/me/insurance');
-        if (response.data.success && response.data.insurance) {
-          setHasExistingInsurance(true);
-          insuranceForm.reset({
-            insuranceProvider: response.data.insurance.insurance_provider || '',
-            policyNumber: response.data.insurance.policy_number || '',
-            groupNumber: response.data.insurance.group_number || '',
-            subscriberName: response.data.insurance.subscriber_name || '',
-            relationshipToSubscriber: response.data.insurance.relationship_to_subscriber || 'self'
-          });
-        }
-      } catch (error) {
-        // No existing insurance
-      }
-    };
-    fetchInsurance();
-  }, [insuranceForm]);
-
   const selectedProvider = providers.find((provider) => provider.id === selectedProviderId) || matchedProvider;
   const displayProviders = matchedProvider
     ? [
@@ -424,23 +450,8 @@ export default function BookAppointmentPage({ market = 'US' }) {
       ]
     : providers;
 
-  const handleFileUpload = (e, type) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        toast({ title: 'File too large', description: 'Maximum file size is 10MB', variant: 'destructive' });
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (type === 'front') setInsuranceFront({ file, preview: reader.result });
-        else setInsuranceBack({ file, preview: reader.result });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   const nextStep = async () => {
+    if (!current() || submission.current || saved.current || uncertain.current) return;
     if (currentStep === 1 && !selectedCategory) {
       toast({ title: 'Select a health category', description: 'Please select what health issue you need help with', variant: 'destructive' });
       return;
@@ -464,23 +475,15 @@ export default function BookAppointmentPage({ market = 'US' }) {
       }
     }
     
-    if (currentStep === 5) {
-      // Insurance is optional - validate only if fields are filled
-      const formValues = insuranceForm.getValues();
-      const hasInsuranceData = formValues.insuranceProvider || formValues.policyNumber || formValues.subscriberName;
-      if (hasInsuranceData) {
-        const valid = await insuranceForm.trigger();
-        if (!valid) return;
-      }
-      // If no insurance data, skip validation and continue
-    }
-    
     setCurrentStep(prev => Math.min(prev + 1, 6));
   };
 
-  const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
+  const prevStep = () => { if (current() && !submission.current && !saved.current && !uncertain.current) setCurrentStep(prev => Math.max(prev - 1, 1)); };
 
   const submitBooking = async () => {
+    if (!storageReady.current || !current() || submission.current || saved.current || uncertain.current) return;
+    const operation = {}; submission.current = operation;
+    let requestSent = false;
     setIsLoading(true);
     
     try {
@@ -544,17 +547,11 @@ export default function BookAppointmentPage({ market = 'US' }) {
         return;
       }
       
-      const insuranceData = insuranceForm.getValues();
       if (!historyReviewed) {
         toast({ title: 'Review your history', description: 'Confirm that you have reviewed your medication and allergy information.', variant: 'destructive' });
         setIsLoading(false);
         return;
       }
-      
-      // Check if insurance data is provided
-      const hasInsuranceData = insuranceData.insuranceProvider && 
-                                insuranceData.policyNumber && 
-                                insuranceData.subscriberName;
       
       // Create appointment with auto-matched provider
       const appointmentData = {
@@ -575,7 +572,21 @@ export default function BookAppointmentPage({ market = 'US' }) {
         triageResult: triageResult || null // Include AI triage data
       };
       
+      const canonicalIntent = JSON.stringify(appointmentData);
+      if (!bookingIntent.current || bookingIntent.current.payload !== canonicalIntent) {
+        bookingIntent.current = { payload: canonicalIntent, key: crypto.randomUUID() };
+      }
+      appointmentData.clientRequestId = bookingIntent.current.key;
+      try {
+        sessionStorage.setItem(storageKey, JSON.stringify({ requestId: bookingIntent.current.key }));
+      } catch {
+        storageReady.current = false;
+        setStorageUnavailable(true);
+        return;
+      }
+      requestSent = true;
       const appointmentResponse = await api.post('/appointments/smart-book', appointmentData);
+      if (!current()) return;
       
       // Check response structure
       if (!appointmentResponse || !appointmentResponse.data) {
@@ -589,71 +600,34 @@ export default function BookAppointmentPage({ market = 'US' }) {
           throw new Error('Appointment created but no ID returned');
         }
         
-        // Optional client guidance is not stored as a verified clinical assessment.
-        
-        // Save insurance only if provided (optional - don't fail if this errors)
-        if (hasInsuranceData) {
-          try {
-            if (!hasExistingInsurance || insuranceForm.formState.isDirty) {
-              await api.post('/users/me/insurance', insuranceData);
-            }
-          } catch (insuranceError) {
-            console.warn('Failed to save insurance, continuing:', insuranceError);
-            // Don't fail the booking if insurance save fails
-          }
-        }
-        
-        // Upload documents only if insurance is provided (optional - don't fail if this errors)
-        if (hasInsuranceData && (insuranceFront || insuranceBack)) {
-          try {
-            const formData = new FormData();
-            formData.append('appointmentId', appointmentId);
-            if (insuranceFront?.file) formData.append('insurance_front', insuranceFront.file);
-            if (insuranceBack?.file) formData.append('insurance_back', insuranceBack.file);
-            await api.post('/appointments/documents', formData, {
-              headers: { 'Content-Type': 'multipart/form-data' }
-            });
-          } catch (docError) {
-            console.warn('Failed to upload documents, continuing:', docError);
-            // Don't fail the booking if document upload fails
-          }
-        }
-        
+        try { sessionStorage.removeItem(storageKey); } catch { /* Keep a conservative reconciliation barrier on reload. */ }
+        saved.current = appointmentResponse.data.appointment;
+        setSavedAppointment(saved.current);
+
         toast({ 
           title: config.toastTitle,
           description: `${config.bookingLabel} scheduled with ${appointmentResponse.data.provider?.name || getProviderLabel(selectedProvider)}`
         });
         
-        // Small delay to ensure database is updated, then redirect
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Redirect to appointments list with refresh parameter to force reload
-        router.push(`${config.appointmentHomePath}?refresh=${Date.now()}`);
+        navigate(`${config.appointmentHomePath}?refresh=${Date.now()}`);
       } else {
         const errorMsg = appointmentResponse.data?.error || 'Failed to book appointment';
         throw new Error(errorMsg);
       }
     } catch (error) {
-      // Log full error details for debugging
-      try {
-        console.error('Booking error:', {
-          message: error?.message,
-          response: error?.response?.data,
-          status: error?.response?.status,
-          stack: error?.stack
-        });
-      } catch (logError) {
-        // Ignore logging errors
+      if (!current()) return;
+      const definiteRejection = error.response?.status >= 400 && error.response?.status < 500 && error.response?.status !== 408 &&
+        !['BOOKING_INTENT_CONFLICT', 'BOOKING_RECONCILIATION_REQUIRED'].includes(error.response?.data?.code);
+      if (requestSent && definiteRejection) {
+        try { sessionStorage.removeItem(storageKey); } catch { /* Conservatively retain unresolved marker. */ }
       }
-      
-      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to book appointment. Please check all fields and try again.';
-      toast({
-        title: 'Booking Failed',
-        description: errorMessage,
-        variant: 'destructive'
-      });
+      if (requestSent && !saved.current && !definiteRejection) {
+        uncertain.current = true; setBookingUncertain(true);
+        toast({ title: 'Booking outcome uncertain', description: 'Do not submit another request. Check your appointments for a saved booking before continuing.', variant: 'destructive' });
+      } else toast({ title: 'Booking not confirmed', description: error.response?.data?.error || error.message || 'Check your appointments before retrying.', variant: 'destructive' });
     } finally {
-      setIsLoading(false);
+      if (submission.current === operation) submission.current = null;
+      if (current()) setIsLoading(false);
     }
   };
 
@@ -696,11 +670,18 @@ export default function BookAppointmentPage({ market = 'US' }) {
                 <p className="text-sm text-muted-foreground">{config.subtitle}</p>
               </div>
             </div>
-            <Button variant="ghost" onClick={() => router.push(config.appointmentHomePath)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => navigate(config.appointmentHomePath)}>Cancel</Button>
           </div>
         </div>
       </div>
 
+      {storageUnavailable && <p role="alert" className="mx-auto max-w-5xl p-4">Booking is unavailable because this browser cannot safely retain a pending request. Enable session storage before booking. No new request has been sent.</p>}
+      {(bookingUncertain || savedAppointment) && <div role="status" className="mx-auto max-w-5xl p-4">
+        <p>{savedAppointment ? `Appointment saved: ${savedAppointment.id}` : 'Booking outcome is uncertain. Do not create another request. Check your appointments before continuing.'}</p>
+        {bookingUncertain && <Button disabled={checkingSavedRequest} onClick={checkSavedRequest}>{checkingSavedRequest ? 'Checking saved request…' : 'Check saved request'}</Button>}
+        <Button onClick={() => navigate(config.appointmentHomePath)}>Check my appointments</Button>
+      </div>}
+      <fieldset disabled={isLoading || storageUnavailable || bookingUncertain || Boolean(savedAppointment)}>
       {/* Progress Steps */}
       <div className="max-w-5xl mx-auto px-4 py-6">
         <ol aria-label="Booking steps" className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
@@ -1034,6 +1015,7 @@ export default function BookAppointmentPage({ market = 'US' }) {
                       return (
                         <button
                           key={provider.id}
+                          aria-label={`Choose provider ${getProviderLabel(provider)}`}
                           type="button"
                           onClick={() => setSelectedProviderId(provider.id)}
                           className={`rounded-xl border-2 p-4 text-left transition-all ${
@@ -1098,6 +1080,7 @@ export default function BookAppointmentPage({ market = 'US' }) {
                       {availableDates.map((date) => (
                       <button
                         key={date}
+                        aria-label={`Choose date ${date}`}
                         onClick={() => { setSelectedDate(date); setSelectedTime(null); }}
                         className={`p-3 rounded-lg border-2 text-center transition-all ${
                           selectedDate === date
@@ -1151,6 +1134,7 @@ export default function BookAppointmentPage({ market = 'US' }) {
                               {periodSlots.map((slot) => (
                                 <button
                                   key={slot.time}
+                                  aria-label={`Choose time ${slot.time}`}
                                   type="button"
                                   onClick={() => setSelectedTime(slot.time)}
                                   className={`p-2 rounded-lg border-2 text-sm transition-all ${
@@ -1216,85 +1200,11 @@ export default function BookAppointmentPage({ market = 'US' }) {
             </div>
           )}
 
-          {/* Step 5: Insurance */}
+          {/* Step 5: Coverage */}
           {currentStep === 5 && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-foreground mb-2">{config.coverageTitle}</h2>
-              <p className="text-muted-foreground mb-6">{config.coverageHelp} <span className="font-medium text-foreground">{config.coverageOptional}</span></p>
-              
-              {hasExistingInsurance && (
-                <div className="mb-6 p-4 bg-blue-500/10 rounded-xl border border-blue-500/30">
-                  <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
-                    <Shield className="w-5 h-5" />
-                    <span className="font-medium">{config.isNigeria ? 'We have your coverage details on file' : 'We have your insurance on file'}</span>
-                  </div>
-                </div>
-              )}
-              
-              <div className="mb-6 p-4 bg-amber-500/10 rounded-xl border border-amber-500/30">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="text-sm text-amber-700 dark:text-amber-300">
-                      <strong>Note:</strong> {config.coverageNotice}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="insuranceProvider" className="text-foreground">{config.isNigeria ? 'HMO, NHIS, or Insurer' : 'Insurance Provider'}</Label>
-                    <Input {...insuranceForm.register('insuranceProvider')} placeholder={config.isNigeria ? 'e.g., NHIS, Reliance HMO, Leadway Health' : 'e.g., Blue Cross'} className="mt-2 bg-background" />
-                  </div>
-                  <div>
-                    <Label htmlFor="policyNumber" className="text-foreground">{config.isNigeria ? 'Coverage or ID Number' : 'Policy Number'}</Label>
-                    <Input {...insuranceForm.register('policyNumber')} placeholder={config.isNigeria ? 'If known' : 'e.g., ABC123456'} className="mt-2 bg-background" />
-                  </div>
-                  <div>
-                    <Label htmlFor="groupNumber" className="text-foreground">{config.isNigeria ? 'Organisation or Group' : 'Group Number'}</Label>
-                    <Input {...insuranceForm.register('groupNumber')} placeholder={config.isNigeria ? 'If this is through an employer or group' : 'e.g., GRP001'} className="mt-2 bg-background" />
-                  </div>
-                  <div>
-                    <Label htmlFor="subscriberName" className="text-foreground">{config.isNigeria ? 'Covered Person Name' : 'Subscriber Name'}</Label>
-                    <Input {...insuranceForm.register('subscriberName')} placeholder={config.isNigeria ? 'Name on coverage record, if applicable' : 'Name on card'} className="mt-2 bg-background" />
-                  </div>
-                </div>
-                
-                {/* Card Upload */}
-                <div className="border-t border-border pt-6">
-                  <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                    <Camera className="w-5 h-5" /> {config.isNigeria ? 'Upload Coverage Card or Note' : 'Upload Insurance Card'}
-                  </h3>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {[{ type: 'front', label: 'Front', state: insuranceFront, setState: setInsuranceFront },
-                      { type: 'back', label: 'Back', state: insuranceBack, setState: setInsuranceBack }].map(({ type, label, state, setState }) => (
-                      <div key={type}>
-                        <Label className="text-sm text-foreground">{config.isNigeria ? `Coverage document ${label.toLowerCase()}` : `Card ${label}`}</Label>
-                        <div className="mt-2">
-                          {state ? (
-                            <div className="relative">
-                              <img src={state.preview} alt={config.isNigeria ? `Coverage document ${label.toLowerCase()}` : `Insurance ${label}`} className="w-full h-32 object-cover rounded-lg border border-border" />
-                              <button onClick={() => setState(null)} className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center">
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ) : (
-                            <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-lg cursor-pointer ${
-                              config.isNigeria ? 'hover:border-blue-400 hover:bg-blue-500/5' : 'hover:border-blue-400 hover:bg-blue-500/5'
-                            }`}>
-                              <Upload className="w-8 h-8 text-muted-foreground" />
-                              <span className="text-sm text-muted-foreground mt-2">Upload {label.toLowerCase()}</span>
-                              <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, type)} className="hidden" />
-                            </label>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <h2 className="text-2xl font-bold">Coverage information</h2>
+              <p className="mt-4">Insurance saving and document uploads are unavailable in this booking flow. No coverage information or files are collected here. You may continue booking; this does not confirm coverage or payment.</p>
             </div>
           )}
 
@@ -1367,37 +1277,14 @@ export default function BookAppointmentPage({ market = 'US' }) {
                 
                 <div className="p-4 bg-muted rounded-xl">
                   <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2"><CreditCard className="w-4 h-4" /> {config.coverageTitle}</h3>
-                  {(() => {
-                    const insuranceData = insuranceForm.getValues();
-                    const hasInsurance = insuranceData.insuranceProvider && 
-                                        insuranceData.policyNumber && 
-                                        insuranceData.subscriberName;
-                    
-                    if (hasInsurance || hasExistingInsurance) {
-                      return (
-                        <>
-                          <p className="font-medium text-foreground">{insuranceData.insuranceProvider || 'On file'}</p>
-                          {insuranceData.policyNumber && (
-                            <p className="text-sm text-muted-foreground">{config.isNigeria ? 'Coverage ID' : 'Policy'}: {insuranceData.policyNumber}</p>
-                          )}
-                        </>
-                      );
-                    }
-                    return (
-                      <p className="text-muted-foreground italic">
-                        {config.isNigeria
-                          ? 'No coverage details provided. The consultation fee or coverage will be confirmed by DoctaRx Nigeria.'
-                          : 'No insurance provided. You can add insurance later in your profile.'}
-                      </p>
-                    );
-                  })()}
+                  <p>No insurance information or documents were saved through this booking. Coverage and payment are not confirmed here.</p>
                 </div>
                 
                 <div className="p-4 bg-amber-500/10 rounded-xl border border-amber-500/30">
                   <div className="flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-amber-700 dark:text-amber-300">
-                      <strong>Note:</strong> {selectedProvider ? `${getProviderLabel(selectedProvider)} will receive this request immediately.` : 'If the provider list is unavailable, we will assign the next approved provider so your booking can still go through.'}
+                      <strong>Note:</strong> {selectedProvider ? `${getProviderLabel(selectedProvider)} will be assigned if this booking is confirmed. Notification delivery is not guaranteed.` : 'If the provider list is unavailable, we will assign the next approved provider so your booking can still go through.'}
                     </p>
                   </div>
                 </div>
@@ -1427,13 +1314,14 @@ export default function BookAppointmentPage({ market = 'US' }) {
                 </Button>
               </div>
             ) : (
-              <Button onClick={submitBooking} disabled={isLoading} className={`${config.isNigeria ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800' : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'} text-white flex items-center gap-2`}>
+              <Button onClick={submitBooking} disabled={isLoading || storageUnavailable || bookingUncertain || Boolean(savedAppointment)} className={`${config.isNigeria ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800' : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'} text-white flex items-center gap-2`}>
                 {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> {config.isNigeria ? 'Requesting...' : 'Booking...'}</> : <><CheckCircle2 className="w-4 h-4" /> {config.isNigeria ? 'Request Consultation' : 'Confirm Booking'}</>}
               </Button>
             )}
           </div>
         </div>
       </div>
+      </fieldset>
     </div>
   );
 }

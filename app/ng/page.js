@@ -4,9 +4,9 @@ const nigeriaStructuredData = [
   {
     '@context': 'https://schema.org',
     '@type': 'WebPage',
-    name: 'DoctaRx Nigeria | Online Doctor Consultation, Prescriptions, and Pharmacy Access',
+    name: 'DoctaRx Nigeria | AI-First Telehealth & Language Voice',
     description:
-      'Book online doctor consultations in Nigeria, upload prescriptions, compare pharmacy availability, and manage medicine fulfillment in one secure platform.',
+      'Discover AI-first telehealth, language voice and clinician-connected care with DoctaRx Nigeria.',
     url: 'https://doctarx.com/ng',
     inLanguage: 'en-NG',
     isPartOf: {
@@ -28,7 +28,7 @@ const nigeriaStructuredData = [
     url: 'https://doctarx.com/ng',
     logo: 'https://doctarx.com/icon.svg',
     description:
-      'DoctaRx Nigeria is a digital healthcare platform for online doctor consultations, prescription management, medicine search, and pharmacy coordination across Nigeria.',
+      'DoctaRx connects market-specific telehealth, health records, messaging, and pharmacy options in Nigeria. Services depend on availability and clinical authorization.',
     areaServed: {
       '@type': 'Country',
       name: 'Nigeria',
@@ -73,9 +73,9 @@ const nigeriaStructuredData = [
 ];
 
 export const metadata = {
-  title: 'Online Doctor Consultation and Pharmacy Access in Nigeria',
+  title: 'AI-First Telehealth and Language Voice in Nigeria',
   description:
-    'DoctaRx Nigeria helps patients book online doctor consultations, upload prescriptions, compare pharmacy availability, and manage medicine fulfillment in one secure telehealth platform.',
+    'AI-first telehealth for Nigeria, built around your voice. Explore multilingual conversations, clinician-led care, health records and pharmacy coordination.',
   keywords: [
     'telehealth in Nigeria',
     'online doctor Nigeria',
@@ -103,9 +103,9 @@ export const metadata = {
     },
   },
   openGraph: {
-    title: 'DoctaRx Nigeria | Online Doctor Consultation, Prescriptions, and Pharmacy Access',
+    title: 'DoctaRx Nigeria | AI-First Telehealth & Language Voice',
     description:
-      'Online doctor consultations, prescription upload, medicine search, and trusted pharmacy coordination for patients in Nigeria.',
+      'Discover AI-first telehealth, language voice and clinician-connected care with DoctaRx Nigeria.',
     url: 'https://doctarx.com/ng',
     siteName: 'DoctaRx Nigeria',
     locale: 'en_NG',
@@ -115,9 +115,9 @@ export const metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DoctaRx Nigeria | Online Doctor Consultation and Pharmacy Access',
+    title: 'DoctaRx Nigeria | AI-First Telehealth & Language Voice',
     description:
-      'Book online doctor consultations, upload prescriptions, compare pharmacy availability, and manage medicine access in Nigeria.',
+      'AI-first telehealth for Nigeria. Your voice, your language, and a more connected care experience.',
     images: ['/ng/opengraph-image'],
   },
   other: {

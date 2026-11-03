@@ -22,7 +22,7 @@ const db = { query(...args) {
 } };
 const logger = require('../middleware/logger');
 const { encrypt } = require('../../lib/encryption');
-const { readClinicalField } = require('./clinicalContentService');
+const { readClinicalField, readClinicalNarrative } = require('./clinicalContentService');
 const { keysToCamel } = require('../../lib/utils');
 
 class PatientClinicalProfileService {
@@ -223,16 +223,18 @@ class PatientClinicalProfileService {
    * Inactivate an allergy (soft delete)
    */
   async inactivateAllergy(allergyId, userId, reason) {
+    const protectedReason = encrypt(reason);
     const { rows } = await db.query(
       `UPDATE patient_allergies SET
         is_active = false,
         inactivated_at = NOW(),
         inactivated_by = $1,
-        inactivation_reason = $2,
+        inactivation_reason = NULL,
+        inactivation_reason_encrypted = $2, inactivation_reason_iv = $3, inactivation_reason_tag = $4,
         updated_at = NOW()
-       WHERE id = $3
+       WHERE id = $5
        RETURNING *`,
-      [userId, reason, allergyId]
+      [userId, protectedReason.encrypted, protectedReason.iv, protectedReason.tag, allergyId]
     );
     
     if (rows.length === 0) {
@@ -445,16 +447,18 @@ class PatientClinicalProfileService {
    * Discontinue a medication
    */
   async discontinueMedication(medicationId, userId, reason) {
+    const protectedReason = encrypt(reason);
     const { rows } = await db.query(
       `UPDATE patient_medications SET
         is_active = false,
         discontinued_at = NOW(),
         discontinued_by = $1,
-        discontinuation_reason = $2,
+        discontinuation_reason = NULL,
+        discontinuation_reason_encrypted = $2, discontinuation_reason_iv = $3, discontinuation_reason_tag = $4,
         updated_at = NOW()
-       WHERE id = $3
+       WHERE id = $5
        RETURNING *`,
-      [userId, reason, medicationId]
+      [userId, protectedReason.encrypted, protectedReason.iv, protectedReason.tag, medicationId]
     );
     
     if (rows.length === 0) {
@@ -530,7 +534,7 @@ class PatientClinicalProfileService {
       isActive: allergy.is_active,
       verifiedAt: allergy.verified_at,
       inactivatedAt: allergy.inactivated_at,
-      inactivationReason: allergy.inactivation_reason,
+      inactivationReason: readClinicalNarrative(allergy, 'inactivation_reason'),
       createdAt: allergy.created_at,
       updatedAt: allergy.updated_at
     };
@@ -593,7 +597,7 @@ class PatientClinicalProfileService {
       endDate: medication.end_date,
       isActive: medication.is_active,
       discontinuedAt: medication.discontinued_at,
-      discontinuationReason: medication.discontinuation_reason,
+      discontinuationReason: readClinicalNarrative(medication, 'discontinuation_reason'),
       createdAt: medication.created_at,
       updatedAt: medication.updated_at
     };

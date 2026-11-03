@@ -16,6 +16,8 @@ function PharmacyOrdersWorkspace() {
   const [orders, setOrders] = useState([]);
   const [medicationRequests, setMedicationRequests] = useState([]);
   const [requestNotes, setRequestNotes] = useState({});
+  const [requestBusy, setRequestBusy] = useState(false);
+  const requestInFlight = useRef(false);
   const [requestPrices, setRequestPrices] = useState({});
   const [requestClarifications, setRequestClarifications] = useState({});
   const [notice, setNotice] = useState('');
@@ -47,7 +49,8 @@ function PharmacyOrdersWorkspace() {
   useEffect(() => { active.current = true; loadOrders(); return () => { active.current = false; }; }, []);
 
   const respondToMedicationRequest = async (requestId, status) => {
-    if (!workspace?.id) return;
+    if (!workspace?.id || requestInFlight.current) return;
+    requestInFlight.current = true; setRequestBusy(true);
     setNotice('');
     try {
       await api.patch(`/ng/pharmacy/${workspace.id}/medication-requests/${requestId}`, {
@@ -71,7 +74,7 @@ function PharmacyOrdersWorkspace() {
       await loadOrders();
     } catch (error) {
       if (active.current) setNotice(error.response?.data?.error || 'Unable to update this medication request.');
-    }
+    } finally { requestInFlight.current = false; if (active.current) setRequestBusy(false); }
   };
 
   return (
@@ -132,7 +135,7 @@ function PharmacyOrdersWorkspace() {
               <p className="text-base font-semibold uppercase tracking-[0.22em] text-blue-800">Medication Availability Requests</p>
               <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-950">Patient medication confirmation queue</h2>
               <p className="mt-1 text-base text-slate-700">
-                Respond to requests routed to this pharmacy. This updates the patient request only; admin verification is still required before inventory appears as verified live availability.
+                Respond to requests routed to this pharmacy. This updates the patient request only; admin verification is still required before inventory appears as verified live availability. Dispensing and handover must be recorded through the verified order workflow above.
               </p>
             </div>
 
@@ -196,23 +199,17 @@ function PharmacyOrdersWorkspace() {
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        <Button className={deliveryButtonClass} variant="outline" onClick={() => respondToMedicationRequest(request.id, 'pharmacy_reviewing')}>
+                        <Button className={deliveryButtonClass} variant="outline" disabled={requestBusy || ['cancelled', 'fulfilled', 'completed'].includes(request.status)} onClick={() => respondToMedicationRequest(request.id, 'pharmacy_reviewing')}>
                           Review Request
                         </Button>
-                        <Button className={`${deliveryButtonClass} bg-blue-700 text-white hover:bg-blue-800`} onClick={() => respondToMedicationRequest(request.id, 'available')}>
+                        <Button className={`${deliveryButtonClass} bg-blue-700 text-white hover:bg-blue-800`} disabled={requestBusy || ['cancelled', 'fulfilled', 'completed'].includes(request.status)} onClick={() => respondToMedicationRequest(request.id, 'available')}>
                           Confirm Available
                         </Button>
-                        <Button variant="outline" className={`${deliveryButtonClass} text-rose-700`} onClick={() => respondToMedicationRequest(request.id, 'unavailable')}>
+                        <Button variant="outline" className={`${deliveryButtonClass} text-rose-700`} disabled={requestBusy || ['cancelled', 'fulfilled', 'completed'].includes(request.status)} onClick={() => respondToMedicationRequest(request.id, 'unavailable')}>
                           Mark Unavailable
                         </Button>
-                        <Button className={deliveryButtonClass} variant="outline" onClick={() => respondToMedicationRequest(request.id, 'clarification_requested')}>
+                        <Button className={deliveryButtonClass} variant="outline" disabled={requestBusy || ['cancelled', 'fulfilled', 'completed'].includes(request.status)} onClick={() => respondToMedicationRequest(request.id, 'clarification_requested')}>
                           Request Clarification
-                        </Button>
-                        <Button className={deliveryButtonClass} variant="outline" onClick={() => respondToMedicationRequest(request.id, 'fulfilled')}>
-                          Mark Fulfilled
-                        </Button>
-                        <Button className={deliveryButtonClass} variant="outline" onClick={() => respondToMedicationRequest(request.id, 'completed')}>
-                          Complete
                         </Button>
                       </div>
                     </CardContent>

@@ -88,7 +88,7 @@ function pageHarness(checkoutValue, file = 'MedicationCheckout') {
   const Component = compile(`components/ng/delivery/${file}.jsx`, dependencies).default;
   const find = type => { const result = []; function walk(node) { if (Array.isArray(node)) return node.forEach(walk); if (!node || typeof node !== 'object') return; if (node.type === type) result.push(node); walk(node.props?.children); } walk(tree); return result; };
   const text = node => Array.isArray(node) ? node.map(text).join('') : typeof node === 'string' ? node : node?.props ? text(node.props.children) : '';
-  return { render() { tree = state.render(() => Component({ orderId: 'owned-order', pharmacyId: 'approved-pharmacy' })); }, button(label) { return find('button').find(button => text(button.props.children).includes(label)); }, writes, unmount: state.unmount };
+  return { render() { tree = state.render(() => Component({ orderId: 'owned-order', pharmacyId: 'approved-pharmacy' })); }, button(label) { return find('button').find(button => text(button.props.children).includes(label)); }, text: () => text(tree), writes, unmount: state.unmount };
 }
 
 test('expired quote cannot render delivery approval, payment or dispatch buttons', () => {
@@ -115,4 +115,69 @@ test('pending medicine and delivery stages explicitly resume through the existin
     const button = view.button(stage === 'medicines' ? 'Resume medicine payment securely' : 'Resume delivery payment securely'); assert.ok(button); button.props.onClick();
     assert.equal(view.writes.length, 1); assert.equal(view.writes[0][0], 'pay'); assert.equal(view.writes[0][1].stage, stage); assert.equal(Object.keys(view.writes[0][1]).join(), 'stage'); view.unmount();
   }
+});
+
+test('suspended pharmacy checkout explains the hold and preserves existing payment verification', () => {
+  const base = checkout();
+  const value = checkout({ pharmacy: { ...base.pharmacy, active: false },
+    payment: { ...base.payment, medicines: { status: 'pending', reference: 'existing-receipt' } },
+    actions: Object.fromEntries(Object.keys(base.actions).map(name => [name, name === 'canCancel'])) });
+  const view = pageHarness(value); view.render();
+  assert.match(view.text(), /This pharmacy is unavailable for new fulfillment/);
+  assert.equal(view.button('Pay for medicines securely'), undefined); assert.equal(view.button('Pay approved delivery amount'), undefined);
+  const verify = view.button('Verify with payment provider'); assert.ok(verify); verify.props.onClick();
+  assert.equal(view.writes[0][0], 'payments/existing-receipt/verify'); view.unmount();
+});
+
+
+test('legacy quantity review stays visible alongside actual delivery and payment status', () => {
+  const base=checkout(); const value=checkout({status:'delivered',clinicalReviewRequired:true,actions:Object.fromEntries(Object.keys(base.actions).map(name=>[name,false]))});
+  const view=pageHarness(value);view.render();assert.match(view.text(),/Clinical review required: prescription dispensing records need reconciliation/);
+  assert.match(view.text(),/Do not arrange additional medicine or assume a refund/);
+  assert.equal(view.button('Pay for medicines securely'),undefined);assert.equal(view.button('Pay approved delivery amount'),undefined);assert.equal(view.writes.length,0);view.unmount();
+});
+
+test('prescription detail blocks clinical completion and dispensing while showing preserved quantity review', async () => {
+  for(const lifecycle_status of ['fully_dispensed','partially_dispensed']) {
+    const state=stateHarness(); const data={id:'isolated-rx',lifecycle_status,quantity_review_required:true,items:[{id:'isolated-item',quantity:2,dispensed_quantity:1,status:'dispensed'}]};
+    const dependencies={react:state.react,'next/navigation':{useRouter:()=>({push(){}})},'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})},'lucide-react':new Proxy({},{get:(_value,name)=>String(name)}), './rxApi':{rx:{get:async()=>({prescription:data}),events:async()=>({events:[]})},statusBadge:()=>'',STATUS_LABELS:{},fmtDate:()=>''}};
+    const Detail=compile('components/ng/prescriptions/RxDetail.jsx',dependencies).default;
+    state.render(()=>Detail({id:data.id}));await flush();const tree=state.render(()=>Detail({id:data.id})); const nodes=[];
+    function walk(node){if(Array.isArray(node))return node.forEach(walk);if(!node||typeof node!=='object')return;nodes.push(node);walk(node.props?.children);}walk(tree);
+    assert.ok(nodes.some(node=>node.props?.role==='alert'&&String(node.props.children).includes('Clinical review required')));
+    assert.equal(nodes.some(node=>node.props?.children==='Mark complete'),false);
+    const item=nodes.find(node=>typeof node.type==='function'&&node.type.name==='RxItem');assert.equal(item.props.canDispense,false);state.unmount();
+  }
+});
+
+
+test('responsible pharmacy sees the clinical review hold alongside retained order facts', () => {
+  const base=checkout();const value=checkout({status:'delivered',clinicalReviewRequired:true,actions:Object.fromEntries(Object.keys(base.actions).map(name=>[name,false]))});
+  const view=pageHarness(value,'PharmacyMedicationOrder');view.render();assert.match(view.text(),/Clinical review required: reconcile the prescription with the recorded handover/);
+  assert.match(view.text(),/does not authorize replacement medicine or a refund/);assert.equal(view.writes.length,0);view.unmount();
+});
+
+test('legacy wallet view preserves recorded balances/history and refresh, with no payout action or success claim',async()=>{
+  const state=stateHarness();let reads=0,writes=0,tree;
+  const wallet={balance:'1200.50',pending_balance:'300.25',todayEarnings:'50.00',medicationStatement:{outstandingMinor:900000,settledMinor:450000,orderCount:2}};
+  const dependencies={react:state.react,'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})},
+    'lucide-react':new Proxy({},{get:(_value,name)=>String(name)}),'@/components/ui/button':{Button:'button'},
+    '@/components/providers/AuthProvider':{useAuth:()=>({user:{id:'synthetic-pharmacist',role:'pharmacy'},loading:false,isAuthenticated:true})},
+    '@/components/ng/NigeriaPharmacyPortalShell':{__esModule:true,default:'shell'},'@/components/branding/PortalPageHeader':{__esModule:true,default:'header'},
+    '@/lib/ngPharmacyPortal':{fetchNigeriaPharmacyWorkspace:async()=>({id:'synthetic-pharmacy'})},
+    '@/lib/ngDeliveryApi':{deliveryDate:value=>value,deliveryError:error=>error.message,formatKobo:String,legacyWalletAmount:String,readMedicationPharmacyStatement:value=>value,statusLabel:value=>value},
+    '@/components/ng/delivery/DeliveryPresentation':new Proxy({},{get:(_value,name)=>String(name)}),
+    '@/lib/api':{__esModule:true,default:{async get(url){reads++;return{data:url.endsWith('/transactions')?[{id:'historical-row',type:'settlement',amount:'100.00',reference:'existing-unreconciled-reference',created_at:'2026-11-03'}]:wallet};},post(){writes++;throw new Error('No legacy payout network request is permitted');}}},
+  };
+  const Page=compile('app/ng/pharmacy/wallet/page.js',dependencies).default;const Workspace=Page().type;
+  const render=()=>{tree=state.render(()=>Workspace());};
+  const nodes=()=>{const all=[];function walk(node){if(Array.isArray(node))return node.forEach(walk);if(!node||typeof node!=='object')return;all.push(node);walk(node.props?.children);}walk(tree);return all;};
+  const text=node=>Array.isArray(node)?node.map(text).join(''):typeof node==='string'?node:node?.props?text(node.props.children):'';
+  render();await flush();render();
+  const hold=nodes().find(node=>node.type==='button'&&text(node)==='Legacy payouts paused');
+  assert.equal(hold.props.disabled,true);assert.equal(hold.props.onClick,undefined);assert.equal(hold.props['aria-describedby'],'legacy-payout-hold');
+  assert.match(text(tree),/pending finance reconciliation/);assert.match(text(tree),/does not cancel or refund/);assert.match(text(tree),/existing-unreconciled-reference/);assert.match(text(tree),/1200.50/);assert.match(text(tree),/300.25/);
+  assert.equal(reads,2);assert.equal(writes,0);
+  const refresh=nodes().find(node=>node.type==='button'&&text(node).includes('Refresh financial records'));await refresh.props.onClick();render();assert.equal(reads,4);assert.equal(writes,0);
+  assert.doesNotMatch(text(tree),/settlement request returned|Submitting legacy|Request legacy wallet settlement/);state.unmount();
 });

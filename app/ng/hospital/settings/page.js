@@ -139,15 +139,13 @@ The dispensing queue is managed within your DoctaRx pharmacy dashboard. No addit
   {
     key: 'lab_systems',
     label: 'Laboratory Integration',
-    shortDesc: 'Connect your lab system for digital test orders, result delivery, and critical value alerts.',
-    fullDesc: `Laboratory integration enables providers to order tests digitally, track sample status, and receive results electronically within the patient record. Critical values trigger automatic provider alerts.
+    shortDesc: 'Unavailable: no lab ordering, result ingestion, or automatic critical value alerts.',
+    fullDesc: `Laboratory integration is not implemented. Lab orders cannot be sent, new results cannot be ingested, and automatic critical value alerts are not available.
 
-Integration adapters are being developed for common Nigerian laboratory information systems (LIS). Contact us if you run an in-house lab.`,
+FHIR can read previously stored lab results; this does not provide a live laboratory workflow. The capabilities below are planned, not live. No launch date is confirmed.`,
     setupSteps: [
-      'Contact enterprise@doctarx.com with your LIS software name',
-      'DoctaRx assesses integration compatibility',
-      'Custom adapter development (if needed)',
-      'Pilot testing with selected test orders',
+      'Email enterprise@doctarx.com to express interest and share your LIS software name',
+      'An expression of interest does not enable laboratory integration',
     ],
     icon: TestTube,
     iconColor: 'text-amber-500',
@@ -208,6 +206,8 @@ export default function HospitalSettings() {
   const toggle = (key) => setExpanded(e => ({ ...e, [key]: !e[key] }));
 
   const liveStatus = (key, defaultStatus) => {
+    // A persisted status cannot make an unimplemented lab workflow available.
+    if (key === 'lab_systems') return 'unavailable';
     const live = integrations.find(i => i.integration_type === key);
     return live?.status || defaultStatus;
   };
@@ -363,7 +363,8 @@ export default function HospitalSettings() {
               const Icon = intg.icon;
               const effectiveStatus = liveStatus(intg.key, intg.defaultStatus);
               const cfg = INTEGRATION_STATUS[effectiveStatus] || INTEGRATION_STATUS.pending;
-              const liveIntg = integrations.find(i => i.integration_type === intg.key);
+              const isLab = intg.key === 'lab_systems';
+              const liveIntg = isLab ? null : integrations.find(i => i.integration_type === intg.key);
               const isExpanded = expanded[intg.key];
 
               return (
@@ -377,7 +378,7 @@ export default function HospitalSettings() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-bold text-foreground text-sm">{intg.label}</p>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${cfg.bg} ${cfg.color} ${cfg.border}`}>
-                          {cfg.label}
+                          {isLab ? 'Unavailable' : cfg.label}
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">{intg.shortDesc}</p>
@@ -411,7 +412,7 @@ export default function HospitalSettings() {
 
                       {/* Capabilities */}
                       <div>
-                        <p className="text-xs font-semibold text-foreground uppercase tracking-wide mb-2">Capabilities</p>
+                        <p className="text-xs font-semibold text-foreground uppercase tracking-wide mb-2">{isLab ? 'Planned capabilities (not live)' : 'Capabilities'}</p>
                         <div className="flex flex-wrap gap-1.5">
                           {intg.capabilities.map(c => (
                             <span key={c} className="text-xs bg-background border border-border text-muted-foreground px-2.5 py-1 rounded-full">{c}</span>
@@ -421,7 +422,7 @@ export default function HospitalSettings() {
 
                       {/* Setup steps */}
                       <div>
-                        <p className="text-xs font-semibold text-foreground uppercase tracking-wide mb-3">How to Set Up</p>
+                        <p className="text-xs font-semibold text-foreground uppercase tracking-wide mb-3">{isLab ? 'Express interest' : 'How to Set Up'}</p>
                         <div className="space-y-2">
                           {intg.setupSteps.map((step, idx) => (
                             <div key={idx} className="flex items-start gap-3">
@@ -477,7 +478,7 @@ export default function HospitalSettings() {
           <div className="text-sm">
             <p className="font-bold text-foreground mb-1">Data Protection Notice</p>
             <p className="text-muted-foreground text-xs leading-relaxed">
-              All integrations are implemented in compliance with the <strong className="text-foreground">Nigeria Data Protection Act (NDPA) 2023</strong>. Patient data shared through FHIR R4 or EMR integrations is encrypted in transit (TLS 1.3) and at rest. A data processing agreement is required before any live integration goes active. Contact <a href="mailto:compliance@doctarx.com" className="text-purple-500 underline">compliance@doctarx.com</a> for DPA documentation.
+              Planned integrations require security and privacy review and a data processing agreement before activation. Listing an integration here does not confirm that it is live or that its security and compliance review is complete. Contact <a href="mailto:compliance@doctarx.com" className="text-purple-500 underline">compliance@doctarx.com</a> for DPA documentation.
             </p>
           </div>
         </div>

@@ -59,6 +59,9 @@ router.post('/session',
         session: result.session,
         queueEntry: result.queueEntry,
         analysis: {
+          assessmentStatus: result.aiAnalysis.assessmentStatus,
+          requiresClinicalReview: result.aiAnalysis.requiresClinicalReview,
+          confidenceScore: result.aiAnalysis.confidenceScore,
           severity: result.aiAnalysis.severity,
           triageLevel: result.aiAnalysis.triageLevel,
           suggestedSpecialty: result.aiAnalysis.suggestedSpecialty,
@@ -77,7 +80,8 @@ router.post('/session',
       logger.error('Create triage session error:', error);
       res.status(error.status || 500).json({
         success: false,
-        error: error.message || 'Failed to create triage session'
+        error: error.message || 'Failed to create triage session',
+        ...(error.code === 'TRIAGE_REQUIRES_CLINICAL_REVIEW' ? { code: error.code, analysis: error.analysis, manualBookingRequired: true } : {})
       });
     }
   }
@@ -108,6 +112,9 @@ router.post('/analyze',
       res.json({
         success: true,
         analysis: {
+          assessmentStatus: analysis.assessmentStatus,
+          requiresClinicalReview: analysis.requiresClinicalReview,
+          reviewMessage: analysis.reviewMessage,
           severity: analysis.severity,
           triageLevel: analysis.triageLevel,
           suggestedSpecialty: analysis.suggestedSpecialty,

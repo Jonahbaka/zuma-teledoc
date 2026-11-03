@@ -86,20 +86,16 @@ test('joining cannot elevate a new account with a client-supplied host role', as
     },
   };
 
-  const participant = await joinRoom(
-    room.id,
+  await assert.rejects(joinRoom(room.id,
     { user_id: 'new-user', role: 'provider', display_name: 'New User' },
-    { display_name: 'New User', role: 'host' },
-    pool
-  );
-  assert.equal(participant.role, 'observer');
-  assert.equal(participant.status, 'waiting');
+    { display_name: 'New User', role: 'host' }, pool), error => error.code === 'FORBIDDEN');
+
 });
 
-function joinPool(existing, count = 1) {
+function joinPool(existing, count = 1, roomOverride = room) {
   return {
     async query(sql, params) {
-      if (sql.includes('SELECT * FROM ng_conf_rooms')) return { rows: [room] };
+      if (sql.includes('SELECT * FROM ng_conf_rooms')) return { rows: [roomOverride] };
       if (sql.includes('WHERE room_id=$1 AND user_id=$2')) return { rows: existing ? [existing] : [] };
       if (sql.includes('COUNT(*)::int')) return { rows: [{ n: count }] };
       if (sql.includes('INSERT INTO ng_conf_participants')) {
@@ -144,4 +140,70 @@ test('a waiting clinical participant cannot bypass capacity or gain admission on
     joinRoom(room.id, { user_id: 'waiting-1', role: 'provider' }, {}, joinPool(existing, room.max_participants)),
     (error) => error.code === 'ROOM_FULL'
   );
+});
+
+test('disabled waiting room never admits strangers or resurrects removed/denied accounts', async () => {
+  const direct = { ...room, requires_waiting_room:false };
+  for (const existing of [null, {id:'p',role:'patient',status:'removed'}, {id:'p',role:'consultant',status:'denied'}]) {
+    await assert.rejects(joinRoom(room.id,{user_id:'stranger',role:'patient'},{role:'host'},joinPool(existing,1,direct)),error=>error.code==='FORBIDDEN');
+  }
+  const patient=await joinRoom(room.id,{user_id:room.patient_user_id,role:'patient'},{role:'host'},joinPool(null,1,direct));
+  assert.equal(patient.role,'patient'); assert.equal(patient.status,'admitted');
+  const family=await joinRoom(room.id,{user_id:'family-user',role:'patient'},{role:'host'},joinPool({id:'family',role:'family',status:'invited'},1,direct));
+  assert.equal(family.role,'family');
+});
+
+test('removed moderators cannot admit, deny, mute, raise hands or end another membership', async () => {
+  const svc=require('../services/conferencing/conferenceService');
+  let writes=0;
+  const pool={async query(sql){
+    if(sql.includes('SELECT * FROM ng_conf_rooms'))return{rows:[{...room,status:'live'}]};
+    if(sql.includes('WHERE room_id=$1 AND user_id=$2'))return{rows:[{id:'former',role:'consultant',status:'removed'}]};
+    if(sql.includes('WHERE id=$1 AND room_id=$2')) { if(sql.trim().startsWith('UPDATE'))writes++; return{rows:[{id:'target',role:'patient',status:'waiting'}]}; }
+    throw new Error('Unexpected synthetic query');
+  }};
+  const actor={user_id:'former-user',role:'provider'};
+  for(const operation of [()=>svc.admitParticipant(room.id,'target',actor,pool),()=>svc.denyParticipant(room.id,'target',actor,pool),()=>svc.leaveRoom(room.id,'target',actor,pool),()=>svc.setMute(room.id,'target',{audio:true},actor,pool),()=>svc.raiseHand(room.id,'target',true,actor,pool)])await assert.rejects(operation,error=>error.code==='FORBIDDEN');
+  assert.equal(writes,0);
+});
+
+function invitationPool({ failAudit=false, expiredOnConsume=false }={}) {
+  let state={used:false,participant:null};let before;const calls=[];
+  const client={async query(sql,params=[]){calls.push(sql);
+    if(sql==='BEGIN'){before=structuredClone(state);return{rows:[]};}
+    if(sql==='ROLLBACK'){state=before;return{rows:[]};}
+    if(sql==='COMMIT')return{rows:[]};
+    if(sql.includes('SELECT * FROM ng_conf_invites'))return{rows:state.used?[]:[{id:'invite',room_id:room.id,role:'family',display_name:'Invited family'}]};
+    if(sql.includes('SELECT * FROM ng_conf_rooms'))return{rows:[{...room,status:'live',requires_waiting_room:false}]};
+    if(sql.includes('INSERT INTO ng_conf_participants')){
+      if(params.length===4)state.participant={id:'member',user_id:params[1],role:params[3],status:'invited'};
+      else state.participant.status=params[4];
+      return{rows:[{...state.participant}]};
+    }
+    if(sql.includes('WHERE room_id=$1 AND user_id=$2'))return{rows:state.participant?[{...state.participant}]:[]};
+    if(sql.includes('COUNT(*)::int'))return{rows:[{n:1}]};
+    if(sql.includes('INSERT INTO ng_conf_events')){if(failAudit)throw new Error('Synthetic audit outage');return{rows:[]};}
+    if(sql.includes('UPDATE ng_conf_invites')){if(expiredOnConsume)return{rows:[]};state.used=true;return{rows:[{id:'invite'}]};}
+    throw new Error('Unexpected synthetic invitation query');
+  },release(){calls.push('RELEASE');}};
+  return{connect:async()=>client,calls,get state(){return state;}};
+}
+
+test('authenticated invite redemption preserves invited role and consumes only with committed membership', async()=>{
+  const svc=require('../services/conferencing/conferenceService');const pool=invitationPool();
+  await assert.rejects(svc.redeemInvite('synthetic-token',{user_id:null},pool),error=>error.code==='FORBIDDEN');assert.equal(pool.calls.length,0);
+  const member=await svc.redeemInvite('synthetic-token',{user_id:'family-user',role:'patient'},pool);
+  assert.equal(member.role,'family');assert.equal(member.status,'admitted');assert.equal(pool.state.used,true);
+  assert.equal(await svc.redeemInvite('synthetic-token',{user_id:'other-user',role:'patient'},pool),null);
+  assert.ok(pool.calls.some(sql=>sql.includes('ng_conf_invites')&&sql.includes('FOR UPDATE')));
+  assert.equal(pool.calls.at(-1),'RELEASE');
+});
+
+test('failed or expired invitation redemption rolls participant and token changes back together',async()=>{
+  const svc=require('../services/conferencing/conferenceService');
+  for(const options of [{failAudit:true},{expiredOnConsume:true}]){
+    const pool=invitationPool(options);
+    await assert.rejects(svc.redeemInvite('synthetic-token',{user_id:'family-user',role:'patient'},pool));
+    assert.equal(pool.state.used,false);assert.equal(pool.state.participant,null);assert.ok(pool.calls.includes('ROLLBACK'));
+  }
 });

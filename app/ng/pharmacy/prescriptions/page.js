@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import NigeriaPharmacyPortalShell from '@/components/ng/NigeriaPharmacyPortalShell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,9 +13,16 @@ export default function NigeriaPharmacyPrescriptionsPage() {
   const [prescriptions, setPrescriptions] = useState([]);
   const [notice, setNotice] = useState('');
   const [edits, setEdits] = useState({});
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const mounted = useRef(true);
+  const loadVersion = useRef(0);
 
-  const loadPrescriptions = async () => {
+  const loadPrescriptions = useCallback(async () => {
+    const generation = ++loadVersion.current;
+    const current = () => mounted.current && generation === loadVersion.current;
     const pharmacyWorkspace = await fetchNigeriaPharmacyWorkspace().catch(() => null);
+    if (!current()) return;
     setWorkspace(pharmacyWorkspace);
 
     if (!pharmacyWorkspace?.id) {
@@ -25,16 +32,19 @@ export default function NigeriaPharmacyPrescriptionsPage() {
     }
 
     const response = await api.get(`/ng/pharmacy/${pharmacyWorkspace.id}/prescriptions`).catch((error) => {
-      setNotice(error.response?.data?.error || 'Unable to load routed prescriptions.');
+      if (current()) setNotice(error.response?.data?.error || 'Unable to load routed prescriptions.');
       return { data: [] };
     });
+    if (!current()) return;
     setPrescriptions(Array.isArray(response.data) ? response.data : []);
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
+    mounted.current = true;
     loadPrescriptions();
-  }, []);
+    return () => { mounted.current = false; };
+  }, [loadPrescriptions]);
 
   const updateEdit = (id, field, value) => {
     setEdits((current) => ({
@@ -44,19 +54,23 @@ export default function NigeriaPharmacyPrescriptionsPage() {
   };
 
   const updateStatus = async (prescriptionId, status) => {
-    if (!workspace?.id) return;
+    if (!workspace?.id || inFlight.current || !mounted.current) return;
+    inFlight.current = true; setBusy(true);
     setNotice('');
     try {
       await api.patch(`/ng/pharmacy/${workspace.id}/prescriptions/${prescriptionId}`, {
         status,
-        pharmacyNotes: edits[prescriptionId]?.pharmacyNotes || null,
-        confirmedPriceNgn: edits[prescriptionId]?.confirmedPriceNgn || null,
-        clarificationRequest: edits[prescriptionId]?.clarificationRequest || null,
+        ...(edits[prescriptionId] || {}),
       });
+      if (!mounted.current) return;
+      setEdits((current) => { const next = { ...current }; delete next[prescriptionId]; return next; });
       setNotice('Prescription status updated.');
       await loadPrescriptions();
     } catch (error) {
-      setNotice(error.response?.data?.error || 'Unable to update prescription status.');
+      if (mounted.current) setNotice(error.response?.data?.error || 'Unable to update prescription status.');
+    } finally {
+      inFlight.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
 
@@ -81,6 +95,8 @@ export default function NigeriaPharmacyPrescriptionsPage() {
           <div className="space-y-3">
             {prescriptions.map((prescription) => {
               const items = Array.isArray(prescription.items) ? prescription.items : [];
+              const closed = ['fulfilled', 'cancelled'].includes(prescription.pharmacy_response_status);
+              const dispensed = ['fully_dispensed', 'completed'].includes(prescription.lifecycle_status);
               const status = prescription.pharmacy_response_status || prescription.dispense_status || prescription.status;
               return (
                 <Card key={prescription.id} className="border-border/70 bg-white text-slate-950">
@@ -118,12 +134,14 @@ export default function NigeriaPharmacyPrescriptionsPage() {
                         onChange={(event) => updateEdit(prescription.id, 'confirmedPriceNgn', event.target.value)}
                         placeholder="Confirmed price, if available"
                         inputMode="decimal"
+                        disabled={busy || closed || dispensed}
                         className="h-11 rounded-2xl border border-slate-300 bg-white px-3 text-sm"
                       />
                       <input
                         value={edits[prescription.id]?.clarificationRequest || ''}
                         onChange={(event) => updateEdit(prescription.id, 'clarificationRequest', event.target.value)}
                         placeholder="Clarification needed"
+                        disabled={busy || closed || dispensed}
                         className="h-11 rounded-2xl border border-slate-300 bg-white px-3 text-sm md:col-span-2"
                       />
                     </div>
@@ -134,17 +152,19 @@ export default function NigeriaPharmacyPrescriptionsPage() {
                       value={edits[prescription.id]?.pharmacyNotes || ''}
                       onChange={(event) => updateEdit(prescription.id, 'pharmacyNotes', event.target.value)}
                       placeholder="Pharmacy notes for DoctaRx care coordination"
+                      disabled={busy || closed || dispensed}
                       className="min-h-[92px] w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm"
                     />
 
+                    <p className="text-xs text-slate-600">Fulfillment can be confirmed here only after dispensing is recorded in the verified clinical workflow.</p>
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" variant="outline" onClick={() => updateStatus(prescription.id, 'pharmacy_reviewing')}>Review</Button>
-                      <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => updateStatus(prescription.id, 'accepted')}>Accept</Button>
-                      <Button size="sm" variant="outline" onClick={() => updateStatus(prescription.id, 'ready_for_pickup')}>Ready for Pickup</Button>
-                      <Button size="sm" variant="outline" onClick={() => updateStatus(prescription.id, 'out_for_delivery')}>Out for Delivery</Button>
-                      <Button size="sm" variant="outline" onClick={() => updateStatus(prescription.id, 'fulfilled')}>Fulfilled</Button>
-                      <Button size="sm" variant="outline" onClick={() => updateStatus(prescription.id, 'clarification_requested')}>Request Clarification</Button>
-                      <Button size="sm" variant="outline" className="text-rose-700" onClick={() => updateStatus(prescription.id, 'unavailable')}>Unavailable</Button>
+                      <Button disabled={busy || closed || dispensed} size="sm" variant="outline" onClick={() => updateStatus(prescription.id, 'pharmacy_reviewing')}>Review</Button>
+                      <Button disabled={busy || closed || dispensed} size="sm" className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => updateStatus(prescription.id, 'accepted')}>Accept</Button>
+                      <Button disabled={busy || closed || dispensed} size="sm" variant="outline" onClick={() => updateStatus(prescription.id, 'ready_for_pickup')}>Ready for Pickup</Button>
+                      <Button disabled={busy || closed || dispensed} size="sm" variant="outline" onClick={() => updateStatus(prescription.id, 'out_for_delivery')}>Out for Delivery</Button>
+                      <Button disabled={busy || closed || !dispensed} size="sm" variant="outline" onClick={() => updateStatus(prescription.id, 'fulfilled')}>Fulfilled</Button>
+                      <Button disabled={busy || closed || dispensed} size="sm" variant="outline" onClick={() => updateStatus(prescription.id, 'clarification_requested')}>Request Clarification</Button>
+                      <Button disabled={busy || closed || dispensed} size="sm" variant="outline" className="text-rose-700" onClick={() => updateStatus(prescription.id, 'unavailable')}>Unavailable</Button>
                     </div>
                   </CardContent>
                 </Card>

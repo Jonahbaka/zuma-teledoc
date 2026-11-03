@@ -23,6 +23,9 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { installSocketSessionRefresh } from '@/lib/socketSession';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { conf } from './conferenceApi';
 
 let ioPromise = null;
 function loadSocketIO() {
@@ -31,29 +34,15 @@ function loadSocketIO() {
   return ioPromise;
 }
 
-function getAuthToken() {
-  if (typeof document === 'undefined') return null;
-  const cookieMatch = document.cookie.match(/(?:^|;\s*)accessToken=([^;]+)/);
-  if (cookieMatch) return decodeURIComponent(cookieMatch[1]);
-  try { return localStorage.getItem('accessToken') || null; } catch { return null; }
-}
-
-const DEFAULT_ICE_SERVERS = [
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-];
-
 async function fetchIceServers() {
-  try {
-    const r = await fetch('/api/ng/conference/ice-servers', { credentials: 'include' });
-    if (!r.ok) return DEFAULT_ICE_SERVERS;
-    const b = await r.json();
-    return Array.isArray(b?.iceServers) && b.iceServers.length ? b.iceServers : DEFAULT_ICE_SERVERS;
-  } catch {
-    return DEFAULT_ICE_SERVERS;
-  }
+  const body = await conf.getIceServers();
+  if (!Array.isArray(body?.iceServers)) throw new Error('Media connection configuration is unavailable');
+  return body.iceServers;
 }
 
 export function useConferenceSignaling({ roomId, enabled = true, displayName = 'Participant' }) {
+  const { user, isAuthenticated, getToken } = useAuth();
+  const currentUserId = user?.id;
   // ── Public state ────────────────────────────────────────────────────────────
   const [sigState, setSigState] = useState({
     phase: 'idle',      // idle | connecting | joined | error
@@ -73,17 +62,20 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
   const localStreamRef  = useRef(null);
   const screenStreamRef = useRef(null);
   const iceServersRef   = useRef([]);
+  const mediaEpoch = useRef(0);
   const [reconnectKey, setReconnectKey] = useState(0);
 
   // ── Acquire local media ────────────────────────────────────────────────────
-  const acquireLocalMedia = useCallback(async () => {
+  const acquireLocalMedia = useCallback(async (isCancelled = () => false) => {
     if (localStreamRef.current) return localStreamRef.current;
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    } catch {
+    } catch (error) {
+      if (isCancelled()) throw error;
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     }
+    if (isCancelled()) { stream.getTracks().forEach(track => track.stop()); throw new Error('Media request cancelled'); }
     localStreamRef.current = stream;
     setLocalStream(stream);
     return stream;
@@ -142,6 +134,7 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
 
   // ── Clean up everything ────────────────────────────────────────────────────
   const cleanupAll = useCallback((stopMedia = true) => {
+    mediaEpoch.current += 1;
     try { socketRef.current?.emit('conference:leave'); } catch {}
     try { socketRef.current?.disconnect(); } catch {}
     socketRef.current = null;
@@ -168,19 +161,22 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
 
   // ── Main connect effect ────────────────────────────────────────────────────
   useEffect(() => {
-    if (!enabled || !roomId) return;
+    if (!enabled || !roomId || !isAuthenticated || !currentUserId) return;
     let cancelled = false;
+    let removeSessionRefresh = () => {};
 
     (async () => {
       setSigState((s) => ({ ...s, phase: 'connecting', error: null }));
 
       try {
         iceServersRef.current = await fetchIceServers();
-        await acquireLocalMedia();
+        await acquireLocalMedia(() => cancelled);
+        if (cancelled) return;
         const io = await loadSocketIO();
         if (cancelled) return;
 
-        const token = getAuthToken();
+        const token = getToken();
+        if (!token) throw new Error('Sign in before joining this conference');
         const sock = io('/', {
           path: '/socket.io',
           transports: ['websocket', 'polling'],
@@ -188,6 +184,7 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
           withCredentials: true,
         });
         socketRef.current = sock;
+        removeSessionRefresh = installSocketSessionRefresh(sock);
 
         sock.on('connect_error', (err) => {
           if (!cancelled) {
@@ -241,6 +238,11 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
           cleanupAll(false);
         });
 
+        sock.on('conference:revoked', () => {
+          cleanupAll(true);
+          if (!cancelled) setSigState((state) => ({ ...state, phase: 'error', error: 'Conference access ended.', peers: [], streams: {} }));
+        });
+
         sock.on('conference:participant-left', ({ participant }) => {
           if (cancelled) return;
           const pc = pcByPeer.current.get(participant.socketId);
@@ -289,10 +291,11 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
 
     return () => {
       cancelled = true;
+      removeSessionRefresh();
       cleanupAll(true);
       setSigState({ phase: 'idle', error: null, self: null, peers: [], streams: {} });
     };
-  }, [roomId, enabled, displayName, reconnectKey, acquireLocalMedia, buildPeer, cleanupAll]);
+  }, [roomId, enabled, displayName, reconnectKey, acquireLocalMedia, buildPeer, cleanupAll, currentUserId, isAuthenticated, getToken]);
 
   // ── Connection quality polling ─────────────────────────────────────────────
   useEffect(() => {
@@ -339,10 +342,14 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
     }
   }, []);
 
+  const screenRequestBusy = useRef(false);
   const startScreenShare = useCallback(async () => {
-    if (screenStreamRef.current) return;
+    if (screenStreamRef.current || screenRequestBusy.current) return;
+    screenRequestBusy.current = true;
+    const epoch = mediaEpoch.current;
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      if (epoch !== mediaEpoch.current || !socketRef.current) { stream.getTracks().forEach(track => track.stop()); return; }
       screenStreamRef.current = stream;
       setScreenStream(stream);
       setIsScreenSharing(true);
@@ -361,7 +368,7 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
       if (e.name !== 'AbortError' && e.name !== 'NotAllowedError') {
         console.error('[conference] getDisplayMedia failed', e);
       }
-    }
+    } finally { screenRequestBusy.current = false; }
   }, [replaceVideoTrack]);
 
   const stopScreenShare = useCallback(() => {

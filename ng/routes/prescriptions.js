@@ -21,11 +21,13 @@
 const express = require('express');
 const router = express.Router();
 const svc = require('../services/rx-engine/prescriptionWorkflowService');
+const pharmacistRx = require('../services/pharmacy/pharmacistRxService');
+router.use((_req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
 
 // ─── Clinical role enforcement ────────────────────────────────────────────────
 // The routes were previously authenticate-only: any logged-in user — including a
 // patient — could sign, dispense, cancel, or approve refills. These guards split
-// prescriber / pharmacist / patient duties. Admins may override any action.
+// prescriber / pharmacist / patient duties. Administration is not clinical authority.
 const roleOf = (req) => String(req.user?.role || '').toLowerCase().trim().replace(/\s+/g, '_');
 const PRESCRIBER = new Set(['doctor', 'provider', 'consultant', 'physician', 'specialist', 'prescriber']);
 const PHARMACIST = new Set(['pharmacist', 'pharmacy', 'dispenser']);
@@ -46,12 +48,17 @@ function requireRole(...groups) {
   const allowed = new Set(groups.flatMap((g) => [...g]));
   return (req, res, next) => {
     const role = roleOf(req);
-    if (ADMIN.has(role) || allowed.has(role)) return next();
+    // Operational admins are not clinically credentialed by virtue of admin access.
+    // Only authenticated prescribers and dispensing professionals may mutate Rx state.
+    if (allowed.has(role)) return next();
     return res.status(403).json({ ok: false, error: `forbidden: action requires role ${[...allowed].join(' | ')}` });
   };
 }
 
 function handleError(res, err) {
+  if (/^CLINICAL_AI_RX_|^CLINICAL_AI_CARE_ACTION_|^CLINICAL_AI_ENCOUNTER_MISMATCH$|^ASSIGNED_CLINICIAN_REQUIRED$/.test(err.code || '')) {
+    return res.status(err.statusCode || 409).json({ ok: false, code: err.code, error: 'The clinical review does not authorize this prescription context.' });
+  }
   if (err.code === 'NOT_FOUND')          return res.status(404).json({ ok: false, error: err.message });
   if (err.code === 'FORBIDDEN')          return res.status(403).json({ ok: false, error: err.message });
   if (err.code === 'INVALID_TRANSITION') return res.status(409).json({ ok: false, error: err.message });
@@ -61,25 +68,21 @@ function handleError(res, err) {
 }
 
 async function resolveProviderId(req, pool) {
-  const result = await pool.query('SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1', [req.user.id]);
+  const result = await pool.query(
+    `SELECT p.id FROM ng_providers p
+       JOIN users u ON u.id=p.user_id
+      WHERE p.user_id=$1 AND p.status='verified' AND u.role='provider'
+        AND u.is_active=TRUE AND u.provider_status='approved'
+        AND u.market_scope='NG' LIMIT 1`,
+    [req.user.id]
+  );
   return result.rows[0]?.id || null;
 }
 
-async function resolvePharmacyId(req, pool) {
-  const result = await pool.query('SELECT id FROM ng_pharmacies WHERE owner_user_id = $1 LIMIT 1', [req.user.id]);
-  return result.rows[0]?.id || null;
-}
-
-function canAccessRx(role, rx, { providerId, pharmacyId, patientUserId }) {
+function canAccessRx(role, rx, { providerId, patientUserId }) {
   if (ADMIN.has(role)) return true;
   if (PATIENT.has(role)) return rx.patient_user_id === patientUserId;
   if (PRESCRIBER.has(role)) return Boolean(providerId && rx.provider_id === providerId);
-  if (PHARMACIST.has(role)) {
-    return Boolean(
-      pharmacyId &&
-      [rx.preferred_pharmacy_id, rx.routed_pharmacy_id, rx.dispensed_by_pharmacy_id].includes(pharmacyId)
-    );
-  }
   return false;
 }
 
@@ -96,9 +99,8 @@ async function getScopedPrescription(req, pool, allowedGroups = [PATIENT, PRESCR
   if (!rx) return null;
 
   const providerId = PRESCRIBER.has(role) ? await resolveProviderId(req, pool) : null;
-  const pharmacyId = PHARMACIST.has(role) ? await resolvePharmacyId(req, pool) : null;
   const patientUserId = PATIENT.has(role) ? req.user.id : null;
-  if (canAccessRx(role, rx, { providerId, pharmacyId, patientUserId })) return rx;
+  if (canAccessRx(role, rx, { providerId, patientUserId })) return rx;
 
   const e = new Error('Prescription access denied');
   e.code = 'FORBIDDEN';
@@ -117,7 +119,17 @@ async function getScopedRefillPrescription(req, refillId, pool, allowedGroups = 
   return getScopedPrescription(req, pool, allowedGroups);
 }
 
+async function pharmacistAction(req, res, action, itemId = null) {
+  const { getPool } = require('../../server/db');
+  try { res.json({ ok: true, prescription: await pharmacistRx.mutate(getPool(), req.user, req.params.id, action, req.body || {}, itemId) }); }
+  catch (error) { pharmacistRx.sendError(res, error); }
+}
+
 router.get('/', async (req, res) => {
+  if (PHARMACIST.has(roleOf(req))) {
+    try { return res.json({ ok: true, prescriptions: await pharmacistRx.list(require('../../server/db').getPool(), req.user, req.query) }); }
+    catch (error) { return pharmacistRx.sendError(res, error); }
+  }
   const { getPool } = require('../../server/db');
   const pool = getPool();
   try {
@@ -139,12 +151,6 @@ router.get('/', async (req, res) => {
         scope.provider_id = providerId;
         scope.patient_user_id = undefined;
         scope.pharmacy_id = undefined;
-      } else if (PHARMACIST.has(role)) {
-        const pharmacyId = await resolvePharmacyId(req, pool);
-        if (!pharmacyId) return res.json({ ok: true, prescriptions: [] });
-        scope.provider_id = undefined;
-        scope.patient_user_id = undefined;
-        scope.pharmacy_id = pharmacyId;
       } else {
         return res.status(403).json({ ok: false, error: 'Prescription access denied' });
       }
@@ -167,14 +173,30 @@ router.post('/', requireRole(PRESCRIBER), express.json(), async (req, res) => {
   const pool = getPool();
   try {
     const role = roleOf(req);
-    const providerId = ADMIN.has(role) ? req.body.provider_id : await resolveProviderId(req, pool);
+    const providerId = await resolveProviderId(req, pool);
     if (!providerId) return res.status(403).json({ ok: false, error: 'Provider profile required' });
-    const rx = await svc.createDraft({ ...req.body, provider_id: providerId });
+    // Optional source-linked AI documentation is never a medication order.
+    // The clinician still enters every medicine, dose and indication.
+    const aiSourceSuggestionId = req.body?.aiSourceSuggestionId || null;
+    const phcEncounterId = req.body?.phcEncounterId || null;
+    if ((aiSourceSuggestionId == null) !== (phcEncounterId == null)) {
+      return res.status(400).json({ ok: false, code: 'CLINICAL_AI_RX_SOURCE_INVALID',
+        error: 'Provide both the approved AI review and PHC encounter, or neither.' });
+    }
+    const rx = await svc.createDraft({
+      ...req.body, provider_id: providerId,
+      clinical_ai_source_suggestion_id: aiSourceSuggestionId,
+      clinical_ai_source_encounter_id: phcEncounterId,
+    });
     res.status(201).json({ ok: true, prescription: rx });
   } catch (e) { handleError(res, e); }
 });
 
 router.get('/:id', async (req, res) => {
+  if (PHARMACIST.has(roleOf(req))) {
+    try { return res.json({ ok: true, prescription: await pharmacistRx.read(require('../../server/db').getPool(), req.user, req.params.id, false) }); }
+    catch (error) { return pharmacistRx.sendError(res, error); }
+  }
   const { getPool } = require('../../server/db');
   const pool = getPool();
   try {
@@ -185,6 +207,10 @@ router.get('/:id', async (req, res) => {
 });
 
 router.get('/:id/events', async (req, res) => {
+  if (PHARMACIST.has(roleOf(req))) {
+    try { return res.json({ ok: true, events: await pharmacistRx.read(require('../../server/db').getPool(), req.user, req.params.id, true) }); }
+    catch (error) { return pharmacistRx.sendError(res, error); }
+  }
   const { getPool } = require('../../server/db');
   const pool = getPool();
   try {
@@ -214,19 +240,26 @@ router.post('/:id/send', requireRole(PRESCRIBER), express.json(), async (req, re
     if (!pid) return res.status(400).json({ ok: false, error: 'pharmacy_id required' });
     const rx = await getScopedPrescription(req, pool, [PRESCRIBER]);
     if (!rx) return res.status(404).json({ ok: false, error: 'Not found' });
-    res.json({ ok: true, prescription: await svc.sendToPharmacy(req.params.id, pid, actor(req), pool) });
+    const prescription = await svc.sendToPharmacy(req.params.id, pid, actor(req), pool);
+    // Pharmacy notification is permitted only after a signed, routed Rx.
+    // The notification service independently rechecks those conditions.
+    let pharmacyNotification = null;
+    try {
+      pharmacyNotification = await require('../services/whatsapp/whatsappDispenseService')
+        .createPharmacyPrescriptionNotification({
+          prescriptionId: prescription.id, pharmacyId: pid,
+          createdByUserId: req.user.id,
+        });
+    } catch (_notificationError) {
+      // Sending was committed; do not falsely report that the Rx failed.
+      // The pharmacy dashboard remains the authoritative inbox.
+    }
+    res.json({ ok: true, prescription, pharmacyNotification });
   } catch (e) { handleError(res, e); }
 });
 
 router.post('/:id/receive', requireRole(PHARMACIST), async (req, res) => {
-  const { getPool } = require('../../server/db');
-  const pool = getPool();
-  try {
-    const rx = await getScopedPrescription(req, pool, [PHARMACIST]);
-    if (!rx) return res.status(404).json({ ok: false, error: 'Not found' });
-    res.json({ ok: true, prescription: await svc.acknowledgeReceipt(req.params.id, actor(req), pool) });
-  }
-  catch (e) { handleError(res, e); }
+  return pharmacistAction(req, res, 'receive');
 });
 
 router.post('/:id/cancel', requireRole(PRESCRIBER), express.json(), async (req, res) => {
@@ -241,6 +274,7 @@ router.post('/:id/cancel', requireRole(PRESCRIBER), express.json(), async (req, 
 });
 
 router.post('/:id/complete', requireRole(PHARMACIST, PRESCRIBER), async (req, res) => {
+  if (PHARMACIST.has(roleOf(req))) return pharmacistAction(req, res, 'complete');
   const { getPool } = require('../../server/db');
   const pool = getPool();
   try {
@@ -252,24 +286,11 @@ router.post('/:id/complete', requireRole(PHARMACIST, PRESCRIBER), async (req, re
 });
 
 router.post('/:id/items/:itemId/dispense', requireRole(PHARMACIST), express.json(), async (req, res) => {
-  const { getPool } = require('../../server/db');
-  const pool = getPool();
-  try {
-    const rx = await getScopedPrescription(req, pool, [PHARMACIST]);
-    if (!rx) return res.status(404).json({ ok: false, error: 'Not found' });
-    const { quantity, substitute_drug_id, substitute_reason } = req.body || {};
-    res.json({ ok: true, prescription: await svc.dispenseItem(req.params.id, req.params.itemId, actor(req), { quantity, substitute_drug_id, substitute_reason, pharmacy_id: rx.routed_pharmacy_id }, pool) });
-  } catch (e) { handleError(res, e); }
+  return pharmacistAction(req, res, 'dispense', req.params.itemId);
 });
 
 router.post('/:id/items/:itemId/unavailable', requireRole(PHARMACIST), express.json(), async (req, res) => {
-  const { getPool } = require('../../server/db');
-  const pool = getPool();
-  try {
-    const rx = await getScopedPrescription(req, pool, [PHARMACIST]);
-    if (!rx) return res.status(404).json({ ok: false, error: 'Not found' });
-    res.json({ ok: true, prescription: await svc.markItemUnavailable(req.params.id, req.params.itemId, actor(req), req.body || {}, pool) });
-  } catch (e) { handleError(res, e); }
+  return pharmacistAction(req, res, 'unavailable', req.params.itemId);
 });
 
 router.post('/:id/refill', requireRole(PATIENT, PRESCRIBER), express.json(), async (req, res) => {

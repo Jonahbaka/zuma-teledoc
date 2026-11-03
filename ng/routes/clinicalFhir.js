@@ -64,4 +64,20 @@ for(const [type,handler] of [['AllergyIntolerance',service.allergies],['Conditio
     return bundle;
   }));
 }
+router.get(capability.RESOURCE_PATHS.ServiceRequest, read(async (req, id) => {
+  const pagination = z.object({
+    _count: z.string().regex(/^[1-9]\d*$/).transform(Number).refine(value => Number.isSafeInteger(value) && value <= 200).optional(),
+    _offset: z.string().regex(/^(0|[1-9]\d*)$/).transform(Number).refine(value => Number.isSafeInteger(value) && value <= 1000000).optional(),
+  }).safeParse(req.query);
+  if (!pagination.success) { const error = new Error('Invalid referral pagination.'); error.statusCode = 400; throw error; }
+  const count = pagination.data._count ?? 50; const offset = pagination.data._offset ?? 0;
+  const result = await service.serviceRequests(getPool(), req.programmeContext, id, { count, offset });
+  const bundle = { resourceType: 'Bundle', type: 'searchset', entry: result.resources.map(resource => ({ fullUrl: `urn:uuid:${resource.id}`, resource, search: { mode: 'match' } })) };
+  if (result.hasNext) {
+    if (offset + count > 1000000) { const error = new Error('Referral pagination window exceeded.'); error.statusCode = 400; throw error; }
+    const params = new URLSearchParams({ encounter: id, programmeId: req.programmeContext.programme_id, facilityId: req.programmeContext.facility_id, _count: String(count), _offset: String(offset + count) });
+    bundle.link = [{ relation: 'next', url: `/api/ng/interop/fhir/ServiceRequest?${params}` }];
+  }
+  return bundle;
+}));
 module.exports = router;

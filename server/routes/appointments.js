@@ -28,8 +28,10 @@ const { normalizeMarketScope } = require('../utils/marketScope');
 const { z } = require('zod');
 const { withProviderReservation } = require('../services/appointmentReservationService');
 const { patientFinancialAccess } = require('../middleware/financialRecordScope');
+const { withBookingIntent, readBookingIntent, bookingError } = require('../services/appointmentIntentService');
 
 const smartBookingSchema = z.object({
+  clientRequestId: z.string().uuid().optional(),
   category: z.string().trim().min(1).max(100),
   specialties: z.union([z.array(z.string().trim().min(1).max(100)).max(12), z.string().max(500)]).optional(),
   providerId: z.string().uuid().nullable().optional(),
@@ -46,6 +48,26 @@ const smartBookingSchema = z.object({
 });
 
 const router = express.Router();
+// Appointment persistence is authoritative. Notification/enrichment work is
+// best-effort and must not hold a saved response open or turn it into a 500.
+function scheduleAppointmentSideEffects(appointmentId, work) {
+  Promise.resolve().then(work).catch(error => {
+    logger.warn('Post-commit appointment notification failed', { appointmentId, error: error.message });
+  });
+  return { status: 'scheduled', note: 'Best-effort notification work scheduled; delivery is not confirmed.' };
+}
+
+const appointmentReadAudit = { phiAccessed: true, metadataOnly: true, requireSuccess: true };
+const schedulingFields = ['id', 'patient_id', 'provider_id', 'scheduled_at',
+  'duration_minutes', 'status', 'type', 'created_at', 'updated_at',
+  'confirmed_at', 'cancelled_at', 'cancelled_by'];
+function appointmentForActor(appointment, role) {
+  const visible = ['admin', 'super_admin'].includes(role)
+    ? Object.fromEntries(schedulingFields.filter(field => Object.hasOwn(appointment, field)).map(field => [field, appointment[field]]))
+    : appointment;
+  return keysToCamel(visible);
+}
+
 const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
 const PROVIDER_UPCOMING_LOOKBACK_MS = 2 * 60 * 60 * 1000;
 const MAX_UPCOMING_LIMIT = 50;
@@ -67,7 +89,7 @@ router.post('/',
   authenticate,
   requireRole('patient', 'provider', 'admin'),
   requirePaidAccess,
-  auditMiddleware('create', 'appointment'),
+  auditMiddleware('create', 'appointment', { metadataOnly: true }),
   async (req, res) => {
     try {
       const data = validate(createAppointmentSchema, req.body);
@@ -154,85 +176,90 @@ router.post('/',
         ]
       ));
       
-      // Get patient and provider details for notifications
-      const { rows: patientRows } = await db.query(
-        'SELECT id, email, first_name, last_name, role FROM users WHERE id = $1',
-        [patientId]
-      );
-      
-      // Prepare appointment data with names
-      const appointmentData = {
-        ...keysToCamel(rows[0]),
-        providerFirstName: providers[0]?.first_name,
-        providerLastName: providers[0]?.last_name,
-        patientFirstName: patientRows[0]?.first_name,
-        patientLastName: patientRows[0]?.last_name
-      };
-      
-      // Create in-app notifications for both provider and patient
-      try {
-        // Notify provider
-        await notificationService.sendAppointmentNotification(
-          appointmentData,
-          data.providerId,
-          'provider',
-          'created'
-        );
-        
-        // Notify patient (if different from current user or explicit)
-        await notificationService.sendAppointmentNotification(
-          appointmentData,
-          patientId,
-          'patient',
-          'created'
-        );
-      } catch (notifyError) {
-        logger.warn('Failed to create appointment notifications', { error: notifyError.message });
-      }
-      
-      // Send email notifications
-      try {
-        const emailService = require('../services/email');
-        
-        // Get provider details for email
-        const { rows: providerRows } = await db.query(
+      const dispatch = scheduleAppointmentSideEffects(rows[0].id, async () => {
+        // Get patient and provider details for notifications
+        const { rows: patientRows } = await db.query(
           'SELECT id, email, first_name, last_name, role FROM users WHERE id = $1',
-          [data.providerId]
+          [patientId]
         );
-        
-        if (providerRows.length > 0) {
-          await emailService.sendAppointmentNotification(
+
+        // Prepare appointment data with names
+        const appointmentData = {
+          ...keysToCamel(rows[0]),
+          providerFirstName: providers[0]?.first_name,
+          providerLastName: providers[0]?.last_name,
+          patientFirstName: patientRows[0]?.first_name,
+          patientLastName: patientRows[0]?.last_name
+        };
+
+        // Create in-app notifications for both provider and patient
+        try {
+          // Notify provider
+          await notificationService.sendAppointmentNotification(
             appointmentData,
-            keysToCamel(providerRows[0]),
+            data.providerId,
+            'provider',
             'created'
           );
-        }
         
-        if (patientRows.length > 0) {
-          await emailService.sendAppointmentNotification(
+          // Notify patient (if different from current user or explicit)
+          await notificationService.sendAppointmentNotification(
             appointmentData,
-            keysToCamel(patientRows[0]),
+            patientId,
+            'patient',
             'created'
           );
+        } catch (notifyError) {
+          logger.warn('Failed to create appointment notifications', { error: notifyError.message });
         }
-      } catch (emailError) {
-        logger.error('Failed to send appointment notification emails', { 
-          error: emailError.message, 
-          appointmentId: rows[0].id 
-        });
-        // Don't fail appointment creation if email fails
-      }
+
+        // Send email notifications
+        try {
+          const emailService = require('../services/email');
+
+          // Get provider details for email
+          const { rows: providerRows } = await db.query(
+            'SELECT id, email, first_name, last_name, role FROM users WHERE id = $1',
+            [data.providerId]
+          );
+
+          if (providerRows.length > 0) {
+            await emailService.sendAppointmentNotification(
+              appointmentData,
+              keysToCamel(providerRows[0]),
+              'created'
+            );
+          }
+
+          if (patientRows.length > 0) {
+            await emailService.sendAppointmentNotification(
+              appointmentData,
+              keysToCamel(patientRows[0]),
+              'created'
+            );
+          }
+        } catch (emailError) {
+          logger.error('Failed to send appointment notification emails', {
+            error: emailError.message,
+            appointmentId: rows[0].id
+          });
+          // Don't fail appointment creation if email fails
+        }
       
+      });
+
       logger.info('Appointment created', { 
         appointmentId: rows[0].id, 
         patientId, 
         providerId: data.providerId 
       });
       
+      (res.locals ||= {}).patientId = patientId;
       res.status(201).json({
         success: true,
         message: 'Appointment scheduled successfully',
-        appointment: keysToCamel(rows[0])
+        dispatch,
+        appointment: appointmentForActor(rows[0], req.user.role)
       });
     } catch (error) {
       if (error.statusCode) return res.status(error.statusCode).json({ success: false, error: error.message, code: error.code });
@@ -257,7 +284,7 @@ router.post('/',
  * GET /api/appointments
  * Get appointments with filters
  */
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, auditMiddleware('read', 'appointment', appointmentReadAudit), async (req, res) => {
   try {
     const filters = validate(searchAppointmentsSchema, req.query);
     const { page, limit, sortOrder } = parseQueryParams(filters);
@@ -369,7 +396,8 @@ router.get('/', authenticate, async (req, res) => {
     const { rows } = await db.query(dataQuery, queryValues);
     
     // Enhance with triage data from metadata
-    let appointments = rows.map(keysToCamel);
+    if (userRole === 'patient') (res.locals ||= {}).patientId = userId;
+    let appointments = rows.map(row => appointmentForActor(row, userRole));
     
     appointments = appointments.map((apt) => {
       // Extract triage data from metadata if it exists
@@ -398,7 +426,7 @@ router.get('/', authenticate, async (req, res) => {
  * GET /api/appointments/upcoming
  * Get upcoming appointments
  */
-router.get('/upcoming', authenticate, async (req, res) => {
+router.get('/upcoming', authenticate, auditMiddleware('read', 'appointment', appointmentReadAudit), async (req, res) => {
   try {
     const parsedLimit = parseInt(req.query.limit, 10);
     const limit = Number.isFinite(parsedLimit)
@@ -468,9 +496,10 @@ router.get('/upcoming', authenticate, async (req, res) => {
       values
     );
     
+    if (userRole === 'patient') (res.locals ||= {}).patientId = req.user.id;
     res.json({
       success: true,
-      appointments: rows.map(keysToCamel)
+      appointments: rows.map(row => appointmentForActor(row, req.user.role))
     });
   } catch (error) {
     logger.error('Get upcoming appointments error', { error: error.message, stack: error.stack });
@@ -486,6 +515,19 @@ router.get('/upcoming', authenticate, async (req, res) => {
  * Smart booking - auto-match provider based on category/symptoms
  * NOTE: This route MUST come BEFORE /:id routes
  */
+// Read-only recovery of this patient's opaque request key. No clinical request
+// text, notification resend, payment action or alternate booking is returned.
+router.get('/booking-requests/:clientRequestId', authenticate, requireRole('patient'),
+  auditMiddleware('read', 'appointment', appointmentReadAudit), async (req, res) => {
+    try {
+      const appointment = await readBookingIntent(db, { actor: req.user, marketScope: getAuthenticatedMarketScope(req.user), clientRequestId: req.params.clientRequestId });
+      (res.locals ||= {}).patientId = req.user.id;
+      res.json({ success: true, appointment });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : 'Saved booking lookup is unavailable.', code: error.code });
+    }
+  });
+
 router.post('/smart-book',
   authenticate,
   requireRole('patient'),
@@ -544,14 +586,6 @@ router.post('/smart-book',
         });
       }
       
-      // Allow same-minute bookings with a short tolerance for client/server clock drift.
-      if (scheduledDate.getTime() < Date.now() - SAME_MINUTE_BUFFER_MS) {
-        return res.status(400).json({
-          success: false,
-          error: 'Appointment must be scheduled for now or a future date and time'
-        });
-      }
-      
       // Validate required fields
       if (!category || !reasonForVisit) {
         return res.status(400).json({
@@ -560,12 +594,18 @@ router.post('/smart-book',
         });
       }
       
+      const { rows, provider, providerId, deduplicated } = await withBookingIntent(db, {
+        actor: req.user, marketScope, data: parsed.data,
+      }, async transaction => {
+        if (scheduledDate.getTime() < Date.now() - SAME_MINUTE_BUFFER_MS) {
+          throw bookingError('Appointment must be scheduled for now or a future date and time', 400, 'BOOKING_DATE_INVALID');
+        }
       // Find available provider matching specialties
       let providerId = requestedProviderId || null;
       let provider = null;
 
       if (providerId) {
-        const { rows: requestedProviders } = await db.query(
+        const { rows: requestedProviders } = await transaction.query(
           `SELECT id, first_name, last_name, specialty, credentials
            FROM users
            WHERE id = $1
@@ -578,10 +618,7 @@ router.post('/smart-book',
         );
 
         if (requestedProviders.length === 0) {
-          return res.status(404).json({
-            success: false,
-            error: 'Selected provider is not available'
-          });
+          throw bookingError('Selected provider is not available', 404, 'BOOKING_PROVIDER_UNAVAILABLE');
         }
 
         provider = requestedProviders[0];
@@ -596,7 +633,7 @@ router.post('/smart-book',
       
       if (!providerId) {
         for (const specialty of specialtyList) {
-          const { rows: providers } = await db.query(
+          const { rows: providers } = await transaction.query(
             `SELECT id, first_name, last_name, specialty, credentials
              FROM users
              WHERE role = 'provider'
@@ -619,7 +656,7 @@ router.post('/smart-book',
       
       // Fallback: get any available provider
       if (!providerId) {
-        const { rows: anyProviders } = await db.query(
+        const { rows: anyProviders } = await transaction.query(
           `SELECT id, first_name, last_name, specialty, credentials
            FROM users
            WHERE role = 'provider'
@@ -637,10 +674,7 @@ router.post('/smart-book',
       }
       
       if (!providerId) {
-        return res.status(404).json({
-          success: false,
-          error: 'No available providers found. Please try again later.'
-        });
+        throw bookingError('No available providers found. Please try again later.', 404, 'BOOKING_PROVIDER_UNAVAILABLE');
       }
       
       // Generate room ID for video calls
@@ -665,7 +699,7 @@ router.post('/smart-book',
         paymentCompleted // $11
       ];
       
-      const { rows } = await withProviderReservation(db, {
+      const { rows } = await withProviderReservation(transaction, {
         patientId, providerId, marketScope, scheduledAt: scheduledDate, durationMinutes,
       }, (client) => client.query(
         `INSERT INTO appointments (
@@ -681,63 +715,69 @@ router.post('/smart-book',
         throw new Error('Failed to create appointment - no rows returned');
       }
       
-      // Create notification for provider
-      await db.query(
-        `INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id)
-         VALUES ($1, 'appointment', 'New Appointment', $2, 'appointment', $3)`,
-        [
-          providerId,
-          `New ${type || 'video'} appointment scheduled for ${scheduledDate.toLocaleString()}`,
-          rows[0].id
-        ]
-      ).catch((error) => logger.warn('Appointment notification failed', { error: error.message }));
+        return { rows, provider, providerId };
+      });
+
+      const dispatch = deduplicated ? { status: 'not_repeated', note: 'Saved booking replayed; no notification or payment was repeated.' } : scheduleAppointmentSideEffects(rows[0].id, async () => {
+        // Create notification for provider
+        await db.query(
+          `INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id)
+           VALUES ($1, 'appointment', 'New Appointment', $2, 'appointment', $3)`,
+          [
+            providerId,
+            `New ${type || 'video'} appointment scheduled for ${scheduledDate.toLocaleString()}`,
+            rows[0].id
+          ]
+        ).catch((error) => logger.warn('Appointment notification failed', { error: error.message }));
       
-      // Send email notifications
-      try {
-        const emailService = require('../services/email');
+        // Send email notifications
+        try {
+          const emailService = require('../services/email');
         
-        // Get provider details
-        const { rows: providerRows } = await db.query(
-          'SELECT id, email, first_name, last_name FROM users WHERE id = $1',
-          [providerId]
-        );
-        
-        // Get patient details
-        const { rows: patientRows } = await db.query(
-          'SELECT id, email, first_name, last_name FROM users WHERE id = $1',
-          [patientId]
-        );
-        
-        // Prepare appointment data with names for email template
-        const appointmentData = keysToCamel(rows[0]);
-        appointmentData.providerFirstName = provider?.first_name || providerRows[0]?.first_name;
-        appointmentData.providerLastName = provider?.last_name || providerRows[0]?.last_name;
-        appointmentData.patientFirstName = patientRows[0]?.first_name;
-        appointmentData.patientLastName = patientRows[0]?.last_name;
-        
-        if (providerRows.length > 0) {
-          await emailService.sendAppointmentNotification(
-            appointmentData,
-            keysToCamel(providerRows[0]),
-            'created'
+          // Get provider details
+          const { rows: providerRows } = await db.query(
+            'SELECT id, email, first_name, last_name FROM users WHERE id = $1',
+            [providerId]
           );
-        }
         
-        if (patientRows.length > 0) {
-          await emailService.sendAppointmentNotification(
-            appointmentData,
-            keysToCamel(patientRows[0]),
-            'created'
+          // Get patient details
+          const { rows: patientRows } = await db.query(
+            'SELECT id, email, first_name, last_name FROM users WHERE id = $1',
+            [patientId]
           );
+        
+          // Prepare appointment data with names for email template
+          const appointmentData = keysToCamel(rows[0]);
+          appointmentData.providerFirstName = provider?.first_name || providerRows[0]?.first_name;
+          appointmentData.providerLastName = provider?.last_name || providerRows[0]?.last_name;
+          appointmentData.patientFirstName = patientRows[0]?.first_name;
+          appointmentData.patientLastName = patientRows[0]?.last_name;
+        
+          if (providerRows.length > 0) {
+            await emailService.sendAppointmentNotification(
+              appointmentData,
+              keysToCamel(providerRows[0]),
+              'created'
+            );
+          }
+        
+          if (patientRows.length > 0) {
+            await emailService.sendAppointmentNotification(
+              appointmentData,
+              keysToCamel(patientRows[0]),
+              'created'
+            );
+          }
+        } catch (emailError) {
+          logger.error('Failed to send appointment notification emails', {
+            error: emailError.message,
+            appointmentId: rows[0].id
+          });
+          // Don't fail appointment creation if email fails
         }
-      } catch (emailError) {
-        logger.error('Failed to send appointment notification emails', { 
-          error: emailError.message, 
-          appointmentId: rows[0].id 
-        });
-        // Don't fail appointment creation if email fails
-      }
       
+      });
+
       logger.info('Smart appointment booked', {
         appointmentId: rows[0].id,
         patientId,
@@ -746,9 +786,11 @@ router.post('/smart-book',
         requestedProviderId: requestedProviderId || null
       });
       
-      res.status(201).json({
+      res.status(deduplicated ? 200 : 201).json({
+        deduplicated,
         success: true,
         message: 'Appointment scheduled successfully',
+        dispatch,
         appointment: keysToCamel(rows[0]),
         provider: provider ? {
           id: provider.id,
@@ -779,6 +821,7 @@ router.post('/smart-book',
 router.get('/provider/today',
   authenticate,
   requireRole('provider'),
+  auditMiddleware('read', 'appointment', appointmentReadAudit),
   async (req, res) => {
     try {
       const today = new Date();
@@ -819,12 +862,19 @@ router.get('/provider/today',
  * GET /api/appointments/:id
  * Get appointment details
  */
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, auditMiddleware('read', 'appointment', appointmentReadAudit), async (req, res) => {
   try {
     const { id } = req.params;
+    const role = req.user.role;
+    if (!['patient', 'provider', 'admin', 'super_admin'].includes(role)) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
+    const marketScope = getAuthenticatedMarketScope(req.user);
     
     const { rows } = await db.query(
       `SELECT a.*,
+              ${userMarketScopeSql('p')} AS patient_market_scope,
+              ${userMarketScopeSql('pr')} AS provider_market_scope,
               p.first_name as patient_first_name, p.last_name as patient_last_name,
               p.email as patient_email, p.phone as patient_phone,
               p.date_of_birth as patient_dob,
@@ -844,24 +894,17 @@ router.get('/:id', authenticate, async (req, res) => {
       });
     }
     
-    const appointment = rows[0];
-    
-    // Check access
-    if (req.user.role === 'patient' && appointment.patient_id !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      });
+    const { patient_market_scope, provider_market_scope, ...appointment } = rows[0];
+    // authenticate supplies the current database actor, not a request market.
+    // Preserve historical participants while matching both markets, as list does.
+    if (patient_market_scope !== marketScope || provider_market_scope !== marketScope ||
+        (role === 'patient' && appointment.patient_id !== req.user.id) ||
+        (role === 'provider' && appointment.provider_id !== req.user.id)) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
     }
-    
-    if (req.user.role === 'provider' && appointment.provider_id !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      });
-    }
-    
-    let appointmentData = keysToCamel(appointment);
+
+    (res.locals ||= {}).patientId = appointment.patient_id;
+    let appointmentData = appointmentForActor(appointment, role);
     
     // Extract triage data from metadata if it exists
     if (appointmentData.metadata && appointmentData.metadata.triage) {
@@ -888,7 +931,7 @@ router.get('/:id', authenticate, async (req, res) => {
 router.put('/:id',
   authenticate,
   requireRole('patient', 'provider', 'admin'),
-  auditMiddleware('update', 'appointment', { logChanges: true }),
+  auditMiddleware('update', 'appointment', { metadataOnly: true, changedFields: ['status', 'scheduledAt', 'providerNotes', 'cancellationReason'] }),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -915,15 +958,23 @@ router.put('/:id',
         (req.user.role === 'patient' && appointment.patient_id === req.user.id) ||
         (req.user.role === 'provider' && appointment.provider_id === req.user.id);
       
-      if (!canUpdate) {
+      if (!canUpdate || !await patientFinancialAccess(req.user, appointment.patient_id)) {
         return res.status(403).json({
           success: false,
           error: 'Access denied'
         });
       }
 
+      (res.locals ||= {}).patientId = appointment.patient_id;
+      if (['admin', 'super_admin'].includes(req.user.role) && (data.providerNotes !== undefined || (data.status && !['scheduled', 'confirmed', 'cancelled', 'no_show'].includes(data.status)))) return res.status(403).json({ success: false, error: 'Clinical notes and clinical start/completion require a clinician.' });
       if (req.user.role === 'patient' && (data.providerNotes !== undefined || (data.status && data.status !== 'cancelled'))) {
         return res.status(403).json({ success: false, error: 'Clinical status and notes require a clinician.' });
+      }
+      if (data.status === appointment.status && data.scheduledAt === undefined && data.providerNotes === undefined &&
+          (data.status !== 'cancelled' || data.cancellationReason === undefined || data.cancellationReason === appointment.cancellation_reason)) {
+        return res.json({ success: true, message: 'Appointment already has this status',
+          appointment: appointmentForActor(appointment, req.user.role), deduplicated: true,
+          dispatch: { status: 'not_repeated', note: 'No new notification or refund was initiated.' } });
       }
       if (['completed', 'cancelled', 'no_show'].includes(appointment.status) ||
           (data.scheduledAt && !['scheduled', 'confirmed'].includes(appointment.status)) ||
@@ -1004,7 +1055,7 @@ router.put('/:id',
       ));
       
       // Create notification for status changes
-      if (data.status) {
+      const dispatch = data.status ? scheduleAppointmentSideEffects(rows[0].id, async () => {
         const notifyUserId = req.user.id === appointment.patient_id 
           ? appointment.provider_id 
           : appointment.patient_id;
@@ -1018,14 +1069,15 @@ router.put('/:id',
             id
           ]
         );
-      }
+      }) : { status: 'not_requested' };
       
       logger.info('Appointment updated', { appointmentId: id, updates: Object.keys(data) });
       
       res.json({
         success: true,
         message: 'Appointment updated successfully',
-        appointment: keysToCamel(rows[0])
+        dispatch,
+        appointment: appointmentForActor(rows[0], req.user.role)
       });
     } catch (error) {
       if (error.status === 400) {
@@ -1049,7 +1101,7 @@ router.put('/:id',
  * POST /api/appointments/:id/cancel
  * Cancel appointment
  */
-router.post('/:id/cancel', authenticate, requireRole('patient', 'provider', 'admin'), async (req, res) => {
+router.post('/:id/cancel', authenticate, requireRole('patient', 'provider', 'admin'), auditMiddleware('update', 'appointment', { metadataOnly: true, changedFields: ['reason'] }), async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -1085,6 +1137,15 @@ router.post('/:id/cancel', authenticate, requireRole('patient', 'provider', 'adm
       });
     }
     
+    (res.locals ||= {}).patientId = appointment.patient_id;
+    if (appointment.status === 'cancelled') {
+      if (reason !== undefined && reason !== appointment.cancellation_reason) {
+        return res.status(409).json({ success: false, error: 'This appointment is already cancelled with a recorded reason. Refresh the saved appointment.' });
+      }
+      return res.json({ success: true, message: 'Appointment already cancelled', appointment: appointmentForActor(appointment, req.user.role),
+        deduplicated: true, dispatch: { status: 'not_repeated', note: 'No new notification or refund was initiated.' } });
+    }
+
     // Check if can be cancelled
     if (['completed', 'cancelled', 'in_progress'].includes(appointment.status)) {
       return res.status(400).json({
@@ -1107,27 +1168,31 @@ router.post('/:id/cancel', authenticate, requireRole('patient', 'provider', 'adm
     );
     if (!rows.length) return res.status(409).json({ success: false, error: 'The appointment changed and cannot be cancelled. Refresh your schedule.' });
     
-    // Notify the other party
-    const notifyUserId = req.user.id === appointment.patient_id 
-      ? appointment.provider_id 
-      : appointment.patient_id;
+    const dispatch = scheduleAppointmentSideEffects(rows[0].id, async () => {
+      // Notify the other party
+      const notifyUserId = req.user.id === appointment.patient_id
+        ? appointment.provider_id
+        : appointment.patient_id;
     
-    await db.query(
-      `INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id)
-       VALUES ($1, 'appointment', 'Appointment Cancelled', $2, 'appointment', $3)`,
-      [
-        notifyUserId,
-        reason ? `Appointment cancelled. Reason: ${reason}` : 'Your appointment has been cancelled',
-        id
-      ]
-    );
+      await db.query(
+        `INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id)
+         VALUES ($1, 'appointment', 'Appointment Cancelled', $2, 'appointment', $3)`,
+        [
+          notifyUserId,
+          'Your appointment has been cancelled. Sign in to view appointment details.',
+          id
+        ]
+      );
     
+    });
+
     logger.info('Appointment cancelled', { appointmentId: id, cancelledBy: req.user.id });
     
     res.json({
       success: true,
       message: 'Appointment cancelled successfully',
-      appointment: keysToCamel(rows[0])
+      dispatch,
+      appointment: appointmentForActor(rows[0], req.user.role)
     });
   } catch (error) {
     logger.error('Cancel appointment error', { error: error.message });

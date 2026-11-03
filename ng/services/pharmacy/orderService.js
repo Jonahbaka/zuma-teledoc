@@ -8,6 +8,7 @@ const { getPool } = require('../../../server/db');
 const paymentOrchestrator = require('../payments/paymentOrchestrator');
 const workflow = require('../logistics/medicationDeliveryWorkflowService');
 const complianceService = require('../compliance/complianceService');
+const { assertClinicalPharmacyActive } = require('./clinicalPharmacyAuthorization');
 
 class OrderService {
   /**
@@ -179,25 +180,32 @@ class OrderService {
   /**
    * List orders for a pharmacy
    */
-  async listPharmacyOrders(pharmacyId, { page = 1, limit = 20, status = null } = {}) {
-    const pool = getPool();
-    const offset = (page - 1) * limit;
-
-    let sql = `SELECT o.*, u.first_name, u.last_name, u.phone AS phone_number
-       FROM ng_orders o JOIN users u ON u.id = o.patient_user_id
-       WHERE o.pharmacy_id = $1`;
-    const params = [pharmacyId];
-
-    if (status) {
-      params.push(status);
-      sql += ` AND o.status = $${params.length}`;
+  async listPharmacyOrders(pharmacyId, { page = 1, limit = 20, status = null } = {}, actor) {
+    const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+    const denied = () => Object.assign(new Error('An active authorized pharmacy account is required.'), { status: 403 });
+    if (!uuid.test(String(actor?.id || '')) || actor?.role !== 'pharmacy') throw denied();
+    if (!uuid.test(String(pharmacyId || '')) || !Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100
+      || !Number.isSafeInteger((page - 1) * limit)
+      || status && !['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'dispatched', 'in_transit', 'delivered', 'cancelled', 'refunded'].includes(status)) {
+      throw Object.assign(new Error('Choose valid order filters and a page size of 1 to 100.'), { status: 400 });
     }
-
-    sql += ` ORDER BY o.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-    params.push(limit, offset);
-
-    const result = await pool.query(sql, params);
-    return result.rows;
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const account = (await client.query("SELECT id FROM users WHERE id=$1 AND role='pharmacy' AND is_active=TRUE AND account_status='active' AND market_scope='NG' FOR SHARE", [actor.id])).rows[0];
+      if (!account) throw denied();
+      const pharmacy = (await client.query("SELECT *,to_char(pcn_license_expiry,'YYYY-MM-DD') AS pcn_license_expiry FROM ng_pharmacies WHERE id=$1 AND owner_user_id=$2 FOR SHARE", [pharmacyId, account.id])).rows[0];
+      assertClinicalPharmacyActive(pharmacy);
+      const result = await client.query(`SELECT o.*, u.first_name, u.last_name, u.phone AS phone_number
+        FROM ng_orders o JOIN users u ON u.id=o.patient_user_id
+        WHERE o.pharmacy_id=$1 AND ($2::text IS NULL OR o.status::text=$2)
+        ORDER BY o.created_at DESC,o.id LIMIT $3 OFFSET $4 FOR SHARE OF o`, [pharmacyId, status || null, limit, (page - 1) * limit]);
+      await complianceService.logAction({ actorUserId: account.id, actorType: 'pharmacist', action: 'pharmacy.orders_viewed',
+        resourceType: 'pharmacy', resourceId: pharmacyId, pharmacyId, details: { count: result.rows.length } }, client);
+      await client.query('COMMIT');
+      return result.rows;
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
   }
 }
 

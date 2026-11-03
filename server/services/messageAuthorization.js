@@ -36,11 +36,11 @@ function forbidden(message = 'Messaging relationship is not authorized') {
   return error;
 }
 
-async function loadUsers(db, userId, recipientId) {
+async function loadUsers(db, userId, recipientId, lock = false) {
   const { rows } = await db.query(
     `SELECT id, role, first_name, last_name, email, is_active, country, market_scope
        FROM users
-      WHERE id = ANY($1::uuid[])`,
+      WHERE id = ANY($1::uuid[]) ORDER BY id${lock ? ' FOR SHARE' : ''}`,
     [[userId, recipientId]]
   );
   const byId = new Map(rows.map((row) => [String(row.id), row]));
@@ -50,7 +50,14 @@ async function loadUsers(db, userId, recipientId) {
   };
 }
 
-async function hasPatientProviderRelationship(db, patientId, providerId) {
+async function hasPatientProviderRelationship(db, patientId, providerId, lock = false) {
+  if (lock) {
+    // Lock the actual row granting access, not an aggregate/UNION result.
+    const appointment = await db.query('SELECT id FROM appointments WHERE patient_id=$1 AND provider_id=$2 ORDER BY id LIMIT 1 FOR SHARE', [patientId, providerId]);
+    if (appointment.rows.length) return true;
+    const relationship = await db.query('SELECT id FROM provider_patient_relationships WHERE patient_id=$1 AND provider_id=$2 AND is_active=true ORDER BY id LIMIT 1 FOR SHARE', [patientId, providerId]);
+    return relationship.rows.length > 0;
+  }
   const { rows } = await db.query(
     `SELECT 1
        FROM (
@@ -68,24 +75,24 @@ async function hasPatientProviderRelationship(db, patientId, providerId) {
   return rows.length > 0;
 }
 
-async function hasPharmacyRelationship(db, pharmacyId, otherUser) {
+async function hasPharmacyRelationship(db, pharmacyId, otherUser, lock = false) {
   const userColumn = otherUser.role === 'patient' ? 'patient_id' : 'provider_id';
   const { rows } = await db.query(
     `SELECT 1
        FROM prescriptions
       WHERE pharmacy_id = $1 AND ${userColumn} = $2
-      LIMIT 1`,
+      ORDER BY id LIMIT 1${lock ? ' FOR SHARE' : ''}`,
     [pharmacyId, otherUser.id]
   );
   return rows.length > 0;
 }
 
-async function assertMessagingRelationship(db, userId, recipientId) {
+async function assertMessagingRelationship(db, userId, recipientId, { lock = false } = {}) {
   if (!userId || !recipientId || String(userId) === String(recipientId)) {
     throw forbidden('A conversation requires two distinct active accounts');
   }
 
-  const { sender, recipient } = await loadUsers(db, userId, recipientId);
+  const { sender, recipient } = await loadUsers(db, userId, recipientId, lock);
   if (!sender || !recipient || !sender.is_active || !recipient.is_active) {
     throw forbidden('Recipient is unavailable');
   }
@@ -104,7 +111,7 @@ async function assertMessagingRelationship(db, userId, recipientId) {
   if (!allowed && new Set([senderRole, recipientRole]).has('patient') && new Set([senderRole, recipientRole]).has('provider')) {
     const patient = senderRole === 'patient' ? sender : recipient;
     const provider = senderRole === 'provider' ? sender : recipient;
-    allowed = await hasPatientProviderRelationship(db, patient.id, provider.id);
+    allowed = await hasPatientProviderRelationship(db, patient.id, provider.id, lock);
   }
 
   if (!allowed && senderRole === 'provider' && recipientRole === 'provider') {
@@ -117,7 +124,7 @@ async function assertMessagingRelationship(db, userId, recipientId) {
     const otherRole = String(other.role || '').toLowerCase();
     if (otherRole === 'patient' || otherRole === 'provider') {
       other.role = otherRole;
-      allowed = await hasPharmacyRelationship(db, pharmacy.id, other);
+      allowed = await hasPharmacyRelationship(db, pharmacy.id, other, lock);
     }
   }
 

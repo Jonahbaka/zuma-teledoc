@@ -53,210 +53,92 @@ const ICD_CODES = {
 };
 
 /**
- * POST /api/ai-assist/soap
- * Generate AI-assisted SOAP note suggestions
+ * Backward-compatible provider surface now delegates to the protected,
+ * source-linked PHC Clinical Copilot. Old unverified symptom->diagnosis and
+ * SOAP heuristics are not a clinical source and never create a chart note.
  */
-router.post('/soap',
-  authenticate,
-  requireRole('provider'),
-  async (req, res) => {
-    try {
-      const {
-        appointmentId,
-        patientHistory,
-        chiefComplaint,
-        symptoms,
-        vitals,
-        physicalExam,
-        existingConditions,
-        medications
-      } = req.body;
-      
-      // Get appointment and patient info
-      let patientInfo = null;
-      if (appointmentId) {
-        const { rows } = await db.query(
-          `SELECT a.*, p.first_name, p.last_name, p.date_of_birth, p.gender
-           FROM appointments a
-           JOIN users p ON p.id = a.patient_id
-           WHERE a.id = $1`,
-          [appointmentId]
-        );
-        if (rows.length > 0) patientInfo = rows[0];
-      }
-      
-      // Generate AI-assisted SOAP suggestions
-      // In production, this would call a medical AI model
-      const suggestion = generateSOAPSuggestion({
-        patientInfo,
-        chiefComplaint,
-        symptoms,
-        vitals,
-        physicalExam,
-        existingConditions,
-        medications
-      });
-      
-      // Find relevant ICD codes
-      const icdCodes = findRelevantICDCodes(chiefComplaint, symptoms);
-      
-      // Save suggestion
-      const { rows: saved } = await db.query(
-        `INSERT INTO ai_soap_suggestions (
-          appointment_id, provider_id, model_name, model_version,
-          input_symptoms, input_vitals, input_history,
-          suggested_subjective, suggested_objective, suggested_assessment, suggested_plan,
-          suggested_icd_codes, differential_diagnoses, confidence_scores
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-        RETURNING *`,
-        [
-          appointmentId || null,
-          req.user.id,
-          'zuma-clinical-v1',
-          '1.0.0',
-          symptoms,
-          vitals,
-          patientHistory,
-          suggestion.subjective,
-          suggestion.objective,
-          suggestion.assessment,
-          suggestion.plan,
-          JSON.stringify(icdCodes),
-          JSON.stringify(suggestion.differentialDiagnoses),
-          JSON.stringify(suggestion.confidenceScores)
-        ]
-      );
-      
-      await createAuditLog(req, 'ai_soap_generated', 'ai_soap_suggestions', saved[0].id);
-      
-      logger.info('AI SOAP suggestion generated', {
-        suggestionId: saved[0].id,
-        providerId: req.user.id,
-        appointmentId
-      });
-      
-      res.json({
-        success: true,
-        suggestion: {
-          id: saved[0].id,
-          subjective: suggestion.subjective,
-          objective: suggestion.objective,
-          assessment: suggestion.assessment,
-          plan: suggestion.plan,
-          icdCodes,
-          differentialDiagnoses: suggestion.differentialDiagnoses,
-          confidenceScores: suggestion.confidenceScores,
-          disclaimer: 'AI-generated suggestions are for clinical decision support only. Provider review and clinical judgment are required.'
-        }
-      });
-    } catch (error) {
-      logger.error('AI SOAP generation error', { error: error.message });
-      res.status(500).json({ success: false, error: 'Failed to generate SOAP suggestions' });
-    }
-  }
-);
+const linkedPhcAi = require('../services/linkedPhcAiService');
+const { z } = require('zod');
+const uuidSchema = z.string().uuid();
+const reviewableSchema = z.object({ encounterId: uuidSchema }).strict();
+function sendAiError(res, error) {
+  const code = error?.code || 'CLINICAL_AI_UNAVAILABLE';
+  const status = Number.isInteger(error?.statusCode) && error.statusCode >= 400
+    && error.statusCode <= 503 ? error.statusCode : 503;
+  const publicMessage = status < 500
+    ? error.message
+    : 'Clinical AI review is temporarily unavailable; continue with manual clinician documentation.';
+  return res.set('Cache-Control', 'private, no-store').status(status).json({
+    success: false, code, error: publicMessage, manualReviewRequired: true,
+  });
+}
 
-/**
- * POST /api/ai-assist/diagnose
- * Generate diagnostic suggestions
- */
-router.post('/diagnose',
-  authenticate,
-  requireRole('provider'),
-  async (req, res) => {
-    try {
-      const {
-        patientId,
-        appointmentId,
-        symptoms,
-        duration,
-        severity,
-        vitals,
-        patientHistory,
-        labResults,
-        imagingFindings
-      } = req.body;
-      
-      // Generate diagnostic suggestions
-      const diagnosticResult = generateDiagnosticSuggestions({
-        symptoms,
-        duration,
-        severity,
-        vitals,
-        patientHistory,
-        labResults,
-        imagingFindings
-      });
-      
-      // Save to database
-      const { rows } = await db.query(
-        `INSERT INTO ai_diagnostic_suggestions (
-          patient_id, appointment_id, provider_id, symptoms,
-          patient_history, vitals, lab_results, imaging_findings,
-          suggested_diagnoses, differential_diagnoses, recommended_tests,
-          treatment_suggestions, urgency_level, confidence, model_name
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-        RETURNING *`,
-        [
-          patientId || null,
-          appointmentId || null,
-          req.user.id,
-          symptoms,
-          patientHistory ? JSON.stringify(patientHistory) : null,
-          vitals ? JSON.stringify(vitals) : null,
-          labResults ? JSON.stringify(labResults) : null,
-          imagingFindings ? JSON.stringify(imagingFindings) : null,
-          JSON.stringify(diagnosticResult.suggestedDiagnoses),
-          JSON.stringify(diagnosticResult.differentialDiagnoses),
-          JSON.stringify(diagnosticResult.recommendedTests),
-          JSON.stringify(diagnosticResult.treatmentSuggestions),
-          diagnosticResult.urgencyLevel,
-          diagnosticResult.confidence,
-          'zuma-diagnostic-v1'
-        ]
-      );
-      
-      await createAuditLog(req, 'ai_diagnostic_generated', 'ai_diagnostic_suggestions', rows[0].id);
-      
-      res.json({
-        success: true,
-        diagnostic: {
-          id: rows[0].id,
-          ...diagnosticResult,
-          disclaimer: 'AI diagnostic suggestions are for clinical decision support only. These suggestions do not replace clinical judgment, examination, and standard diagnostic procedures.'
-        }
-      });
-    } catch (error) {
-      logger.error('AI diagnostic error', { error: error.message });
-      res.status(500).json({ success: false, error: 'Failed to generate diagnostic suggestions' });
-    }
-  }
-);
+router.post('/soap', authenticate, requireRole('provider'), async (req, res) => {
+  const parsed = reviewableSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({
+    success: false, code: 'ENCOUNTER_REQUIRED',
+    error: 'A current, clinician-authorized encounterId is required. Use the encounter chart for manual documentation otherwise.',
+  });
+  try {
+    const draft = await linkedPhcAi.createLinkedDraft(
+      req, parsed.data.encounterId, req.user.id, 'soap_draft'
+    );
+    return res.set('Cache-Control', 'private, no-store').status(201).json({
+      success: true, suggestion: {
+        id: draft.id, ...draft.output?.soapDraft,
+        assertions: draft.output?.assertions || [],
+        missingInformation: draft.output?.missingInformation || [],
+        modelProvider: draft.model_provider, model: draft.model_name,
+        status: draft.status, encounterId: parsed.data.encounterId,
+        requiresHumanReview: true,
+      },
+    });
+  } catch (error) { return sendAiError(res, error); }
+});
 
-/**
- * POST /api/ai-assist/soap/:id/feedback
- * Record provider feedback on AI suggestion
- */
-router.post('/soap/:id/feedback',
-  authenticate,
-  requireRole('provider'),
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { feedback, notes } = req.body;
-      
-      await db.query(
-        `UPDATE ai_soap_suggestions SET provider_feedback = $1, provider_notes = $2 WHERE id = $3`,
-        [feedback, notes, id]
-      );
-      
-      res.json({ success: true, message: 'Feedback recorded' });
-    } catch (error) {
-      logger.error('AI feedback error', { error: error.message });
-      res.status(500).json({ success: false, error: 'Failed to record feedback' });
-    }
+router.post('/diagnose', authenticate, requireRole('provider'), async (req, res) => {
+  const parsed = reviewableSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({
+    success: false, code: 'ENCOUNTER_REQUIRED',
+    error: 'An authorized linked encounterId is required for documentation review.',
+  });
+  try {
+    // No unsupported diagnosis, probability, lab ordering, or treatment is
+    // generated by this endpoint. Only a clinician-reviewed gap checklist.
+    const draft = await linkedPhcAi.createLinkedDraft(
+      req, parsed.data.encounterId, req.user.id, 'missing_information'
+    );
+    return res.set('Cache-Control', 'private, no-store').status(201).json({
+      success: true, diagnostic: {
+        id: draft.id,
+        reviewStatus: 'requires_clinician_review',
+        suggestedDiagnoses: [], differentialDiagnoses: [],
+        recommendedTests: [], treatmentSuggestions: [],
+        urgencyLevel: 'UNASSESSED', confidence: null,
+        missingInformation: draft.output?.missingInformation || [],
+        assertions: draft.output?.assertions || [],
+        requiresHumanReview: true,
+      },
+    });
+  } catch (error) { return sendAiError(res, error); }
+});
+
+router.post('/soap/:id/feedback', authenticate, requireRole('provider'), async (req, res) => {
+  const parsed = z.object({
+    encounterId: uuidSchema,
+    decision: z.enum(['accepted', 'accepted_with_edits', 'rejected']),
+    editedOutput: require('../../ng/services/phc/clinicalAiService').suggestionOutputSchema.optional(),
+    rejectionReason: z.string().max(2000).optional(),
+  }).strict().safeParse(req.body);
+  if (!parsed.success || !uuidSchema.safeParse(req.params.id).success) {
+    return res.status(400).json({ success: false, code: 'CLINICAL_AI_REVIEW_INVALID', error: 'A linked encounter and valid clinician review decision are required.' });
   }
-);
+  try {
+    const { encounterId, ...decision } = parsed.data;
+    const review = await linkedPhcAi.reviewLinkedDraft(req, encounterId, req.user.id, req.params.id, decision);
+    return res.set('Cache-Control', 'private, no-store').json({ success: true, review });
+  } catch (error) { return sendAiError(res, error); }
+});
 
 /**
  * GET /api/ai-assist/icd-search
@@ -335,6 +217,24 @@ router.post(
         return res.status(400).json({ success: false, error: 'Invalid targetLang' });
       }
 
+      // Consent in an API request is not sufficient authorization for an
+      // external LLM to process medical text. This legacy Gemini path may
+      // contain consultation captions with patient information. It therefore
+      // stays disabled unless an operator has separately approved this exact
+      // provider and its data-processing terms. The Groq demo setting does
+      // not override the clinical privacy gate.
+      if (process.env.CLINICAL_AI_ALLOW_EXTERNAL_TRANSLATION !== 'true'
+          || process.env.CLINICAL_AI_TRANSLATION_PROVIDER_APPROVED !== 'true'
+          || process.env.CLINICAL_AI_ALLOW_EXTERNAL_PHI !== 'true') {
+        return res.set('Cache-Control', 'private, no-store').json({
+          success: true,
+          translatedText: cleanText,
+          provider: 'none',
+          translationAvailable: false,
+          manualInterpreterRequired: true
+        });
+      }
+
       // No keys configured: don't hard-fail the call UI.
       try { llm.initialize(); } catch {}
       if (!llm.isAvailable()) {
@@ -387,200 +287,4 @@ router.post(
   }
 );
 
-// Helper Functions
-
-function generateSOAPSuggestion({ patientInfo, chiefComplaint, symptoms, vitals, physicalExam, existingConditions, medications }) {
-  const symptomsLower = (symptoms || chiefComplaint || '').toLowerCase();
-  
-  // Generate context-aware suggestions
-  let subjective = `Patient presents with ${chiefComplaint || 'complaints'}. `;
-  if (symptoms) subjective += `Reports ${symptoms}. `;
-  if (existingConditions) subjective += `Past medical history includes: ${existingConditions}. `;
-  if (medications) subjective += `Current medications: ${medications}.`;
-  
-  let objective = 'General: Patient appears ';
-  if (vitals) {
-    objective += 'comfortable.\n';
-    if (vitals.bloodPressure) objective += `BP: ${vitals.bloodPressure}\n`;
-    if (vitals.heartRate) objective += `HR: ${vitals.heartRate}\n`;
-    if (vitals.temperature) objective += `Temp: ${vitals.temperature}\n`;
-    if (vitals.respiratoryRate) objective += `RR: ${vitals.respiratoryRate}\n`;
-    if (vitals.oxygenSaturation) objective += `SpO2: ${vitals.oxygenSaturation}\n`;
-  } else {
-    objective += 'in no acute distress. Vitals pending.';
-  }
-  if (physicalExam) objective += `\nPhysical Exam: ${physicalExam}`;
-  
-  // Generate assessment based on symptoms
-  let assessment = 'Assessment:\n';
-  let differentialDiagnoses = [];
-  
-  if (symptomsLower.includes('headache')) {
-    assessment += '1. Headache - likely tension-type based on presentation\n';
-    differentialDiagnoses = [
-      { diagnosis: 'Tension headache', probability: 0.65 },
-      { diagnosis: 'Migraine', probability: 0.20 },
-      { diagnosis: 'Cluster headache', probability: 0.10 },
-      { diagnosis: 'Secondary headache', probability: 0.05 }
-    ];
-  } else if (symptomsLower.includes('cough') || symptomsLower.includes('cold')) {
-    assessment += '1. Upper respiratory infection - likely viral\n';
-    differentialDiagnoses = [
-      { diagnosis: 'Viral URI', probability: 0.70 },
-      { diagnosis: 'Acute bronchitis', probability: 0.15 },
-      { diagnosis: 'Allergic rhinitis', probability: 0.10 },
-      { diagnosis: 'Bacterial infection', probability: 0.05 }
-    ];
-  } else if (symptomsLower.includes('anxiety') || symptomsLower.includes('stress')) {
-    assessment += '1. Anxiety - generalized anxiety symptoms\n';
-    differentialDiagnoses = [
-      { diagnosis: 'Generalized anxiety disorder', probability: 0.55 },
-      { diagnosis: 'Panic disorder', probability: 0.20 },
-      { diagnosis: 'Adjustment disorder with anxiety', probability: 0.15 },
-      { diagnosis: 'Medical condition-related anxiety', probability: 0.10 }
-    ];
-  } else if (symptomsLower.includes('back') || symptomsLower.includes('pain')) {
-    assessment += '1. Musculoskeletal pain - mechanical/non-specific\n';
-    differentialDiagnoses = [
-      { diagnosis: 'Mechanical low back pain', probability: 0.60 },
-      { diagnosis: 'Muscle strain', probability: 0.25 },
-      { diagnosis: 'Disc herniation', probability: 0.10 },
-      { diagnosis: 'Other', probability: 0.05 }
-    ];
-  } else {
-    assessment += `1. ${chiefComplaint || 'Symptoms under evaluation'}\n`;
-    differentialDiagnoses = [
-      { diagnosis: 'Primary condition under evaluation', probability: 0.80 },
-      { diagnosis: 'Alternative diagnosis to consider', probability: 0.20 }
-    ];
-  }
-  
-  // Generate plan
-  let plan = 'Plan:\n';
-  plan += '1. Continue current medications\n';
-  plan += '2. Symptomatic management as discussed\n';
-  plan += '3. Patient education provided\n';
-  plan += '4. Return if symptoms worsen or new symptoms develop\n';
-  plan += '5. Follow-up in 2 weeks or as needed';
-  
-  return {
-    subjective: subjective.trim(),
-    objective: objective.trim(),
-    assessment: assessment.trim(),
-    plan: plan.trim(),
-    differentialDiagnoses,
-    confidenceScores: {
-      subjective: 0.85,
-      objective: 0.90,
-      assessment: 0.75,
-      plan: 0.80
-    }
-  };
-}
-
-function generateDiagnosticSuggestions({ symptoms, duration, severity, vitals, patientHistory, labResults, imagingFindings }) {
-  const symptomsLower = (symptoms || '').toLowerCase();
-  
-  let suggestedDiagnoses = [];
-  let recommendedTests = [];
-  let treatmentSuggestions = [];
-  let urgencyLevel = 'routine';
-  
-  // Analyze symptoms and generate suggestions
-  if (symptomsLower.includes('chest pain')) {
-    suggestedDiagnoses = [
-      { diagnosis: 'Musculoskeletal chest pain', icd: 'R07.89', confidence: 0.45 },
-      { diagnosis: 'Costochondritis', icd: 'M94.0', confidence: 0.25 },
-      { diagnosis: 'GERD', icd: 'K21.0', confidence: 0.15 },
-      { diagnosis: 'Anxiety-related', icd: 'F41.9', confidence: 0.10 }
-    ];
-    recommendedTests = [
-      { test: 'ECG/EKG', priority: 'high', reason: 'Rule out cardiac cause' },
-      { test: 'Troponin', priority: 'high', reason: 'Cardiac marker if ECG abnormal' },
-      { test: 'Chest X-ray', priority: 'medium', reason: 'Evaluate for pulmonary causes' }
-    ];
-    treatmentSuggestions = [
-      { treatment: 'NSAIDs for musculoskeletal pain', dosing: 'Ibuprofen 400mg TID PRN' },
-      { treatment: 'PPI trial if GERD suspected', dosing: 'Omeprazole 20mg daily' }
-    ];
-    urgencyLevel = severity === 'severe' || severity === 'urgent' ? 'urgent' : 'soon';
-  } else if (symptomsLower.includes('headache')) {
-    suggestedDiagnoses = [
-      { diagnosis: 'Tension-type headache', icd: 'G44.209', confidence: 0.55 },
-      { diagnosis: 'Migraine without aura', icd: 'G43.909', confidence: 0.30 },
-      { diagnosis: 'Cervicogenic headache', icd: 'G44.86', confidence: 0.10 }
-    ];
-    recommendedTests = [
-      { test: 'Neurological exam', priority: 'high', reason: 'Assess for red flags' },
-      { test: 'Head CT/MRI', priority: 'low', reason: 'Only if red flags present' }
-    ];
-    treatmentSuggestions = [
-      { treatment: 'Acetaminophen', dosing: '650-1000mg Q6H PRN' },
-      { treatment: 'NSAIDs', dosing: 'Ibuprofen 400-600mg Q6H PRN' },
-      { treatment: 'Lifestyle modifications', dosing: 'Stress management, sleep hygiene' }
-    ];
-    urgencyLevel = 'routine';
-  } else if (symptomsLower.includes('anxiety') || symptomsLower.includes('depression')) {
-    suggestedDiagnoses = [
-      { diagnosis: 'Generalized anxiety disorder', icd: 'F41.1', confidence: 0.50 },
-      { diagnosis: 'Major depressive disorder', icd: 'F32.9', confidence: 0.30 },
-      { diagnosis: 'Adjustment disorder', icd: 'F43.20', confidence: 0.15 }
-    ];
-    recommendedTests = [
-      { test: 'PHQ-9 screening', priority: 'high', reason: 'Depression assessment' },
-      { test: 'GAD-7 screening', priority: 'high', reason: 'Anxiety assessment' },
-      { test: 'TSH', priority: 'medium', reason: 'Rule out thyroid dysfunction' }
-    ];
-    treatmentSuggestions = [
-      { treatment: 'Cognitive behavioral therapy referral', dosing: 'Weekly sessions' },
-      { treatment: 'SSRI consideration', dosing: 'Start low, titrate as needed' },
-      { treatment: 'Lifestyle modifications', dosing: 'Exercise, sleep hygiene, stress reduction' }
-    ];
-    urgencyLevel = 'routine';
-  } else {
-    suggestedDiagnoses = [
-      { diagnosis: 'Condition under evaluation', icd: 'R69', confidence: 0.70 }
-    ];
-    recommendedTests = [
-      { test: 'Complete physical examination', priority: 'high', reason: 'Comprehensive assessment' },
-      { test: 'Basic metabolic panel', priority: 'medium', reason: 'General screening' }
-    ];
-    treatmentSuggestions = [
-      { treatment: 'Symptomatic management', dosing: 'As appropriate for symptoms' }
-    ];
-    urgencyLevel = 'routine';
-  }
-  
-  // Adjust urgency based on severity
-  if (severity === 'urgent' || severity === 'emergent') {
-    urgencyLevel = 'urgent';
-  }
-  
-  return {
-    suggestedDiagnoses,
-    differentialDiagnoses: suggestedDiagnoses.slice(1),
-    recommendedTests,
-    treatmentSuggestions,
-    urgencyLevel,
-    confidence: suggestedDiagnoses[0]?.confidence || 0.5
-  };
-}
-
-function findRelevantICDCodes(chiefComplaint, symptoms) {
-  const searchText = ((chiefComplaint || '') + ' ' + (symptoms || '')).toLowerCase();
-  const codes = [];
-  
-  Object.entries(ICD_CODES).forEach(([keyword, icdList]) => {
-    if (searchText.includes(keyword)) {
-      codes.push(...icdList);
-    }
-  });
-  
-  return codes.slice(0, 5);
-}
-
 module.exports = router;
-
-
-
-

@@ -31,6 +31,7 @@
 const crypto = require('crypto');
 const db = require('../../db');
 const persistentMemory = require('./persistent-memory');
+const { PROVIDER_SCHEDULE_QUERY, isProviderScheduleWorkflow, scheduleNotificationRows } = require('../appointmentOperationalData');
 
 // =========================================================================
 // STATE MANAGEMENT (Adapted from Lobster state/store.ts)
@@ -436,14 +437,18 @@ class WorkflowPipeline {
   async executeQuery(step, input) {
     // Database query (read-only)
     try {
-      const result = await db.query(step.query, step.params || []);
-      return { status: 'completed', output: result.rows };
+      // Persisted workflow definitions may still contain the old SELECT of clinical notes.
+      const schedulingOnly = isProviderScheduleWorkflow(this.name);
+      const result = await db.query(schedulingOnly ? PROVIDER_SCHEDULE_QUERY : step.query, schedulingOnly ? [] : (step.params || []));
+      return { status: 'completed', output: schedulingOnly ? scheduleNotificationRows(result.rows) : result.rows };
     } catch (e) {
       return { status: 'error', error: e.message };
     }
   }
 
   async executeNotify(step, input) {
+    // Apply an allowlist again for resumed workflows with historical step output.
+    if (isProviderScheduleWorkflow(this.name)) input = scheduleNotificationRows(input);
     // Notify operator
     try {
       await db.query(`
@@ -917,10 +922,10 @@ const DEFAULT_WORKFLOWS = [
   // ═══ PROVIDER REMINDERS — Keep providers prepared ═══
   {
     name: 'provider.schedule.prep',
-    description: 'Notify providers of their upcoming appointments and patient prep notes',
+    description: 'Report upcoming appointment scheduling details without clinical narratives',
     schedule: '1hour',
     steps: [
-      { name: 'Fetch provider schedule', type: 'query', query: "SELECT a.id, a.scheduled_at, a.reason_for_visit, a.patient_notes, u.first_name as patient_first, u.last_name as patient_last, p.first_name as provider_first, p.last_name as provider_last, p.email as provider_email FROM appointments a LEFT JOIN users u ON a.patient_id = u.id LEFT JOIN users p ON a.provider_id = p.id WHERE a.scheduled_at > NOW() AND a.scheduled_at < NOW() + INTERVAL '2 hours' AND a.status IN ('scheduled', 'confirmed')", id: 'provider_upcoming' },
+      { name: 'Fetch provider schedule', type: 'query', query: PROVIDER_SCHEDULE_QUERY, id: 'provider_upcoming' },
       { name: 'Notify providers', type: 'notify', input: '$provider_upcoming' }
     ]
   },

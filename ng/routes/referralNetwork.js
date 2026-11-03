@@ -29,6 +29,7 @@
 const express = require('express');
 const router = express.Router();
 const svc = require('../services/referral-network/referralNetworkService');
+const referralAuthority = require('../services/referral-network/referralAuthority');
 const { getPool } = require('../../server/db');
 
 function medicalImagingAuthorized() {
@@ -37,10 +38,11 @@ function medicalImagingAuthorized() {
 
 function isMedicalImaging(recordOrSpecialty) {
   if (typeof recordOrSpecialty === 'string') {
-    return recordOrSpecialty === 'imaging' || recordOrSpecialty.startsWith('imaging_');
+    const normalized = recordOrSpecialty.trim().toLowerCase();
+    return normalized === 'imaging' || normalized.startsWith('imaging_');
   }
-  return recordOrSpecialty?.service_kind === 'imaging' ||
-    String(recordOrSpecialty?.specialty || '').startsWith('imaging_');
+  return String(recordOrSpecialty?.service_kind || '').trim().toLowerCase() === 'imaging' ||
+    isMedicalImaging(String(recordOrSpecialty?.specialty || ''));
 }
 
 function imagingVisible(record) {
@@ -50,6 +52,8 @@ function imagingVisible(record) {
 // Auth import is provided by ng/routes/index.js wrapping. The route is mounted with
 // authenticate already applied for protected endpoints, and the public verify-qr
 // endpoint is mounted on a sub-router below.
+
+router.use((_req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
 
 const publicRouter = express.Router();
 
@@ -123,14 +127,9 @@ function forbidden(message = 'Referral access denied') {
 function sendReferralError(res, err, label = '[DRN] route') {
   if (err.code === 'FORBIDDEN') return res.status(403).json({ ok: false, error: err.message });
   if (err.code === 'NOT_FOUND') return res.status(404).json({ ok: false, error: err.message });
-  if (err.code === 'INVALID_TRANSITION') return res.status(409).json({ ok: false, error: err.message });
-  console.error(label, err);
-  return res.status(500).json({ ok: false, error: err.message });
-}
-
-async function resolveProviderId(req, pool) {
-  const result = await pool.query('SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1', [req.user.id]);
-  return result.rows[0]?.id || null;
+  if (err.code === 'INVALID_TRANSITION' || err.code === 'DESTINATION_UNAVAILABLE') return res.status(409).json({ ok: false, error: err.message });
+  console.error(label, { code: err.code || 'REFERRAL_SERVICE_UNAVAILABLE' });
+  return res.status(500).json({ ok: false, error: 'Referral service is temporarily unavailable.' });
 }
 
 async function resolveAgentId(req, pool) {
@@ -139,20 +138,16 @@ async function resolveAgentId(req, pool) {
 }
 
 async function referralActorScope(req, pool) {
-  const role = roleOf(req);
-  const scope = { role, providerId: null, agentId: null, patientUserId: null };
-  if (PROVIDER_ROLES.has(role)) scope.providerId = await resolveProviderId(req, pool);
-  if (AGENT_ROLES.has(role)) scope.agentId = await resolveAgentId(req, pool);
-  if (PATIENT_ROLES.has(role)) scope.patientUserId = req.user.id;
-  return scope;
+  const scope = await referralAuthority.actorScope(pool, asActor(req));
+  return { ...scope, patientUserId: scope.role === 'patient' ? scope.userId : null };
 }
 
-function canAccessReferral(scope, referral) {
-  if (ADMIN_ROLES.has(scope.role)) return true;
-  if (scope.patientUserId && referral.patient_user_id === scope.patientUserId) return true;
-  if (scope.providerId && [referral.originating_provider, referral.destination_provider].includes(scope.providerId)) return true;
-  if (scope.agentId && referral.originating_agent === scope.agentId) return true;
-  return false;
+const canAccessReferral = referralAuthority.canReadReferral;
+
+async function actionHints(req, referral, pool) {
+  let scope = null;
+  try { scope = await referralAuthority.actorScope(pool, asActor(req)); } catch { /* hints fail closed */ }
+  return { ...referral, allowed_transitions: svc.allowedTransitions(scope, referral) };
 }
 
 async function getScopedReferral(req, id, pool) {
@@ -210,7 +205,7 @@ router.post('/match', requireAuth, async (req, res) => {
   try {
     const { specialty } = req.body || {};
     if (!specialty) return res.status(400).json({ error: 'specialty required' });
-    if (!medicalImagingAuthorized() && isMedicalImaging(specialty)) {
+    if (!medicalImagingAuthorized() && isMedicalImaging(req.body)) {
       return res.status(403).json({ error: 'Medical imaging is not authorized in the Nigeria portal.' });
     }
     const matches = await svc.matchSpecialists(req.body, { limit: req.body.limit || 10 });
@@ -230,20 +225,14 @@ router.post('/referrals', requireAuth, async (req, res) => {
     if (!specialty || !reason) {
       return res.status(400).json({ error: 'specialty and reason required' });
     }
-    if (!medicalImagingAuthorized() && isMedicalImaging(specialty)) {
+    if (!medicalImagingAuthorized() && isMedicalImaging(req.body)) {
       return res.status(403).json({ error: 'Medical imaging is not authorized in the Nigeria portal.' });
     }
     const role = roleOf(req);
     if (!ADMIN_ROLES.has(role) && !PROVIDER_ROLES.has(role) && !PATIENT_ROLES.has(role) && !AGENT_ROLES.has(role)) {
       throw forbidden('Referral creation denied');
     }
-    const scope = await referralActorScope(req, pool);
     const input = { ...req.body };
-    if (!ADMIN_ROLES.has(role)) {
-      if (scope.patientUserId) input.patient_user_id = scope.patientUserId;
-      if (scope.providerId) input.originating_provider = scope.providerId;
-      if (scope.agentId) input.originating_agent = scope.agentId;
-    }
     const referral = await svc.createReferral(input, asActor(req), pool);
     res.status(201).json({ ok: true, referral });
   } catch (err) {
@@ -254,7 +243,6 @@ router.post('/referrals', requireAuth, async (req, res) => {
 router.get('/referrals', requireAuth, async (req, res) => {
   const pool = getPool();
   try {
-    const role = roleOf(req);
     const scope = await referralActorScope(req, pool);
     const filters = {
       destination_org: req.query.destination_org,
@@ -265,7 +253,7 @@ router.get('/referrals', requireAuth, async (req, res) => {
       since: req.query.since,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
     };
-    if (!ADMIN_ROLES.has(role)) {
+    if (!scope.admin) {
       filters.destination_org = undefined;
       filters.originating_org = undefined;
       if (scope.patientUserId) {
@@ -283,7 +271,14 @@ router.get('/referrals', requireAuth, async (req, res) => {
     const rows = await svc.listReferrals({
       ...filters,
     }, pool);
-    res.json({ ok: true, referrals: rows.filter(imagingVisible) });
+    // Display hints are never authority: each write revalidates inside its
+    // transaction. An unavailable/currently ineligible actor gets no actions.
+    let writeScope = null;
+    try { writeScope = await referralAuthority.actorScope(pool, asActor(req)); } catch { /* fail closed for hints */ }
+    const referrals = rows.filter(imagingVisible).map(referral => ({ ...referral,
+      allowed_transitions: svc.allowedTransitions(writeScope, referral)
+    }));
+    res.json({ ok: true, referrals });
   } catch (err) {
     sendReferralError(res, err, '[DRN] list referrals');
   }
@@ -295,7 +290,7 @@ router.get('/referrals/code/:refCode', requireAuth, async (req, res) => {
     const r = await getScopedReferralByCode(req, req.params.refCode, pool);
     if (!r) return res.status(404).json({ ok: false, error: 'Not found' });
     if (!imagingVisible(r)) return res.status(404).json({ ok: false, error: 'Not found' });
-    res.json({ ok: true, referral: r });
+    res.json({ ok: true, referral: await actionHints(req, r, pool) });
   } catch (err) {
     sendReferralError(res, err, '[DRN] get referral by code');
   }
@@ -307,7 +302,7 @@ router.get('/referrals/:id', requireAuth, async (req, res) => {
     const r = await getScopedReferral(req, req.params.id, pool);
     if (!r) return res.status(404).json({ ok: false, error: 'Not found' });
     if (!imagingVisible(r)) return res.status(404).json({ ok: false, error: 'Not found' });
-    res.json({ ok: true, referral: r });
+    res.json({ ok: true, referral: await actionHints(req, r, pool) });
   } catch (err) {
     sendReferralError(res, err, '[DRN] get referral');
   }
@@ -455,6 +450,6 @@ router.get('/agents', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-router._test = { imagingVisible, isMedicalImaging, medicalImagingAuthorized };
+router._test = { imagingVisible, isMedicalImaging, medicalImagingAuthorized, canAccessReferral, referralActorScope, getScopedReferral, getScopedReferralByCode };
 
 module.exports = router;

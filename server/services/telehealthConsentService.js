@@ -108,12 +108,14 @@ class TelehealthConsentService {
       witnessId
     } = consentData;
     
+    return db.transaction(async client => {
+    await require('./clinicalPatientAccessService').assertClinicalPatientAccess(client, patientId, req?.user, { lock: true });
     // Validate template exists
-    const { rows: templates } = await db.query(
+    const { rows: templates } = await client.query(
       `SELECT id, version FROM telehealth_consent_templates WHERE id = $1
          AND is_active = true AND effective_date <= CURRENT_DATE
          AND (expiry_date IS NULL OR expiry_date > CURRENT_DATE)
-         AND (applicable_states IS NULL OR $2 = ANY(applicable_states))`,
+         AND (applicable_states IS NULL OR $2 = ANY(applicable_states)) FOR SHARE`,
       [templateId, patientState]
     );
     
@@ -134,7 +136,7 @@ class TelehealthConsentService {
     const expiresAt = new Date();
     expiresAt.setFullYear(expiresAt.getFullYear() + 1);
     
-    const { rows } = await db.query(
+    const { rows } = await client.query(
       `INSERT INTO telehealth_consents (
         patient_id, template_id, template_version,
         consent_text_version,
@@ -161,15 +163,10 @@ class TelehealthConsentService {
       ]
     );
     
-    logger.info('Telehealth consent captured', {
-      consentId: rows[0].id,
-      patientId,
-      templateVersion: templates[0].version,
-      method: consentMethod,
-      state: patientState
-    });
-    
+    await client.query(`INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,description,phi_accessed,success)
+      VALUES($1,'create','telehealth_consent',$2,$3,'Authorized consent capture',TRUE,TRUE)`, [req.user.id,rows[0].id,patientId]);
     return this._formatConsent(rows[0]);
+    });
   }
   
   /**
@@ -225,24 +222,21 @@ class TelehealthConsentService {
   /**
    * Revoke a consent
    */
-  async revokeConsent(consentId, patientId, reason) {
-    const { rows } = await db.query(
-      `UPDATE telehealth_consents SET
-        is_valid = false,
-        revoked_at = NOW(),
-        revoked_reason = $1
-       WHERE id = $2 AND patient_id = $3 AND is_valid = true
-       RETURNING *`,
-      [reason, consentId, patientId]
-    );
-    
-    if (rows.length === 0) {
-      throw new Error('Consent not found or already revoked');
-    }
-    
-    logger.info('Telehealth consent revoked', { consentId, patientId, reason });
-    
-    return this._formatConsent(rows[0]);
+  async revokeConsent(consentId, patientId, reason, actor) {
+    const { assertClinicalPatientAccess, references, denied } = require('./clinicalPatientAccessService');
+    references(consentId, patientId, actor?.id);
+    if (typeof reason !== 'string' || !reason.trim() || reason.length > 1000) throw denied(400, 'CONSENT_REASON_INVALID', 'A bounded revocation reason is required.');
+    return db.transaction(async client => {
+      await assertClinicalPatientAccess(client, patientId, actor, { lock: true });
+      const { rows } = await client.query(
+        `UPDATE telehealth_consents SET is_valid=false,revoked_at=NOW(),revoked_reason=$1
+          WHERE id=$2 AND patient_id=$3 AND is_valid=TRUE RETURNING *`, [reason.trim(),consentId,patientId]
+      );
+      if (!rows.length) throw denied(404, 'CONSENT_UNAVAILABLE', 'Consent not found or already revoked');
+      await client.query(`INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,description,phi_accessed,success)
+        VALUES($1,'update','telehealth_consent',$2,$3,'Authorized consent revocation',TRUE,TRUE)`, [actor.id,consentId,patientId]);
+      return this._formatConsent(rows[0]);
+    });
   }
   
   /**

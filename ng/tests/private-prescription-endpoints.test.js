@@ -241,3 +241,41 @@ test('patient image responses enforce ownership and preserve private PNG respons
   });
   assert.equal(pool.calls.filter((call) => call.sql.includes('INSERT INTO audit_logs')).length, 1);
 });
+
+test('receipt recovery is current-patient scoped, metadata-only, audited and no-store', async () => {
+  const key = '00000000-0000-4000-8000-000000000006';
+  const calls = [];
+  const pool = { async query(sql, params) {
+    calls.push({ sql, params });
+    if (sql.includes('SELECT id FROM users')) return { rows: params[0] === patientId ? [{ id: patientId }] : [] };
+    if (sql.includes('SELECT rx.id, rx.status')) {
+      assert.ok(sql.includes("actor.role = 'patient'")); assert.ok(sql.includes("actor.market_scope = 'NG'")); assert.ok(sql.includes('actor.is_active = true'));
+      assert.deepEqual(params, [patientId, key]);
+      return { rows: [{ id: submissionId, status: 'uploaded', submitted_text_encrypted: 'MUST NOT ESCAPE', submission_digest: 'PRIVATE DIGEST' }] };
+    }
+    if (sql.includes('INSERT INTO audit_logs')) return { rows: [] };
+    throw new Error('Unexpected SQL');
+  } };
+  await withEndpoints(pool, { id: patientId, role: 'patient' }, async get => {
+    const response = await get('/api/ng/patient/prescriptions/requests/' + key);
+    assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    assert.deepEqual(await response.json(), { prescriptionId: submissionId, status: 'uploaded', requiresVerification: true });
+    assert.equal((await get('/api/ng/patient/prescriptions/requests/bad')).status, 400);
+  });
+  await withEndpoints(pool, { id: otherPatientId, role: 'patient' }, async get => assert.equal((await get('/api/ng/patient/prescriptions/requests/' + key)).status, 403));
+  assert.equal(calls.filter(call => call.sql.includes('INSERT INTO audit_logs')).length, 1);
+});
+test('missing receipt and audit failure never become a successful recovered submission', async () => {
+  for (const present of [false, true]) {
+    const pool = { async query(sql) {
+      if (sql.includes('SELECT id FROM users')) return { rows: [{ id: patientId }] };
+      if (sql.includes('SELECT rx.id, rx.status')) return { rows: present ? [{ id: submissionId, status: 'uploaded' }] : [] };
+      throw new Error('Audit unavailable');
+    } };
+    await withEndpoints(pool, { id: patientId, role: 'patient' }, async get => {
+      const response = await get('/api/ng/patient/prescriptions/requests/' + submissionId);
+      assert.equal(response.status, present ? 503 : 404);
+      assert.equal((await response.json()).prescriptionId, undefined);
+    });
+  }
+});

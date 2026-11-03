@@ -107,6 +107,7 @@ test('official SDK webhook verification rejects an altered body', async () => {
 test('conference consultants cannot elevate their role or grant superior moderation authority', async () => {
   const conference = require('../services/conferencing/conferenceService');
   const pool = { query: async (sql) => {
+    if (sql.includes('SELECT * FROM ng_conf_rooms')) return { rows: [{ id:'room',host_user_id:'owner',status:'live' }] };
     if (sql.includes('SELECT r.*, p.id AS actor_participant_id')) return { rows: [{ id: 'room', host_user_id: 'owner', status: 'live', actor_participant_status: 'admitted', actor_participant_role: 'consultant' }] };
     if (sql.includes('SELECT * FROM ng_conf_participants')) return { rows: [{ role: 'consultant', status: 'admitted', permissions_json: {} }] };
     if (sql.includes('SELECT role FROM ng_conf_participants')) return { rows: [{ role: 'doctor' }] };

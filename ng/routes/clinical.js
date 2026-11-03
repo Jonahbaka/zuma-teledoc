@@ -22,6 +22,7 @@ const {
   userIdOf,
 } = require('../services/clinical/clinicalAccessService');
 const integrity = require('../services/clinical/clinicalRecordIntegrityService');
+const manualReferralIntents = require('../services/clinical/manualReferralIntentService');
 /**
  * Page size must be a positive integer. A negative or non-numeric limit produces
  * `LIMIT -5`, which is a database error rather than a bad request, so the value is
@@ -81,7 +82,7 @@ function asyncHandler(fn) {
         });
       }
       console.error('[clinical]', err.message);
-      res.status(err.statusCode || 500).json({ error: err.message });
+      res.status(err.statusCode || 500).json({ error: err.message, ...(err.submissionNotStarted === true ? { submissionNotStarted: true } : {}) });
     }
   };
 }
@@ -518,6 +519,13 @@ router.get('/referrals', asyncHandler(async (req, res) => {
   res.json({ ok: true, referrals: rows, count: rows.length });
 }));
 
+// Metadata-only recovery never implies external referral delivery.
+router.get('/referrals/requests/:requestId', asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const referral = await manualReferralIntents.receipt(getPool(), req, req.params.requestId);
+  res.json({ ok: true, referral });
+}));
+
 // PATCH /clinical/referrals/:id/status
 router.patch('/referrals/:id/status', express.json(), asyncHandler(async (req, res) => {
   const pool = getPool();
@@ -607,6 +615,10 @@ router.patch('/referrals/:id/status', express.json(), asyncHandler(async (req, r
 
 // POST /clinical/referrals
 router.post('/referrals', asyncHandler(async (req, res) => {
+  if (req.get?.('Idempotency-Key') || req.headers?.['idempotency-key']) {
+    const referral = await manualReferralIntents.save(getPool(), req);
+    return res.status(201).json({ ok: true, referral });
+  }
   const pool = getPool();
   const userId = req.user.id || req.user.userId || req.user.sub;
   const {

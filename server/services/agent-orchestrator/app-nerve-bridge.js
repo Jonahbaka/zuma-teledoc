@@ -69,7 +69,10 @@ function detectAndEmit(req, res, body) {
 
   // ─── APPOINTMENTS ─────────────────────────────────────────────
   if (path.includes('/api/appointments')) {
-    if (method === 'POST' && res.statusCode < 300) {
+    const appointmentPath = path.split('?')[0];
+    const createsAppointment = /^\/api\/appointments(?:\/smart-book)?\/?$/.test(appointmentPath);
+    const cancelsAppointment = /^\/api\/appointments\/[^/]+\/cancel\/?$/.test(appointmentPath);
+    if (method === 'POST' && createsAppointment && res.statusCode < 300 && body.appointment?.id && !body.deduplicated) {
       emit('patient.appointment.booked', {
         appointmentId: body.appointment?.id || body.data?.id,
         patientId: body.appointment?.patientId || userId,
@@ -83,12 +86,11 @@ function detectAndEmit(req, res, body) {
         patientId: body.appointment?.patientId || userId
       });
     }
-    if (method === 'PUT' || method === 'PATCH') {
-      if (body.appointment?.status === 'cancelled' || path.includes('/cancel')) {
+    if ((method === 'PUT' || method === 'PATCH' || (method === 'POST' && cancelsAppointment)) && !body.deduplicated) {
+      if (body.appointment?.status === 'cancelled') {
         emit('patient.appointment.cancelled', {
           appointmentId: body.appointment?.id,
-          patientId: body.appointment?.patientId,
-          reason: body.appointment?.cancellationReason
+          patientId: body.appointment?.patientId
         });
       }
       if (body.appointment?.status === 'no_show') {

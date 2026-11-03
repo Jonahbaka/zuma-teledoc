@@ -178,14 +178,16 @@ test('provider referral form matches the active draft contract without invented 
     assert.match(page, escaped(field + ':'));
     assert.match(route, escaped(field));
   }
-  assert.match(page, /Referral draft saved/);
+  assert.match(page, /Referral save confirmed/);
   assert.match(page, /patientResult\.status === 'fulfilled'/);
   assert.match(page, /referralResult\.status === 'fulfilled'/);
   assert.match(page, /errors\.patients/);
   assert.match(page, /errors\.referrals/);
   assert.match(page, /request\.current\?\.abort\(\)/);
   assert.match(page, /response_summary: summary/);
-  assert.match(page, /currentUser\.current !== actor/);
+  assert.match(page, /if \(!isCurrent\(\)\) return/);
+  assert.match(page, /key=\{accountKey\}/);
+  assert.match(page, /session\.current === accountKey/);
 });
 
 test('presentation data stays disabled for provisioned accounts and browser overrides', async () => {

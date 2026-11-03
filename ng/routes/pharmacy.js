@@ -7,7 +7,12 @@ const express = require('express');
 const router = express.Router();
 const pharmacyOnboardingService = require('../services/pharmacy/pharmacyOnboardingService');
 const inventoryService = require('../services/pharmacy/inventoryService');
+const inventoryMutations = require('../services/pharmacy/inventoryMutationService');
+const { previewCatalogue } = require('../services/pharmacy/cataloguePreviewService');
 const orderService = require('../services/pharmacy/orderService');
+const medicationRequests = require('../services/pharmacy/medicationRequestService');
+const clinicalInbox = require('../services/pharmacy/clinicalInboxService');
+const returnCustody = require('../services/pharmacy/returnCustodyService');
 const medicationDelivery = require('../services/logistics/medicationDeliveryWorkflowService');
 const walletService = require('../services/pharmacy/walletService');
 const complianceService = require('../services/compliance/complianceService');
@@ -92,6 +97,19 @@ function handleRouteError(res, err) {
 }
 
 router.use(requirePharmacyPortalRole);
+
+// Alternate return custody is a separately authorized, default-disabled manual
+// protocol. It does not grant access to the original pharmacy's clinical order.
+router.get('/:pharmacyId/return-custody', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await returnCustody.list(req.params.pharmacyId, req.user, req.query)); }
+  catch (error) { handleMedicationOrderError(res, error); }
+});
+router.post('/:pharmacyId/return-custody/:orderId/receive', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await returnCustody.receive(req.params.orderId, req.params.pharmacyId, req.user, req.body)); }
+  catch (error) { handleMedicationOrderError(res, error); }
+});
 
 // --- ONBOARDING ---
 
@@ -259,41 +277,38 @@ router.get('/:pharmacyId/inventory', async (req, res) => {
 
 // Add inventory items
 router.post('/:pharmacyId/inventory', async (req, res) => {
-  try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-    const result = await pharmacyOnboardingService.addInventory(
-      req.params.pharmacyId, req.user.id, req.body.items
-    );
-    res.json(result);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await inventoryMutations.mutate(getPool(), req.user, req.params.pharmacyId, 'add', req.body)); }
+  catch (error) { inventoryMutations.sendError(res, error); }
 });
 
 // Update inventory item
 router.patch('/:pharmacyId/inventory/:itemId', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await inventoryMutations.mutate(getPool(), req.user, req.params.pharmacyId, 'update', req.body, req.params.itemId)); }
+  catch (error) { inventoryMutations.sendError(res, error); }
+});
+
+// Transport-free partner catalogue validation; never imports or activates.
+router.post('/:pharmacyId/inventory/catalogue-preview', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
   try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-    const result = await inventoryService.updateItem(
-      req.params.pharmacyId, req.params.itemId, req.body
-    );
+    const result = await previewCatalogue(getPool(), req.user, req.params.pharmacyId, req.body);
     res.json(result);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+  } catch (error) {
+    const status = error.statusCode || 503;
+    res.status(status).json({
+      code: error.statusCode ? error.code : 'CATALOGUE_PREVIEW_UNAVAILABLE',
+      error: error.statusCode ? error.message : 'Catalogue validation is temporarily unavailable.',
+    });
   }
 });
 
 // Bulk import inventory
 router.post('/:pharmacyId/inventory/bulk-import', async (req, res) => {
-  try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-    const result = await inventoryService.bulkImport(
-      req.params.pharmacyId, req.body.items
-    );
-    res.json(result);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await inventoryMutations.mutate(getPool(), req.user, req.params.pharmacyId, 'import', req.body)); }
+  catch (error) { inventoryMutations.sendError(res, error); }
 });
 
 // Get low stock alerts
@@ -341,303 +356,50 @@ router.use('/:pharmacyId/orders', (_req, res, next) => {
 // Get pharmacy orders
 router.get('/:pharmacyId/orders', async (req, res) => {
   try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
     const result = await orderService.listPharmacyOrders(req.params.pharmacyId, {
       page: parseInt(req.query.page) || 1,
       limit: parseInt(req.query.limit) || 20,
       status: req.query.status,
-    });
+    }, req.user);
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    handleMedicationOrderError(res, err);
   }
 });
 
-// Provider-generated prescriptions routed to this pharmacy.
+// Signed, explicitly routed clinical records are authorized and audited in the
+// same transaction as each read or update. Failed audits never report success.
 router.get('/:pharmacyId/prescriptions', async (req, res) => {
-  try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-
-    const pool = getPool();
-    const result = await pool.query(
-      `SELECT rx.*,
-              patient.first_name AS patient_first_name,
-              patient.last_name AS patient_last_name,
-              patient.email AS patient_email,
-              patient.phone AS patient_phone,
-              provider.full_name AS provider_name,
-              provider.email AS provider_email,
-              provider.phone AS provider_phone,
-              provider.mdcn_number,
-              pharmacy.name AS pharmacy_name,
-              pharmacy.preferred_prescription_receiving_method
-         FROM ng_digital_prescriptions rx
-         JOIN users patient ON patient.id = rx.patient_user_id
-         JOIN ng_providers provider ON provider.id = rx.provider_id
-         LEFT JOIN ng_pharmacies pharmacy
-           ON pharmacy.id = COALESCE(rx.routed_pharmacy_id, rx.preferred_pharmacy_id, rx.dispensed_by_pharmacy_id)
-        WHERE rx.routed_pharmacy_id = $1
-           OR rx.preferred_pharmacy_id = $1
-           OR rx.dispensed_by_pharmacy_id = $1
-        ORDER BY
-          CASE rx.pharmacy_response_status
-            WHEN 'pending_pharmacy_confirmation' THEN 1
-            WHEN 'pharmacy_reviewing' THEN 2
-            WHEN 'clarification_requested' THEN 3
-            WHEN 'accepted' THEN 4
-            WHEN 'ready_for_pickup' THEN 5
-            WHEN 'out_for_delivery' THEN 6
-            WHEN 'fulfilled' THEN 7
-            WHEN 'unavailable' THEN 8
-            WHEN 'cancelled' THEN 9
-            ELSE 10
-          END,
-          rx.created_at DESC
-        LIMIT 100`,
-      [req.params.pharmacyId]
-    );
-
-    res.json(result.rows);
-  } catch (err) {
-    handleRouteError(res, err);
-  }
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await clinicalInbox.listPrescriptions(getPool(), req.user, req.params.pharmacyId)); }
+  catch (error) { clinicalInbox.sendError(res, error); }
 });
-
 router.get('/:pharmacyId/whatsapp-notifications', async (req, res) => {
-  try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-
-    const pool = getPool();
-    const result = await pool.query(
-      `SELECT id,
-              notification_type,
-              prescription_id,
-              recipient_phone,
-              status,
-              message_preview,
-              secure_action_url,
-              metadata,
-              sent_at,
-              created_at,
-              updated_at
-         FROM ng_whatsapp_notification_log
-        WHERE pharmacy_id = $1
-        ORDER BY created_at DESC
-        LIMIT 25`,
-      [req.params.pharmacyId]
-    );
-
-    res.json(result.rows);
-  } catch (err) {
-    handleRouteError(res, err);
-  }
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await clinicalInbox.listNotifications(getPool(), req.user, req.params.pharmacyId)); }
+  catch (error) { clinicalInbox.sendError(res, error); }
 });
-
 router.patch('/:pharmacyId/prescriptions/:prescriptionId', async (req, res) => {
-  try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-
-    const allowedStatuses = new Set([
-      'pharmacy_reviewing',
-      'accepted',
-      'ready_for_pickup',
-      'out_for_delivery',
-      'fulfilled',
-      'unavailable',
-      'clarification_requested',
-      'cancelled',
-    ]);
-    const nextStatus = String(req.body.status || '').trim();
-    if (!allowedStatuses.has(nextStatus)) {
-      return res.status(400).json({ error: 'Unsupported pharmacy prescription status.' });
-    }
-
-    const confirmedPrice = req.body.confirmedPriceNgn === undefined || req.body.confirmedPriceNgn === '' || req.body.confirmedPriceNgn === null
-      ? null
-      : Number(req.body.confirmedPriceNgn);
-    if (confirmedPrice !== null && !Number.isFinite(confirmedPrice)) {
-      return res.status(400).json({ error: 'Confirmed price must be a number.' });
-    }
-
-    const statusMap = {
-      pharmacy_reviewing: { prescription: 'routed', dispense: 'pending' },
-      accepted: { prescription: 'dispensing', dispense: 'accepted' },
-      ready_for_pickup: { prescription: 'dispensing', dispense: 'ready_for_pickup' },
-      out_for_delivery: { prescription: 'dispensing', dispense: 'out_for_delivery' },
-      fulfilled: { prescription: 'dispensed', dispense: 'dispensed' },
-      unavailable: { prescription: 'routed', dispense: 'unavailable' },
-      clarification_requested: { prescription: 'routed', dispense: 'pending_clarification' },
-      cancelled: { prescription: 'canceled', dispense: 'cancelled' },
-    };
-
-    const mapped = statusMap[nextStatus];
-    const pool = getPool();
-    const result = await pool.query(
-      `UPDATE ng_digital_prescriptions
-          SET pharmacy_response_status = $1,
-              status = $2,
-              dispense_status = $3,
-              confirmed_price_ngn = $4,
-              pharmacy_notes = $5,
-              clarification_request = $6,
-              routed_pharmacy_id = COALESCE(routed_pharmacy_id, $7),
-              dispensed_by_pharmacy_id = CASE WHEN $1 = 'fulfilled' THEN $7 ELSE dispensed_by_pharmacy_id END,
-              pharmacy_responded_at = NOW(),
-              ready_at = CASE WHEN $1 = 'ready_for_pickup' THEN NOW() ELSE ready_at END,
-              fulfilled_at = CASE WHEN $1 = 'fulfilled' THEN NOW() ELSE fulfilled_at END,
-              dispensed_at = CASE WHEN $1 = 'fulfilled' THEN NOW() ELSE dispensed_at END,
-              cancelled_at = CASE WHEN $1 = 'cancelled' THEN NOW() ELSE cancelled_at END,
-              updated_at = NOW()
-        WHERE id = $8
-          AND (preferred_pharmacy_id = $7 OR routed_pharmacy_id = $7 OR dispensed_by_pharmacy_id = $7)
-        RETURNING *`,
-      [
-        nextStatus,
-        mapped.prescription,
-        mapped.dispense,
-        confirmedPrice,
-        req.body.pharmacyNotes || null,
-        req.body.clarificationRequest || null,
-        req.params.pharmacyId,
-        req.params.prescriptionId,
-      ]
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Prescription not found for this pharmacy.' });
-    }
-
-    await complianceService.logAction({
-      actorUserId: req.user.id,
-      actorType: 'pharmacist',
-      action: 'pharmacy.prescription_status_updated',
-      resourceType: 'digital_prescription',
-      resourceId: req.params.prescriptionId,
-      details: { status: nextStatus },
-      pharmacyId: req.params.pharmacyId,
-    }).catch(() => null);
-
-    res.json({ prescription: result.rows[0] });
-  } catch (err) {
-    handleRouteError(res, err);
-  }
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await clinicalInbox.updateStatus(getPool(), req.user, req.params.pharmacyId, req.params.prescriptionId, req.body)); }
+  catch (error) { clinicalInbox.sendError(res, error); }
 });
 
-// Get medication availability requests routed to this pharmacy.
+// Availability responses are scoped and audited independently of fulfillment.
+router.use('/:pharmacyId/medication-requests', (_req, res, next) => {
+  res.set('Cache-Control', 'private, no-store');
+  next();
+});
 router.get('/:pharmacyId/medication-requests', async (req, res) => {
   try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-
-    const pool = getPool();
-    const params = [req.params.pharmacyId];
-    const where = ['(r.preferred_pharmacy_id = $1 OR r.assigned_pharmacy_id = $1)'];
-
-    if (req.query.status) {
-      params.push(String(req.query.status).trim());
-      where.push(`r.status = $${params.length}`);
-    }
-
-    const result = await pool.query(
-      `SELECT r.*,
-              d.source_name,
-              d.source_type,
-              d.source_reference,
-              d.source_quality_status,
-              preferred.name AS preferred_pharmacy_name,
-              assigned.name AS assigned_pharmacy_name
-         FROM ng_medication_requests r
-         LEFT JOIN ng_drug_catalog d ON d.id = r.medicine_catalog_id
-         LEFT JOIN ng_pharmacies preferred ON preferred.id = r.preferred_pharmacy_id
-         LEFT JOIN ng_pharmacies assigned ON assigned.id = r.assigned_pharmacy_id
-        WHERE ${where.join(' AND ')}
-        ORDER BY
-          CASE r.status
-            WHEN 'pending_pharmacy_confirmation' THEN 1
-            WHEN 'pharmacy_reviewing' THEN 2
-            WHEN 'clarification_requested' THEN 3
-            WHEN 'available' THEN 4
-            WHEN 'unavailable' THEN 5
-            WHEN 'fulfilled' THEN 6
-            WHEN 'completed' THEN 7
-            WHEN 'cancelled' THEN 8
-            ELSE 9
-          END,
-          r.created_at DESC
-        LIMIT 100`,
-      params
-    );
-
-    res.json(result.rows);
-  } catch (err) {
-    const status = err.statusCode || (err.code === '42703' || err.code === '42P01' ? 503 : 400);
-    res.status(status).json({
-      error: status === 503 ? 'Nigeria medication request tables are not migrated yet.' : err.message,
-    });
-  }
+    res.json(await medicationRequests.listPharmacyRequests(getPool(), req.user, req.params.pharmacyId, req.query.status));
+  } catch (error) { medicationRequests.sendError(res, error); }
 });
-
-// Let a routed pharmacy respond to an availability request without verifying global live inventory.
 router.patch('/:pharmacyId/medication-requests/:requestId', async (req, res) => {
   try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-
-    const allowedStatuses = new Set([
-      'pharmacy_reviewing',
-      'available',
-      'unavailable',
-      'clarification_requested',
-      'fulfilled',
-      'completed',
-    ]);
-    const nextStatus = String(req.body.status || '').trim();
-
-    if (!allowedStatuses.has(nextStatus)) {
-      return res.status(400).json({ error: 'Unsupported pharmacy medication request status.' });
-    }
-
-    const confirmedPrice = req.body.confirmedPriceNgn === undefined || req.body.confirmedPriceNgn === '' || req.body.confirmedPriceNgn === null
-      ? null
-      : Number(req.body.confirmedPriceNgn);
-    if (confirmedPrice !== null && !Number.isFinite(confirmedPrice)) {
-      return res.status(400).json({ error: 'Confirmed price must be a number.' });
-    }
-
-    const pool = getPool();
-    const result = await pool.query(
-      `UPDATE ng_medication_requests
-          SET status = $1,
-              pharmacy_response_notes = $2,
-              confirmed_price_ngn = $3,
-              pharmacy_notes = $4,
-              clarification_request = $5,
-              pharmacy_responded_at = NOW(),
-              assigned_pharmacy_id = COALESCE(assigned_pharmacy_id, $6),
-              updated_at = NOW()
-        WHERE id = $7
-          AND (preferred_pharmacy_id = $6 OR assigned_pharmacy_id = $6)
-        RETURNING *`,
-      [
-        nextStatus,
-        req.body.pharmacyResponseNotes || null,
-        confirmedPrice,
-        req.body.pharmacyNotes || null,
-        req.body.clarificationRequest || null,
-        req.params.pharmacyId,
-        req.params.requestId,
-      ]
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Medication request not found for this pharmacy.' });
-    }
-
-    res.json({ request: result.rows[0] });
-  } catch (err) {
-    const status = err.statusCode || (err.code === '42703' || err.code === '42P01' ? 503 : 400);
-    res.status(status).json({
-      error: status === 503 ? 'Nigeria medication request tables are not migrated yet.' : err.message,
-    });
-  }
+    const request = await medicationRequests.updateRequest(getPool(), req.user, req.params.requestId, req.body, req.params.pharmacyId);
+    res.json({ request });
+  } catch (error) { medicationRequests.sendError(res, error); }
 });
 
 // Confirm order (start preparing)
@@ -738,13 +500,18 @@ router.get('/:pharmacyId/wallet', async (req, res) => {
 
 // Request settlement
 router.post('/:pharmacyId/wallet/settle', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
   try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-    const result = await walletService.processSettlement(req.params.pharmacyId);
-    res.json(result);
+    // Uniform denial needs no wallet lookup, ownership precheck or provider call.
+    // The service also rejects direct callers before touching any balance.
+    await walletService.processSettlement(req.params.pharmacyId);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    return res.status(503).json({
+      code: 'LEGACY_PHARMACY_SETTLEMENT_DISABLED',
+      error: err.code === 'LEGACY_PHARMACY_SETTLEMENT_DISABLED' ? err.message : 'Legacy pharmacy payouts are unavailable. No new payout was confirmed.',
+    });
   }
+  return res.status(503).json({ code: 'LEGACY_PHARMACY_SETTLEMENT_DISABLED', error: 'Legacy pharmacy payouts are unavailable. No new payout was confirmed.' });
 });
 
 // Get transaction history

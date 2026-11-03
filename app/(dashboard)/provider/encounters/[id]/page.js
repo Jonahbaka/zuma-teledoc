@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams, usePathname } from 'next/navigation';
+import { useParams, usePathname, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   FileText,
@@ -26,10 +26,23 @@ import { toast } from '@/components/ui/use-toast';
 import { formatDateTime } from '@/lib/utils';
 import { toProviderPortalPath } from '@/lib/providerPortal';
 
-export default function ProviderEncounterChartPage() {
+function ProviderEncounterChartContent() {
   const params = useParams();
   const pathname = usePathname();
   const encounterId = params.id;
+  const searchParams = useSearchParams();
+  const aiSuggestionId = searchParams.get('aiSuggestionId');
+  const currentAiSuggestion = useRef(aiSuggestionId);
+  currentAiSuggestion.current = aiSuggestionId;
+  const currentEncounter = useRef(encounterId);
+  currentEncounter.current = encounterId;
+  const importVersion = useRef(0);
+  const [importingDraft, setImportingDraft] = useState(false);
+  const [importedAiSuggestionId, setImportedAiSuggestionId] = useState(null);
+  const [aiStage, setAiStage] = useState('consultation_brief');
+  const [aiWorking, setAiWorking] = useState(false);
+  const [aiReviewDraft, setAiReviewDraft] = useState(null);
+  const [aiEditable, setAiEditable] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [encounter, setEncounter] = useState(null);
@@ -45,6 +58,9 @@ export default function ProviderEncounterChartPage() {
     plan: '',
     physicalExam: ''
   });
+
+  const currentNoteDraft = useRef(noteDraft);
+  currentNoteDraft.current = noteDraft;
 
   const [showAmend, setShowAmend] = useState(false);
   const [amending, setAmending] = useState(false);
@@ -80,6 +96,7 @@ export default function ProviderEncounterChartPage() {
   });
 
   const load = async () => {
+    const requestedEncounter = encounterId;
     setLoading(true);
     try {
       const [encRes, notesRes, intentsRes] = await Promise.all([
@@ -88,42 +105,130 @@ export default function ProviderEncounterChartPage() {
         clinicalEhrAPI.getEncounterPrescriptionIntents(encounterId)
       ]);
 
+      if (currentEncounter.current !== requestedEncounter) return;
       if (encRes.data?.success) setEncounter(encRes.data.encounter);
       if (notesRes.data?.success) setNotes(notesRes.data.notes || []);
       if (intentsRes.data?.success) setIntents(intentsRes.data.prescriptionIntents || []);
     } catch (e) {
       toast({ title: 'Error', description: 'Failed to load encounter chart', variant: 'destructive' });
     } finally {
-      setLoading(false);
+      if (currentEncounter.current === requestedEncounter) setLoading(false);
     }
   };
 
   useEffect(() => {
+    importVersion.current += 1;
+    setEncounter(null); setNotes([]); setIntents([]);
+    setImportedAiSuggestionId(null); setImportingDraft(false); setSavingNote(false);
+    setAiReviewDraft(null); setAiEditable(null); setAiWorking(false);
+    setNoteDraft({ noteType: 'soap', subjective: '', objective: '', assessment: '', plan: '', physicalExam: '' });
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encounterId]);
+
+  useEffect(() => {
+    // A new source selection cancels only pending imports; preserve any already
+    // loaded draft and its provenance until the clinician saves or clears it.
+    importVersion.current += 1;
+    setImportingDraft(false);
+  }, [aiSuggestionId]);
 
   const latestNote = useMemo(() => {
     if (!notes.length) return null;
     return notes[0];
   }, [notes]);
 
+  const prepareEncounterAiDraft = async () => {
+    const selectedEncounter = encounterId;
+    setAiWorking(true);
+    setAiReviewDraft(null);
+    setAiEditable(null);
+    try {
+      const response = await clinicalEhrAPI.createEncounterAiDraft(selectedEncounter, aiStage);
+      if (currentEncounter.current !== selectedEncounter) return;
+      const suggestion = response.data?.suggestion;
+      if (!suggestion?.id || suggestion.status !== 'drafted') throw new Error('AI draft unavailable');
+      setAiReviewDraft(suggestion);
+      setAiEditable(JSON.parse(JSON.stringify(suggestion.output)));
+    } catch (e) {
+      if (currentEncounter.current === selectedEncounter) toast({ title: 'AI draft unavailable', description: e?.response?.data?.error || 'This encounter may not be linked to an eligible PHC programme.', variant: 'destructive' });
+    } finally { if (currentEncounter.current === selectedEncounter) setAiWorking(false); }
+  };
+
+  const reviewEncounterAiDraft = async (decision) => {
+    const selected = aiReviewDraft;
+    const selectedEncounter = encounterId;
+    if (!selected || selected.status !== 'drafted') return;
+    setAiWorking(true);
+    try {
+      const response = await clinicalEhrAPI.reviewEncounterAiDraft(selectedEncounter, selected.id, {
+        decision,
+        ...(decision === 'accepted_with_edits' ? { editedOutput: aiEditable } : {}),
+        ...(decision === 'rejected' ? { rejectionReason: 'Clinician declined the draft after review.' } : {}),
+      });
+      if (currentEncounter.current !== selectedEncounter) return;
+      setAiReviewDraft(current => current?.id === selected.id ? { ...current, status: response.data?.review?.status } : current);
+      if (decision !== 'rejected' && selected.suggestion_type === 'soap_draft') {
+        toast({ title: 'AI SOAP reviewed', description: 'Use the existing reviewed-draft import to load it as an unsigned note.' });
+      } else {
+        toast({ title: 'AI review saved', description: 'No clinical order, prescription, referral or record was changed.' });
+      }
+    } catch (e) {
+      if (currentEncounter.current === selectedEncounter) toast({ title: 'Review failed', description: e?.response?.data?.error || 'Review was not saved.', variant: 'destructive' });
+    } finally { if (currentEncounter.current === selectedEncounter) setAiWorking(false); }
+  };
+
+  const importReviewedDraft = async () => {
+    const hasText = () => ['subjective', 'objective', 'assessment', 'plan', 'physicalExam'].some(field => currentNoteDraft.current[field]?.trim());
+    if (hasText()) {
+      toast({ title: 'Draft preserved', description: 'Save or clear your current draft before importing. Nothing was overwritten.', variant: 'destructive' });
+      return;
+    }
+    const request = ++importVersion.current;
+    const requestedEncounter = encounterId;
+    setImportingDraft(true);
+    try {
+      const response = await clinicalEhrAPI.getReviewedAiDraft(encounterId, aiSuggestionId);
+      if (request !== importVersion.current || currentEncounter.current !== requestedEncounter || currentAiSuggestion.current !== aiSuggestionId) return;
+      if (hasText()) {
+        toast({ title: 'Draft preserved', description: 'Your edits changed while loading. Nothing was overwritten.', variant: 'destructive' });
+        return;
+      }
+      if (!response.data?.success || response.data.aiSuggestionId !== aiSuggestionId) throw new Error('Draft reference mismatch');
+      setNoteDraft({ ...response.data.noteDraft, physicalExam: '' });
+      setImportedAiSuggestionId(response.data.aiSuggestionId);
+      toast({ title: 'Reviewed draft loaded', description: 'Review and edit these fields, then save a new unsigned note. Signing remains a separate action.' });
+    } catch (error) {
+      if (request === importVersion.current && currentEncounter.current === requestedEncounter && currentAiSuggestion.current === aiSuggestionId) toast({ title: 'Import unavailable', description: error.response?.data?.error || 'The reviewed draft could not be loaded.', variant: 'destructive' });
+    } finally {
+      if (request === importVersion.current) setImportingDraft(false);
+    }
+  };
+
   const createOrUpdateNote = async () => {
+    const requestedEncounter = encounterId;
+    const requestVersion = importVersion.current;
+    const currentSave = () => currentEncounter.current === requestedEncounter && importVersion.current === requestVersion;
     setSavingNote(true);
     try {
-      if (latestNote && !latestNote.isSigned && latestNote.providerId) {
+      if (!importedAiSuggestionId && latestNote && !latestNote.isSigned && latestNote.providerId) {
         // Update existing unsigned note
         const res = await clinicalEhrAPI.updateNote(latestNote.id, noteDraft);
+        if (!currentSave()) return;
         if (res.data?.success) toast({ title: 'Note updated', variant: 'success' });
       } else {
-        const res = await clinicalEhrAPI.createNote(encounterId, noteDraft);
-        if (res.data?.success) toast({ title: 'Note created', variant: 'success' });
+        const res = await clinicalEhrAPI.createNote(encounterId, { ...noteDraft, ...(importedAiSuggestionId ? { aiSuggestionId: importedAiSuggestionId } : {}) });
+        if (!currentSave()) return;
+        if (res.data?.success) {
+          setImportedAiSuggestionId(null);
+          toast({ title: 'Note created', variant: 'success' });
+        }
       }
       await load();
     } catch (e) {
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to save note', variant: 'destructive' });
+      if (currentSave()) toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to save note', variant: 'destructive' });
     } finally {
-      setSavingNote(false);
+      if (currentEncounter.current === requestedEncounter) setSavingNote(false);
     }
   };
 
@@ -225,8 +330,8 @@ export default function ProviderEncounterChartPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <div><span className="text-slate-500">Patient:</span> {encounter?.patientFirstName} {encounter?.patientLastName}</div>
-              <div><span className="text-slate-500">Provider:</span> {encounter?.providerFirstName} {encounter?.providerLastName}</div>
+              <div data-testid="encounter-patient"><span className="text-slate-500">Patient:</span> {[encounter?.patient?.firstName, encounter?.patient?.lastName].filter(Boolean).join(' ') || 'Name unavailable'}</div>
+              <div data-testid="encounter-provider"><span className="text-slate-500">Provider:</span> {[encounter?.provider?.firstName, encounter?.provider?.lastName].filter(Boolean).join(' ') || 'Name unavailable'}</div>
               <div><span className="text-slate-500">Patient state:</span> {encounter?.patientState || '—'}</div>
               <div><span className="text-slate-500">Chief complaint:</span> {encounter?.chiefComplaint || '—'}</div>
             </CardContent>
@@ -270,6 +375,51 @@ export default function ProviderEncounterChartPage() {
 
         <div className="lg:col-span-2 space-y-6">
           <Card>
+            <CardHeader><CardTitle>AI clinical documentation review</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-slate-600">Only PHC-linked encounters with an assigned clinician and programme approval can use this source-linked assistant. All drafts require clinician review; no diagnosis, medication, referral, or chart update is automated.</p>
+              <Label htmlFor="encounter-ai-stage">Documentation stage</Label>
+              <select id="encounter-ai-stage" className="w-full rounded-md border p-2" value={aiStage} onChange={e => { setAiStage(e.target.value); setAiReviewDraft(null); setAiEditable(null); }}>
+                <option value="consultation_brief">Consultation brief</option>
+                <option value="soap_draft">SOAP draft</option>
+                <option value="emr_reconciliation">EMR documentation gaps</option>
+                <option value="prescription_review">Prescription documentation checklist</option>
+                <option value="referral_brief">Referral documentation brief</option>
+                <option value="follow_up_draft">Follow-up proposals</option>
+              </select>
+              <Button variant="outline" onClick={prepareEncounterAiDraft} disabled={aiWorking}>{aiWorking ? 'Preparing…' : 'Prepare source-linked AI draft'}</Button>
+              {aiReviewDraft && (
+                <div className="space-y-2 rounded-lg border p-3">
+                  <p className="text-sm font-semibold">Unverified AI draft · {aiReviewDraft.status}</p>
+                  <p className="text-xs">Source references identify records; they do not establish factual correctness. Review each claim.</p>
+                  {(aiReviewDraft.output?.assertions || []).map((claim, i) => (
+                    <div key={i} className="text-sm"><p>{claim.text}</p><p className="text-xs text-slate-500">{(claim.sourceRefs || []).join(', ')}</p></div>
+                  ))}
+                  {aiReviewDraft.status === 'drafted' && aiEditable && (
+                    <>
+                      <Label htmlFor="ai-reviewed-summary">Clinician-edited summary</Label>
+                      <Textarea id="ai-reviewed-summary" value={aiEditable.summary || ''} onChange={e => setAiEditable({ ...aiEditable, summary: e.target.value })} />
+                      {aiReviewDraft.suggestion_type === 'soap_draft' && ['subjective', 'objective', 'assessment', 'plan'].map(field => (
+                        <div key={field}>
+                          <Label htmlFor={'review-soap-' + field}>{field}</Label>
+                          <Textarea id={'review-soap-' + field} value={aiEditable.soapDraft?.[field] || ''} onChange={e => setAiEditable({ ...aiEditable, soapDraft: { ...aiEditable.soapDraft, [field]: e.target.value } })} />
+                        </div>
+                      ))}
+                      <div className="flex flex-wrap gap-2">
+                        <Button disabled={aiWorking} onClick={() => reviewEncounterAiDraft('accepted')}>Accept original</Button>
+                        <Button disabled={aiWorking} variant="outline" onClick={() => reviewEncounterAiDraft('accepted_with_edits')}>Accept edits</Button>
+                        <Button disabled={aiWorking} variant="outline" onClick={() => reviewEncounterAiDraft('rejected')}>Reject</Button>
+                      </div>
+                    </>
+                  )}
+                  {aiReviewDraft.status === 'accepted' && aiReviewDraft.suggestion_type === 'soap_draft' && (
+                    <Link className="text-sm underline" href={pathname + '?aiSuggestionId=' + encodeURIComponent(aiReviewDraft.id)}>Select reviewed SOAP for separate chart import</Link>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <PenLine className="w-5 h-5" />
@@ -302,6 +452,15 @@ export default function ProviderEncounterChartPage() {
                 <p className="text-sm text-slate-500">No note created yet.</p>
               )}
 
+              {aiSuggestionId && (
+                <div className="rounded-lg border border-violet-200 p-3 space-y-2">
+                  <p className="text-sm">Import a clinician-reviewed SOAP draft into an empty editor. This does not save or sign a note, and never replaces an existing note.</p>
+                  <Button variant="outline" onClick={importReviewedDraft} disabled={importingDraft || savingNote}>
+                    {importingDraft ? 'Loading reviewed draft…' : 'Load reviewed AI draft'}
+                  </Button>
+                  {importedAiSuggestionId && <p className="text-xs">Save creates a new unsigned note with recorded AI-source provenance. Verify every field before saving.</p>}
+                </div>
+              )}
               <div className="grid gap-4">
                 <div className="space-y-2">
                   <Label>Subjective</Label>
@@ -411,3 +570,7 @@ export default function ProviderEncounterChartPage() {
   );
 }
 
+
+export default function ProviderEncounterChartPage() {
+  return <Suspense fallback={<p className="p-6">Loading encounter chart…</p>}><ProviderEncounterChartContent /></Suspense>;
+}

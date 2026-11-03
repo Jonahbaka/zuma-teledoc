@@ -1,0 +1,23 @@
+# AI-first and language voice homepage launch gate
+
+## Status: Not approved for deployment
+
+This is the requested unpublished, launch-oriented homepage design. The user requested confident AI-first telehealth and multilingual voice positioning without development caveats in public copy. It is not evidence that those voice functions are deployed, clinically validated, or ready for release. Do not publish this version merely because frontend tests pass.
+
+The homepage is isolated on reviewed pharmacy/FHIR commit e2232b3539e1ced3665479ed166afc6a727444c8. It changes marketing, metadata, a generated image and their verification only. It does not activate voice, request microphone access, add a voice backend, use real patient data or change any clinical, privacy, financial or deployment settings. The voice link navigates to the description on the page; care links retain the existing market-specific destinations.
+
+## Required before the launch copy can go live
+
+- Integrate and independently review the actual DoctaRx voice experience, including patient authorization, informed consent, microphone lifecycle, interrupted and repeated sessions, retained-data policy and clinician handoff.
+- Validate English and Nigerian English, and the initial evaluation languages Hausa, Igbo and Yoruba, using appropriate native-speaker review. A synthetic test or one provider-console response is not proof of language quality or clinical safety.
+- Verify the advertised conversation, intake and clinician-review experience end to end in the actual DoctaRx application. Do not substitute provider-console demonstrations or fake-provider tests for this evidence.
+- Obtain clinical and privacy approval of the voice workflow, escalation rules, retention and external processing, including relevant provider agreements.
+- Run the complete checks on the integrated release tree, including database, browser, accessibility and production-build verification, and obtain explicit deployment authorization. Publishing a draft PR does not satisfy this gate.
+
+## Image provenance
+
+The hero is an original GPT image generation made for this task: a photorealistic fictional pregnant Nigerian patient in a clean, practical primary healthcare centre consultation room speaking to a fictional doctor on a tablet video call. It replaces the abstract speech-bubble artwork and at-home scenes at the user's request, with the final revision showing a visibly pregnant woman in an antenatal consultation context. The PHC setting is explicit through clinic seating, louvred windows and a generic PRIMARY HEALTH CARE sign, with no real facility identity or endorsement. Following the user's language-context correction, the visible figure caption explicitly shows Hausa → English. The fictional patient's language preference is authored context, not an inference about her appearance, clothing, education or English proficiency. It is not a real patient, doctor testimonial, medical result or product screenshot. The accessible image description identifies it as AI-generated and the caption identifies the language pairing as illustrative. The source PNG and preceding realistic versions are retained in the task environment. The repository asset is a WebP conversion at 1536 × 1024, quality 83, with the original framing preserved.
+
+Asset: `public/marketing/doctarx/phc-maternity-doctor-hero-v5.webp`.
+
+Prompt direction: candid editorial healthcare photography, a dignified fictional Nigerian expectant mother in her early 30s wearing a comfortable indigo-and-teal patterned maternity dress and matching headscarf, seated at a practical desk in a modest, clean Nigerian PHC. Her rounded pregnant abdomen is clearly visible, with one hand resting gently on it and the other making a natural conversational gesture. Pale cream and mint walls, louvred window, blue clinic seating and a generic PRIMARY HEALTH CARE wall sign. A friendly fictional Black male doctor in his early 40s wears a white coat and navy scrubs on a large tablet display. The patient is a capable, independent Hausa speaker; a separate HTML caption makes that language context clear. Both faces and the pregnancy are clear in a 3:2 landscape composition, with natural daylight and an engaged conversation. No exposed abdomen, distress, procedures, luxury-home setting, poverty cues, logos, watermarks, floating icons, fake product controls, clinical data, real people or outcome claims. Generated and edited with the built-in GPT image tool, not an external stock source. Language labels are marketing context, not live translation controls or evidence of translation readiness.

@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowRight, Calendar, Check, ChevronRight, FileText, HeartHandshake, Menu, MessageSquare, Pill, ShieldCheck, Stethoscope, Users, Video, X } from 'lucide-react';
+import { ArrowRight, AudioLines, Calendar, Check, ChevronRight, FileText, HeartHandshake, Languages, Menu, MessageSquare, Pill, ShieldCheck, Stethoscope, Users, Video, X } from 'lucide-react';
 import DoctaRxLogo from '@/components/branding/DoctaRxLogo';
 import CareLocationPicker from '@/components/discovery/CareLocationPicker';
 import useCareLocation from '@/lib/useCareLocation';
 import styles from './MarketHomepage.module.css';
 
-const sections=[['Care','#features'],['How it works','#workflow'],['Pharmacies','#network'],['For organizations','#organizations']];
+const sections=[['Language voice','#language-voice'],['Care','#features'],['How it works','#workflow'],['Pharmacies','#network']];
 
 export default function MarketHomepage({ market = 'US' }) {
   const nigeria=market==='NG', home=nigeria?'/ng':'/', patient=nigeria?'/ng/patient':'/patient';
@@ -30,10 +30,39 @@ export default function MarketHomepage({ market = 'US' }) {
       <div className="flex items-center gap-3"><div className="hidden items-center gap-4 lg:flex"><span className="text-slate-600">{nigeria?'Nigeria services':'United States services'}</span><Link href={nigeria?'/':'/ng'} className="inline-flex min-h-12 items-center font-medium text-blue-700">Change region</Link></div><Link href={patient+'/login'} className="inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-300 px-4 font-semibold hover:bg-slate-50">Sign in</Link><button ref={menuButton} type="button" aria-label={menuOpen?'Close main navigation':'Open main navigation'} aria-expanded={menuOpen} className="inline-flex min-h-12 min-w-12 items-center justify-center rounded-xl border border-slate-300 xl:hidden" onClick={()=>setMenuOpen(value=>!value)}>{menuOpen?<X aria-hidden="true" className="h-6 w-6" />:<Menu aria-hidden="true" className="h-6 w-6" />}</button></div>
     </div>{menuOpen&&<nav aria-label="Mobile primary navigation" className="border-t border-slate-200 bg-white px-5 py-4 xl:hidden">{sections.map(([label,href])=><Link key={href} href={href} className="flex min-h-12 items-center rounded-xl px-3 font-medium hover:bg-blue-50" onClick={()=>setMenuOpen(false)}>{label}</Link>)}<Link href={nigeria?'/':'/ng'} className="flex min-h-12 items-center px-3 font-medium text-blue-700">{nigeria?'United States services':'Nigeria services'}</Link></nav>}</header>
     <main>
-      <section className="overflow-hidden bg-[#f4f7fc]"><div className="mx-auto grid max-w-[1440px] items-center gap-10 px-5 py-12 sm:px-8 sm:py-16 lg:grid-cols-[1fr_1.05fr] lg:gap-12 lg:py-20">
-        <div className="max-w-2xl"><p className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white px-4 py-2 font-medium text-blue-800"><span className="h-2 w-2 rounded-full bg-blue-600" aria-hidden="true" />Your care. Connected.</p><h1 className="mt-6 text-[clamp(2.5rem,4.8vw,4.5rem)] font-semibold leading-[1.08] tracking-[-0.045em] text-[#101d36]">Good care.<br />Closer to you.</h1><p className="mt-6 max-w-xl text-xl leading-8 text-slate-600">Connect with a clinician, keep your health records within reach, and explore pharmacy options near you. One clear place for your next step in care.</p><div className="mt-8 flex flex-wrap gap-3"><Link href={findCare} className="inline-flex min-h-14 items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 font-semibold text-white shadow-sm hover:bg-blue-700">Find care<ArrowRight className="h-5 w-5" aria-hidden="true" /></Link><Link href={patient+'/login'} className="inline-flex min-h-14 items-center justify-center rounded-2xl border border-slate-300 bg-white px-6 py-4 font-semibold hover:border-blue-300">Access your account</Link></div><p className="mt-6 leading-7 text-slate-600">Services, availability, and costs are confirmed for your account before care is booked.</p></div>
-        <div><div className="overflow-hidden rounded-[2rem] border border-white bg-white shadow-[0_24px_70px_rgba(16,29,54,0.12)]"><Image src="/marketing/doctarx/virtual-care-hero-v1.webp" alt="Illustration of a clinician listening during a virtual consultation" width={1536} height={1024} priority sizes="(max-width: 1024px) 100vw, 50vw" className="aspect-[3/2] h-auto w-full object-cover" /></div><div className="relative mx-4 -mt-6 flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-lg sm:mx-8"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><Video className="h-6 w-6" aria-hidden="true" /></span><div><p className="font-semibold">A conversation that matters</p><p className="mt-1 leading-6 text-slate-600">Care begins with understanding your needs.</p></div></div></div>
-      </div></section>
+      <section className={styles.aiHero} aria-labelledby="hero-heading">
+        <div className={styles.heroGrid}>
+          <div className={styles.heroCopy}>
+            <p className={styles.brandPill}><span aria-hidden="true" />DOCTARX · AI-FIRST TELEHEALTH</p>
+            <h1 id="hero-heading">AI-first telehealth.<br /><span>Human care.</span></h1>
+            <p className={styles.heroDescription}>Intelligent technology. Personal care. A connected experience that brings your voice, your care team, and your next step together.</p>
+            <div className={styles.heroActions}>
+              <Link href={findCare} className={styles.primaryAction}>Find care<ArrowRight aria-hidden="true" /></Link>
+              <Link href="#language-voice" className={styles.secondaryAction}>Explore language voice<AudioLines aria-hidden="true" /></Link>
+            </div>
+            <ul className={styles.heroPrinciples} aria-label="Our approach to care">
+              <li><AudioLines aria-hidden="true" />Voice-led connection</li>
+              <li><Stethoscope aria-hidden="true" />Clinician-led care</li>
+            </ul>
+          </div>
+          <figure className={styles.heroArt}>
+            <Image src="/marketing/doctarx/phc-maternity-doctor-hero-v5.webp" alt="AI-generated scene of a pregnant patient at a Nigerian primary healthcare centre speaking with a doctor on a tablet" width={1536} height={1024} priority sizes="(max-width: 900px) 100vw, 55vw" className={styles.heroImage} />
+            <figcaption className={styles.heroArtCaption}><span><Languages aria-hidden="true" /></span><div><p>Different languages.</p><strong>One conversation.</strong><div className={styles.heroLanguagePair} role="group" aria-label="Illustrative conversation from Hausa to English"><span>Hausa</span><ArrowRight aria-hidden="true" /><span>English</span></div></div></figcaption>
+          </figure>
+        </div>
+        <div className={styles.heroBridge}><p>Intelligence that connects.<br className={styles.mobileBreak} /> Care that stays human.</p><span>VOICE <span aria-hidden="true">/</span> VIRTUAL CARE <span aria-hidden="true">/</span> CONNECTED HEALTH</span></div>
+      </section>
+      <section id="language-voice" className={styles.voiceSection} aria-labelledby="voice-heading">
+        <div className={styles.voiceIntro}>
+          <div><p className={styles.eyebrow}>MULTILINGUAL LANGUAGE VOICE</p><h2 id="voice-heading">Your voice.<br /><span>Your language.</span></h2></div>
+          <div className={styles.voiceIntroCopy}><p>Care starts with being understood. Speak naturally, share what matters, and bring your story into the conversation with your clinician.</p><ul className={styles.languageList} aria-label="Language voice"><li>English</li><li>Nigerian English</li><li>Hausa</li><li>Igbo</li><li>Yoruba</li></ul></div>
+        </div>
+        <div className={styles.voiceCards}>
+          <article className={styles.voiceCard}><span className={styles.voiceCardIcon}><AudioLines aria-hidden="true" /></span><p className={styles.voiceStep}>01 / A NATURAL START</p><h3>Less typing.<br />More conversation.</h3><p>Tell your care story in your own words. Voice brings a more personal rhythm to the first step.</p></article>
+          <article className={`${styles.voiceCard} ${styles.voiceTranslation}`}><span className={styles.voiceCardIcon}><Languages aria-hidden="true" /></span><p className={styles.voiceStep}>02 / MEANING MATTERS</p><h3>Language is part<br />of good care.</h3><p>Make space for familiar expressions and the details that matter to you. Your voice belongs in the conversation.</p></article>
+          <article className={styles.voiceCard}><span className={styles.voiceCardIcon}><HeartHandshake aria-hidden="true" /></span><p className={styles.voiceStep}>03 / PEOPLE AT THE CENTRE</p><h3>AI connects.<br />Clinicians care.</h3><p>Bring your story to a care team for review, clinical decisions, and a clear next step.</p></article>
+        </div>
+      </section>
       <div className={styles.experience}>
         <section id="features" className={styles.section} aria-labelledby="care-heading">
           <div className={styles.sectionIntro}>

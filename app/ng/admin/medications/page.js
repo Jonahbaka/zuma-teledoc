@@ -103,6 +103,7 @@ export default function NigeriaAdminMedicationOpsPage() {
       await api.patch(`/ng/admin/medication-requests/${requestId}`, {
         status,
         adminNotes: `Status updated to ${statusLabel(status)} from Nigeria medication operations.`,
+        ...(status === 'clarification_requested' ? { clarificationRequest: requestEdits[requestId]?.clarificationRequest ?? requests.find(request => request.id === requestId)?.clarification_request ?? '' } : {}),
       });
       setNotice('Medication request updated.');
       await loadMedicationOps();
@@ -126,9 +127,7 @@ export default function NigeriaAdminMedicationOpsPage() {
     setNotice('');
     try {
       await api.patch(`/ng/admin/medication-requests/${requestId}`, {
-        confirmedPriceNgn: edits.confirmedPriceNgn ?? null,
-        pharmacyNotes: edits.pharmacyNotes ?? null,
-        clarificationRequest: edits.clarificationRequest ?? null,
+        ...edits,
         adminNotes: edits.adminNotes ?? 'Updated from Nigeria medication operations.',
       });
       setNotice('Medication request details updated.');
@@ -249,6 +248,7 @@ export default function NigeriaAdminMedicationOpsPage() {
         </Card>
       ) : activeView === 'requests' ? (
         <section className="space-y-3">
+          <p className="text-sm text-slate-600">Availability requests do not confirm dispensing or handover. Use the verified medication order workflow for fulfillment.</p>
           {requests.length === 0 ? (
             <Card className="border-border/70 bg-white text-slate-950">
               <CardContent className="p-8 text-center text-sm text-slate-600">No medication requests match the current filters.</CardContent>
@@ -292,25 +292,19 @@ export default function NigeriaAdminMedicationOpsPage() {
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" className="bg-blue-600 text-white hover:bg-blue-500" onClick={() => updateRequestStatus(request.id, 'available')}>
+                  <Button size="sm" className="bg-blue-600 text-white hover:bg-blue-500" disabled={['cancelled', 'fulfilled', 'completed'].includes(request.status)} onClick={() => updateRequestStatus(request.id, 'available')}>
                     Mark Available
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => updateRequestStatus(request.id, 'pharmacy_reviewing')}>
+                  <Button size="sm" variant="outline" disabled={['cancelled', 'fulfilled', 'completed'].includes(request.status)} onClick={() => updateRequestStatus(request.id, 'pharmacy_reviewing')}>
                     Mark Reviewing
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => updateRequestStatus(request.id, 'unavailable')}>
+                  <Button size="sm" variant="outline" disabled={['cancelled', 'fulfilled', 'completed'].includes(request.status)} onClick={() => updateRequestStatus(request.id, 'unavailable')}>
                     Mark Unavailable
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => updateRequestStatus(request.id, 'clarification_requested')}>
+                  <Button size="sm" variant="outline" disabled={['cancelled', 'fulfilled', 'completed'].includes(request.status)} onClick={() => updateRequestStatus(request.id, 'clarification_requested')}>
                     Request Clarification
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => updateRequestStatus(request.id, 'fulfilled')}>
-                    Mark Fulfilled
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => updateRequestStatus(request.id, 'completed')}>
-                    Complete
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => saveRequestDetails(request.id)}>
+                  <Button size="sm" variant="outline" disabled={['cancelled', 'fulfilled', 'completed'].includes(request.status)} onClick={() => saveRequestDetails(request.id)}>
                     Save Price/Notes
                   </Button>
                 </div>

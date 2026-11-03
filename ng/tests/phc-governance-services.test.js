@@ -13,8 +13,8 @@ const reporting = require('../services/phc/programmeReportingService');
 const devices = require('../services/phc/deviceGatewayService');
 
 const validAiOutput = {
-  summary: 'Patient reports headache.',
-  handoverDraft: 'Chief complaint: headache. Other history is not recorded.',
+  summary: 'The recorded chief complaint is headache.',
+  handoverDraft: 'The recorded chief complaint is headache.',
   missingInformation: [{ field: 'allergies', reason: 'Not recorded in the supplied encounter.' }],
   assertions: [{ text: 'The recorded chief complaint is headache.', sourceRefs: ['encounter:chief_complaint'] }],
   uncertainties: ['Duration is not recorded.'],
@@ -130,4 +130,30 @@ test('canonical chart note writes require assigned provider and queue completion
   assert.match(workflowService, /CLINICAL_SIGNOFF_REQUIRED/);
   assert.match(workflowService, /n\.is_signed=TRUE/);
   assert.match(workflowService, /provider_patient_relationships/);
+});
+
+ test('clinical AI refuses unsupported narrative even with valid citation IDs', () => {
+  const sources = new Map([['encounter:chief_complaint', {}]]);
+  for (const output of [
+    { ...validAiOutput, summary: 'Patient has no allergies.' },
+    { ...validAiOutput, handoverDraft: 'Start a new medication.' },
+    { ...validAiOutput, assertions: [] },
+  ]) assert.throws(() => ai.validateGrounding(output, sources), { code: 'CLINICAL_AI_NARRATIVE_REJECTED' });
+});
+
+test('source reference validation never claims semantic or clinical validation', () => {
+  const sources = new Map([['encounter:chief_complaint', {}]]);
+  const assertion = { text: 'A claim with an existing but possibly irrelevant citation.', sourceRefs: ['encounter:chief_complaint'] };
+  const output = { ...validAiOutput, summary: assertion.text, handoverDraft: assertion.text, assertions: [assertion] };
+  ai.validateGrounding(output, sources);
+  assert.equal(ai.validationStatus(output).groundingValidated, false);
+  assert.equal(ai.validationStatus(output).semanticGrounding, 'not_validated');
+  assert.equal(ai.validationStatus(output).requiresClinicianReview, true);
+});
+
+test('legacy AI draft reads cannot retain a false grounding guarantee', () => {
+  const row = ai.normalizeValidation({ prompt_version: 'phc-grounded-draft-v1', validation_json: { groundingValidated: true } });
+  assert.equal(row.validation_json.groundingValidated, false);
+  assert.equal(row.validation_json.semanticGrounding, 'not_validated');
+  assert.equal(row.validation_json.narrativeLinkedToAssertions, false);
 });

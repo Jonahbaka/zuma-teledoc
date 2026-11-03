@@ -48,10 +48,8 @@ export default function RoomDetail({ roomId }) {
       ]);
       setRoom(r.room);
       setParticipants(ps.participants);
-      const possibleMe =
-        ps.participants.find((p) => p.user_id && p.user_id === r.room?.host_user_id) ||
-        ps.participants.find((p) => p.role === 'host') ||
-        null;
+      const possibleMe = ps.participants.find((p) =>
+        p.id === r.viewerParticipantId || (r.viewerUserId && p.user_id === r.viewerUserId)) || null;
       setMe(possibleMe);
     } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
