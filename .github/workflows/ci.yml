@@ -120,6 +120,9 @@ jobs:
           npm run migrate
           npm run ng:migrate
 
+      - name: Verify migration transactions, drift refusal and release locks
+        run: SIMULATION_DATABASE_URL="$DATABASE_URL" npm run test:release-safety
+
       - name: Run government PostgreSQL workflow tests
         run: npm run test:ng:government-data:db
 
@@ -137,7 +140,7 @@ jobs:
       - name: Restore to a separate database
         run: |
           createdb --host=localhost --username=postgres doctarx_restore_test
-          pg_restore --host=localhost --username=postgres --dbname=doctarx_restore_test --no-owner --no-acl artifacts/database/10-post-tests.dump
+          pg_restore --host=localhost --username=postgres --dbname=doctarx_restore_test --no-owner --no-acl --exit-on-error --single-transaction artifacts/database/10-post-tests.dump
 
       - name: Reconcile source and restored database
         run: |
