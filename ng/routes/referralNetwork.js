@@ -53,6 +53,8 @@ function imagingVisible(record) {
 // authenticate already applied for protected endpoints, and the public verify-qr
 // endpoint is mounted on a sub-router below.
 
+router.use((_req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
+
 const publicRouter = express.Router();
 
 publicRouter.get('/verify-qr/:token', async (req, res) => {
@@ -125,14 +127,9 @@ function forbidden(message = 'Referral access denied') {
 function sendReferralError(res, err, label = '[DRN] route') {
   if (err.code === 'FORBIDDEN') return res.status(403).json({ ok: false, error: err.message });
   if (err.code === 'NOT_FOUND') return res.status(404).json({ ok: false, error: err.message });
-  if (err.code === 'INVALID_TRANSITION') return res.status(409).json({ ok: false, error: err.message });
-  console.error(label, err);
-  return res.status(500).json({ ok: false, error: err.message });
-}
-
-async function resolveProviderId(req, pool) {
-  const result = await pool.query('SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1', [req.user.id]);
-  return result.rows[0]?.id || null;
+  if (err.code === 'INVALID_TRANSITION' || err.code === 'DESTINATION_UNAVAILABLE') return res.status(409).json({ ok: false, error: err.message });
+  console.error(label, { code: err.code || 'REFERRAL_SERVICE_UNAVAILABLE' });
+  return res.status(500).json({ ok: false, error: 'Referral service is temporarily unavailable.' });
 }
 
 async function resolveAgentId(req, pool) {
@@ -141,21 +138,11 @@ async function resolveAgentId(req, pool) {
 }
 
 async function referralActorScope(req, pool) {
-  const role = roleOf(req);
-  const scope = { role, providerId: null, agentId: null, patientUserId: null };
-  if (PROVIDER_ROLES.has(role)) scope.providerId = await resolveProviderId(req, pool);
-  if (AGENT_ROLES.has(role)) scope.agentId = await resolveAgentId(req, pool);
-  if (PATIENT_ROLES.has(role)) scope.patientUserId = req.user.id;
-  return scope;
+  const scope = await referralAuthority.actorScope(pool, asActor(req));
+  return { ...scope, patientUserId: scope.role === 'patient' ? scope.userId : null };
 }
 
-function canAccessReferral(scope, referral) {
-  if (ADMIN_ROLES.has(scope.role)) return true;
-  if (scope.patientUserId && referral.patient_user_id === scope.patientUserId) return true;
-  if (scope.providerId && [referral.originating_provider, referral.destination_provider].includes(scope.providerId)) return true;
-  if (scope.agentId && referral.originating_agent === scope.agentId) return true;
-  return false;
-}
+const canAccessReferral = referralAuthority.canReadReferral;
 
 async function actionHints(req, referral, pool) {
   let scope = null;
@@ -256,7 +243,6 @@ router.post('/referrals', requireAuth, async (req, res) => {
 router.get('/referrals', requireAuth, async (req, res) => {
   const pool = getPool();
   try {
-    const role = roleOf(req);
     const scope = await referralActorScope(req, pool);
     const filters = {
       destination_org: req.query.destination_org,
@@ -267,7 +253,7 @@ router.get('/referrals', requireAuth, async (req, res) => {
       since: req.query.since,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
     };
-    if (!ADMIN_ROLES.has(role)) {
+    if (!scope.admin) {
       filters.destination_org = undefined;
       filters.originating_org = undefined;
       if (scope.patientUserId) {
@@ -464,6 +450,6 @@ router.get('/agents', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-router._test = { imagingVisible, isMedicalImaging, medicalImagingAuthorized };
+router._test = { imagingVisible, isMedicalImaging, medicalImagingAuthorized, canAccessReferral, referralActorScope, getScopedReferral, getScopedReferralByCode };
 
 module.exports = router;

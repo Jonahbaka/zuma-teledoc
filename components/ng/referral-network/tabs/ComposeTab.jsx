@@ -82,7 +82,7 @@ export default function ComposeTab() {
 
   async function submit() {
     if (!current() || operation.current || uncertain.current) return;
-    if (!savedDraft.current && (!chosen?.id || selectedListing.current?.id !== chosen.id || !form.reason.trim() || !form.specialty.trim())) return;
+    if (!savedDraft.current && (!chosen?.id || chosen.dispatch_ready !== true || selectedListing.current?.id !== chosen.id || !form.reason.trim() || !form.specialty.trim())) return;
     operation.current = 'send'; setBusy(true); setErr('');
     let creating = !savedDraft.current;
     try {
@@ -172,13 +172,14 @@ export default function ComposeTab() {
 
         {matches.length > 0 && (
           <ul className="mt-4 space-y-2">
-            {matches.slice(0, 8).map(m => (
-              <li key={m.id} onClick={() => { if (!operation.current && !savedDraft.current && !uncertain.current) { selectedListing.current = m; setChosen(m); } }}
-                className={`cursor-pointer rounded-xl border p-3 transition ${chosen?.id === m.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}>
+            {[...matches].sort((a, b) => Number(b.dispatch_ready === true) - Number(a.dispatch_ready === true)).slice(0, 8).map(m => (
+              <li key={m.id} onClick={() => { if (m.dispatch_ready === true && !operation.current && !savedDraft.current && !uncertain.current) { selectedListing.current = m; setChosen(m); } }}
+                className={`${m.dispatch_ready === true ? 'cursor-pointer' : 'opacity-70'} rounded-xl border p-3 transition ${chosen?.id === m.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}>
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-bold text-slate-900">{m.title} <span className="text-xs font-normal text-slate-500">· {m.org_name}</span></p>
                     <p className="mt-1 text-xs text-slate-600">{(m.reasons || []).join(' · ')}</p>
+                    {m.dispatch_ready !== true && <p className="mt-1 text-xs text-amber-800">Directory listing only. Sending is unavailable until a verified receiving clinician is connected.</p>}
                   </div>
                   <div className="text-right">
                     <p className="text-xl font-black text-blue-700">{m.score}</p>
@@ -202,7 +203,7 @@ export default function ComposeTab() {
 
       {!created && (
         <div className="flex items-center justify-end">
-          <button onClick={submit} disabled={busy || createUncertain || !chosen?.id || !form.reason.trim() || !form.specialty.trim()}
+          <button onClick={submit} disabled={busy || createUncertain || !chosen?.id || chosen.dispatch_ready !== true || !form.reason.trim() || !form.specialty.trim()}
             className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
             <Send className="h-4 w-4" />
             {busy ? 'Sending…' : 'Send referral'}
@@ -217,7 +218,7 @@ export default function ComposeTab() {
             <h3 className="text-sm font-bold">Referral {created.status === 'draft' ? 'draft saved' : created.status} — {created.ref_code}</h3>
           </div>
           <p className="mt-1 text-xs text-blue-700">
-            This is the last confirmed referral status. A sent status does not confirm that the receiving facility has read or acted on it.
+            This is the last confirmed referral status. Sent means available in the receiving clinician’s DoctaRx inbox, not delivery to an external hospital system or confirmation that it was read or acted on.
           </p>
           {created.status === 'draft' ? (
             <button onClick={submit} disabled={busy} className="mt-3 rounded-lg bg-blue-700 px-3 py-1.5 text-sm text-white disabled:opacity-50">Check status and retry sending saved draft</button>

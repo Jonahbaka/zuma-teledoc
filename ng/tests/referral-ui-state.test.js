@@ -82,7 +82,7 @@ test('unmounted worklist ignores delayed failure',async()=>{
   const read=deferred();const view=list({listReferrals:()=>read.promise});view.render();view.unmount();read.reject(new Error('Late private error'));await flush(view);assert.equal(view.text().includes('Late private error'),false);
 });
 const draftRow = () => referral({status:'draft',allowed_transitions:['sent']});
-const matchRow = { id:'listing-a',organization_id:'org-a',title:'Synthetic listing',specialty:'cardiology',reasons:['Synthetic match'] };
+const matchRow = { dispatch_ready:true,id:'listing-a',organization_id:'org-a',title:'Synthetic listing',specialty:'cardiology',reasons:['Synthetic match'] };
 function compose(drn){return harness('tabs/ComposeTab.jsx',drn);}
 async function prepareCompose(view){
   view.render();view.find('input').find(n=>n.props.placeholder).props.onChange({target:{value:'Synthetic reason'}});view.render();
@@ -143,4 +143,35 @@ test('ordinary patient/provider referral landing does not request privileged KPI
  }
  const admin=harness('ReferralNetworkPortal.jsx',{}, {exportName:'ReferralNetworkWorkspace',props:{role:'admin'}});
  admin.render();assert.ok(admin.button('Overview'));assert.equal(admin.button('Compose'),undefined);
+});
+
+
+test('directory-only or unconfirmed destinations cannot be selected or sent', async () => {
+  for (const dispatch_ready of [false, undefined, null]) {
+    let creates = 0;
+    const view=compose({async match(){return {ok:true,matches:[{...matchRow,dispatch_ready}]};},async createReferral(){creates++;}});
+    await prepareCompose(view);
+    assert.equal(view.button('Send referral').props.disabled,true);
+    await view.button('Send referral').props.onClick();
+    assert.equal(creates,0);
+    assert.ok(view.text().includes('Directory listing only'));
+  }
+});
+
+
+test('a sendable receiver remains visible behind nine higher-ranked directory-only matches', async () => {
+  let selected;
+  const directory = Array.from({ length: 9 }, (_, index) => ({ ...matchRow, id: `directory-${index}`, title: `Directory ${index}`, dispatch_ready: false, score: 95 - index }));
+  const ready = { ...matchRow, id: 'ready-receiver', title: 'Sendable receiver', score: 20 };
+  const view = compose({
+    async match() { return { ok: true, matches: [...directory, ready] }; },
+    async createReferral(body) { selected = body.destination_listing; return { ok: true, referral: draftRow() }; },
+    async transition() { return { ok: true, referral: referral({ status: 'sent' }) }; },
+  });
+  await prepareCompose(view);
+  assert.equal(view.find('li').length, 8);
+  assert.ok(view.text().includes('Sendable receiver'));
+  assert.equal(view.button('Send referral').props.disabled, false);
+  await view.button('Send referral').props.onClick(); await flush(view);
+  assert.equal(selected, 'ready-receiver');
 });

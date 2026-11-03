@@ -94,15 +94,50 @@ async function creationInput(client, supplied, scope) {
   return input;
 }
 
+function canReadReferral(scope, referral) {
+  if (scope.admin) return true;
+  if (scope.role === 'patient' && referral.patient_user_id === scope.userId) return true;
+  if (scope.providerId && referral.originating_provider === scope.providerId) return true;
+  if (scope.agentId && referral.originating_agent === scope.agentId) return true;
+  // Selecting a recipient is not consent to send a draft. A cancelled draft also
+  // stays private: status alone cannot establish that it was ever dispatched.
+  return Boolean(scope.providerId && referral.destination_provider === scope.providerId && referral.dispatched === true);
+}
+
+async function assertDispatchPatient(client, referral, scope) {
+  if (!referral.patient_user_id) return;
+  if (scope.patientRecord?.id !== referral.patient_user_id) fail('The current linked patient account must be verified before sending');
+  if (scope.role === 'patient' && scope.userId === referral.patient_user_id) return;
+  if (!scope.providerId) fail('Linked patient referrals require a treating provider');
+  const link = (await client.query('SELECT id FROM provider_patient_relationships WHERE provider_id=$1 AND patient_id=$2 AND is_active=true ORDER BY id LIMIT 1 FOR SHARE', [scope.userId, referral.patient_user_id])).rows[0];
+  if (!link) fail('An active patient care relationship is required before sending');
+}
+
+async function assertDispatchDestination(client, referral, destinationUserId) {
+  const unavailable = () => { throw Object.assign(new Error('Sending is unavailable for this destination. The draft is saved; arrange the referral manually until a verified receiving clinician is connected.'), { code: 'DESTINATION_UNAVAILABLE' }); };
+  if (!referral.destination_listing || !referral.destination_org || !referral.destination_provider || !destinationUserId) unavailable();
+  const row = (await client.query(`SELECT l.id, l.organization_id, l.provider_id, l.specialty, l.service_kind,
+      l.active, o.active AS organization_active, o.accepts_referrals, p.status AS provider_status, p.user_id
+    FROM drn_marketplace_listings l
+    JOIN drn_organizations o ON o.id=l.organization_id
+    JOIN ng_providers p ON p.id=l.provider_id
+    WHERE l.id=$1 FOR SHARE OF l,o,p`, [referral.destination_listing])).rows[0];
+  if (!row || row.active !== true || row.organization_active !== true || row.accepts_referrals !== true ||
+      row.provider_status !== 'verified' || row.user_id !== destinationUserId ||
+      row.organization_id !== referral.destination_org || row.provider_id !== referral.destination_provider ||
+      String(row.specialty).trim().toLowerCase() !== referral.specialty ||
+      String(row.service_kind).trim().toLowerCase() !== referral.service_kind) unavailable();
+}
+
 function assertTransition(scope, referral, toStatus) {
   const origin = (scope.role === 'patient' && referral.patient_user_id === scope.userId) ||
     (scope.providerId && referral.originating_provider === scope.providerId) ||
     (scope.agentId && referral.originating_agent === scope.agentId);
-  const receiver = scope.providerId && referral.destination_provider === scope.providerId;
+  const receiver = scope.providerId && referral.destination_provider === scope.providerId && referral.dispatched === true;
   const early = ['draft', 'sent', 'received'].includes(referral.status);
   if (scope.admin && ['cancelled', 'expired'].includes(toStatus)) return;
-  if (origin && ((toStatus === 'sent' && referral.status === 'draft') || (toStatus === 'cancelled' && early))) return;
+  if (origin && ((toStatus === 'sent' && referral.status === 'draft' && referral.destination_listing && referral.destination_org && referral.destination_provider) || (toStatus === 'cancelled' && early))) return;
   if (receiver && ['received', 'accepted', 'declined', 'scheduled', 'in_progress', 'completed', 'no_show', 'cancelled'].includes(toStatus)) return;
   fail('This transition requires the verified destination provider or an authorized originating actor');
 }
-module.exports = { actorScope, creationInput, assertTransition };
+module.exports = { actorScope, creationInput, assertTransition, assertDispatchDestination, assertDispatchPatient, canReadReferral };

@@ -62,7 +62,7 @@ function makeFakeDb({ failItemInsert = 0, existingCommissions = false } = {}) {
       }
       if (/SELECT \* FROM ng_rx_items/i.test(text)) { return { rows: [] }; }
       if (/SELECT 1 FROM drn_commissions/i.test(text)) { return { rows: existingCommissions ? [{ ok: 1 }] : [] }; }
-      if (/SELECT \* FROM drn_referrals[\s\S]*FOR UPDATE/i.test(text)) { return { rows: [{ id: 'ref-1', status: 'in_progress', destination_provider: 'prov-1' }] }; }
+      if (/FROM drn_referrals r[\s\S]*FOR UPDATE/i.test(text)) { return { rows: [{ id: 'ref-1', status: 'in_progress', dispatched: true, destination_provider: 'prov-1' }] }; }
       if (/UPDATE drn_referrals/i.test(text)) { log.push('UPD_REFERRAL'); return { rows: [{ id: 'ref-1', status: 'completed', referring_agent_id: 'ag-1', completed_at: new Date() }] }; }
       if (/INSERT INTO drn_referral_events/i.test(text)) { log.push('INS_REF_EVENT'); return { rows: [] }; }
       if (/INSERT INTO drn_commissions/i.test(text)) { log.push('INS_COMMISSION'); return { rows: [{ id: 'c-1' }] }; }

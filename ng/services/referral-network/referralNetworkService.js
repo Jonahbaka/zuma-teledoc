@@ -19,6 +19,12 @@ const crypto = require('crypto');
 const authority = require('./referralAuthority');
 const { getPool, transaction } = require('../../../server/db');
 
+// A committed sent event, in the same transaction as the status change, is the
+// evidence that this record was released to the receiving DoctaRx inbox.
+const dispatchEvidence = `EXISTS (SELECT 1 FROM drn_referral_events dispatch
+  WHERE dispatch.referral_id=r.id AND dispatch.event_kind='sent'
+    AND dispatch.from_status='draft' AND dispatch.to_status='sent')`;
+
 // ─── State machine ────────────────────────────────────────────────────────────
 
 const REFERRAL_TRANSITIONS = {
@@ -120,12 +126,18 @@ async function listListings({ specialty, service_kind, state, lga, accepts_emerg
            l.avg_wait_minutes, l.accepts_emergency, l.accepts_insurance,
            l.acceptance_rate, l.total_referrals, l.completed_referrals,
            l.featured,
+           COALESCE(o.accepts_referrals = TRUE AND p.status = 'verified' AND u.is_active = TRUE
+             AND u.provider_status = 'approved' AND u.role::text IN ('provider','doctor','consultant','physician','specialist')
+             AND CASE WHEN COALESCE(u.market_scope,'') <> '' THEN UPPER(u.market_scope) = 'NG'
+               ELSE UPPER(u.country) IN ('NG','NIGERIA') END, FALSE) AS dispatch_ready,
            o.name AS org_name, o.state AS org_state, o.lga AS org_lga,
            o.latitude, o.longitude
       FROM drn_marketplace_listings l
       JOIN drn_organizations o ON o.id = l.organization_id
+      LEFT JOIN ng_providers p ON p.id=l.provider_id
+      LEFT JOIN users u ON u.id=p.user_id
      WHERE ${where.join(' AND ')}
-     ORDER BY l.featured DESC, l.acceptance_rate DESC, l.avg_wait_minutes ASC NULLS LAST
+     ORDER BY dispatch_ready DESC, l.featured DESC, l.acceptance_rate DESC, l.avg_wait_minutes ASC NULLS LAST
      LIMIT $${params.length}
   `;
   const r = await pool.query(sql, params);
@@ -222,7 +234,9 @@ async function matchSpecialists(request, { limit = 10 } = {}, pool = getPool()) 
   const scored = candidates
     .map(c => ({ ...c, ...scoreCandidate(request, c) }))
     .filter(c => c.score > 0)
-    .sort((a, b) => b.score - a.score)
+    // Keep usable receivers ahead of directory-only candidates before truncation.
+    // Clinical matching scores still order candidates within each group.
+    .sort((a, b) => Number(b.dispatch_ready === true) - Number(a.dispatch_ready === true) || b.score - a.score)
     .slice(0, limit);
 
   return scored;
@@ -303,12 +317,12 @@ async function insertReferral(input, actor, pool) {
 }
 
 async function getReferral(id, pool = getPool()) {
-  const r = await pool.query(`SELECT * FROM drn_referrals WHERE id = $1`, [id]);
+  const r = await pool.query(`SELECT r.*, ${dispatchEvidence} AS dispatched FROM drn_referrals r WHERE r.id = $1`, [id]);
   return r.rows[0] || null;
 }
 
 async function getReferralByCode(refCode, pool = getPool()) {
-  const r = await pool.query(`SELECT * FROM drn_referrals WHERE ref_code = $1`, [refCode]);
+  const r = await pool.query(`SELECT r.*, ${dispatchEvidence} AS dispatched FROM drn_referrals r WHERE r.ref_code = $1`, [refCode]);
   return r.rows[0] || null;
 }
 
@@ -320,8 +334,13 @@ async function transitionReferral(id, toStatus, actor, opts = {}, existing = nul
   // ledger, and two concurrent completions could double-accrue. The row lock
   // serializes concurrent transitions on the same referral.
   const run = async (client) => {
-    const scope = await authority.actorScope(client, actor);
-    const lockRes = await client.query(`SELECT * FROM drn_referrals WHERE id = $1 FOR UPDATE`, [id]);
+    // Resolve the intended receiver before locking users so both actor and receiver
+    // accounts are locked in actorScope's deterministic order. Recheck the
+    // destination mapping under locks below before any dispatch write.
+    const destination = toStatus === 'sent' ? (await client.query(`SELECT p.user_id, r.patient_user_id
+      FROM drn_referrals r JOIN ng_providers p ON p.id=r.destination_provider WHERE r.id=$1`, [id])).rows[0] : null;
+    const scope = await authority.actorScope(client, actor, destination?.patient_user_id || null, destination?.user_id || null);
+    const lockRes = await client.query(`SELECT r.*, ${dispatchEvidence} AS dispatched FROM drn_referrals r WHERE r.id = $1 FOR UPDATE OF r`, [id]);
     const ref = lockRes.rows[0];
     if (!ref) {
       const err = new Error('Referral not found');
@@ -334,6 +353,10 @@ async function transitionReferral(id, toStatus, actor, opts = {}, existing = nul
       throw err;
     }
 
+    if (toStatus === 'sent') {
+      await authority.assertDispatchDestination(client, ref, destination?.user_id);
+      await authority.assertDispatchPatient(client, ref, scope);
+    }
     authority.assertTransition(scope, ref, toStatus);
     actor = { user_id: scope.userId, kind: scope.kind };
     const cols = ['status = $2', 'updated_at = NOW()'];
@@ -366,7 +389,8 @@ async function transitionReferral(id, toStatus, actor, opts = {}, existing = nul
       await accrueCommissions(updated, client);
     }
 
-    return { ...updated, allowed_transitions: allowedTransitions(scope, updated) };
+    const confirmed = { ...updated, dispatched: toStatus === 'sent' || ref.dispatched === true };
+    return { ...confirmed, allowed_transitions: allowedTransitions(scope, confirmed) };
   };
 
   if (!existing) return transaction(run);
@@ -651,13 +675,13 @@ async function listReferrals({ destination_org, originating_org, originating_age
   if (originating_org)    { params.push(originating_org);    where.push(`originating_org = $${params.length}`); }
   if (originating_agent)  { params.push(originating_agent);  where.push(`originating_agent = $${params.length}`); }
   if (patient_user_id)    { params.push(patient_user_id);    where.push(`patient_user_id = $${params.length}`); }
-  if (provider_id)        { params.push(provider_id);        where.push(`(originating_provider = $${params.length} OR destination_provider = $${params.length})`); }
+  if (provider_id)        { params.push(provider_id);        where.push(`(originating_provider = $${params.length} OR (destination_provider = $${params.length} AND ${dispatchEvidence}))`); }
   if (status)             { params.push(status);             where.push(`status = $${params.length}`); }
   if (urgency)            { params.push(urgency);            where.push(`urgency = $${params.length}`); }
   if (since)              { params.push(since);              where.push(`created_at >= $${params.length}`); }
   params.push(Math.min(limit, 500));
   const sql = `
-    SELECT r.*, o_dest.name AS destination_org_name, o_orig.name AS originating_org_name
+    SELECT r.*, ${dispatchEvidence} AS dispatched, o_dest.name AS destination_org_name, o_orig.name AS originating_org_name
       FROM drn_referrals r
       LEFT JOIN drn_organizations o_dest ON o_dest.id = r.destination_org
       LEFT JOIN drn_organizations o_orig ON o_orig.id = r.originating_org
