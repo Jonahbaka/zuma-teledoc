@@ -12,9 +12,9 @@ const target = process.env.SIMULATION_DATABASE_URL;
 test('real medication HTTP routes enforce current JWT account roles, pharmacy scope and verified benefit authority', { skip: !target }, async t => {
   const url = new URL(target);
   assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname) && url.pathname.endsWith('_test'));
-  const previous = Object.fromEntries(['NODE_ENV', 'DATABASE_URL', 'ENCRYPTION_KEY', 'JWT_ACCESS_SECRET'].map(name => [name, process.env[name]]));
+  const previous = Object.fromEntries(['NODE_ENV', 'DATABASE_URL', 'ENCRYPTION_KEY', 'JWT_ACCESS_SECRET', 'NG_RETURN_CUSTODY_ENABLED'].map(name => [name, process.env[name]]));
   const secret = crypto.randomBytes(48).toString('hex');
-  Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: target, ENCRYPTION_KEY: 'c'.repeat(64), JWT_ACCESS_SECRET: secret });
+  Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: target, ENCRYPTION_KEY: 'c'.repeat(64), JWT_ACCESS_SECRET: secret, NG_RETURN_CUSTODY_ENABLED: 'false' });
   const pool = new Pool({ connectionString: target, max: 6 });
   const db = require('../../server/db'); const oldPool = db.getPool; const oldQuery = db.query;
   db.getPool = () => pool; db.query = (sql, params) => pool.query(sql, params);
@@ -65,6 +65,14 @@ test('real medication HTTP routes enforce current JWT account roles, pharmacy sc
     async function coverage(f, orderId, partnerId, extra = {}) {
       return mutate(`/api/ng/admin/medication-delivery/${orderId}`, f.admin, 'coverage', { partnerId, authorizationReference: 'Isolated patient benefit authorization', evidenceReference: 'Isolated approval receipt', expiresAt: new Date(f.state.now + 3600000).toISOString(), allocations: { medicinesMinor: 900000 }, ...extra });
     }
+
+    await t.test('proposed custody routes require authentication and stay unavailable without activation', async () => {
+      const f = await fixture(); const path = `/api/ng/pharmacy/${f.pharmacyId}/return-custody`;
+      assert.equal((await http(path)).status, 401);
+      const disabled = await http(path, { actor: f.pharmacist });
+      assert.equal(disabled.status, 503); assert.equal(disabled.headers.get('cache-control'), 'private, no-store');
+      assert.deepEqual((await http('/api/ng/admin/medication-delivery/return-custody/availability', { actor: f.superAdmin })).body, { enabled: false });
+    });
 
     await t.test('suspended pharmacies lose order and FHIR access while patient receipts and cancellation remain recoverable', async () => {
       const f = await fixture(); const orderId = await make(f); await confirmPrice(f, orderId);

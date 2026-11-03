@@ -10,6 +10,7 @@ const inventoryService = require('../services/pharmacy/inventoryService');
 const { previewCatalogue } = require('../services/pharmacy/cataloguePreviewService');
 const orderService = require('../services/pharmacy/orderService');
 const medicationRequests = require('../services/pharmacy/medicationRequestService');
+const returnCustody = require('../services/pharmacy/returnCustodyService');
 const medicationDelivery = require('../services/logistics/medicationDeliveryWorkflowService');
 const walletService = require('../services/pharmacy/walletService');
 const complianceService = require('../services/compliance/complianceService');
@@ -126,6 +127,19 @@ function handleRouteError(res, err) {
 }
 
 router.use(requirePharmacyPortalRole);
+
+// Alternate return custody is a separately authorized, default-disabled manual
+// protocol. It does not grant access to the original pharmacy's clinical order.
+router.get('/:pharmacyId/return-custody', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await returnCustody.list(req.params.pharmacyId, req.user, req.query)); }
+  catch (error) { handleMedicationOrderError(res, error); }
+});
+router.post('/:pharmacyId/return-custody/:orderId/receive', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await returnCustody.receive(req.params.orderId, req.params.pharmacyId, req.user, req.body)); }
+  catch (error) { handleMedicationOrderError(res, error); }
+});
 
 // --- ONBOARDING ---
 
