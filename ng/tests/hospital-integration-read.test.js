@@ -64,7 +64,7 @@ test('PostgreSQL hospital integration membership and metadata boundaries cannot 
   const admin=(await client.query("SELECT id FROM users WHERE role='admin' AND is_active=TRUE AND market_scope='NG' ORDER BY id LIMIT 1")).rows[0];
   assert.ok(owner&&member&&admin,'Existing isolated demo accounts required');
   const hospitalId=crypto.randomUUID(),staffId=crypto.randomUUID(),integrationId=crypto.randomUUID();
-  await client.query("INSERT INTO ng_hospitals(id,name,slug,facility_type,owner_user_id,contact_name,contact_email,contact_phone,address_line1,city,state) VALUES($1,'Synthetic','synthetic-'||$1::text,'clinic',$2,'Synthetic','fixture@example.invalid','000','Synthetic','Synthetic','Synthetic')",[hospitalId,owner.id]);
+  await client.query("INSERT INTO ng_hospitals(id,name,slug,facility_type,owner_user_id,contact_name,contact_email,contact_phone,address_line1,city,state) VALUES($1::uuid,'Synthetic',$3::text,'clinic',$2::uuid,'Synthetic','fixture@example.invalid','000','Synthetic','Synthetic','Synthetic')",[hospitalId,owner.id,`synthetic-${hospitalId}`]);
   await client.query("INSERT INTO ng_hospital_staff(id,hospital_id,user_id,full_name,role,status) VALUES($1,$2,$3,'Synthetic','other','inactive')",[staffId,hospitalId,member.id]);
   await client.query("INSERT INTO ng_hospital_integrations(id,hospital_id,integration_type,status,endpoint_url,last_error,admin_notes) VALUES($1,$2,'lab_systems','active','https://private.invalid?token=synthetic','Synthetic private error','Synthetic private notes')",[integrationId,hospitalId]);
   const wrapped={connect:async()=>({release(){},query:(sql,params)=>['BEGIN','COMMIT','ROLLBACK'].includes(sql)?Promise.resolve({rows:[]}):client.query(sql,params)})};
