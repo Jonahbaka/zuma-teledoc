@@ -56,6 +56,26 @@ test('corrupt or partial protected narratives never disclose a stale plaintext f
   }
 });
 
+test('production narratives require the complete GCM tag, IV and canonical ciphertext encoding', () => {
+  const current = isolatedPrimitives({ NODE_ENV: 'production', ENCRYPTION_KEY: 'ab'.repeat(32) });
+  const read = isolatedReader(current);
+  for (const field of fields) {
+    const secured = protectedRow(field, 'Synthetic production narrative', current);
+    const tag = secured[field + '_tag']; const iv = secured[field + '_iv']; const encrypted = secured[field + '_encrypted'];
+    for (const patch of [
+      ...[8, 16, 24, 26, 28, 30, 31].map(length => ({ [field + '_tag']: tag.slice(0, length) })),
+      { [field + '_tag']: tag + 'INVALID' }, { [field + '_tag']: tag + '00' }, { [field + '_tag']: tag + '\n' },
+      { [field + '_iv']: iv.slice(0, 22) }, { [field + '_iv']: iv + 'INVALID' }, { [field + '_iv']: iv + '00' },
+      { [field + '_iv']: iv + '\n' }, { [field + '_encrypted']: encrypted + '\n' },
+      { [field + '_encrypted']: '!' + encrypted }, { [field + '_encrypted']: encrypted + '=' },
+    ]) {
+      assert.throws(() => read({ [field]: 'Stale plaintext must not escape', ...secured, ...patch }, field),
+        error => error.code === 'CLINICAL_DECRYPTION_UNAVAILABLE' && error.statusCode === 503);
+    }
+    assert.equal(read({ ...secured, [field + '_tag']: tag.toUpperCase(), [field + '_iv']: iv.toUpperCase() }, field), 'Synthetic production narrative');
+  }
+});
+
 test('new narrative columns reject known fallback keys and missing or changed production keys', () => {
   const fallback = isolatedPrimitives({ NODE_ENV: 'development' });
   const current = isolatedPrimitives({ NODE_ENV: 'production', ENCRYPTION_KEY: 'ab'.repeat(32) });
@@ -121,7 +141,7 @@ test('note writes protect new narratives and decode before commit; explicit clea
         const value = scalar(expression, params);
         if (value !== undefined) row[column.trim()] = value;
       }
-      if (corruptReturn) row.follow_up_notes_tag = '00'.repeat(16);
+      if (corruptReturn) row.follow_up_notes_tag = row.follow_up_notes_tag.slice(0, 8);
       return { rows: [row] };
     }
     throw new Error('Unexpected isolated clinical narrative SQL');

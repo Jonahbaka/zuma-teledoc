@@ -40,3 +40,24 @@ test('cached development fallback cannot authorize later production writes', () 
   const reader = encryption({ ...env });
   assert.equal(reader.decrypt(saved.encrypted, saved.iv, saved.tag), 'Synthetic configured text');
 });
+
+test('current-key reader rejects shortened tags and every malformed encoding before decrypting', () => {
+  const api = encryption({ NODE_ENV: 'production', ENCRYPTION_KEY: 'ab'.repeat(32) });
+  const saved = api.encrypt('X');
+  // A one-byte ciphertext has two padding characters. Changing unused pad bits
+  // yields the same bytes under permissive Buffer.from but is not canonical.
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const noncanonical = saved.encrypted[0] + alphabet[alphabet.indexOf(saved.encrypted[1]) + 1] + '==';
+  assert.deepEqual(Buffer.from(noncanonical, 'base64'), Buffer.from(saved.encrypted, 'base64'));
+  for (const patch of [
+    ...[8, 16, 24, 26, 28, 30, 31].map(length => ({ tag: saved.tag.slice(0, length) })),
+    { tag: saved.tag + 'INVALID' }, { tag: saved.tag + '00' }, { tag: saved.tag + '\n' }, { tag: Buffer.from(saved.tag, 'hex') },
+    { iv: saved.iv + 'INVALID' }, { iv: saved.iv + '00' }, { iv: saved.iv.slice(0, 22) }, { iv: saved.iv + '\n' },
+    { encrypted: saved.encrypted + '\n' }, { encrypted: '!' + saved.encrypted }, { encrypted: saved.encrypted.replace(/=+$/, '') },
+    { encrypted: saved.encrypted + '=' }, { encrypted: noncanonical }, { encrypted: null },
+  ]) {
+    const candidate = { ...saved, ...patch };
+    assert.throws(() => api.decryptCurrentKey(candidate.encrypted, candidate.iv, candidate.tag), { code: 'PHI_DECRYPTION_FAILED' });
+  }
+  assert.equal(api.decryptCurrentKey(saved.encrypted, saved.iv.toUpperCase(), saved.tag.toUpperCase()), 'X');
+});

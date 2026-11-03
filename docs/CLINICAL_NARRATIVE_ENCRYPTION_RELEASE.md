@@ -6,8 +6,10 @@ The canonical mini-EHR services now encrypt new follow-up notes, amendment
 reasons, allergy inactivation reasons, and medication discontinuation reasons.
 Authorized responses retain their existing field names and return the decoded
 text. Historical plaintext remains readable only when that field has no
-protected representation. A partial or unreadable protected representation fails
-closed rather than returning stale plaintext.
+protected representation. New protected values require the complete 128-bit
+authentication tag, 96-bit IV, and canonical base64 ciphertext. A partial,
+malformed, or unreadable protected representation fails closed rather than
+returning stale plaintext. Legacy SOAP decryption compatibility is unchanged.
 
 This does not certify compliance or establish that all clinical database fields
 are encrypted. Existing plaintext history, coded diagnoses, clinical profile
