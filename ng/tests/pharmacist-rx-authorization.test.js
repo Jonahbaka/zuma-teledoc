@@ -9,13 +9,14 @@ function fixture() {
   const state = { user: { ...actor, is_active: true, account_status: 'active', market_scope: 'NG' },
     p: { id: ids.pharmacy, owner_user_id: ids.user, status: 'approved', account_status: 'active', verified_at: '2026-01-01', pcn_license_expiry: '2099-01-01', pcn_license_number: 'TEST-PCN', superintendent_pcn_number: 'TEST-SUPERVISOR' },
     rx: { id: ids.rx, routed_pharmacy_id: ids.pharmacy, preferred_pharmacy_id: ids.other, signed_at: '2026-01-01', lifecycle_status: 'sent_to_pharmacy', expires_at: '2099-01-01' },
-    items: [{ id: ids.item, prescription_id: ids.rx, quantity: 2, status: 'available', drug_name: 'Private medicine' }], calls: [], events: [], audits: [], auditFails: false };
+    items: [{ id: ids.item, prescription_id: ids.rx, quantity: 2, dispensed_quantity: 0, status: 'available', drug_name: 'Private medicine' }], calls: [], events: [], audits: [], auditFails: false };
   let before;
   const client = { release() {}, async query(sql, params = []) {
     state.calls.push({ sql, params });
     if (sql === 'BEGIN') { before = structuredClone({ rx: state.rx, items: state.items, events: state.events, audits: state.audits }); return { rows: [] }; }
     if (sql === 'ROLLBACK') { Object.assign(state, before); return { rows: [] }; }
     if (sql === 'COMMIT') return { rows: [] };
+    if (sql.startsWith('SELECT EXISTS(SELECT 1 FROM ng_medication_events')) return { rows: [{ required: !!state.reviewHeld }] };
     if (sql.includes('FROM users WHERE id=')) { assert.match(sql, /account_status='active' AND market_scope='NG' FOR SHARE/); const u=state.user; return { rows: u.id===params[0] && u.is_active && u.role==='pharmacy' && u.account_status==='active' && u.market_scope==='NG' ? [u] : [] }; }
     if (sql.includes('FROM ng_pharmacies p')) {
       assert.match(sql, /FOR SHARE OF p/); assert.doesNotMatch(sql, /p\.\*|bank_|phone|email/);
@@ -34,7 +35,7 @@ function fixture() {
     if (sql.startsWith('SELECT * FROM ng_rx_items')) return { rows: structuredClone(state.items) };
     if (sql.includes('COUNT(*)::int AS total')) return { rows: [{ total: state.items.length, dispensed: state.items.filter(i=>i.status==='dispensed').length, finalized: state.items.filter(i=>['dispensed','cancelled','unavailable'].includes(i.status)).length }] };
     if (sql.includes('UPDATE ng_digital_prescriptions')) { const explicit = sql.match(/lifecycle_status = '(\w+)'/); state.rx.lifecycle_status=explicit ? explicit[1] : params[1]; return { rows: [structuredClone(state.rx)] }; }
-    if (sql.includes('UPDATE ng_rx_items')) { const item = state.items.find(row=>row.id===params[0]); item.status=sql.includes("status = 'dispensed'") ? 'dispensed' : 'unavailable'; return { rows: [{ id: item.id }] }; }
+    if (sql.includes('UPDATE ng_rx_items')) { const item = state.items.find(row=>row.id===params[0]); item.status=sql.includes("status = 'dispensed'") ? 'dispensed' : 'unavailable'; if (item.status==='dispensed') item.dispensed_quantity=params[1]; return { rows: [{ id: item.id }] }; }
     if (sql.includes('INSERT INTO ng_rx_events')) { state.events.push({ sql, params }); return { rows: [] }; }
     if (sql.includes('SELECT * FROM ng_rx_events')) return { rows: structuredClone(state.events) };
     if (sql.includes('INSERT INTO ng_compliance_audit_log')) { if (state.auditFails) throw new Error('Private clinical database failure'); state.audits.push(params); return { rows: [] }; }
@@ -80,7 +81,7 @@ test('new dispensing requires current prescription expiry while historical compl
     const f=fixture(); f.state.rx.lifecycle_status='received'; f.state.rx.expires_at=expires_at;
     await assert.rejects(service.mutate(f.pool,actor,ids.rx,'dispense',{},ids.item),denied(409)); assert.equal(f.state.events.length,0);
   }
-  const f=fixture(); f.state.rx.lifecycle_status='fully_dispensed'; f.state.rx.expires_at='2000-01-01';
+  const f=fixture(); f.state.rx.lifecycle_status='fully_dispensed'; Object.assign(f.state.items[0], { status: 'dispensed', dispensed_quantity: 2 }); f.state.rx.expires_at='2000-01-01';
   assert.equal((await service.mutate(f.pool,actor,ids.rx,'complete')).lifecycle_status,'completed');
 });
 
@@ -118,9 +119,22 @@ test('all seven external pharmacist lifecycle endpoints use the gateway and cann
   const endpoints=[['GET','/',null,'sent_to_pharmacy'],['GET',`/${ids.rx}`,null,'sent_to_pharmacy'],['GET',`/${ids.rx}/events`,null,'sent_to_pharmacy'],['POST',`/${ids.rx}/receive`,{},'sent_to_pharmacy'],['POST',`/${ids.rx}/complete`,{},'fully_dispensed'],['POST',`/${ids.rx}/items/${ids.item}/dispense`,{quantity:2,notes:null},'received'],['POST',`/${ids.rx}/items/${ids.item}/unavailable`,{notes:'Isolated unavailable'},'sent_to_pharmacy']];
   const http=async(method,path,body)=>{const res=await fetch(`http://127.0.0.1:${server.address().port}/rx${path}`,{method,headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return{status:res.status,body:await res.json(),cache:res.headers.get('cache-control')};};
   try{
-    for(const [method,path,body,state] of endpoints){active=fixture();active.state.rx.lifecycle_status=state;const ok=await http(method,path,body);assert.equal(ok.status,200,JSON.stringify(ok.body));assert.equal(ok.cache,'private, no-store');active=fixture();active.state.user.account_status='suspended';assert.equal((await http(method,path,body)).status,403,path);}
+    for(const [method,path,body,state] of endpoints){active=fixture();active.state.rx.lifecycle_status=state;if(state==='fully_dispensed')Object.assign(active.state.items[0],{status:'dispensed',dispensed_quantity:2});const ok=await http(method,path,body);assert.equal(ok.status,200,JSON.stringify(ok.body));assert.equal(ok.cache,'private, no-store');active=fixture();active.state.user.account_status='suspended';assert.equal((await http(method,path,body)).status,403,path);}
     for(const suffix of ['sign','send','cancel','refill']){active=fixture();assert.equal((await http('POST',`/${ids.rx}/${suffix}`,{})).status,403);assert.equal(active.state.calls.length,0);}
     active=fixture();active.state.rx.lifecycle_status='received';assert.equal((await http('POST',`/${ids.rx}/items/${ids.item}/dispense`,{quantity:2,fulfillment_order_id:ids.other,system:true})).status,400);assert.equal(active.state.calls.length,0);
+    active=fixture();active.state.rx.lifecycle_status='received';assert.equal((await http('POST',`/${ids.rx}/items/${ids.item}/dispense`,{quantity:1})).status,409);assert.equal(active.state.items[0].dispensed_quantity,0);
+    active=fixture();active.state.rx.lifecycle_status='fully_dispensed';Object.assign(active.state.items[0],{status:'dispensed',dispensed_quantity:1});assert.equal((await http('POST',`/${ids.rx}/complete`,{})).status,409);assert.equal(active.state.rx.lifecycle_status,'fully_dispensed');
     active=fixture();active.state.auditFails=true;const failure=await http('GET',`/${ids.rx}`);assert.equal(failure.status,503);assert.doesNotMatch(JSON.stringify(failure.body),/Private clinical database/);
   }finally{await new Promise(resolve=>server.close(resolve));db.getPool=prior;delete require.cache[routePath];}
+});
+
+
+test('external Rx read exposes an unresolved quantity hold and mutations cannot bypass it with an unclaimed sibling', async()=>{
+  for(const action of ['dispense','complete']) {
+    const f=fixture();f.state.reviewHeld=true;f.state.rx.lifecycle_status=action==='complete'?'fully_dispensed':'received';
+    if(action==='complete')Object.assign(f.state.items[0],{status:'dispensed',dispensed_quantity:2});
+    assert.equal((await service.read(f.pool,actor,ids.rx)).quantity_review_required,true);
+    await assert.rejects(service.mutate(f.pool,actor,ids.rx,action,action==='dispense'?{quantity:2}:{},ids.item),{code:'INVALID_STATE'});
+    assert.equal(f.state.calls.some(({sql})=>sql.startsWith('UPDATE')),false);
+  }
 });

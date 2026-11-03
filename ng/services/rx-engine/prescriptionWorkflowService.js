@@ -13,6 +13,7 @@
  */
 
 const crypto = require('crypto');
+const { requiresQuantityReview, hasCompleteDispensingEvidence, canRecordFullDispense, isQuantityReviewHeld } = require('./dispenseQuantityPolicy');
 const { getPool, transaction } = require('../../../server/db');
 
 const TRANSITIONS = {
@@ -178,7 +179,7 @@ async function getPrescription(id, pool = getPool(), lock = false) {
   const items = await pool.query(
     `SELECT * FROM ng_rx_items WHERE prescription_id = $1 ORDER BY position`, [id]
   );
-  return { ...r.rows[0], items: items.rows };
+  return { ...r.rows[0], items: items.rows, quantity_review_required: requiresQuantityReview(items.rows) || await isQuantityReviewHeld(pool, id) };
 }
 
 async function listPrescriptions({ provider_id, patient_user_id, pharmacy_id, status, since, limit = 50 } = {}, pool = getPool()) {
@@ -298,8 +299,8 @@ async function dispenseItem(prescriptionId, itemId, actor, opts = {}, pool = get
   }
 
   const qty = Number(opts.quantity ?? item.quantity ?? 0);
-  if (!Number.isSafeInteger(qty) || qty <= 0 || !Number.isSafeInteger(Number(item.quantity)) || qty > Number(item.quantity)) {
-    const e = new Error('Dispensed quantity must be a positive integer within the signed prescription quantity');
+  if (rx.quantity_review_required || !canRecordFullDispense(item, qty)) {
+    const e = new Error('Dispense the full signed item quantity only. Inconsistent prior quantities require clinical review; do not dispense an assumed remainder.');
     e.code = 'INVALID_STATE'; throw e;
   }
   const dispensed = await pool.query(
@@ -311,7 +312,7 @@ async function dispenseItem(prescriptionId, itemId, actor, opts = {}, pool = get
             pharmacy_id        = COALESCE($5, pharmacy_id),
             dispensed_at       = NOW(),
             updated_at         = NOW()
-      WHERE id = $1 AND prescription_id=$7 AND status NOT IN ('dispensed','cancelled') AND (fulfillment_order_id IS NULL OR fulfillment_order_id=$6)
+      WHERE id = $1 AND prescription_id=$7 AND status NOT IN ('dispensed','cancelled') AND COALESCE(dispensed_quantity,0)=0 AND quantity=$2 AND (fulfillment_order_id IS NULL OR fulfillment_order_id=$6)
       RETURNING id`,
     [itemId, qty, opts.substitute_drug_id || null, opts.substitute_reason || null, opts.pharmacy_id || null, opts.fulfillment_order_id || null, prescriptionId]
   );
@@ -345,7 +346,8 @@ async function recomputeDispenseStatus(prescriptionId, fromStatus, itemId, actor
     `SELECT
        COUNT(*)::int AS total,
        COUNT(*) FILTER (WHERE status = 'dispensed')::int AS dispensed,
-       COUNT(*) FILTER (WHERE status IN ('dispensed','cancelled','unavailable'))::int AS finalized
+       COUNT(*) FILTER (WHERE quantity > 0 AND ((status='dispensed' AND dispensed_quantity=quantity)
+         OR (status IN ('cancelled','unavailable') AND COALESCE(dispensed_quantity,0)=0)))::int AS finalized
      FROM ng_rx_items WHERE prescription_id = $1`, [prescriptionId]
   );
   const { total, dispensed, finalized } = after.rows[0];
@@ -373,13 +375,13 @@ async function markItemUnavailable(prescriptionId, itemId, actor, { notes } = {}
   if (!rx) throwNotFound();
   const item = rx.items.find(row => row.id === itemId);
   if (!item) { const e = new Error('Item not found on this prescription'); e.code = 'NOT_FOUND'; throw e; }
-  if (!['sent_to_pharmacy', 'received', 'partially_dispensed'].includes(rx.lifecycle_status) || ['dispensed', 'cancelled'].includes(item.status) || item.fulfillment_order_id) {
+  if (rx.quantity_review_required || !['sent_to_pharmacy', 'received', 'partially_dispensed'].includes(rx.lifecycle_status) || ['dispensed', 'cancelled'].includes(item.status) || item.fulfillment_order_id) {
     const e = new Error('This medicine is closed or reserved for its medication order; use the order workflow');
     e.code = 'INVALID_STATE'; throw e;
   }
   const changed = await pool.query(
     `UPDATE ng_rx_items SET status = 'unavailable', notes = COALESCE($2, notes), updated_at = NOW()
-      WHERE id = $1 AND prescription_id = $3 AND fulfillment_order_id IS NULL AND status NOT IN ('dispensed','cancelled') RETURNING id`,
+      WHERE id = $1 AND prescription_id = $3 AND fulfillment_order_id IS NULL AND COALESCE(dispensed_quantity,0)=0 AND status NOT IN ('dispensed','cancelled') RETURNING id`,
     [itemId, notes || null, prescriptionId]
   );
   requireChanged(changed);
@@ -415,6 +417,10 @@ async function complete(id, actor, pool = getPool()) {
   const rx = await getPrescription(id, pool, true);
   if (!rx) throwNotFound();
   assertTransition(rx.lifecycle_status, 'completed');
+  if (rx.quantity_review_required || !hasCompleteDispensingEvidence(rx.items)) {
+    const e = new Error('Recorded dispensing quantities require clinical review before this prescription can be completed.');
+    e.code = 'INVALID_STATE'; throw e;
+  }
   const r = await pool.query(
     `UPDATE ng_digital_prescriptions
         SET lifecycle_status = 'completed', completed_at = NOW(), updated_at = NOW()

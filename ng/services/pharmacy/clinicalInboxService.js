@@ -1,6 +1,7 @@
 'use strict';
 
 const { z } = require('zod');
+const { hasCompleteDispensingEvidence, isQuantityReviewHeld } = require('../rx-engine/dispenseQuantityPolicy');
 const compliance = require('../compliance/complianceService');
 const { assertClinicalPharmacyActive } = require('./clinicalPharmacyAuthorization');
 const uuid = z.string().uuid();
@@ -84,6 +85,10 @@ async function updateStatus(pool, actor, pharmacyId, prescriptionId, input) {
     const complete = ['fully_dispensed', 'completed'].includes(existing.lifecycle_status);
     if (['fulfilled', 'cancelled'].includes(existing.pharmacy_response_status)) throw fail(409, 'This pharmacy response is closed. Use the clinical workflow for further review.');
     if ((data.status === 'fulfilled' && !complete) || (complete && data.status !== 'fulfilled') || (data.status === 'cancelled' && existing.lifecycle_status !== 'sent_to_pharmacy')) throw fail(409, 'The prescription lifecycle does not permit that response.');
+    if (data.status === 'fulfilled') {
+      const items = (await client.query('SELECT * FROM ng_rx_items WHERE prescription_id=$1 FOR SHARE', [prescriptionId])).rows;
+      if (!hasCompleteDispensingEvidence(items) || await isQuantityReviewHeld(client, prescriptionId)) throw fail(409, 'Recorded dispensing quantities require clinical review before fulfillment can be confirmed.');
+    }
     const values = [prescriptionId, pharmacyId, data.status, ...states[data.status]];
     const updates = ['pharmacy_response_status=$3::text', 'status=$4', 'dispense_status=$5'];
     for (const [key, column] of Object.entries({ confirmedPriceNgn: 'confirmed_price_ngn', pharmacyNotes: 'pharmacy_notes', clarificationRequest: 'clarification_request' })) {

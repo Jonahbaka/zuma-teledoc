@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { requiresQuantityReview, hasCompleteDispensingEvidence, orderQuantitiesMatch, isQuantityReviewHeld } = require('../rx-engine/dispenseQuantityPolicy');
 const { getPool } = require('../../../server/db');
 const { encrypt, decrypt } = require('../../../lib/encryption');
 const { createCourierProvider } = require('./providers');
@@ -68,7 +69,7 @@ function createMedicationDeliveryWorkflowService(options = {}) {
     id(orderId);
     const order = (await client.query(`SELECT o.* FROM ng_orders o WHERE o.id=$1 ${lock ? 'FOR UPDATE' : ''}`, [orderId])).rows[0];
     if (!order) throw fail(404, 'Order not found.');
-    const f = (await client.query(`SELECT * FROM ng_medication_fulfillments WHERE order_id=$1 ${lock ? 'FOR UPDATE' : ''}`, [orderId])).rows[0];
+    const f = (await client.query(`SELECT *,EXISTS(SELECT 1 FROM ng_medication_events e WHERE e.order_id=ng_medication_fulfillments.order_id AND e.action='handover_requires_clinical_review') AS clinical_review_required FROM ng_medication_fulfillments WHERE order_id=$1 ${lock ? 'FOR UPDATE' : ''}`, [orderId])).rows[0];
     if (!f) throw fail(409, 'This earlier order requires pharmacy support before using medication checkout.');
     const p = (await client.query('SELECT * FROM ng_pharmacies WHERE id=$1 FOR SHARE', [order.pharmacy_id])).rows[0];
     let actorUser = null;
@@ -90,8 +91,11 @@ function createMedicationDeliveryWorkflowService(options = {}) {
     if (f.digital_prescription_id) {
       const rx = (await client.query('SELECT * FROM ng_digital_prescriptions WHERE id=$1 FOR UPDATE', [f.digital_prescription_id])).rows[0];
       if (!rx?.signed_at || !['sent_to_pharmacy', 'received', 'partially_dispensed', 'fully_dispensed'].includes(rx.lifecycle_status) || rx.patient_user_id !== order.patient_user_id || rx.routed_pharmacy_id !== order.pharmacy_id || dayEnd(rx.expires_at) <= now()) throw fail(409, 'A current signed prescription routed to this pharmacy is required.');
-      const claimed = await client.query("SELECT 1 FROM ng_rx_items WHERE fulfillment_order_id=$1 AND status NOT IN ('pending','available') LIMIT 1", [order.id]);
-      if (claimed.rows.length) throw fail(409, 'The prescription items changed after reservation. Pharmacy review is required.');
+      const allItems = (await client.query('SELECT * FROM ng_rx_items WHERE prescription_id=$1 ORDER BY position FOR SHARE', [rx.id])).rows;
+      const claimed = allItems.filter(item => item.fulfillment_order_id === order.id);
+      if (!claimed.length || claimed.some(item => !['pending', 'available'].includes(item.status)) || requiresQuantityReview(allItems)
+        || !orderQuantitiesMatch(order.items, claimed) || new Set(allItems.map(item => item.drug_id)).size !== allItems.length
+        || await isQuantityReviewHeld(client, rx.id)) throw fail(409, 'The prescription items changed after reservation. Pharmacy review is required.');
       return rx;
     }
     const rx = (await client.query('SELECT * FROM ng_prescriptions WHERE id=$1', [order.prescription_id])).rows[0];
@@ -148,7 +152,7 @@ function createMedicationDeliveryWorkflowService(options = {}) {
       const verified = stage === 'medicines' ? medicinesPaid : deliveryPaid;
       return { status: verified ? (ctx.f[`${stage}_approval`]?.patientMinor === 0 ? 'covered' : 'verified') : a?.status || 'unpaid', amountMinor: stageAmounts(price, stage).patientMinor, recordedAmountMinor: a ? assertMinor(a.amount_minor) : null, reference: a?.provider_reference || null };
     };
-    return { orderId: order.id, orderNumber: order.order_number, version: f.version, status: order.status, cancellationPending: !!f.cancellation_requested_at && !closed, deliveryType: order.delivery_type,
+    return { orderId: order.id, orderNumber: order.order_number, version: f.version, status: order.status, cancellationPending: !!f.cancellation_requested_at && !closed, clinicalReviewRequired: !!f.clinical_review_required, deliveryType: order.delivery_type,
       pharmacy: { id: p.id, name: p.name, active: pharmacyActive, phone: p.phone, address: [p.address_line1, p.city, p.state].filter(Boolean).join(', ') },
       items: order.items.map(it => ({ drugId: it.drug_id, name: it.name, quantity: it.quantity, unitPriceMinor: it.unitPriceMinor, lineTotalMinor: it.lineTotalMinor })), pricing: price,
       pharmacyConfirmedAt: f.pharmacy_confirmed_at, pharmacyReadyAt: f.pharmacy_ready_at,
@@ -242,7 +246,10 @@ function createMedicationDeliveryWorkflowService(options = {}) {
         if (!rx || rx.patient_user_id !== patient.id || !rx.signed_at || !['sent_to_pharmacy', 'received'].includes(rx.lifecycle_status) || rx.routed_pharmacy_id !== p.id || dayEnd(rx.expires_at) <= now()) throw fail(409, 'Choose a current signed prescription routed to this pharmacy.');
         if (rx.is_controlled) throw fail(422, 'Controlled medicines require the existing supervised dispensing process.');
         if ((await client.query('SELECT 1 FROM ng_medication_fulfillments WHERE digital_prescription_id=$1 AND prescription_claim_active=true', [rx.id])).rows.length) throw fail(409, 'This prescription already has an active medication order.');
-        rxItems = (await client.query("SELECT drug_id,quantity FROM ng_rx_items WHERE prescription_id=$1 AND status IN ('pending','available') AND fulfillment_order_id IS NULL FOR UPDATE", [rx.id])).rows;
+        const allItems = (await client.query('SELECT drug_id,quantity,status,dispensed_quantity,fulfillment_order_id FROM ng_rx_items WHERE prescription_id=$1 FOR UPDATE', [rx.id])).rows;
+        if (requiresQuantityReview(allItems) || await isQuantityReviewHeld(client, rx.id)) throw fail(409, 'Recorded dispensing quantities require clinical review before another medication order.');
+        rxItems = allItems.filter(item => ['pending', 'available'].includes(item.status) && !item.fulfillment_order_id);
+        if (new Set(allItems.map(item => item.drug_id)).size !== allItems.length) throw fail(409, 'Multiple signed items for the same medicine require clinical review outside courier checkout.');
       } else {
         const rx = (await client.query('SELECT * FROM ng_prescriptions WHERE id=$1 FOR UPDATE', [id(input.prescriptionId)])).rows[0];
         if (!rx || rx.patient_user_id !== patient.id || !rx.verified_by_pharmacist || !rx.verified_at || !['verified', 'matched'].includes(rx.status) || new Date(rx.expires_at).getTime() <= now() || rx.is_controlled_substance) throw fail(409, 'A current pharmacist-verified prescription is required.');
@@ -548,8 +555,15 @@ function createMedicationDeliveryWorkflowService(options = {}) {
     if (f.inventory_released_at) return;
     await client.query('UPDATE ng_pharmacy_inventory i SET quantity_reserved=quantity_reserved-r.quantity,updated_at=now() FROM ng_medication_reservations r WHERE r.order_id=$1 AND i.id=r.inventory_id', [orderId]);
     await client.query('UPDATE ng_medication_fulfillments SET inventory_released_at=now() WHERE order_id=$1', [orderId]);
-    await finalizePrescription(client, orderId);
-    await require('../interop/medicationFhirService').recordFulfillmentDispenses(client,orderId);
+    const requiresReview = await finalizePrescription(client, orderId);
+    if (!requiresReview) await require('../interop/medicationFhirService').recordFulfillmentDispenses(client,orderId);
+  }
+  // Caller holds the order lock. Preserve verified physical facts without inventing
+  // clinical dispensing or resolving a historical quantity discrepancy.
+  async function holdForClinicalReview(client, order, prescriptionId, reason) {
+    const existing = await client.query("SELECT 1 FROM ng_medication_events WHERE order_id=$1 AND action='handover_requires_clinical_review' LIMIT 1", [order.id]);
+    if (!existing.rows.length) await audit(client, order, null, 'handover_requires_clinical_review', { prescriptionId, reason });
+    return true;
   }
   async function finalizePrescription(client, orderId) {
     const f = (await client.query('SELECT * FROM ng_medication_fulfillments WHERE order_id=$1', [orderId])).rows[0];
@@ -559,13 +573,19 @@ function createMedicationDeliveryWorkflowService(options = {}) {
       const rx = (await client.query('SELECT * FROM ng_digital_prescriptions WHERE id=$1 FOR UPDATE', [f.digital_prescription_id])).rows[0];
       const actor = { kind: 'pharmacist', user_id: f.pharmacist_user_id };
       if (['cancelled', 'expired'].includes(rx.lifecycle_status)) { await audit(client, order, null, 'handover_requires_clinical_review', { prescriptionId: rx.id }); return; }
+      const allItems = (await client.query('SELECT * FROM ng_rx_items WHERE prescription_id=$1 ORDER BY position FOR UPDATE', [rx.id])).rows;
+      const rows = allItems.filter(item => item.fulfillment_order_id === orderId);
+      if (!rows.length || requiresQuantityReview(allItems) || (['fully_dispensed', 'completed'].includes(rx.lifecycle_status) && !hasCompleteDispensingEvidence(allItems))) return holdForClinicalReview(client, order, rx.id, 'dispense_quantity_conflict');
+      if (!orderQuantitiesMatch(order.items, rows)) return holdForClinicalReview(client, order, rx.id, 'order_quantity_conflict');
+      // The current FHIR writer maps one signed item per medicine. Never combine
+      // separate directions or fabricate a prescription attribution for a parcel.
+      if (new Set(allItems.map(item => item.drug_id)).size !== allItems.length || new Set(order.items.map(item => item.drug_id)).size !== order.items.length) return holdForClinicalReview(client, order, rx.id, 'multiple_signed_items_same_drug');
       if (rx.lifecycle_status === 'sent_to_pharmacy') await rxWorkflow.acknowledgeReceipt(rx.id, actor, client);
-      const rows = (await client.query('SELECT * FROM ng_rx_items WHERE prescription_id=$1 AND fulfillment_order_id=$2 ORDER BY position FOR UPDATE', [rx.id, orderId])).rows;
       for (const item of rows) {
         if (item.status === 'dispensed') continue;
         const requested = order.items.find(it => it.drug_id === item.drug_id);
         if (!requested) throw fail(409, 'Prescription handover requires reconciliation.');
-        await rxWorkflow.dispenseItem(rx.id, item.id, actor, { quantity: Math.min(requested.quantity, item.quantity), pharmacy_id: order.pharmacy_id, fulfillment_order_id: orderId }, client);
+        await rxWorkflow.dispenseItem(rx.id, item.id, actor, { quantity: item.quantity, pharmacy_id: order.pharmacy_id, fulfillment_order_id: orderId }, client);
       }
     } else if (order.prescription_id) await client.query("UPDATE ng_prescriptions SET status='dispensed',updated_at=now() WHERE id=$1", [order.prescription_id]);
   }
@@ -573,6 +593,13 @@ function createMedicationDeliveryWorkflowService(options = {}) {
     const f = (await client.query('SELECT digital_prescription_id,pharmacist_user_id FROM ng_medication_fulfillments WHERE order_id=$1', [orderId])).rows[0];
     if (!f.digital_prescription_id) return;
     const rx = (await client.query('SELECT lifecycle_status FROM ng_digital_prescriptions WHERE id=$1 FOR UPDATE', [f.digital_prescription_id])).rows[0];
+    const hold = await client.query("SELECT 1 FROM ng_medication_events WHERE order_id=$1 AND action='handover_requires_clinical_review' LIMIT 1", [orderId]);
+    if (hold.rows.length) return;
+    const items = (await client.query('SELECT * FROM ng_rx_items WHERE prescription_id=$1 ORDER BY position FOR SHARE', [f.digital_prescription_id])).rows;
+    if (requiresQuantityReview(items) || (rx.lifecycle_status === 'fully_dispensed' && !hasCompleteDispensingEvidence(items))) {
+      const order = (await client.query('SELECT * FROM ng_orders WHERE id=$1', [orderId])).rows[0];
+      await holdForClinicalReview(client, order, f.digital_prescription_id, 'dispense_quantity_conflict'); return;
+    }
     if (rx.lifecycle_status === 'fully_dispensed') await require('../rx-engine/prescriptionWorkflowService').complete(f.digital_prescription_id, { kind: 'pharmacist', user_id: f.pharmacist_user_id }, client);
   }
   async function collect(orderId, actor, input) {
@@ -647,8 +674,9 @@ function createMedicationDeliveryWorkflowService(options = {}) {
         WHERE r.patient_user_id=$1 AND r.signed_at IS NOT NULL AND r.lifecycle_status IN ('sent_to_pharmacy','received') AND r.expires_at>=CURRENT_DATE
         AND p.status='approved' AND p.account_status='active' AND p.pcn_license_expiry>=CURRENT_DATE AND p.verified_at IS NOT NULL AND NOT r.is_controlled
         AND i.drug_id IS NOT NULL AND i.quantity>0 AND i.status IN ('pending','available')
+        AND NOT EXISTS(SELECT 1 FROM ng_rx_items qi WHERE qi.prescription_id=r.id AND (qi.quantity IS NULL OR qi.quantity<=0 OR (qi.status='dispensed' AND COALESCE(qi.dispensed_quantity,0)<>qi.quantity) OR (qi.status<>'dispensed' AND COALESCE(qi.dispensed_quantity,0)<>0)))
         AND NOT EXISTS(SELECT 1 FROM ng_medication_fulfillments f WHERE f.digital_prescription_id=r.id AND f.prescription_claim_active=true)
-        GROUP BY r.id,p.id ORDER BY r.created_at DESC LIMIT 30`, [patient.id])).rows;
+        GROUP BY r.id,p.id HAVING COUNT(*)=COUNT(DISTINCT i.drug_id) ORDER BY r.created_at DESC LIMIT 30`, [patient.id])).rows;
       const uploaded = (await client.query(`SELECT r.id,r.items,p.id AS pharmacy_id,p.name AS pharmacy_name FROM ng_prescriptions r
         JOIN ng_pharmacies p ON p.owner_user_id=r.verified_by_pharmacist
         WHERE r.patient_user_id=$1 AND r.verified_at IS NOT NULL AND r.status IN ('verified','matched') AND r.expires_at>now()

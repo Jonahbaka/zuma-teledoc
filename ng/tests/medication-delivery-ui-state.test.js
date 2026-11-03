@@ -128,3 +128,31 @@ test('suspended pharmacy checkout explains the hold and preserves existing payme
   const verify = view.button('Verify with payment provider'); assert.ok(verify); verify.props.onClick();
   assert.equal(view.writes[0][0], 'payments/existing-receipt/verify'); view.unmount();
 });
+
+
+test('legacy quantity review stays visible alongside actual delivery and payment status', () => {
+  const base=checkout(); const value=checkout({status:'delivered',clinicalReviewRequired:true,actions:Object.fromEntries(Object.keys(base.actions).map(name=>[name,false]))});
+  const view=pageHarness(value);view.render();assert.match(view.text(),/Clinical review required: prescription dispensing records need reconciliation/);
+  assert.match(view.text(),/Do not arrange additional medicine or assume a refund/);
+  assert.equal(view.button('Pay for medicines securely'),undefined);assert.equal(view.button('Pay approved delivery amount'),undefined);assert.equal(view.writes.length,0);view.unmount();
+});
+
+test('prescription detail blocks clinical completion and dispensing while showing preserved quantity review', async () => {
+  for(const lifecycle_status of ['fully_dispensed','partially_dispensed']) {
+    const state=stateHarness(); const data={id:'isolated-rx',lifecycle_status,quantity_review_required:true,items:[{id:'isolated-item',quantity:2,dispensed_quantity:1,status:'dispensed'}]};
+    const dependencies={react:state.react,'next/navigation':{useRouter:()=>({push(){}})},'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})},'lucide-react':new Proxy({},{get:(_value,name)=>String(name)}), './rxApi':{rx:{get:async()=>({prescription:data}),events:async()=>({events:[]})},statusBadge:()=>'',STATUS_LABELS:{},fmtDate:()=>''}};
+    const Detail=compile('components/ng/prescriptions/RxDetail.jsx',dependencies).default;
+    state.render(()=>Detail({id:data.id}));await flush();const tree=state.render(()=>Detail({id:data.id})); const nodes=[];
+    function walk(node){if(Array.isArray(node))return node.forEach(walk);if(!node||typeof node!=='object')return;nodes.push(node);walk(node.props?.children);}walk(tree);
+    assert.ok(nodes.some(node=>node.props?.role==='alert'&&String(node.props.children).includes('Clinical review required')));
+    assert.equal(nodes.some(node=>node.props?.children==='Mark complete'),false);
+    const item=nodes.find(node=>typeof node.type==='function'&&node.type.name==='RxItem');assert.equal(item.props.canDispense,false);state.unmount();
+  }
+});
+
+
+test('responsible pharmacy sees the clinical review hold alongside retained order facts', () => {
+  const base=checkout();const value=checkout({status:'delivered',clinicalReviewRequired:true,actions:Object.fromEntries(Object.keys(base.actions).map(name=>[name,false]))});
+  const view=pageHarness(value,'PharmacyMedicationOrder');view.render();assert.match(view.text(),/Clinical review required: reconcile the prescription with the recorded handover/);
+  assert.match(view.text(),/does not authorize replacement medicine or a refund/);assert.equal(view.writes.length,0);view.unmount();
+});

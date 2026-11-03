@@ -9,7 +9,7 @@ function fixture() {
     account: { id: ids.actor, role: 'pharmacy', is_active: true, account_status: 'active', market_scope: 'NG' },
     pharmacy: { id: ids.pharmacy, owner_user_id: ids.actor, status: 'approved', account_status: 'active', verified_at: '2026-01-01', pcn_license_expiry: '2099-01-01', pcn_license_number: 'TEST-PCN', superintendent_pcn_number: 'TEST-SUPERVISOR' },
     rx: { id: ids.rx, routed_pharmacy_id: ids.pharmacy, signed_at: '2026-01-01', lifecycle_status: 'sent_to_pharmacy', pharmacy_response_status: 'pending_pharmacy_confirmation', confirmed_price_ngn: '500.00', pharmacy_notes: 'Private clinical note', clarification_request: 'Existing query' },
-    calls: [], audits: [], auditFails: false,
+    items: [{ quantity: 2, status: 'dispensed', dispensed_quantity: 2 }], calls: [], audits: [], auditFails: false,
   };
   let before;
   const client = { release() {}, async query(sql, params = []) {
@@ -17,8 +17,10 @@ function fixture() {
     if (sql === 'BEGIN') { before = structuredClone(state.rx); return { rows: [] }; }
     if (sql === 'ROLLBACK') { state.rx = before; return { rows: [] }; }
     if (sql === 'COMMIT') return { rows: [] };
+    if (sql.startsWith('SELECT EXISTS(SELECT 1 FROM ng_medication_events')) return { rows: [{ required: !!state.reviewHeld }] };
     if (sql.includes('FROM users WHERE id=')) { assert.match(sql, /role='pharmacy' AND is_active=TRUE AND account_status='active' AND market_scope='NG' FOR SHARE/); const a = state.account; return { rows: a.id === params[0] && a.role === 'pharmacy' && a.is_active && a.account_status === 'active' && a.market_scope === 'NG' ? [a] : [] }; }
     if (sql.includes('FROM ng_pharmacies WHERE id=')) { assert.match(sql, /owner_user_id=\$2 FOR SHARE/); return { rows: state.pharmacy.id === params[0] && state.pharmacy.owner_user_id === params[1] ? [state.pharmacy] : [] }; }
+    if (sql.includes('FROM ng_rx_items')) { assert.match(sql, /FOR SHARE/); return { rows: structuredClone(state.items) }; }
     if (sql.includes('FROM ng_digital_prescriptions WHERE id=')) { assert.match(sql, /routed_pharmacy_id=\$2/); assert.match(sql, /signed_at IS NOT NULL/); assert.match(sql, /FOR UPDATE/); return { rows: state.rx.routed_pharmacy_id === params[1] && state.rx.signed_at && ['sent_to_pharmacy','received','partially_dispensed','fully_dispensed','completed'].includes(state.rx.lifecycle_status) ? [structuredClone(state.rx)] : [] }; }
     if (sql.includes('FROM ng_digital_prescriptions rx')) { assert.match(sql, /rx.routed_pharmacy_id=\$1 AND rx.signed_at IS NOT NULL/); assert.match(sql, /FOR SHARE OF rx/); assert.match(sql, /LIMIT 100/); return { rows: [structuredClone(state.rx)] }; }
     if (sql.includes('FROM ng_whatsapp_notification_log')) { assert.match(sql, /n.pharmacy_id=\$1 AND rx.routed_pharmacy_id=\$1 AND rx.signed_at IS NOT NULL/); assert.match(sql, /FOR SHARE OF n,rx/); assert.doesNotMatch(sql, /provider_response|metadata/); return { rows: [{ id: 'message-only-current-route' }] }; }
@@ -85,4 +87,22 @@ test('audit failure atomically rolls clinical updates back and is never reported
   assert.equal(f.state.calls.at(-1).sql, 'ROLLBACK');
   const result = {}; service.sendError({ status(value) { result.status = value; return this; }, json(body) { result.body = body; } }, new Error('Private audit SQL and patient details'));
   assert.equal(result.status, 503); assert.doesNotMatch(JSON.stringify(result.body), /SQL|patient details/);
+});
+
+
+test('inbox fulfillment requires actual item quantities, not only a historical lifecycle label', async () => {
+  for (const recorded of [0, 1, 3]) {
+    const f = fixture(); f.state.rx.lifecycle_status = 'fully_dispensed'; f.state.items[0].dispensed_quantity = recorded;
+    await assert.rejects(service.updateStatus(f.pool, actor, ids.pharmacy, ids.rx, { status: 'fulfilled' }), denied(409));
+    assert.equal(f.state.calls.some(({sql})=>sql.startsWith('UPDATE')), false); assert.equal(f.state.audits.length, 0);
+  }
+  const f = fixture(); f.state.rx.lifecycle_status = 'fully_dispensed';
+  assert.equal((await service.updateStatus(f.pool, actor, ids.pharmacy, ids.rx, { status: 'fulfilled' })).prescription.pharmacy_response_status, 'fulfilled');
+});
+
+
+test('inbox fulfillment cannot bypass an unresolved physical-handover review with otherwise matching item quantities', async()=>{
+  const f=fixture();f.state.rx.lifecycle_status='fully_dispensed';f.state.reviewHeld=true;
+  await assert.rejects(service.updateStatus(f.pool,actor,ids.pharmacy,ids.rx,{status:'fulfilled'}),denied(409));
+  assert.equal(f.state.calls.some(({sql})=>sql.startsWith('UPDATE')),false);
 });

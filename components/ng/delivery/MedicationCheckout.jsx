@@ -62,6 +62,7 @@ export default function MedicationCheckout({ orderId, onClose, onChanged }) {
     {loading ? <DeliveryLoading /> : checkout && <>
       <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-lg font-medium text-slate-800">{checkout.pharmacy.name}</p><DeliveryStatus status={checkout.status} deliveryType={checkout.deliveryType} /></div>
       <DeliveryReturnSummary returns={checkout.returns} />
+      {checkout.clinicalReviewRequired && <DeliveryNotice>Clinical review required: prescription dispensing records need reconciliation. The recorded delivery and payment status remain visible below. Do not arrange additional medicine or assume a refund from this notice. Contact your care team for review.</DeliveryNotice>}
       {checkout.pharmacy.active === false && <DeliveryNotice>This pharmacy is unavailable for new fulfillment. You can still review this order, verify existing payments, and cancel when the order allows it.</DeliveryNotice>}
       {checkout.checkout?.enabled === false && <DeliveryNotice>Medication payment checkout is awaiting activation. Your pharmacy can review the order, but a customer payment cannot start until merchant checkout is properly configured and authorized.</DeliveryNotice>}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]"><div className="min-w-0 space-y-6">

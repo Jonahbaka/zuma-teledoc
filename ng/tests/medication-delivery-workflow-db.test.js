@@ -473,6 +473,98 @@ test('real PostgreSQL medication checkout, payment, courier and refund workflows
       assert.equal(f.state.refundCalls, 0);
     });
 
+    await t.test('legacy recorded quantities cannot reserve a new order or start a new dispatch', async () => {
+      const fresh = await fixture();
+      await pool.query('UPDATE ng_rx_items SET quantity=2,dispensed_quantity=1 WHERE prescription_id=$1', [fresh.prescriptionId]);
+      fresh.input.items[0].quantity = 2;
+      assert.equal((await fresh.service.getOrderOptions(fresh.patient)).prescriptions.some(rx=>rx.id===fresh.prescriptionId), false);
+      await assert.rejects(fresh.service.createOrder(fresh.input, fresh.patient), { status: 409 });
+      assert.equal((await pool.query('SELECT quantity_reserved FROM ng_pharmacy_inventory WHERE id=$1', [fresh.inventoryId])).rows[0].quantity_reserved, 0);
+      const reserved = await fixture(); const orderId = await quoted(reserved);
+      await pool.query('UPDATE ng_rx_items SET dispensed_quantity=1 WHERE prescription_id=$1', [reserved.prescriptionId]);
+      await assert.rejects(act(reserved, orderId, 'dispatch', reserved.pharmacist), { status: 409 });
+      assert.equal(reserved.state.bookCalls, 0);
+    });
+
+    await t.test('changed signed quantities, duplicate sources and unresolved holds block new dispatch or collection before physical handover', async () => {
+      for (const method of ['dispatch','collect']) for (const conflict of ['quantity','duplicate','hold']) {
+        const f = await fixture(); const orderId = method==='dispatch' ? await quoted(f) : await prepared(f);
+        if (conflict==='quantity') await pool.query('UPDATE ng_rx_items SET quantity=2 WHERE prescription_id=$1',[f.prescriptionId]);
+        if (conflict==='duplicate') await pool.query(`INSERT INTO ng_rx_items(prescription_id,drug_id,drug_name,dosage,frequency,quantity,status,pharmacy_id,fulfillment_order_id)
+          VALUES($1,$2,'Isolated second item','Isolated directions','Isolated schedule',1,'available',$3,$4)`,[f.prescriptionId,f.drugId,f.pharmacyId,orderId]);
+        if (conflict==='hold') await pool.query("INSERT INTO ng_medication_events(order_id,action,details) VALUES($1,'handover_requires_clinical_review',$2)",[orderId,JSON.stringify({prescriptionId:f.prescriptionId,reason:'order_quantity_conflict'})]);
+        const before=(await pool.query('SELECT status FROM ng_orders WHERE id=$1',[orderId])).rows[0].status;
+        await assert.rejects(act(f,orderId,method,f.pharmacist,{attest:true}),{status:409});
+        assert.equal(f.state.bookCalls,0);assert.equal(f.state.refundCalls,0);
+        assert.equal((await pool.query('SELECT status FROM ng_orders WHERE id=$1',[orderId])).rows[0].status,before);
+        const fulfillment=(await pool.query('SELECT collected_at,inventory_released_at FROM ng_medication_fulfillments WHERE order_id=$1',[orderId])).rows[0];
+        assert.equal(fulfillment.collected_at,null);assert.equal(fulfillment.inventory_released_at,null);
+        assert.equal((await pool.query('SELECT quantity_reserved FROM ng_pharmacy_inventory WHERE id=$1',[f.inventoryId])).rows[0].quantity_reserved,1);
+      }
+    });
+
+    await t.test('historical parcel quantity and ambiguous same-drug mapping retain physical evidence on review hold', async () => {
+      for (const duplicate of [false, true]) {
+        const f = await fixture();
+        if (duplicate) { await pool.query('UPDATE ng_rx_items SET quantity=2 WHERE prescription_id=$1', [f.prescriptionId]); f.input.items[0].quantity = 2; }
+        const orderId = await quoted(f); await act(f, orderId, 'dispatch', f.pharmacist);
+        if (duplicate) {
+          await pool.query('UPDATE ng_rx_items SET quantity=1 WHERE prescription_id=$1', [f.prescriptionId]);
+          await pool.query(`INSERT INTO ng_rx_items(prescription_id,drug_id,drug_name,dosage,frequency,quantity,status,pharmacy_id,fulfillment_order_id)
+            VALUES($1,$2,'Isolated additional signed item','Isolated distinct directions','Isolated schedule',1,'available',$3,$4)`, [f.prescriptionId,f.drugId,f.pharmacyId,orderId]);
+        } else await pool.query('UPDATE ng_rx_items SET quantity=2 WHERE prescription_id=$1', [f.prescriptionId]);
+        const before = (await pool.query('SELECT id,status,quantity,dispensed_quantity FROM ng_rx_items WHERE prescription_id=$1 ORDER BY id', [f.prescriptionId])).rows;
+        const lifecycleBefore = (await pool.query('SELECT lifecycle_status FROM ng_digital_prescriptions WHERE id=$1', [f.prescriptionId])).rows[0].lifecycle_status;
+        await f.advanceDelivery('picked_up'); const picked = await f.service.refresh(orderId, f.patient);
+        assert.equal(picked.status,'in_transit'); assert.equal(picked.clinicalReviewRequired,true);
+        assert.equal((await require('../services/pharmacy/pharmacistRxService').read(pool,f.pharmacist,f.prescriptionId)).quantity_review_required,true);
+        await f.advanceDelivery('delivered'); const delivered = await f.service.refresh(orderId, f.patient);
+        assert.equal(delivered.status,'delivered'); assert.ok(delivered.delivery.deliveryProof); assert.equal(delivered.payment.medicines.status,'verified');
+        const ledger = (await pool.query('SELECT id,account,debit_minor,credit_minor FROM ng_medication_ledger WHERE order_id=$1 ORDER BY id',[orderId])).rows;
+        await f.service.refresh(orderId,f.patient);
+        assert.deepEqual((await pool.query('SELECT id,account,debit_minor,credit_minor FROM ng_medication_ledger WHERE order_id=$1 ORDER BY id',[orderId])).rows,ledger);
+        assert.deepEqual((await pool.query('SELECT id,status,quantity,dispensed_quantity FROM ng_rx_items WHERE prescription_id=$1 ORDER BY id',[f.prescriptionId])).rows,before);
+        assert.equal((await pool.query('SELECT lifecycle_status FROM ng_digital_prescriptions WHERE id=$1',[f.prescriptionId])).rows[0].lifecycle_status,lifecycleBefore);
+        assert.equal((await pool.query('SELECT count(*)::int AS count FROM ng_fhir_medication_dispenses WHERE order_id=$1',[orderId])).rows[0].count,0);
+        const events=(await pool.query("SELECT details FROM ng_medication_events WHERE order_id=$1 AND action='handover_requires_clinical_review'",[orderId])).rows;
+        assert.equal(events.length,1);assert.equal(events[0].details.reason,duplicate?'multiple_signed_items_same_drug':'order_quantity_conflict');
+        assert.equal(f.state.refundCalls,0);assert.equal(f.state.bookCalls,1);
+        assert.deepEqual((await pool.query('SELECT quantity_available,quantity_reserved FROM ng_pharmacy_inventory WHERE id=$1',[f.inventoryId])).rows[0],{quantity_available:duplicate?98:99,quantity_reserved:0});
+      }
+    });
+
+    await t.test('full multi-unit dispensing remains valid and legacy short records preserve physical delivery without inventing more medicine', async () => {
+      for (const legacy of [false, true]) {
+        const f = await fixture();
+        await pool.query('UPDATE ng_rx_items SET quantity=2 WHERE prescription_id=$1', [f.prescriptionId]);
+        f.input.items[0].quantity = 2;
+        const orderId = await quoted(f); await act(f, orderId, 'dispatch', f.pharmacist);
+        if (legacy) {
+          await pool.query("UPDATE ng_rx_items SET status='dispensed',dispensed_quantity=1 WHERE prescription_id=$1", [f.prescriptionId]);
+          await pool.query("UPDATE ng_digital_prescriptions SET lifecycle_status='fully_dispensed' WHERE id=$1", [f.prescriptionId]);
+        }
+        const calls = { initialize: f.state.initializeCalls, book: f.state.bookCalls, refund: f.state.refundCalls };
+        const paymentsBefore = (await pool.query('SELECT id,status,amount_minor FROM ng_medication_payment_attempts WHERE order_id=$1 ORDER BY id', [orderId])).rows;
+        await f.advanceDelivery('picked_up'); await f.service.refresh(orderId, f.patient);
+        await f.advanceDelivery('delivered'); const checkout = await f.service.refresh(orderId, f.patient);
+        assert.equal(checkout.status, 'delivered'); assert.equal(checkout.clinicalReviewRequired, legacy);
+        assert.equal((await require('../services/pharmacy/pharmacistRxService').read(pool,f.pharmacist,f.prescriptionId)).quantity_review_required, legacy);
+        assert.ok(checkout.delivery.pickupProof); assert.ok(checkout.delivery.deliveryProof);
+        const rx = (await pool.query('SELECT lifecycle_status FROM ng_digital_prescriptions WHERE id=$1', [f.prescriptionId])).rows[0];
+        const item = (await pool.query('SELECT status,quantity,dispensed_quantity FROM ng_rx_items WHERE prescription_id=$1', [f.prescriptionId])).rows[0];
+        assert.equal(rx.lifecycle_status, legacy ? 'fully_dispensed' : 'completed');
+        assert.deepEqual(item, { status: 'dispensed', quantity: 2, dispensed_quantity: legacy ? 1 : 2 });
+        assert.equal((await pool.query('SELECT count(*)::int AS count FROM ng_fhir_medication_dispenses WHERE order_id=$1', [orderId])).rows[0].count, legacy ? 0 : 1);
+        const beforeReplay = (await pool.query('SELECT id,account,debit_minor,credit_minor FROM ng_medication_ledger WHERE order_id=$1 ORDER BY id', [orderId])).rows;
+        await f.service.refresh(orderId, f.patient);
+        assert.deepEqual((await pool.query('SELECT id,account,debit_minor,credit_minor FROM ng_medication_ledger WHERE order_id=$1 ORDER BY id', [orderId])).rows, beforeReplay);
+        assert.deepEqual((await pool.query('SELECT id,status,amount_minor FROM ng_medication_payment_attempts WHERE order_id=$1 ORDER BY id', [orderId])).rows, paymentsBefore);
+        assert.deepEqual({ initialize: f.state.initializeCalls, book: f.state.bookCalls, refund: f.state.refundCalls }, calls);
+        assert.equal((await pool.query("SELECT count(*)::int AS count FROM ng_medication_events WHERE order_id=$1 AND action='handover_requires_clinical_review'", [orderId])).rows[0].count, legacy ? 1 : 0);
+        assert.deepEqual((await pool.query('SELECT quantity_available,quantity_reserved FROM ng_pharmacy_inventory WHERE id=$1', [f.inventoryId])).rows[0], { quantity_available: 98, quantity_reserved: 0 });
+      }
+    });
+
     await t.test('suspended pharmacist API access cannot block recording verified courier handover and delivery', async () => {
       const f = await fixture(); const orderId = await quoted(f); await act(f, orderId, 'dispatch', f.pharmacist);
       const pharmacistRx = require('../services/pharmacy/pharmacistRxService');

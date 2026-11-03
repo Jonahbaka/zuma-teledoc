@@ -19,6 +19,31 @@ test('PostgreSQL pharmacist gateway serializes suspension/rerouting and never co
       for (const status of ['received','partially_dispensed','fully_dispensed','completed']) assert.equal((await service.list(pool,f.pharmacist,{status})).some(rx=>rx.id===f.prescriptionId),false);
       assert.equal((await service.list(pool,f.pharmacist,{status:'sent_to_pharmacy',since:'2099-01-01T00:00:00Z'})).length,0);
     });
+    await t.test('partial quantities fail closed, full quantities complete once, and historical short records cannot fulfill', async () => {
+      const quantityFixture = await createBrowserFixture({ pool });
+      const rxId = quantityFixture.prescriptionId; const pharmacist = quantityFixture.pharmacist;
+      await pool.query('UPDATE ng_rx_items SET quantity=2 WHERE prescription_id=$1', [rxId]);
+      const item = (await pool.query('SELECT id FROM ng_rx_items WHERE prescription_id=$1', [rxId])).rows[0];
+      await service.mutate(pool, pharmacist, rxId, 'receive');
+      const before = (await pool.query('SELECT count(*)::int AS count FROM ng_rx_events WHERE prescription_id=$1', [rxId])).rows[0].count;
+      await assert.rejects(service.mutate(pool, pharmacist, rxId, 'dispense', { quantity: 1 }, item.id), { code: 'INVALID_STATE' });
+      assert.deepEqual((await pool.query('SELECT status,dispensed_quantity FROM ng_rx_items WHERE id=$1', [item.id])).rows[0], { status: 'available', dispensed_quantity: 0 });
+      assert.equal((await pool.query('SELECT count(*)::int AS count FROM ng_rx_events WHERE prescription_id=$1', [rxId])).rows[0].count, before);
+      const full = await service.mutate(pool, pharmacist, rxId, 'dispense', { quantity: 2 }, item.id);
+      assert.equal(full.lifecycle_status, 'fully_dispensed'); assert.equal(full.quantity_review_required, false);
+      await assert.rejects(service.mutate(pool, pharmacist, rxId, 'dispense', { quantity: 2 }, item.id), { code: 'INVALID_STATE' });
+      await pool.query('UPDATE ng_rx_items SET dispensed_quantity=1 WHERE id=$1', [item.id]); // Isolated historical corruption, not a repair operation.
+      assert.equal((await service.read(pool, pharmacist, rxId)).quantity_review_required, true);
+      await assert.rejects(service.mutate(pool, pharmacist, rxId, 'complete'), { code: 'INVALID_STATE' });
+      const inbox = require('../services/pharmacy/clinicalInboxService');
+      await assert.rejects(inbox.updateStatus(pool, pharmacist, quantityFixture.pharmacyId, rxId, { status: 'fulfilled' }), error => error.status === 409);
+      assert.equal((await pool.query('SELECT dispensed_quantity FROM ng_rx_items WHERE id=$1', [item.id])).rows[0].dispensed_quantity, 1);
+      const valid = await createBrowserFixture({ pool });
+      const validItem = (await pool.query('SELECT id FROM ng_rx_items WHERE prescription_id=$1', [valid.prescriptionId])).rows[0];
+      await service.mutate(pool, valid.pharmacist, valid.prescriptionId, 'receive');
+      await service.mutate(pool, valid.pharmacist, valid.prescriptionId, 'dispense', {}, validItem.id);
+      assert.equal((await service.mutate(pool, valid.pharmacist, valid.prescriptionId, 'complete')).lifecycle_status, 'completed');
+    });
     await t.test('low-level Rx events and lifecycle mutation roll back on gateway compliance failure', async () => {
       const bad = { async connect() { const client=await pool.connect(); return {release:()=>client.release(),query(sql,values){if(sql.includes('INSERT INTO ng_compliance_audit_log'))throw new Error('Isolated gateway audit failure');return client.query(sql,values);}};}};
       await assert.rejects(service.mutate(bad,f.pharmacist,f.prescriptionId,'receive'),/Isolated gateway audit failure/);
