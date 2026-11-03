@@ -84,7 +84,26 @@ async function run() {
     const order=await h.service.createOrder(h.input,h.patient);
     const view=await h.service.getCheckout(order.order.id,h.patient);
     await h.service.setFulfillment(order.order.id,h.patient,request(view,{deliveryType:'pickup',consent:true}));
-    assert.equal((await fhir.read(pool,h.pharmacist,order.order.id)).resourceType,'Bundle');
+    const expectedDate=(await pool.query("SELECT to_char(expires_at,'YYYY-MM-DD') AS expires_at FROM ng_digital_prescriptions WHERE id=$1",[h.prescriptionId])).rows[0].expires_at;
+    const bundle=await fhir.read(pool,h.pharmacist,order.order.id);
+    assert.equal(bundle.resourceType,'Bundle');
+    const requests=bundle.entry.map(entry=>entry.resource).filter(resource=>resource.resourceType==='MedicationRequest');
+    assert.equal(requests.length,1);
+    for(const resource of requests){
+      require('./fhir-r4-schema')(resource);
+      assert.equal(resource.dispenseRequest.validityPeriod.end,expectedDate);
+    }
+    const readAudits=async()=>Number((await pool.query("SELECT count(*)::int AS count FROM ng_compliance_audit_log WHERE resource_id=$1 AND action='medication_fhir_read'",[order.order.id])).rows[0].count);
+    const successfulReads=await readAudits();
+    for(const unsupported of ['infinity','-infinity','0001-01-01 BC','10000-01-01']){
+      await pool.query('UPDATE ng_digital_prescriptions SET expires_at=$1::date WHERE id=$2',[unsupported,h.prescriptionId]);
+      await assert.rejects(fhir.read(pool,h.pharmacist,order.order.id),error=>error.status===422);
+      assert.equal(await readAudits(),successfulReads,'Invalid date export must not record a successful clinical read');
+    }
+    await pool.query('UPDATE ng_digital_prescriptions SET expires_at=NULL WHERE id=$1',[h.prescriptionId]);
+    const missing=await fhir.read(pool,h.pharmacist,order.order.id);
+    assert.equal(missing.entry.find(entry=>entry.resource.resourceType==='MedicationRequest').resource.dispenseRequest.validityPeriod,undefined);
+    await pool.query('UPDATE ng_digital_prescriptions SET expires_at=$1::date WHERE id=$2',[expectedDate,h.prescriptionId]);
 
     // Uploaded prescriptions are TIMESTAMPTZ, not a civil DATE. Preserve the
     // original instant cutoff even when it falls in the middle of a UTC day.

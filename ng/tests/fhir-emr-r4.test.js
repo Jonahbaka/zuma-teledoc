@@ -46,3 +46,29 @@ test('laboratory FHIR preserves recorded abnormal flags verbatim without inferri
     assert.equal(report.contained[0].interpretation, undefined);
   }
 });
+
+for(const tz of ['UTC','Africa/Lagos','America/New_York']) test(`FHIR MedicationRequest preserves SQL civil-date expiry and timestamp precision in ${tz}`,()=>{
+  const result=require('node:child_process').spawnSync(process.execPath,['-e',`
+    const assert=require('node:assert/strict');
+    const medication=require(${JSON.stringify(require.resolve('../services/interop/medicationFhirService'))});
+    const assertR4=require(${JSON.stringify(require.resolve('./helpers/fhir-r4-schema'))});
+    const item={id:${JSON.stringify(id)},drug_id:${JSON.stringify(id)},drug_name:'Synthetic recorded medicine',quantity:2};
+    const context={order:{patient_user_id:${JSON.stringify(patient)},status:'pending'},f:{},rx:{id:${JSON.stringify(id)},lifecycle_status:'sent_to_pharmacy',signed_at:'2026-11-03T12:34:56.789Z'}};
+    for(const date of ['2024-02-29','2026-03-07','2026-03-08','2026-03-09','2026-10-31','2026-11-01','2026-11-02','2026-11-03','2026-12-31']){
+      const resource=medication.medicationRequest(item,{...context,rx:{...context.rx,expires_at:date}});
+      assertR4(resource);
+      assert.equal(resource.dispenseRequest.validityPeriod.end,date);
+      assert.equal(resource.authoredOn,context.rx.signed_at,'Recorded timestamp stays an instant');
+      assert.equal(resource.dispenseRequest.quantity.value,2);
+      assert.equal(resource.status,'active');
+    }
+    for(const expiry of [null,undefined]){
+      const resource=medication.medicationRequest(item,{...context,rx:{...context.rx,expires_at:expiry}});
+      assertR4(resource);assert.equal(resource.dispenseRequest.validityPeriod,undefined);
+    }
+    for(const expiry of ['', '2026-02-29','infinity','-infinity','0001-01-01 BC','10000-01-01','2026-11-03T00:00:00Z',require('pg').types.getTypeParser(1082)('2026-11-03')]){
+      assert.throws(()=>medication.medicationRequest(item,{...context,rx:{...context.rx,expires_at:expiry}}),error=>error.status===422);
+    }
+  `],{env:{...process.env,TZ:tz},encoding:'utf8'});
+  assert.equal(result.status,0,`${result.stdout}\n${result.stderr}`);
+});
