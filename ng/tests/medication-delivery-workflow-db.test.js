@@ -196,6 +196,66 @@ test('real PostgreSQL medication checkout, payment, courier and refund workflows
       assert.equal(f.state.quoteCalls, 0); assert.equal(f.state.bookCalls, 0);
     });
 
+    async function quantityPaymentCase(stage, conflict, approve = false) {
+      const f = await fixture();
+      if (conflict==='duplicate') { await pool.query('UPDATE ng_rx_items SET quantity=2 WHERE prescription_id=$1',[f.prescriptionId]); f.input.items[0].quantity=2; }
+      let orderId;
+      if (stage==='delivery') { orderId=await prepared(f,{delivery:true}); await act(f,orderId,'requestQuote',f.patient); }
+      else {
+        orderId=(await f.service.createOrder(f.input,f.patient)).order.id;
+        await act(f,orderId,'confirmPrice',f.pharmacist,{items:[{drugId:f.drugId,unitPriceMinor:900000}],pharmacistRegistrationNumber:f.registration,attest:true,packageCategory:'sealed_ambient_medication'});
+        await act(f,orderId,'setFulfillment',f.patient,{deliveryType:'pickup',consent:true});
+      }
+      const checkout=await f.service.getCheckout(orderId,f.patient);
+      const approval=request(checkout,{stage,consent:true,...(stage==='delivery'?{quoteId:checkout.quote.id}:{})});
+      if(approve)await f.service.approve(orderId,f.patient,approval);
+      async function change() {
+        if(conflict==='quantity')await pool.query('UPDATE ng_rx_items SET quantity=2 WHERE prescription_id=$1',[f.prescriptionId]);
+        if(conflict==='duplicate'){
+          await pool.query('UPDATE ng_rx_items SET quantity=1 WHERE prescription_id=$1',[f.prescriptionId]);
+          await pool.query(`INSERT INTO ng_rx_items(prescription_id,drug_id,drug_name,dosage,frequency,quantity,status,pharmacy_id,fulfillment_order_id,position)
+            VALUES($1,$2,'Isolated duplicate payment source','Isolated directions','Isolated schedule',1,'available',$3,$4,2)`,[f.prescriptionId,f.drugId,f.pharmacyId,orderId]);
+        }
+        if(conflict==='hold')await pool.query("INSERT INTO ng_medication_events(order_id,action,details) VALUES($1,'handover_requires_clinical_review',$2)",[orderId,JSON.stringify({prescriptionId:f.prescriptionId,reason:'order_quantity_conflict'})]);
+      }
+      async function financialState() {
+        return {
+          approvals:(await pool.query('SELECT medicines_approval,delivery_approval FROM ng_medication_fulfillments WHERE order_id=$1',[orderId])).rows,
+          attempts:(await pool.query('SELECT id,status,amount_minor,provider_reference,authorization_url FROM ng_medication_payment_attempts WHERE order_id=$1 ORDER BY id',[orderId])).rows,
+          ledger:(await pool.query('SELECT id,account,debit_minor,credit_minor FROM ng_medication_ledger WHERE order_id=$1 ORDER BY id',[orderId])).rows,
+          operations:(await pool.query('SELECT operation_key,action,digest FROM ng_medication_operations WHERE order_id=$1 ORDER BY operation_key',[orderId])).rows,
+          initialize:f.state.initializeCalls,refund:f.state.refundCalls,book:f.state.bookCalls,
+        };
+      }
+      return {f,orderId,approval,change,financialState};
+    }
+
+    await t.test('changed quantity, duplicate attribution and unresolved hold prevent new financial approval or payment reservation for both stages', async () => {
+      for(const stage of ['medicines','delivery'])for(const conflict of ['quantity','duplicate','hold'])for(const method of ['approve','initiatePayment']){
+        const c=await quantityPaymentCase(stage,conflict,method==='initiatePayment');await c.change();const before=await c.financialState();
+        const current=await c.f.service.getCheckout(c.orderId,c.f.patient);
+        await assert.rejects(c.f.service[method](c.orderId,c.f.patient,method==='approve'?c.approval:request(current,{stage})),error=>error.status===409&&/prescription items changed/.test(error.message),`${stage}/${conflict}/${method}`);
+        assert.deepEqual(await c.financialState(),before,`${stage}/${conflict}/${method}`);
+        assert.equal((await pool.query('SELECT count(*)::int AS count FROM ng_rx_items WHERE prescription_id=$1 AND dispensed_quantity<>0',[c.f.prescriptionId])).rows[0].count,0);
+      }
+    });
+
+    await t.test('existing approval replay and issued hosted payment reference remain recoverable after later quantity changes', async () => {
+      for(const stage of ['medicines','delivery'])for(const conflict of ['quantity','duplicate','hold']){
+        const c=await quantityPaymentCase(stage,conflict,true);const current=await c.f.service.getCheckout(c.orderId,c.f.patient);
+        const issued=await c.f.service.initiatePayment(c.orderId,c.f.patient,request(current,{stage}));await c.change();const before=await c.financialState();
+        await c.f.service.approve(c.orderId,c.f.patient,c.approval); // Exact operation replay, not a new financial approval.
+        const resumed=await c.f.service.initiatePayment(c.orderId,c.f.patient,request(current,{stage}));
+        assert.equal(resumed.reference,issued.reference);assert.equal(resumed.authorizationUrl,issued.authorizationUrl);
+        assert.deepEqual(await c.financialState(),before);
+        const verified=await c.f.service.verifyPayment(c.orderId,c.f.patient,issued.reference);
+        assert.equal(verified.payment[stage].status,'verified');const once=await c.financialState();
+        await c.f.service.verifyPayment(c.orderId,c.f.patient,issued.reference);assert.deepEqual(await c.financialState(),once);
+        assert.equal(c.f.state.initializeCalls,before.initialize);assert.equal(c.f.state.refundCalls,0);assert.equal(c.f.state.bookCalls,0);
+        assert.equal((await pool.query('SELECT count(*)::int AS count FROM ng_rx_items WHERE prescription_id=$1 AND dispensed_quantity<>0',[c.f.prescriptionId])).rows[0].count,0);
+      }
+    });
+
     await t.test('payment initialization retries and replayed confirmations charge and post only once', async () => {
       const f = await fixture(); const orderId = await prepared(f, { paid: false, ready: false });
       const current = await f.service.getCheckout(orderId, f.patient); const input = request(current, { stage: 'medicines' });

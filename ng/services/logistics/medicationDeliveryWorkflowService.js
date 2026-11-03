@@ -339,6 +339,8 @@ function createMedicationDeliveryWorkflowService(options = {}) {
       pharmacyValid(ctx.p);
       if (input.consent !== true || !['medicines', 'delivery'].includes(input.stage)) throw fail(422, 'Explicit approval of the itemized charges is required.');
       if (!ctx.f.pharmacy_confirmed_at) throw fail(409, 'The pharmacy must confirm the final medicine prices first.');
+      // Exact operation replays already returned above; only new approvals need current Rx authority.
+      await rxValid(client, ctx);
       if (input.stage === 'medicines' && ctx.f.pharmacy_quote_expires_at && new Date(ctx.f.pharmacy_quote_expires_at).getTime() <= now()) throw fail(409,'The pharmacy quote expired. Request a fresh confirmed quote before approval.');
       await commercialProfiles.authorizeOrder(client,ctx.p.id,ctx.f.commercial_snapshot);
       await pendingPayments(client, orderId);
@@ -412,6 +414,9 @@ function createMedicationDeliveryWorkflowService(options = {}) {
       const approvalDigest = hash(approval);
       const old = (await client.query('SELECT * FROM ng_medication_payment_attempts WHERE order_id=$1 AND stage=$2 AND approval_digest=$3', [orderId, stage, approvalDigest])).rows[0];
       if (old) return { attempt: old, existing: true };
+      // Preserve an already-issued reference for recovery, but never create a new
+      // financial obligation for changed or unresolved prescription quantities.
+      await rxValid(client, ctx);
       await pendingPayments(client, orderId);
       const already = assertMinor((await client.query("SELECT COALESCE(sum(amount_minor),0)::text AS amount FROM ng_medication_payment_attempts WHERE order_id=$1 AND stage=$2 AND status='verified'", [orderId, stage])).rows[0].amount);
       const amount = approval.patientMinor - already;
