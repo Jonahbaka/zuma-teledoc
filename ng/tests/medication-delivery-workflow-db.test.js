@@ -458,6 +458,161 @@ test('real PostgreSQL medication checkout, payment, courier and refund workflows
       await assert.rejects(act(f, orderId, 'requestQuote', f.patient), { status: 409 }); assert.equal(f.state.quoteCalls, 0); assert.equal(f.state.bookCalls, 0);
     });
 
+    await t.test('collection and dispatch wait for committed stock changes and reject before new side effects', async () => {
+      for (const method of ['collect', 'dispatch']) for (const invalid of ['expiry_date=CURRENT_DATE', 'expiry_date=NULL', 'quantity_reserved=0', 'quantity_reserved=NULL']) {
+        const f = await fixture(); const orderId = method === 'collect' ? await prepared(f) : await quoted(f);
+        const current = await f.service.getCheckout(orderId, f.pharmacist);
+        const snapshot = async () => (await pool.query(`SELECT
+          (SELECT status FROM ng_orders WHERE id=$1) AS status,
+          (SELECT version FROM ng_medication_fulfillments WHERE order_id=$1) AS version,
+          (SELECT inventory_released_at FROM ng_medication_fulfillments WHERE order_id=$1) AS released,
+          (SELECT COUNT(*)::int FROM ng_medication_bookings WHERE order_id=$1) AS bookings,
+          (SELECT COUNT(*)::int FROM ng_medication_operations WHERE order_id=$1) AS operations,
+          (SELECT COUNT(*)::int FROM ng_medication_ledger WHERE order_id=$1) AS ledger,
+          (SELECT COUNT(*)::int FROM ng_medication_events WHERE order_id=$1) AS events,
+          (SELECT SUM(dispensed_quantity)::int FROM ng_rx_items WHERE prescription_id=$2) AS dispensed`, [orderId, f.prescriptionId])).rows[0];
+        const before = await snapshot(); const calls = [f.state.bookCalls, f.state.initializeCalls, f.state.refundCalls];
+        const updater = await pool.connect(); let pending;
+        try {
+          await updater.query('BEGIN');
+          await updater.query(`UPDATE ng_pharmacy_inventory SET ${invalid} WHERE id=$1`, [f.inventoryId]);
+          let settled = false;
+          pending = f.service[method](orderId, f.pharmacist, request(current, { attest: true })).then(value => { settled = true; return { value }; }, error => { settled = true; return { error }; });
+          await new Promise(resolve => setTimeout(resolve, 75));
+          assert.equal(settled, false, `${method} must wait for the inventory row, including a previously healthy batch`);
+          await updater.query('COMMIT');
+          assert.equal((await pending).error?.status, 409);
+          assert.deepEqual(await snapshot(), before);
+          assert.deepEqual([f.state.bookCalls, f.state.initializeCalls, f.state.refundCalls], calls);
+          if (invalid === 'quantity_reserved=NULL') assert.equal((await pool.query('SELECT quantity_reserved FROM ng_pharmacy_inventory WHERE id=$1', [f.inventoryId])).rows[0].quantity_reserved, null, 'Denial does not invent a replacement quantity');
+        } finally { await updater.query('ROLLBACK'); updater.release(); if (pending) await pending; }
+      }
+    });
+
+    await t.test('healthy split batches stay locked through collection or booking-intent commit', async () => {
+      for (const method of ['collect', 'dispatch']) {
+        let observe = false, entered, release;
+        const reached = new Promise(resolve => { entered = resolve; });
+        const hold = new Promise(resolve => { release = resolve; });
+        let observedRows;
+        const observedPool = {
+          options: pool.options, query: (...args) => pool.query(...args),
+          async connect() {
+            const client = await pool.connect();
+            return { release: () => client.release(), async query(sql, params) {
+              const result = await client.query(sql, params);
+              if (observe && sql.includes('FROM ng_medication_reservations r JOIN ng_pharmacy_inventory')) {
+                observe = false; observedRows = result.rows; entered(); await hold;
+              }
+              return result;
+            } };
+          },
+        };
+        const f = await fixture({ pool: observedPool }); const secondBatch = crypto.randomUUID();
+        await pool.query('UPDATE ng_rx_items SET quantity=2 WHERE prescription_id=$1', [f.prescriptionId]);
+        f.input.items[0].quantity = 2;
+        await pool.query('UPDATE ng_pharmacy_inventory SET quantity_available=1 WHERE id=$1', [f.inventoryId]);
+        await pool.query(`INSERT INTO ng_pharmacy_inventory(id,pharmacy_id,drug_id,quantity_available,quantity_reserved,batch_number,expiry_date,cost_price,selling_price,is_available,availability_verification_status,availability_verified_at)
+          VALUES($1,$2,$3,1,0,$4,CURRENT_DATE+181,8000.00,9000.00,TRUE,'verified',NOW())`, [secondBatch, f.pharmacyId, f.drugId, `split-${secondBatch}`]);
+        const orderId = method === 'collect' ? await prepared(f) : await quoted(f);
+        const current = await f.service.getCheckout(orderId, f.pharmacist); observe = true;
+        let action, update;
+        try {
+          action = f.service[method](orderId, f.pharmacist, request(current, { attest: true })).then(value => ({ value }), error => ({ error }));
+          await Promise.race([reached, action.then(result => { throw result.error || new Error('Action did not reach the stock-lock boundary'); })]);
+          assert.deepEqual(observedRows.map(row => row.id), [f.inventoryId, secondBatch]);
+          assert.ok(observedRows.every(row => row.invalid_stock === false));
+          let updated = false;
+          update = pool.query('UPDATE ng_pharmacy_inventory SET expiry_date=CURRENT_DATE WHERE id=$1', [secondBatch]).then(value => { updated = true; return { value }; }, error => { updated = true; return { error }; });
+          await new Promise(resolve => setTimeout(resolve, 75));
+          assert.equal(updated, false, 'A healthy second batch is locked, not only rows that already fail the policy');
+          release(); const outcome = await action;
+          assert.ifError(outcome.error); assert.equal(outcome.value.status, method === 'collect' ? 'delivered' : 'dispatched');
+          assert.ifError((await update).error);
+          const stock = (await pool.query('SELECT quantity_reserved,expiry_date=CURRENT_DATE AS expired FROM ng_pharmacy_inventory WHERE id=$1', [secondBatch])).rows[0];
+          assert.equal(stock.expired, true); assert.equal(stock.quantity_reserved, method === 'collect' ? 0 : 1);
+          assert.equal(f.state.bookCalls, method === 'dispatch' ? 1 : 0);
+        } finally { release(); if (action) await action; if (update) await update; }
+      }
+    });
+
+    await t.test('stock changes after an existing booking do not erase verified courier handover or payment facts', async () => {
+      const f = await fixture(); const orderId = await quoted(f);
+      await act(f, orderId, 'dispatch', f.pharmacist);
+      await pool.query('UPDATE ng_pharmacy_inventory SET expiry_date=CURRENT_DATE WHERE id=$1', [f.inventoryId]);
+      await f.advanceDelivery('picked_up'); const pickup = await f.service.refresh(orderId, f.patient);
+      assert.equal(pickup.status, 'in_transit'); assert.ok(pickup.delivery.pickupProof);
+      assert.equal(pickup.payment.medicines.status, 'verified');
+      await f.advanceDelivery('delivered'); const delivered = await f.service.refresh(orderId, f.patient);
+      assert.equal(delivered.status, 'delivered'); assert.ok(delivered.delivery.deliveryProof);
+      const counts = async () => (await pool.query(`SELECT
+        (SELECT quantity_reserved FROM ng_pharmacy_inventory WHERE id=$1) AS reserved,
+        (SELECT COUNT(*)::int FROM ng_medication_ledger WHERE order_id=$2) AS ledger,
+        (SELECT SUM(dispensed_quantity)::int FROM ng_rx_items WHERE prescription_id=$3) AS dispensed`, [f.inventoryId, orderId, f.prescriptionId])).rows[0];
+      const before = await counts(); await f.service.refresh(orderId, f.patient);
+      assert.deepEqual(await counts(), before); assert.equal(before.reserved, 0); assert.equal(before.dispensed, 1);
+      assert.equal(f.state.bookCalls, 1); assert.equal(f.state.refundCalls, 0);
+    });
+
+    await t.test('uploaded Rx collection and dispatch wait for committed revocation before checking authority', async () => {
+      for (const method of ['collect','dispatch']) for (const change of ["status='rejected'", 'verified_by_pharmacist=NULL', "expires_at=NOW()-INTERVAL '1 day'"]) {
+        const f = await fixture({ uploaded: true }); const orderId = method === 'collect' ? await prepared(f) : await quoted(f);
+        const current = await f.service.getCheckout(orderId, f.pharmacist);
+        const snapshot = async () => (await pool.query(`SELECT
+          (SELECT status FROM ng_orders WHERE id=$1) AS status,
+          (SELECT version FROM ng_medication_fulfillments WHERE order_id=$1) AS version,
+          (SELECT inventory_released_at FROM ng_medication_fulfillments WHERE order_id=$1) AS released,
+          (SELECT quantity_reserved FROM ng_pharmacy_inventory WHERE id=$2) AS reserved,
+          (SELECT COUNT(*)::int FROM ng_medication_bookings WHERE order_id=$1) AS bookings,
+          (SELECT COUNT(*)::int FROM ng_medication_operations WHERE order_id=$1) AS operations,
+          (SELECT COUNT(*)::int FROM ng_medication_ledger WHERE order_id=$1) AS ledger,
+          (SELECT COUNT(*)::int FROM ng_medication_events WHERE order_id=$1) AS events`, [orderId, f.inventoryId])).rows[0];
+        const before = await snapshot(), calls = [f.state.bookCalls, f.state.initializeCalls, f.state.refundCalls];
+        const revoker = await pool.connect(); let pending;
+        try {
+          await revoker.query('BEGIN'); await revoker.query(`UPDATE ng_prescriptions SET ${change} WHERE id=$1`, [f.prescriptionId]);
+          let settled = false; pending = f.service[method](orderId, f.pharmacist, request(current, { attest: true })).then(value => { settled = true; return { value }; }, error => { settled = true; return { error }; });
+          await new Promise(resolve => setTimeout(resolve, 75)); assert.equal(settled, false, 'Uploaded Rx validation must wait for the changed authority row');
+          await revoker.query('COMMIT'); assert.equal((await pending).error?.status, 409);
+          assert.deepEqual(await snapshot(), before); assert.deepEqual([f.state.bookCalls, f.state.initializeCalls, f.state.refundCalls], calls);
+          assert.notEqual((await pool.query('SELECT status FROM ng_prescriptions WHERE id=$1', [f.prescriptionId])).rows[0].status, 'dispensed');
+        } finally { await revoker.query('ROLLBACK'); revoker.release(); if (pending) await pending; }
+      }
+    });
+
+    await t.test('uploaded Rx remains locked through the action commit and historical operation replay stays idempotent', async () => {
+      for (const method of ['collect','dispatch']) {
+        let observe = false, entered, release;
+        const reached = new Promise(resolve => { entered = resolve; }); const hold = new Promise(resolve => { release = resolve; });
+        const observedPool = { options: pool.options, query: (...args) => pool.query(...args), async connect() {
+          const client = await pool.connect(); return { release: () => client.release(), async query(sql, params) {
+            const result = await client.query(sql, params);
+            if (observe && sql === 'SELECT * FROM ng_prescriptions WHERE id=$1 FOR UPDATE') { observe = false; entered(); await hold; }
+            return result;
+          } };
+        } };
+        const f = await fixture({ pool: observedPool, uploaded: true }); const orderId = method === 'collect' ? await prepared(f) : await quoted(f);
+        const current = await f.service.getCheckout(orderId, f.pharmacist), command = request(current, { attest: true }); observe = true;
+        let action, update;
+        try {
+          action = f.service[method](orderId, f.pharmacist, command).then(value => ({ value }), error => ({ error }));
+          await Promise.race([reached, action.then(result => { throw result.error || new Error('Action missed the uploaded Rx lock'); })]);
+          let changed = false; update = pool.query("UPDATE ng_prescriptions SET expires_at=NOW()-INTERVAL '1 day' WHERE id=$1", [f.prescriptionId]).then(value => { changed = true; return { value }; }, error => ({ error }));
+          await new Promise(resolve => setTimeout(resolve, 75)); assert.equal(changed, false, 'Prescription authority remains locked until the action commits');
+          release(); const outcome = await action; assert.ifError(outcome.error); assert.equal(outcome.value.status, method === 'collect' ? 'delivered' : 'dispatched'); assert.ifError((await update).error);
+          assert.equal((await pool.query('SELECT expires_at<NOW() AS expired FROM ng_prescriptions WHERE id=$1', [f.prescriptionId])).rows[0].expired, true);
+          const counts = async () => (await pool.query(`SELECT
+            (SELECT quantity_reserved FROM ng_pharmacy_inventory WHERE id=$1) AS reserved,
+            (SELECT COUNT(*)::int FROM ng_medication_ledger WHERE order_id=$2) AS ledger,
+            (SELECT COUNT(*)::int FROM ng_medication_bookings WHERE order_id=$2) AS bookings,
+            (SELECT COUNT(*)::int FROM ng_medication_operations WHERE order_id=$2) AS operations`, [f.inventoryId, orderId])).rows[0];
+          const before = await counts(), bookCalls = f.state.bookCalls;
+          const replay = await f.service[method](orderId, f.pharmacist, command);
+          assert.equal(replay.status, outcome.value.status); assert.deepEqual(await counts(), before); assert.equal(f.state.bookCalls, bookCalls); assert.equal(f.state.refundCalls, 0);
+        } finally { release(); if (action) await action; if (update) await update; }
+      }
+    });
+
     await t.test('fresh higher courier quote requires new consent and only an exact additional payment', async () => {
       const f = await fixture(); const orderId = await quoted(f); f.advance(1000); f.state.fareMinor = 300000;
       const fresh = await act(f, orderId, 'requestQuote', f.patient);

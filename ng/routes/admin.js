@@ -8,6 +8,7 @@ const router = express.Router();
 const pharmacyOnboardingService = require('../services/pharmacy/pharmacyOnboardingService');
 const complianceService = require('../services/compliance/complianceService');
 const medicationRequests = require('../services/pharmacy/medicationRequestService');
+const inventoryVerification = require('../services/pharmacy/inventoryVerificationService');
 const { getPool } = require('../../server/db');
 const { requireSuperAdmin } = require('../../server/middleware/auth');
 router.use('/medication-delivery', require('./medicationDeliveryAdmin'));
@@ -423,59 +424,9 @@ router.get('/pharmacy-inventory', async (req, res) => {
 });
 
 router.patch('/pharmacy-inventory/:inventoryId/availability-verification', requireSuperAdmin, async (req, res) => {
-  try {
-    const pool = getPool();
-    const verified = req.body.verified === true;
-    const nextStatus = verified ? 'verified' : 'unverified';
-
-    const previous = await pool.query(
-      `SELECT availability_verification_status FROM ng_pharmacy_inventory WHERE id = $1`,
-      [req.params.inventoryId]
-    );
-
-    const result = await pool.query(
-      `UPDATE ng_pharmacy_inventory
-          SET availability_verification_status = $2,
-              availability_verified_at = CASE WHEN $2 = 'verified' THEN NOW() ELSE NULL END,
-              availability_verified_by = CASE WHEN $2 = 'verified' THEN $3 ELSE NULL END,
-              availability_source = $4,
-              availability_notes = $5,
-              updated_at = NOW()
-        WHERE id = $1
-        RETURNING *`,
-      [
-        req.params.inventoryId,
-        nextStatus,
-        getActorUserId(req.user),
-        req.body.availabilitySource || 'admin_confirmation',
-        req.body.availabilityNotes || null,
-      ]
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Pharmacy inventory record not found.' });
-    }
-
-    await pool.query(
-      `INSERT INTO ng_medication_source_audit_log (
-         inventory_id, actor_user_id, action, from_status, to_status, details
-       ) VALUES ($1, $2, 'pharmacy_availability_verification_updated', $3, $4, $5)`,
-      [
-        req.params.inventoryId,
-        getActorUserId(req.user),
-        previous.rows[0]?.availability_verification_status || null,
-        nextStatus,
-        {
-          availabilitySource: req.body.availabilitySource || 'admin_confirmation',
-          availabilityNotes: req.body.availabilityNotes || null,
-        },
-      ]
-    );
-
-    res.json({ inventory: result.rows[0] });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await inventoryVerification.update(getPool(), req.user, req.params.inventoryId, req.body)); }
+  catch (error) { inventoryVerification.sendError(res, error); }
 });
 
 // --- PHARMACY MANAGEMENT ---

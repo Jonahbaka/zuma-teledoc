@@ -100,7 +100,7 @@ function createMedicationDeliveryWorkflowService(options = {}) {
         || await isQuantityReviewHeld(client, rx.id)) throw fail(409, 'The prescription items changed after reservation. Pharmacy review is required.');
       return rx;
     }
-    const rx = (await client.query('SELECT * FROM ng_prescriptions WHERE id=$1', [order.prescription_id])).rows[0];
+    const rx = (await client.query('SELECT * FROM ng_prescriptions WHERE id=$1 FOR UPDATE', [order.prescription_id])).rows[0];
     if (!rx || rx.patient_user_id !== order.patient_user_id || !rx.verified_by_pharmacist || !rx.verified_at || !['verified', 'matched', 'dispensing'].includes(rx.status) || new Date(rx.expires_at).getTime() <= now()) throw fail(409, 'Pharmacist verification of this prescription is required.');
     return rx;
   }
@@ -212,8 +212,14 @@ function createMedicationDeliveryWorkflowService(options = {}) {
     if (invalid.rows.length) throw fail(422, 'A medicine in this order requires a different supervised handling process.');
   }
   async function stockValid(client, orderId) {
-    const result = await client.query('SELECT 1 FROM ng_medication_reservations r JOIN ng_pharmacy_inventory i ON i.id=r.inventory_id WHERE r.order_id=$1 AND (i.expiry_date IS NULL OR i.expiry_date<=CURRENT_DATE OR i.quantity_reserved<r.quantity) LIMIT 1', [orderId]);
-    if (result.rows.length) throw fail(409, 'The reserved medicines must be reverified by pharmacy support.');
+    // Lock healthy rows too: a later inventory update must not invalidate this
+    // check before the action commits. UPDATE avoids a collection lock upgrade;
+    // the ordering matches checkout's drug/FEFO reservation acquisition.
+    const result = await client.query(`SELECT i.id,
+      (i.expiry_date IS NULL OR i.expiry_date<=CURRENT_DATE OR i.quantity_reserved IS NULL OR i.quantity_reserved<r.quantity) AS invalid_stock
+      FROM ng_medication_reservations r JOIN ng_pharmacy_inventory i ON i.id=r.inventory_id
+      WHERE r.order_id=$1 ORDER BY i.drug_id,i.expiry_date,i.id FOR UPDATE OF i`, [orderId]);
+    if (result.rows.some(row => row.invalid_stock !== false)) throw fail(409, 'The reserved medicines must be reverified by pharmacy support.');
   }
   function providerInput(ctx) {
     const p = ctx.p;

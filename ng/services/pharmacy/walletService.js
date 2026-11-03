@@ -4,7 +4,6 @@
  */
 
 const { getPool } = require('../../../server/db');
-const paymentOrchestrator = require('../payments/paymentOrchestrator');
 
 function statementInteger(value) {
   if (!/^(?:0|[1-9]\d*)$/.test(String(value)) || !Number.isSafeInteger(Number(value))) {
@@ -91,81 +90,14 @@ class WalletService {
   }
 
   /**
-   * Process settlement (move pending to available, then transfer to bank)
+   * The legacy wallet has no durable payout claim/reconciliation protocol.
+   * Never move balances or initiate a new transfer from this entry point.
+   * Reviewed medication-ledger settlement is a separate service and is unchanged.
    */
-  async processSettlement(pharmacyId) {
-    const pool = getPool();
-
-    const wallet = await pool.query(
-      'SELECT * FROM ng_pharmacy_wallets WHERE pharmacy_id = $1', [pharmacyId]
-    );
-
-    if (!wallet.rows.length) throw new Error('Wallet not found');
-    const w = wallet.rows[0];
-
-    if (parseFloat(w.pending_balance) <= 0) {
-      throw new Error('No pending balance to settle');
-    }
-
-    const amount = parseFloat(w.pending_balance);
-
-    // Move from pending to available
-    await pool.query(
-      `UPDATE ng_pharmacy_wallets SET
-        balance = balance + pending_balance,
-        pending_balance = 0,
-        last_settlement_at = NOW(),
-        updated_at = NOW()
-      WHERE pharmacy_id = $1`,
-      [pharmacyId]
-    );
-
-    // Initiate bank transfer
-    try {
-      const settlement = await paymentOrchestrator.settlePharmacy({
-        pharmacyId,
-        amount,
-        orderId: null,
-        provider: 'paystack',
-      });
-
-      // Record settlement transaction
-      await pool.query(
-        `INSERT INTO ng_wallet_transactions (
-          wallet_id, pharmacy_id, type, amount, balance_after,
-          description, reference, payment_provider
-        ) VALUES ($1, $2, 'settlement', $3, $4, $5, $6, $7)`,
-        [
-          w.id, pharmacyId, amount,
-          parseFloat(w.balance) + amount - amount, // Balance after withdrawal
-          `Settlement to bank account`,
-          settlement.reference, 'paystack',
-        ]
-      );
-
-      // Deduct from balance
-      await pool.query(
-        `UPDATE ng_pharmacy_wallets SET
-          balance = balance - $1,
-          total_withdrawn = total_withdrawn + $1,
-          updated_at = NOW()
-        WHERE pharmacy_id = $2`,
-        [amount, pharmacyId]
-      );
-
-      return { amount, reference: settlement.reference, status: 'processing' };
-    } catch (err) {
-      // Rollback: move back to pending
-      await pool.query(
-        `UPDATE ng_pharmacy_wallets SET
-          balance = balance - $1,
-          pending_balance = pending_balance + $1,
-          updated_at = NOW()
-        WHERE pharmacy_id = $2`,
-        [amount, pharmacyId]
-      );
-      throw err;
-    }
+  async processSettlement() {
+    throw Object.assign(new Error('Legacy pharmacy payouts are paused pending finance reconciliation. No new payout was initiated.'), {
+      status: 503, statusCode: 503, code: 'LEGACY_PHARMACY_SETTLEMENT_DISABLED',
+    });
   }
 
   /**

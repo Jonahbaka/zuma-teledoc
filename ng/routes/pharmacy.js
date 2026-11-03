@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const pharmacyOnboardingService = require('../services/pharmacy/pharmacyOnboardingService');
 const inventoryService = require('../services/pharmacy/inventoryService');
+const inventoryMutations = require('../services/pharmacy/inventoryMutationService');
 const { previewCatalogue } = require('../services/pharmacy/cataloguePreviewService');
 const orderService = require('../services/pharmacy/orderService');
 const medicationRequests = require('../services/pharmacy/medicationRequestService');
@@ -276,28 +277,16 @@ router.get('/:pharmacyId/inventory', async (req, res) => {
 
 // Add inventory items
 router.post('/:pharmacyId/inventory', async (req, res) => {
-  try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-    const result = await pharmacyOnboardingService.addInventory(
-      req.params.pharmacyId, req.user.id, req.body.items
-    );
-    res.json(result);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await inventoryMutations.mutate(getPool(), req.user, req.params.pharmacyId, 'add', req.body)); }
+  catch (error) { inventoryMutations.sendError(res, error); }
 });
 
 // Update inventory item
 router.patch('/:pharmacyId/inventory/:itemId', async (req, res) => {
-  try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-    const result = await inventoryService.updateItem(
-      req.params.pharmacyId, req.params.itemId, req.body
-    );
-    res.json(result);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await inventoryMutations.mutate(getPool(), req.user, req.params.pharmacyId, 'update', req.body, req.params.itemId)); }
+  catch (error) { inventoryMutations.sendError(res, error); }
 });
 
 // Transport-free partner catalogue validation; never imports or activates.
@@ -317,15 +306,9 @@ router.post('/:pharmacyId/inventory/catalogue-preview', async (req, res) => {
 
 // Bulk import inventory
 router.post('/:pharmacyId/inventory/bulk-import', async (req, res) => {
-  try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-    const result = await inventoryService.bulkImport(
-      req.params.pharmacyId, req.body.items
-    );
-    res.json(result);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await inventoryMutations.mutate(getPool(), req.user, req.params.pharmacyId, 'import', req.body)); }
+  catch (error) { inventoryMutations.sendError(res, error); }
 });
 
 // Get low stock alerts
@@ -517,13 +500,18 @@ router.get('/:pharmacyId/wallet', async (req, res) => {
 
 // Request settlement
 router.post('/:pharmacyId/wallet/settle', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
   try {
-    await assertPharmacyAccess(req, req.params.pharmacyId);
-    const result = await walletService.processSettlement(req.params.pharmacyId);
-    res.json(result);
+    // Uniform denial needs no wallet lookup, ownership precheck or provider call.
+    // The service also rejects direct callers before touching any balance.
+    await walletService.processSettlement(req.params.pharmacyId);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    return res.status(503).json({
+      code: 'LEGACY_PHARMACY_SETTLEMENT_DISABLED',
+      error: err.code === 'LEGACY_PHARMACY_SETTLEMENT_DISABLED' ? err.message : 'Legacy pharmacy payouts are unavailable. No new payout was confirmed.',
+    });
   }
+  return res.status(503).json({ code: 'LEGACY_PHARMACY_SETTLEMENT_DISABLED', error: 'Legacy pharmacy payouts are unavailable. No new payout was confirmed.' });
 });
 
 // Get transaction history

@@ -16,6 +16,7 @@ function lifecycleHandler(pool) {
     express,
     '../services/pharmacy/pharmacyOnboardingService': {}, '../services/compliance/complianceService': {},
     '../services/pharmacy/medicationRequestService': {},
+    '../services/pharmacy/inventoryVerificationService': {},
     '../../server/db': { getPool: () => pool },
     '../../server/middleware/auth': { requireSuperAdmin: (_req, _res, next) => next() },
     '../../server/services/adminTestAccountService': {},

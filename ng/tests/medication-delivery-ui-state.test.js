@@ -156,3 +156,28 @@ test('responsible pharmacy sees the clinical review hold alongside retained orde
   const view=pageHarness(value,'PharmacyMedicationOrder');view.render();assert.match(view.text(),/Clinical review required: reconcile the prescription with the recorded handover/);
   assert.match(view.text(),/does not authorize replacement medicine or a refund/);assert.equal(view.writes.length,0);view.unmount();
 });
+
+test('legacy wallet view preserves recorded balances/history and refresh, with no payout action or success claim',async()=>{
+  const state=stateHarness();let reads=0,writes=0,tree;
+  const wallet={balance:'1200.50',pending_balance:'300.25',todayEarnings:'50.00',medicationStatement:{outstandingMinor:900000,settledMinor:450000,orderCount:2}};
+  const dependencies={react:state.react,'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})},
+    'lucide-react':new Proxy({},{get:(_value,name)=>String(name)}),'@/components/ui/button':{Button:'button'},
+    '@/components/providers/AuthProvider':{useAuth:()=>({user:{id:'synthetic-pharmacist',role:'pharmacy'},loading:false,isAuthenticated:true})},
+    '@/components/ng/NigeriaPharmacyPortalShell':{__esModule:true,default:'shell'},'@/components/branding/PortalPageHeader':{__esModule:true,default:'header'},
+    '@/lib/ngPharmacyPortal':{fetchNigeriaPharmacyWorkspace:async()=>({id:'synthetic-pharmacy'})},
+    '@/lib/ngDeliveryApi':{deliveryDate:value=>value,deliveryError:error=>error.message,formatKobo:String,legacyWalletAmount:String,readMedicationPharmacyStatement:value=>value,statusLabel:value=>value},
+    '@/components/ng/delivery/DeliveryPresentation':new Proxy({},{get:(_value,name)=>String(name)}),
+    '@/lib/api':{__esModule:true,default:{async get(url){reads++;return{data:url.endsWith('/transactions')?[{id:'historical-row',type:'settlement',amount:'100.00',reference:'existing-unreconciled-reference',created_at:'2026-11-03'}]:wallet};},post(){writes++;throw new Error('No legacy payout network request is permitted');}}},
+  };
+  const Page=compile('app/ng/pharmacy/wallet/page.js',dependencies).default;const Workspace=Page().type;
+  const render=()=>{tree=state.render(()=>Workspace());};
+  const nodes=()=>{const all=[];function walk(node){if(Array.isArray(node))return node.forEach(walk);if(!node||typeof node!=='object')return;all.push(node);walk(node.props?.children);}walk(tree);return all;};
+  const text=node=>Array.isArray(node)?node.map(text).join(''):typeof node==='string'?node:node?.props?text(node.props.children):'';
+  render();await flush();render();
+  const hold=nodes().find(node=>node.type==='button'&&text(node)==='Legacy payouts paused');
+  assert.equal(hold.props.disabled,true);assert.equal(hold.props.onClick,undefined);assert.equal(hold.props['aria-describedby'],'legacy-payout-hold');
+  assert.match(text(tree),/pending finance reconciliation/);assert.match(text(tree),/does not cancel or refund/);assert.match(text(tree),/existing-unreconciled-reference/);assert.match(text(tree),/1200.50/);assert.match(text(tree),/300.25/);
+  assert.equal(reads,2);assert.equal(writes,0);
+  const refresh=nodes().find(node=>node.type==='button'&&text(node).includes('Refresh financial records'));await refresh.props.onClick();render();assert.equal(reads,4);assert.equal(writes,0);
+  assert.doesNotMatch(text(tree),/settlement request returned|Submitting legacy|Request legacy wallet settlement/);state.unmount();
+});
