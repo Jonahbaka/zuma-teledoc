@@ -348,7 +348,8 @@ async function publicScope(browser, scope, width) {
     await page.getByText('Device location is unavailable. Choose an area to continue.', { exact: true }).waitFor();
     check(await page.getByText('Using your device location', { exact: true }).count() === 0, scope.market + ': denied permission must not claim a device location.');
     check(await page.getByRole('contentinfo').count() === 1, scope.market + ': public homepage has one shared footer.');
-    check(await page.locator('main img[alt="3D concept illustration of blue and teal speech bubbles, a voice waveform and a clinician symbol"]').count() === 1, scope.market + ': hero uses the actual illustration with accessible text.');
+    check(await page.locator('main img[alt="AI-generated scene of a pregnant patient at a Nigerian primary healthcare centre speaking with a doctor on a tablet"]').count() === 1, scope.market + ': hero uses the patient-and-doctor image with accessible text.');
+    check(await page.getByRole('group', { name: 'Illustrative conversation from Hausa to English', exact: true }).count() === 1, scope.market + ': hero makes the language context explicit.');
     const footer = page.getByRole('contentinfo');
     assert.equal(await footer.getByRole('link', { name: 'Find pharmacies', exact: true }).getAttribute('href'), scope.directory);
     assert.equal(await footer.getByRole('link', { name: 'Patient sign in', exact: true }).getAttribute('href'), (scope.market === 'NG' ? '/ng/patient' : '/patient') + '/login');

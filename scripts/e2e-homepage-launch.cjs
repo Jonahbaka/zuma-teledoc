@@ -31,8 +31,9 @@ async function main() {
           await page.getByRole('heading', { level: 1, name: /AI-first telehealth\.\s*Human care\./ }).waitFor();
           await page.evaluate(() => document.fonts.ready);
           assert.match(await page.title(), /AI-First Telehealth.*Language Voice/);
-          const hero = page.getByAltText('3D concept illustration of blue and teal speech bubbles, a voice waveform and a clinician symbol');
+          const hero = page.getByAltText('AI-generated scene of a pregnant patient at a Nigerian primary healthcare centre speaking with a doctor on a tablet');
           await hero.evaluate(image => image.decode());
+          assert.equal(await page.getByRole('group', { name: 'Illustrative conversation from Hausa to English', exact: true }).count(), 1);
           assert.equal(await page.locator('main').count(), 1);
           assert.equal(await page.getByRole('contentinfo').count(), 1);
           assert.equal(await page.locator('#language-voice').count(), 1);
@@ -80,7 +81,7 @@ async function main() {
           fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify(results, null, 2));
           assert.deepEqual(errors, [], `${market} ${width}: page errors`);
           assert.deepEqual(violations, [], `${market} ${width}: accessibility violations`);
-          console.log(`${market} ${width}: headline, art, metadata, anchor history, menu, overflow and accessibility passed`);
+          console.log(`${market} ${width}: headline, patient/doctor image, metadata, anchor history, menu, overflow and accessibility passed`);
         } finally { await context.close(); }
       }
     }

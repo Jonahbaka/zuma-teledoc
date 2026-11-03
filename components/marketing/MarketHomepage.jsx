@@ -45,10 +45,10 @@ export default function MarketHomepage({ market = 'US' }) {
               <li><Stethoscope aria-hidden="true" />Clinician-led care</li>
             </ul>
           </div>
-          <div className={styles.heroArt}>
-            <Image src="/marketing/doctarx/ai-language-voice-hero-v1.webp" alt="3D concept illustration of blue and teal speech bubbles, a voice waveform and a clinician symbol" width={1536} height={1024} priority sizes="(max-width: 900px) 100vw, 55vw" className={styles.heroImage} />
-            <div className={styles.heroArtCaption}><span><AudioLines aria-hidden="true" /></span><div><p>Built around a conversation.</p><strong>Connected around you.</strong></div></div>
-          </div>
+          <figure className={styles.heroArt}>
+            <Image src="/marketing/doctarx/phc-maternity-doctor-hero-v5.webp" alt="AI-generated scene of a pregnant patient at a Nigerian primary healthcare centre speaking with a doctor on a tablet" width={1536} height={1024} priority sizes="(max-width: 900px) 100vw, 55vw" className={styles.heroImage} />
+            <figcaption className={styles.heroArtCaption}><span><Languages aria-hidden="true" /></span><div><p>Different languages.</p><strong>One conversation.</strong><div className={styles.heroLanguagePair} role="group" aria-label="Illustrative conversation from Hausa to English"><span>Hausa</span><ArrowRight aria-hidden="true" /><span>English</span></div></div></figcaption>
+          </figure>
         </div>
         <div className={styles.heroBridge}><p>Intelligence that connects.<br className={styles.mobileBreak} /> Care that stays human.</p><span>VOICE <span aria-hidden="true">/</span> VIRTUAL CARE <span aria-hidden="true">/</span> CONNECTED HEALTH</span></div>
       </section>

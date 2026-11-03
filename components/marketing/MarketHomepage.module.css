@@ -38,6 +38,9 @@
 .heroArtCaption svg { width: 24px; height: 24px; }
 .heroArtCaption p { color: #4b5c76; font-size: 16px; line-height: 1.6; }
 .heroArtCaption strong { color: #142a49; font-size: 18px; font-weight: 600; line-height: 1.5; }
+.heroLanguagePair { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; color: #245a64; font-size: 16px; font-weight: 600; line-height: 1.5; }
+.heroLanguagePair > span { padding: 3px 8px; border: 1px solid #cfe3e3; border-radius: 8px; background: #f0f8f6; }
+.heroLanguagePair > svg { width: 16px; height: 16px; flex-shrink: 0; }
 .heroBridge { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: min(calc(100% - 64px), 1376px); margin-inline: auto; padding-block: 26px; border-top: 1px solid #dbe3ef; }
 .heroBridge p { color: #314765; font-size: 16px; font-weight: 500; line-height: 1.6; }
 .heroBridge > span { color: #52647f; font-size: 16px; font-weight: 600; letter-spacing: .04em; line-height: 1.8; }

@@ -73,14 +73,34 @@ test('voice design has truthful clinician boundaries and no pretend live control
   assert.doesNotMatch(homepage, /all languages|every language|clinically validated|100%|instant diagnosis/i);
 });
 
-test('generated hero is local, described as a concept illustration and dimensioned', () => {
-  assert.match(homepage, /3D concept illustration/);
-  assert.match(homepage, /ai-language-voice-hero-v1\.webp/);
+test('generated hero shows a patient and doctor, is local and dimensioned', () => {
+  assert.match(homepage, /AI-generated scene of a pregnant patient at a Nigerian primary healthcare centre speaking with a doctor on a tablet/);
+  assert.match(homepage, /phc-maternity-doctor-hero-v5\.webp/);
+  assert.doesNotMatch(homepage, /ai-language-voice-hero-v1\.webp|patient-doctor-hero-v2\.webp|multilingual-patient-doctor-hero-v3\.webp|3D concept illustration/);
   assert.match(homepage, /width=\{1536\} height=\{1024\} priority/);
-  const image = fs.readFileSync(path.join(root, 'public/marketing/doctarx/ai-language-voice-hero-v1.webp'));
+  const image = fs.readFileSync(path.join(root, 'public/marketing/doctarx/phc-maternity-doctor-hero-v5.webp'));
   assert.equal(image.toString('ascii', 0, 4), 'RIFF');
   assert.equal(image.toString('ascii', 8, 12), 'WEBP');
   assert.ok(image.length < 250000, 'hero remains suitable for mobile delivery');
+});
+
+test('both browser gates check the current patient-and-doctor hero', () => {
+  const heroAlt = homepage.match(/<Image src="\/marketing\/doctarx\/phc-maternity-doctor-hero-v5\.webp" alt="([^"]+)"/)[1];
+  for (const file of ['scripts/e2e-homepage-launch.cjs', 'scripts/e2e-public-platform.cjs']) {
+    const browser = read(file);
+    assert.ok(browser.includes(heroAlt), `${file} checks the current hero`);
+    assert.ok(browser.includes('Illustrative conversation from Hausa to English'), `${file} checks the language context`);
+    assert.ok(browser.includes("getByRole('group', { name: 'Illustrative conversation from Hausa to English'"), `${file} checks the accessible group semantics`);
+    assert.doesNotMatch(browser, /3D concept illustration/);
+  }
+});
+
+test('the language difference is explicit in the caption, not inferred from appearance', () => {
+  assert.match(homepage, /<figure className=\{styles.heroArt\}>/);
+  assert.match(homepage, /<figcaption className=\{styles.heroArtCaption\}>/);
+  assert.match(homepage, /role="group" aria-label="Illustrative conversation from Hausa to English"/);
+  assert.match(homepage, /<span>Hausa<\/span><ArrowRight aria-hidden="true" \/><span>English<\/span>/);
+  assert.match(css, /\.heroLanguagePair \{[^}]*flex-wrap: wrap/);
 });
 
 test('launch claims have a separate explicit release gate', () => {
