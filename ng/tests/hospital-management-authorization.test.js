@@ -228,7 +228,8 @@ test('hospital browser paths use canonical roster fields, preserve confirmed own
   assert.match(staff, /can_manage_staff === true/); assert.match(staff, /if \(!response.ok\) throw/);
   assert.match(staff, /if \(!data.staff\?\.id/); assert.match(staff, /saving.current/); assert.match(staff, /Staff details are unavailable/);
   const register = fs.readFileSync(require.resolve('../../app/ng/hospital/register/page'), 'utf8');
-  assert.match(register, /if \(data.owner_linked === true\) localStorage.setItem\('ng_hospital_id', data.hospital.id\)/);
+  assert.match(register, /if \(selected\) localStorage.setItem\('ng_hospital_id', data.hospital.id\)/);
+  assert.match(register, /operation.generation === authSessionGeneration\(\)/);
   assert.doesNotMatch(register, /setTimeout|2–5 business days/);
   assert.match(register, /public application is not linked to an account/);
 });
@@ -243,11 +244,19 @@ function pageNodes(node, predicate) {
   return [...(predicate(node) ? [node] : []), ...pageNodes(node.props.children, predicate)];
 }
 function pendingResult() { let resolve; const promise = new Promise(yes => { resolve = yes; }); return { promise, resolve }; }
-function staffPageHarness(fetchResponse) {
+function staffPageHarness(fetchResponse, { page = 'staff', initialToken = 'synthetic-access-token' } = {}) {
   const { transformSync } = require('next/dist/build/swc');
-  const file = require.resolve('../../app/ng/hospital/staff/page');
+  const file = require.resolve(`../../app/ng/hospital/${page}/page`);
   const slots = [], effects = [], requests = [];
-  const storage = { ng_hospital_id: hospitalId, accessToken: 'synthetic-access-token' };
+  const storage = { ng_hospital_id: hospitalId, accessToken: initialToken };
+  const writes = [], events = new Map();
+  const localStorage = { getItem: key => storage[key] ?? null, setItem(key, value) { writes.push([key, value]); storage[key] = value; }, removeItem(key) { delete storage[key]; } };
+  const browser = { addEventListener(name, callback) { if (!events.has(name)) events.set(name, new Set()); events.get(name).add(callback); }, removeEventListener(name, callback) { events.get(name)?.delete(callback); } };
+  const authFile = require.resolve('../../lib/authSession');
+  const authCode = transformSync(fs.readFileSync(authFile, 'utf8'), { filename: authFile, jsc: { parser: { syntax: 'ecmascript' } }, module: { type: 'commonjs' } }).code;
+  const authModule = { exports: {} };
+  vm.runInNewContext(authCode, { module: authModule, exports: authModule.exports, localStorage, window: browser, atob, AbortController, setTimeout, clearTimeout });
+  const session = authModule.exports;
   let cursor = 0, tree;
   const react = {
     useState(initial) { const index = cursor++; if (!slots[index]) slots[index] = { value: initial }; return [slots[index].value, next => { slots[index].value = typeof next === 'function' ? next(slots[index].value) : next; }]; },
@@ -256,14 +265,16 @@ function staffPageHarness(fetchResponse) {
   };
   const jsx = (type, props) => ({ type, props });
   const dependencies = { react, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'next/link': { __esModule: true, default: 'a' },
-    'lucide-react': new Proxy({}, { get: (_, key) => `icon-${String(key)}` }), '@/components/ui/button': { Button: 'button' }, '../../components/NgNav': { __esModule: true, default: 'nav' } };
+    'lucide-react': new Proxy({}, { get: (_, key) => `icon-${String(key)}` }), '@/components/ui/button': { Button: 'button' }, '../../components/NgNav': { __esModule: true, default: 'nav' }, '@/lib/authSession': session, '../../lib/ngUtils': { NG_STATES: ['Lagos'], FACILITY_TYPES: ['Private Clinic'] } };
   const code = transformSync(fs.readFileSync(file, 'utf8'), { filename: file, jsc: { parser: { syntax: 'ecmascript', jsx: true }, transform: { react: { runtime: 'automatic' } } }, module: { type: 'commonjs' } }).code;
   const isolated = { exports: {} };
-  vm.runInNewContext(code, { module: isolated, exports: isolated.exports, AbortController, window: {}, localStorage: { getItem: key => storage[key] },
+  vm.runInNewContext(code, { module: isolated, exports: isolated.exports, AbortController, window: browser, localStorage, process: { env: {} },
     fetch: async (url, options) => { requests.push({ url, options }); return fetchResponse(url, options); },
     require(name) { assert.ok(name in dependencies, name); return dependencies[name]; } });
   return {
-    requests, storage,
+    requests, storage, writes, session,
+    unmount() { for (const slot of slots) slot.cleanup?.(); },
+    storageChanged() { for (const callback of events.get('storage') || []) callback({ key: 'accessToken' }); },
     render() { cursor = 0; tree = isolated.exports.default(); for (const effect of effects.splice(0)) effect(); return tree; },
     async ready() { this.render(); await new Promise(resolve => setImmediate(resolve)); return this.render(); },
     nodes(predicate) { return pageNodes(tree, predicate); },
@@ -313,4 +324,126 @@ test('rendered staff page ignores an old successful write after the selected fac
   await work; view.render();
   assert.doesNotMatch(view.text(), /Old facility clinician|Staff member added successfully/);
   assert.equal(view.requests.filter(call => call.options.method === 'POST').length, 1);
+});
+
+const browserToken = (id, suffix = 'original') => `synthetic.${Buffer.from(JSON.stringify({ userId: id })).toString('base64url')}.${suffix}`;
+function registrationSubmit(view) {
+  view.render();
+  for (let step = 1; step < 3; step++) {
+    view.nodes(node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+    view.render();
+  }
+  return () => view.nodes(node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+}
+const registrationResponse = (id = hospitalId, ownerLinked = true) => apiResponse({ hospital: { id }, owner_linked: ownerLinked });
+
+test('rendered registration selects the confirmed facility once only for the same mounted owner', async () => {
+  const deferred = pendingResult();
+  const view = staffPageHarness(() => deferred.promise, { page: 'register', initialToken: browserToken(actorId) });
+  const submit = registrationSubmit(view);
+  const work = submit(); await submit();
+  assert.equal(view.requests.length, 1);
+  deferred.resolve(registrationResponse(otherId));
+  await work; view.render();
+  assert.deepEqual(view.writes, [['ng_hospital_id', otherId]]);
+  assert.match(view.text(), /Hospital registered!/);
+  assert.equal(view.nodes(node => node.type === 'a' && pageText(node).includes('Open facility dashboard'))[0].props.href, '/ng/hospital/dashboard');
+});
+
+test('delayed registration cannot select account A facility after switching to B without a storage event', async () => {
+  const deferred = pendingResult();
+  const view = staffPageHarness(() => deferred.promise, { page: 'register', initialToken: browserToken(actorId) });
+  const work = registrationSubmit(view)();
+  view.storage.accessToken = browserToken(otherId);
+  view.storage.ng_hospital_id = otherId;
+  deferred.resolve(registrationResponse(hospitalId));
+  await work; await new Promise(resolve => setImmediate(resolve)); view.render();
+  assert.equal(view.storage.ng_hospital_id, otherId);
+  assert.deepEqual(view.writes, []);
+  assert.doesNotMatch(view.text(), /Hospital registered!|Open facility dashboard/);
+  assert.match(view.text(), /Your sign-in changed/);
+});
+
+test('registration generation rejects an old response after logout and return to the same account', async () => {
+  const deferred = pendingResult();
+  const view = staffPageHarness(() => deferred.promise, { page: 'register', initialToken: browserToken(actorId) });
+  const work = registrationSubmit(view)();
+  view.session.beginAuthSessionTransition();
+  view.session.writeAuthSessionTokens(null, null);
+  view.session.beginAuthSessionTransition();
+  view.session.writeAuthSessionTokens(browserToken(actorId), 'synthetic-refresh');
+  const before = view.writes.length;
+  deferred.resolve(registrationResponse(otherId));
+  await work; view.render();
+  assert.equal(view.storage.ng_hospital_id, hospitalId);
+  assert.equal(view.writes.length, before);
+  assert.doesNotMatch(view.text(), /Hospital registered!/);
+  assert.match(view.text(), /Your sign-in changed/);
+});
+
+test('unmounted registration aborts and ignores late successful responses even if fetch ignores cancellation', async () => {
+  const deferred = pendingResult();
+  const view = staffPageHarness(() => deferred.promise, { page: 'register', initialToken: browserToken(actorId) });
+  const work = registrationSubmit(view)();
+  view.unmount();
+  assert.equal(view.requests[0].options.signal.aborted, true);
+  deferred.resolve(registrationResponse(otherId));
+  await work;
+  assert.deepEqual(view.writes, []);
+  assert.equal(view.storage.ng_hospital_id, hospitalId);
+});
+
+test('account B can finish its registration while an older A error is ignored', async () => {
+  const first = pendingResult(), second = pendingResult();
+  let requests = 0;
+  const view = staffPageHarness(() => ++requests === 1 ? first.promise : second.promise, { page: 'register', initialToken: browserToken(actorId) });
+  const firstWork = registrationSubmit(view)();
+  view.storage.accessToken = browserToken(otherId);
+  view.storageChanged();
+  await new Promise(resolve => setImmediate(resolve));
+  view.render();
+  assert.equal(view.requests[0].options.signal.aborted, true);
+  const secondWork = view.nodes(node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  first.resolve(apiResponse({ error: 'Account A private registration failure' }, false));
+  await firstWork; view.render();
+  assert.equal(view.writes.length, 0);
+  assert.doesNotMatch(view.text(), /Account A private/);
+  assert.ok(view.nodes(node => node.type === 'button' && node.props.type === 'submit').every(node => node.props.disabled));
+  second.resolve(registrationResponse(otherId));
+  await secondWork; view.render();
+  assert.deepEqual(view.writes, [['ng_hospital_id', otherId]]);
+  assert.match(view.text(), /Hospital registered!/);
+});
+
+test('same-owner token refresh preserves a current registration but cookie-only ownership never selects globally', async () => {
+  const deferred = pendingResult();
+  const view = staffPageHarness(() => deferred.promise, { page: 'register', initialToken: browserToken(actorId) });
+  const work = registrationSubmit(view)();
+  view.session.writeAuthSessionTokens(browserToken(actorId, 'refreshed'), 'synthetic-refresh');
+  deferred.resolve(registrationResponse(otherId));
+  await work; view.render();
+  assert.equal(view.storage.ng_hospital_id, otherId);
+  assert.match(view.text(), /Hospital registered!/);
+  for (const linked of [false, true]) {
+    const anonymous = staffPageHarness(() => registrationResponse(otherId, linked), { page: 'register', initialToken: null });
+    await registrationSubmit(anonymous)(); anonymous.render();
+    assert.deepEqual(anonymous.writes, []);
+    assert.doesNotMatch(anonymous.text(), /Open facility dashboard/);
+    assert.match(anonymous.text(), linked ? /Sign in with that account/ : /public application is not linked/);
+  }
+});
+
+test('a queued account-change notification does not cancel a registration newly submitted under that owner', async () => {
+  const deferred = pendingResult();
+  const view = staffPageHarness(() => deferred.promise, { page: 'register', initialToken: browserToken(actorId) });
+  const submit = registrationSubmit(view);
+  view.storage.accessToken = browserToken(otherId);
+  const work = submit();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(view.requests[0].options.headers.Authorization, `Bearer ${browserToken(otherId)}`);
+  assert.equal(view.requests[0].options.signal.aborted, false);
+  deferred.resolve(registrationResponse(otherId));
+  await work; view.render();
+  assert.deepEqual(view.writes, [['ng_hospital_id', otherId]]);
+  assert.match(view.text(), /Hospital registered!/);
 });

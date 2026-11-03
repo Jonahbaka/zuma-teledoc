@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Hospital, CheckCircle, ArrowRight, ChevronLeft,
@@ -9,13 +9,18 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { NG_STATES, FACILITY_TYPES } from '../../lib/ngUtils';
+import { authSessionGeneration, authTokenOwnerHint, subscribeAuthSession } from '@/lib/authSession';
+
+const tokenOwner = token => token ? authTokenOwnerHint(token) || token : null;
+const SESSION_CHANGED = 'Your sign-in changed. Check any submitted application from its original account before registering again.';
 
 export default function HospitalRegisterPage() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
-  const saving = useRef(false);
+  const saving = useRef(null);
+  const mounted = useRef(false);
   const [departments, setDepartments] = useState(['General Medicine', 'Emergency']);
   const [deptInput, setDeptInput] = useState('');
   const [form, setForm] = useState({
@@ -27,6 +32,27 @@ export default function HospitalRegisterPage() {
     bed_count: '', has_pharmacy: false, has_lab: false,
     description: '',
   });
+
+  useEffect(() => {
+    mounted.current = true;
+    const unsubscribe = subscribeAuthSession(() => {
+      if (!mounted.current) return;
+      const pending = saving.current;
+      if (pending && pending.generation === authSessionGeneration()
+        && pending.owner === tokenOwner(localStorage.getItem('accessToken'))) return;
+      pending?.controller.abort();
+      saving.current = null;
+      setLoading(false);
+      setSuccess(null);
+      setError(SESSION_CHANGED);
+    });
+    return () => {
+      mounted.current = false;
+      saving.current?.controller.abort();
+      saving.current = null;
+      unsubscribe();
+    };
+  }, []);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -44,28 +70,40 @@ export default function HospitalRegisterPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (saving.current) return;
-    saving.current = true;
+    if (!mounted.current || saving.current) return;
+    const token = localStorage.getItem('accessToken');
+    const operation = { generation: authSessionGeneration(), owner: tokenOwner(token), controller: new AbortController() };
+    saving.current = operation;
+    const current = () => mounted.current && saving.current === operation && !operation.controller.signal.aborted
+      && operation.generation === authSessionGeneration()
+      && operation.owner === tokenOwner(localStorage.getItem('accessToken'));
     setError('');
     setLoading(true);
     try {
       const API = process.env.NEXT_PUBLIC_API_URL || '/api';
-      const token = localStorage.getItem('accessToken');
       const res = await fetch(`${API}/ng/hospitals/register`, {
         method: 'POST',
+        signal: operation.controller.signal,
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ ...form, departments, bed_count: form.bed_count ? parseInt(form.bed_count) : null }),
       });
       const data = await res.json();
+      if (!current()) return;
       if (!res.ok) throw new Error(data.error || 'Registration failed');
       if (!data.hospital?.id) throw new Error('The registration response could not be confirmed.');
-      if (data.owner_linked === true) localStorage.setItem('ng_hospital_id', data.hospital.id);
-      setSuccess({ ownerLinked: data.owner_linked === true });
+      // A cookie-only response cannot establish which browser account should
+      // receive the global facility selection. Only select for this bearer owner.
+      const selected = data.owner_linked === true && Boolean(token);
+      if (selected) localStorage.setItem('ng_hospital_id', data.hospital.id);
+      setSuccess({ ownerLinked: data.owner_linked === true, selected });
     } catch (err) {
-      setError(err.message);
+      if (current()) setError(err.message);
     } finally {
-      saving.current = false;
-      setLoading(false);
+      if (mounted.current && saving.current === operation) {
+        if (!current()) { setSuccess(null); setError(SESSION_CHANGED); }
+        saving.current = null;
+        setLoading(false);
+      }
     }
   };
 
@@ -77,10 +115,10 @@ export default function HospitalRegisterPage() {
         </div>
         <h2 className="text-2xl font-bold text-foreground">Hospital registered!</h2>
         <p className="text-muted-foreground text-sm">Your facility application is awaiting review.
-          {success.ownerLinked ? ' It is linked to your signed-in account.' : ' This public application is not linked to an account. Administrator review is required before account access can be arranged.'}
+          {success.ownerLinked ? (success.selected ? ' It is linked to your signed-in account.' : ' It is linked to the authenticated account. Sign in with that account to manage it.') : ' This public application is not linked to an account. Administrator review is required before account access can be arranged.'}
         </p>
-        <Link href={success.ownerLinked ? '/ng/hospital/dashboard' : '/ng'} className="inline-block text-rose-500 font-medium">
-          {success.ownerLinked ? 'Open facility dashboard' : 'Return to DoctaRx Nigeria'}
+        <Link href={success.selected ? '/ng/hospital/dashboard' : '/ng'} className="inline-block text-rose-500 font-medium">
+          {success.selected ? 'Open facility dashboard' : 'Return to DoctaRx Nigeria'}
         </Link>
       </div>
     </div>
