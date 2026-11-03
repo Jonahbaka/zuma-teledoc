@@ -303,16 +303,15 @@ test('prescription mutations require clinical professional role; administration 
 test('pharmacy inbox and status endpoints reject unsigned and merely preferred prescriptions', () => {
  const fs=require('node:fs'),path=require('node:path');
  const route=fs.readFileSync(path.join(__dirname,'../routes/pharmacy.js'),'utf8');
- const inbox=route.slice(route.indexOf("router.get('/:pharmacyId/prescriptions'"),route.indexOf("router.get('/:pharmacyId/whatsapp-notifications'"));
- const mutate=route.slice(route.indexOf("router.patch('/:pharmacyId/prescriptions/:prescriptionId'"),route.indexOf("router.get('/:pharmacyId/medication-requests'"));
- assert.match(inbox,/WHERE rx\.routed_pharmacy_id = \$1/);
- assert.match(inbox,/rx\.signed_at IS NOT NULL/);
- assert.match(inbox,/rx\.lifecycle_status IN/);
- assert.doesNotMatch(inbox,/OR rx\.preferred_pharmacy_id = \$1/);
- assert.match(mutate,/req\.user\?\.role !== 'pharmacy'/);
- assert.match(mutate,/routed_pharmacy_id = \$7/);
- assert.match(mutate,/signed_at IS NOT NULL/);
- assert.match(mutate,/\$1 <> 'fulfilled' OR lifecycle_status IN/);
+ const service=fs.readFileSync(path.join(__dirname,'../services/pharmacy/clinicalInboxService.js'),'utf8');
+ assert.match(route,/clinicalInbox\.listPrescriptions/);
+ assert.match(route,/clinicalInbox\.updateStatus/);
+ assert.match(service,/WHERE rx\.routed_pharmacy_id=\$1 AND rx\.signed_at IS NOT NULL/);
+ assert.match(service,/rx\.lifecycle_status IN/);
+ assert.doesNotMatch(service,/OR rx\.preferred_pharmacy_id/);
+ assert.match(service,/actor\?\.role !== 'pharmacy'/);
+ assert.match(service,/id=\$1 AND routed_pharmacy_id=\$2/);
+ assert.match(service,/data\.status === 'fulfilled' && !complete/);
 });
 test('main Nigeria provider saves normalized unsigned Rx, no WhatsApp before signing', () => {
  const fs=require('node:fs'),path=require('node:path');
@@ -353,14 +352,15 @@ test('release kill switch prevents inference review and provenance-based care ac
 });
 
 test('suspended pharmacy and terminal Rx state cannot regain clinical dispensing access', () => {
- const source=require('node:fs').readFileSync(require('node:path').join(__dirname,'../routes/pharmacy.js'),'utf8');
+ const fs=require('node:fs'),path=require('node:path');
+ const source=fs.readFileSync(path.join(__dirname,'../services/pharmacy/clinicalInboxService.js'),'utf8');
  assert.match(source,/async function assertCurrentClinicalPharmacyAccess/);
- assert.match(source,/pcn_license_expiry>=CURRENT_DATE/);
- for (const route of ["router.get('/:pharmacyId/prescriptions'","router.get('/:pharmacyId/whatsapp-notifications'","router.patch('/:pharmacyId/prescriptions/:prescriptionId'"]) {
-   const i=source.indexOf(route);
+ assert.match(source,/assertClinicalPharmacyActive\(p\)/);
+ for (const method of ['listPrescriptions','listNotifications','updateStatus']) {
+   const i=source.indexOf('async function '+method+'(');
    assert.ok(i>=0);
-   assert.ok(source.slice(i,i+1100).includes('assertCurrentClinicalPharmacyAccess'));
+   assert.ok(source.slice(i,i+550).includes('assertCurrentClinicalPharmacyAccess'));
  }
- assert.match(source,/lifecycle_status NOT IN \('fully_dispensed','completed'\) OR \$1 = 'fulfilled'/);
- assert.match(source,/\$1 <> 'cancelled' OR lifecycle_status = 'sent_to_pharmacy'/);
+ assert.match(source,/complete && data\.status !== 'fulfilled'/);
+ assert.match(source,/data\.status === 'cancelled' && existing\.lifecycle_status !== 'sent_to_pharmacy'/);
 });
