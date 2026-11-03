@@ -57,6 +57,17 @@ function scheduleAppointmentSideEffects(appointmentId, work) {
   return { status: 'scheduled', note: 'Best-effort notification work scheduled; delivery is not confirmed.' };
 }
 
+const appointmentReadAudit = { phiAccessed: true, metadataOnly: true, requireSuccess: true };
+const schedulingFields = ['id', 'patient_id', 'provider_id', 'scheduled_at',
+  'duration_minutes', 'status', 'type', 'created_at', 'updated_at',
+  'confirmed_at', 'cancelled_at', 'cancelled_by'];
+function appointmentForActor(appointment, role) {
+  const visible = ['admin', 'super_admin'].includes(role)
+    ? Object.fromEntries(schedulingFields.filter(field => Object.hasOwn(appointment, field)).map(field => [field, appointment[field]]))
+    : appointment;
+  return keysToCamel(visible);
+}
+
 const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
 const PROVIDER_UPCOMING_LOOKBACK_MS = 2 * 60 * 60 * 1000;
 const MAX_UPCOMING_LIMIT = 50;
@@ -78,7 +89,7 @@ router.post('/',
   authenticate,
   requireRole('patient', 'provider', 'admin'),
   requirePaidAccess,
-  auditMiddleware('create', 'appointment'),
+  auditMiddleware('create', 'appointment', { metadataOnly: true }),
   async (req, res) => {
     try {
       const data = validate(createAppointmentSchema, req.body);
@@ -243,11 +254,12 @@ router.post('/',
         providerId: data.providerId 
       });
       
+      (res.locals ||= {}).patientId = patientId;
       res.status(201).json({
         success: true,
         message: 'Appointment scheduled successfully',
         dispatch,
-        appointment: keysToCamel(rows[0])
+        appointment: appointmentForActor(rows[0], req.user.role)
       });
     } catch (error) {
       if (error.statusCode) return res.status(error.statusCode).json({ success: false, error: error.message, code: error.code });
@@ -272,7 +284,7 @@ router.post('/',
  * GET /api/appointments
  * Get appointments with filters
  */
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, auditMiddleware('read', 'appointment', appointmentReadAudit), async (req, res) => {
   try {
     const filters = validate(searchAppointmentsSchema, req.query);
     const { page, limit, sortOrder } = parseQueryParams(filters);
@@ -384,7 +396,8 @@ router.get('/', authenticate, async (req, res) => {
     const { rows } = await db.query(dataQuery, queryValues);
     
     // Enhance with triage data from metadata
-    let appointments = rows.map(keysToCamel);
+    if (userRole === 'patient') (res.locals ||= {}).patientId = userId;
+    let appointments = rows.map(row => appointmentForActor(row, userRole));
     
     appointments = appointments.map((apt) => {
       // Extract triage data from metadata if it exists
@@ -413,7 +426,7 @@ router.get('/', authenticate, async (req, res) => {
  * GET /api/appointments/upcoming
  * Get upcoming appointments
  */
-router.get('/upcoming', authenticate, async (req, res) => {
+router.get('/upcoming', authenticate, auditMiddleware('read', 'appointment', appointmentReadAudit), async (req, res) => {
   try {
     const parsedLimit = parseInt(req.query.limit, 10);
     const limit = Number.isFinite(parsedLimit)
@@ -483,9 +496,10 @@ router.get('/upcoming', authenticate, async (req, res) => {
       values
     );
     
+    if (userRole === 'patient') (res.locals ||= {}).patientId = req.user.id;
     res.json({
       success: true,
-      appointments: rows.map(keysToCamel)
+      appointments: rows.map(row => appointmentForActor(row, req.user.role))
     });
   } catch (error) {
     logger.error('Get upcoming appointments error', { error: error.message, stack: error.stack });
@@ -504,9 +518,10 @@ router.get('/upcoming', authenticate, async (req, res) => {
 // Read-only recovery of this patient's opaque request key. No clinical request
 // text, notification resend, payment action or alternate booking is returned.
 router.get('/booking-requests/:clientRequestId', authenticate, requireRole('patient'),
-  auditMiddleware('read', 'appointment'), async (req, res) => {
+  auditMiddleware('read', 'appointment', appointmentReadAudit), async (req, res) => {
     try {
       const appointment = await readBookingIntent(db, { actor: req.user, marketScope: getAuthenticatedMarketScope(req.user), clientRequestId: req.params.clientRequestId });
+      (res.locals ||= {}).patientId = req.user.id;
       res.json({ success: true, appointment });
     } catch (error) {
       res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : 'Saved booking lookup is unavailable.', code: error.code });
@@ -806,6 +821,7 @@ router.post('/smart-book',
 router.get('/provider/today',
   authenticate,
   requireRole('provider'),
+  auditMiddleware('read', 'appointment', appointmentReadAudit),
   async (req, res) => {
     try {
       const today = new Date();
@@ -846,12 +862,19 @@ router.get('/provider/today',
  * GET /api/appointments/:id
  * Get appointment details
  */
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, auditMiddleware('read', 'appointment', appointmentReadAudit), async (req, res) => {
   try {
     const { id } = req.params;
+    const role = req.user.role;
+    if (!['patient', 'provider', 'admin', 'super_admin'].includes(role)) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
+    const marketScope = getAuthenticatedMarketScope(req.user);
     
     const { rows } = await db.query(
       `SELECT a.*,
+              ${userMarketScopeSql('p')} AS patient_market_scope,
+              ${userMarketScopeSql('pr')} AS provider_market_scope,
               p.first_name as patient_first_name, p.last_name as patient_last_name,
               p.email as patient_email, p.phone as patient_phone,
               p.date_of_birth as patient_dob,
@@ -871,24 +894,17 @@ router.get('/:id', authenticate, async (req, res) => {
       });
     }
     
-    const appointment = rows[0];
-    
-    // Check access
-    if (req.user.role === 'patient' && appointment.patient_id !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      });
+    const { patient_market_scope, provider_market_scope, ...appointment } = rows[0];
+    // authenticate supplies the current database actor, not a request market.
+    // Preserve historical participants while matching both markets, as list does.
+    if (patient_market_scope !== marketScope || provider_market_scope !== marketScope ||
+        (role === 'patient' && appointment.patient_id !== req.user.id) ||
+        (role === 'provider' && appointment.provider_id !== req.user.id)) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
     }
-    
-    if (req.user.role === 'provider' && appointment.provider_id !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      });
-    }
-    
-    let appointmentData = keysToCamel(appointment);
+
+    (res.locals ||= {}).patientId = appointment.patient_id;
+    let appointmentData = appointmentForActor(appointment, role);
     
     // Extract triage data from metadata if it exists
     if (appointmentData.metadata && appointmentData.metadata.triage) {
@@ -915,7 +931,7 @@ router.get('/:id', authenticate, async (req, res) => {
 router.put('/:id',
   authenticate,
   requireRole('patient', 'provider', 'admin'),
-  auditMiddleware('update', 'appointment', { logChanges: true }),
+  auditMiddleware('update', 'appointment', { metadataOnly: true, changedFields: ['status', 'scheduledAt', 'providerNotes', 'cancellationReason'] }),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -949,13 +965,15 @@ router.put('/:id',
         });
       }
 
+      (res.locals ||= {}).patientId = appointment.patient_id;
+      if (['admin', 'super_admin'].includes(req.user.role) && (data.providerNotes !== undefined || (data.status && !['scheduled', 'confirmed', 'cancelled', 'no_show'].includes(data.status)))) return res.status(403).json({ success: false, error: 'Clinical notes and clinical start/completion require a clinician.' });
       if (req.user.role === 'patient' && (data.providerNotes !== undefined || (data.status && data.status !== 'cancelled'))) {
         return res.status(403).json({ success: false, error: 'Clinical status and notes require a clinician.' });
       }
       if (data.status === appointment.status && data.scheduledAt === undefined && data.providerNotes === undefined &&
           (data.status !== 'cancelled' || data.cancellationReason === undefined || data.cancellationReason === appointment.cancellation_reason)) {
         return res.json({ success: true, message: 'Appointment already has this status',
-          appointment: keysToCamel(appointment), deduplicated: true,
+          appointment: appointmentForActor(appointment, req.user.role), deduplicated: true,
           dispatch: { status: 'not_repeated', note: 'No new notification or refund was initiated.' } });
       }
       if (['completed', 'cancelled', 'no_show'].includes(appointment.status) ||
@@ -1059,7 +1077,7 @@ router.put('/:id',
         success: true,
         message: 'Appointment updated successfully',
         dispatch,
-        appointment: keysToCamel(rows[0])
+        appointment: appointmentForActor(rows[0], req.user.role)
       });
     } catch (error) {
       if (error.status === 400) {
@@ -1083,7 +1101,7 @@ router.put('/:id',
  * POST /api/appointments/:id/cancel
  * Cancel appointment
  */
-router.post('/:id/cancel', authenticate, requireRole('patient', 'provider', 'admin'), async (req, res) => {
+router.post('/:id/cancel', authenticate, requireRole('patient', 'provider', 'admin'), auditMiddleware('update', 'appointment', { metadataOnly: true, changedFields: ['reason'] }), async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -1119,11 +1137,12 @@ router.post('/:id/cancel', authenticate, requireRole('patient', 'provider', 'adm
       });
     }
     
+    (res.locals ||= {}).patientId = appointment.patient_id;
     if (appointment.status === 'cancelled') {
       if (reason !== undefined && reason !== appointment.cancellation_reason) {
         return res.status(409).json({ success: false, error: 'This appointment is already cancelled with a recorded reason. Refresh the saved appointment.' });
       }
-      return res.json({ success: true, message: 'Appointment already cancelled', appointment: keysToCamel(appointment),
+      return res.json({ success: true, message: 'Appointment already cancelled', appointment: appointmentForActor(appointment, req.user.role),
         deduplicated: true, dispatch: { status: 'not_repeated', note: 'No new notification or refund was initiated.' } });
     }
 
@@ -1173,7 +1192,7 @@ router.post('/:id/cancel', authenticate, requireRole('patient', 'provider', 'adm
       success: true,
       message: 'Appointment cancelled successfully',
       dispatch,
-      appointment: keysToCamel(rows[0])
+      appointment: appointmentForActor(rows[0], req.user.role)
     });
   } catch (error) {
     logger.error('Cancel appointment error', { error: error.message });

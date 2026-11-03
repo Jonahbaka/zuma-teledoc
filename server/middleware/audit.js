@@ -1,6 +1,6 @@
 /**
  * Audit Logging Middleware
- * HIPAA-compliant audit trail for PHI access
+ * Audit trail for PHI access; compliance also requires operational controls.
  */
 
 const db = require('../db');
@@ -35,11 +35,15 @@ const logAuditEvent = async (auditData) => {
         auditData.errorMessage
       ]
     );
+    return true;
   } catch (error) {
+    // Database errors can include the rejected row, and auditData may contain
+    // clinical history. Never duplicate either into application logs.
     logger.error('Failed to write audit log', {
-      error: error.message,
-      auditData
+      code: 'AUDIT_WRITE_FAILED',
+      databaseCode: /^[A-Z0-9]{5}$/.test(String(error.code || '')) ? error.code : 'UNKNOWN'
     });
+    return false;
   }
 };
 
@@ -49,6 +53,18 @@ const logAuditEvent = async (auditData) => {
  * @param {string} resourceType - Type of resource being accessed
  * @param {Object} options - Additional options
  */
+const auditUuid = value => typeof value === 'string' && /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(value) ? value : undefined;
+function metadataForAudit(req, body, options) {
+  const metadata = {};
+  if (Array.isArray(options.changedFields)) metadata.changedFields = options.changedFields.filter(field => Object.prototype.hasOwnProperty.call(req.body || {}, field));
+  if (Array.isArray(body?.appointments)) {
+    metadata.recordCount = body.appointments.length;
+    metadata.records = body.appointments.slice(0, 100).map(row => ({ id: auditUuid(row.id), patientId: auditUuid(row.patientId || row.patient_id) }));
+    if (body.appointments.length > 100) metadata.recordsTruncated = true;
+  }
+  return Object.keys(metadata).length ? metadata : null;
+}
+
 const auditMiddleware = (action, resourceType, options = {}) => {
   return async (req, res, next) => {
     const startTime = Date.now();
@@ -62,22 +78,27 @@ const auditMiddleware = (action, resourceType, options = {}) => {
       const success = res.statusCode >= 200 && res.statusCode < 400;
       
       // Log audit event
-      await logAuditEvent({
+      const recorded = await logAuditEvent({
         userId: req.user?.id,
         action,
         resourceType,
-        resourceId: req.params.id || req.body?.id,
+        resourceId: options.metadataOnly ? auditUuid(req.params.id) || auditUuid(body?.appointment?.id) : req.params.id || req.body?.id,
         ipAddress: req.ip,
         userAgent: req.get('user-agent'),
         description: `${action} ${resourceType}${options.description ? ': ' + options.description : ''}`,
-        oldValues: res.locals.oldValues,
-        newValues: success && options.logChanges ? sanitizeForAudit(req.body) : null,
+        oldValues: options.metadataOnly ? null : res.locals.oldValues,
+        newValues: options.metadataOnly ? metadataForAudit(req, body, options) : success && options.logChanges ? sanitizeForAudit(req.body) : null,
         phiAccessed: options.phiAccessed || false,
-        patientId: req.params.patientId || req.body?.patientId || res.locals.patientId,
+        patientId: options.metadataOnly ? auditUuid(res.locals.patientId) || (req.user?.role === 'patient' ? auditUuid(req.user.id) : undefined) : req.params.patientId || req.body?.patientId || res.locals.patientId,
         success,
-        errorMessage: !success ? body?.error : null
+        errorMessage: !success ? options.metadataOnly ? `Request failed with status ${res.statusCode}` : body?.error : null
       });
       
+      if (options.requireSuccess && !recorded) {
+        res.status(503);
+        return originalJson({ success: false, error: 'Access audit is unavailable. Please try again later.', code: 'AUDIT_UNAVAILABLE' });
+      }
+
       // Log to file as well
       logger.audit(action, {
         userId: req.user?.id,
