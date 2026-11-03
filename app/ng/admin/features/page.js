@@ -33,10 +33,10 @@ const BUILTIN_FLAGS = [
   {
     key: 'ng_lab_orders',
     label: 'Lab Order & Results Integration',
-    description: 'Providers can send lab orders to connected diagnostic labs and receive results.',
+    description: 'Unavailable: no lab ordering, result ingestion, or automatic critical value alerts.',
     category: 'Provider',
     status: 'unavailable',
-    note: 'Planned for Q3 2026.',
+    note: 'Planned, not live. FHIR reads of previously stored lab results do not enable this workflow. No launch date is confirmed.',
   },
   {
     key: 'ng_telemedicine_video',
@@ -119,7 +119,8 @@ export default function AdminFeatureFlags() {
 
   const merged = BUILTIN_FLAGS.map((f) => ({
     ...f,
-    enabled: overrides[f.key] ?? f.status === 'active',
+    // Stored feature flags are not evidence that the lab workflow exists.
+    enabled: f.key === 'ng_lab_orders' ? false : (overrides[f.key] ?? f.status === 'active'),
   }));
 
   const visible = category === 'All' ? merged : merged.filter((f) => f.category === category);
@@ -210,7 +211,7 @@ export default function AdminFeatureFlags() {
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="font-medium text-sm">{flag.label}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${style.badge}`}>
-                        {style.label}
+                        {flag.key === 'ng_lab_orders' ? 'Unavailable' : style.label}
                       </span>
                       <span className="text-xs px-2 py-0.5 rounded-full bg-accent text-muted-foreground border border-border">
                         {flag.category}
@@ -230,7 +231,7 @@ export default function AdminFeatureFlags() {
                     onClick={() => canToggle && toggle(flag.key, flag.enabled)}
                     disabled={!canToggle || isSaving}
                     className={`shrink-0 transition-opacity ${!canToggle ? 'opacity-30 cursor-not-allowed' : 'hover:opacity-80'}`}
-                    title={canToggle ? (flag.enabled ? 'Disable' : 'Enable') : 'Cannot toggle — coming soon'}
+                    title={canToggle ? (flag.enabled ? 'Disable' : 'Enable') : (flag.key === 'ng_lab_orders' ? 'Unavailable — lab workflow is not implemented' : 'Cannot toggle — coming soon')}
                   >
                     {isSaving ? (
                       <RefreshCw size={28} className="text-muted-foreground animate-spin" />

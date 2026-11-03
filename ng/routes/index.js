@@ -261,7 +261,7 @@ router.get('/features', async (req, res) => {
     const result = await pool.query(
       'SELECT feature_key, display_name, status, required_plan, required_role FROM ng_feature_flags ORDER BY feature_key'
     );
-    res.json({ flags: result.rows });
+    res.json({ flags: result.rows.map(require('../services/hospitalIntegrationReadService').featureMetadata) });
   } catch (err) {
     res.json({ flags: [], error: 'Feature flags unavailable' });
   }

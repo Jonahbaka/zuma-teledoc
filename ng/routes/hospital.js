@@ -9,6 +9,7 @@ const { getPool } = require('../../server/db');
 const { authenticate, requireRole } = require('../../server/middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 const adminDecisions = require('../services/adminVerificationService');
+const integrationRead = require('../services/hospitalIntegrationReadService');
 
 // --- HOSPITAL REGISTRATION ---
 
@@ -123,35 +124,25 @@ router.post('/:hospitalId/staff', authenticate, async (req, res) => {
 });
 
 router.patch('/:hospitalId/staff/:staffId', authenticate, async (req, res) => {
-  const pool = getPool();
   try {
-    const { status, department, designation, role } = req.body;
-    await pool.query(`
-      UPDATE ng_hospital_staff SET
-        status = COALESCE($1, status),
-        department = COALESCE($2, department),
-        designation = COALESCE($3, designation),
-        role = COALESCE($4, role)
-      WHERE id = $5 AND hospital_id = $6
-    `, [status, department, designation, role, req.params.staffId, req.params.hospitalId]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    await integrationRead.updateStaff(getPool(),req,req.params.hospitalId,req.params.staffId);
+    res.json({ success:true });
+  } catch(err) {
+    const status=[400,403,404].includes(err.status) ? err.status : 503;
+    res.status(status).json({ error:status===503 ? 'The staff update could not be saved.' : err.message });
   }
 });
 
 // --- INTEGRATION STATUS ---
 
 router.get('/:hospitalId/integrations', authenticate, async (req, res) => {
-  const pool = getPool();
+  res.set('Cache-Control','private, no-store');
   try {
-    const result = await pool.query(
-      'SELECT * FROM ng_hospital_integrations WHERE hospital_id = $1',
-      [req.params.hospitalId]
-    );
-    res.json({ integrations: result.rows });
+    const integrations = await integrationRead.readIntegrations(getPool(),req,req.params.hospitalId);
+    res.json({ integrations });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    const status = [400,403,404].includes(err.status) ? err.status : 503;
+    res.status(status).json({ error:status === 503 ? 'Integration status is currently unavailable.' : err.message });
   }
 });
 
