@@ -52,6 +52,10 @@ test('reviewed SQL migrations are loaded from the explicit allowlist', () => {
       file: '044_clinical_narrative_encryption.sql'
     },
     {
+      name: '045_clinical_lab_workflow',
+      file: '045_clinical_lab_workflow.sql'
+    },
+    {
       name: '400_agent_orchestrator_schema',
       file: '400_agent_orchestrator_schema.sql',
     },
