@@ -32,7 +32,10 @@
 .heroPrinciples li { display: flex; align-items: center; gap: 8px; }
 .heroPrinciples svg { width: 18px; height: 18px; color: #216b78; }
 .heroArt { min-width: 0; padding-bottom: 24px; }
-.heroImage { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: contain; border: 1px solid #fff; border-radius: 32px; box-shadow: 0 24px 70px rgb(43 68 94 / 10%); }
+.heroVoiceVisual { position: relative; }
+.heroImage { display: block; width: 100%; height: auto; aspect-ratio: 1672 / 941; object-fit: contain; border: 1px solid #fff; border-radius: 32px; box-shadow: 0 24px 70px rgb(43 68 94 / 10%); }
+.heroVoiceBrand { position: absolute; top: 26%; left: 34.7%; width: 17%; pointer-events: none; }
+.heroVoiceBrand > svg { display: block; width: 100%; height: auto; }
 .heroArtCaption { position: relative; display: flex; align-items: center; gap: 15px; width: fit-content; max-width: calc(100% - 40px); margin: -32px 0 0 28px; padding: 18px 24px; border: 1px solid #e5eaf3; border-radius: 20px; background: #fff; box-shadow: 0 14px 38px rgb(30 50 85 / 10%); }
 .heroArtCaption > span { display: grid; width: 44px; height: 44px; flex-shrink: 0; place-items: center; border-radius: 14px; color: #207375; background: #e8f5f0; }
 .heroArtCaption svg { width: 24px; height: 24px; }
@@ -354,3 +357,8 @@
 @media (prefers-reduced-motion: reduce) {
   .site *, .site *::before, .site *::after { scroll-behavior: auto !important; transition-duration: 0s !important; animation: none !important; }
 }
+
+.globalLanguageNote { margin-top: 20px; }
+.moreLanguages { margin-top: 18px; color: #285c62; }
+.moreLanguages summary { min-height: 48px; padding: 12px 0; cursor: pointer; font-size: 16px; font-weight: 600; }
+.moreLanguages .languageList { max-height: 24rem; overflow-y: auto; padding: 2px; }

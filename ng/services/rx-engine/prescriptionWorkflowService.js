@@ -170,7 +170,7 @@ async function createDraft(input, existing = null) {
   };
 
   const rxId = existing ? await run(existing) : await transaction(run);
-  return getPrescription(rxId);
+  return getPrescription(rxId, existing || getPool());
 }
 
 async function getPrescription(id, pool = getPool(), lock = false) {
@@ -182,7 +182,7 @@ async function getPrescription(id, pool = getPool(), lock = false) {
   return { ...r.rows[0], items: items.rows, quantity_review_required: requiresQuantityReview(items.rows) || await isQuantityReviewHeld(pool, id) };
 }
 
-async function listPrescriptions({ provider_id, patient_user_id, pharmacy_id, status, since, limit = 50 } = {}, pool = getPool()) {
+async function listPrescriptions({ provider_id, patient_user_id, pharmacy_id, status, since, limit = 50 } = {}, pool = getPool(), lock = false) {
   const where = [];
   const params = [];
   if (provider_id)     { params.push(provider_id);     where.push(`p.provider_id = $${params.length}`); }
@@ -199,6 +199,7 @@ async function listPrescriptions({ provider_id, patient_user_id, pharmacy_id, st
      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
      ORDER BY p.created_at DESC
      LIMIT $${params.length}
+     ${lock ? 'FOR SHARE OF p' : ''}
   `;
   const r = await pool.query(sql, params);
   return r.rows;
@@ -433,7 +434,33 @@ async function complete(id, actor, pool = getPool()) {
 
 // ─── Refills ─────────────────────────────────────────────────────────────────
 
+// Lock the prescription before refill/item rows, matching clinical mutations.
+// Independent foreign keys do not establish that a refill item belongs to its Rx.
+async function lockRefillPrescription(prescriptionId, pool) {
+  if (!(await pool.query('SELECT id FROM ng_digital_prescriptions WHERE id=$1 FOR UPDATE', [prescriptionId])).rows.length) throwNotFound();
+}
+async function lockRefillItem(prescriptionId, itemId, pool) {
+  if (!itemId) return; // Preserve existing whole-prescription refill requests.
+  const item = await pool.query('SELECT id FROM ng_rx_items WHERE id=$1 AND prescription_id=$2 FOR UPDATE', [itemId, prescriptionId]);
+  if (!item.rows.length) {
+    const error = new Error('The refill item does not belong to this prescription. Clinical review is required.');
+    error.code = 'INVALID_STATE'; throw error;
+  }
+}
+async function lockRefillDecision(refillId, pool) {
+  const metadata = (await pool.query('SELECT prescription_id FROM ng_rx_refills WHERE id=$1', [refillId])).rows[0];
+  if (!metadata) throwNotFound();
+  await lockRefillPrescription(metadata.prescription_id, pool);
+  const refill = (await pool.query('SELECT * FROM ng_rx_refills WHERE id=$1 AND prescription_id=$2 FOR UPDATE', [refillId, metadata.prescription_id])).rows[0];
+  if (!refill || refill.status !== 'requested') throwNotFound();
+  await lockRefillItem(refill.prescription_id, refill.item_id, pool);
+  return refill;
+}
+
 async function requestRefill(prescriptionId, itemId, actor, { quantity, notes } = {}, pool = getPool()) {
+  if (isConnectionPool(pool)) return atomicMutation(pool, client => requestRefill(prescriptionId, itemId, actor, { quantity, notes }, client));
+  await lockRefillPrescription(prescriptionId, pool);
+  await lockRefillItem(prescriptionId, itemId, pool);
   const r = await pool.query(
     `INSERT INTO ng_rx_refills
        (prescription_id, item_id, requested_by_user, quantity, notes, status)
@@ -445,12 +472,36 @@ async function requestRefill(prescriptionId, itemId, actor, { quantity, notes } 
   return r.rows[0];
 }
 
+// External patient requests must retain the authority checked at authentication
+// through the clinical write and its event. Keep the existing patient policy:
+// current patient role, active user, and ownership of this exact prescription.
+async function requestPatientRefill(prescriptionId, itemId, actor, data = {}, pool = getPool()) {
+  const denied = () => Object.assign(new Error('Prescription refill access denied'), { code: 'FORBIDDEN' });
+  if (actor?.kind !== 'patient' || !actor.user_id) throw denied();
+  if (isConnectionPool(pool)) return atomicMutation(pool, client => requestPatientRefill(prescriptionId, itemId, actor, data, client));
+  const patient = await pool.query(
+    "SELECT id FROM users WHERE id=$1 AND role='patient' AND is_active=TRUE FOR SHARE",
+    [actor.user_id]
+  );
+  if (!patient.rows.length) throw denied();
+  const prescription = await pool.query(
+    'SELECT id,patient_user_id FROM ng_digital_prescriptions WHERE id=$1 FOR UPDATE',
+    [prescriptionId]
+  );
+  if (!prescription.rows.length) throwNotFound();
+  if (prescription.rows[0].patient_user_id !== actor.user_id) throw denied();
+  // Reuse the same transaction and existing item-lineage/event guarantees.
+  return requestRefill(prescriptionId, itemId, actor, data, pool);
+}
+
 async function approveRefill(refillId, actor, pool = getPool()) {
+  if (isConnectionPool(pool)) return atomicMutation(pool, client => approveRefill(refillId, actor, client));
+  const locked = await lockRefillDecision(refillId, pool);
   const r = await pool.query(
     `UPDATE ng_rx_refills
         SET status = 'approved', approved_by_user = $2, approved_at = NOW()
-      WHERE id = $1 AND status = 'requested' RETURNING *`,
-    [refillId, actor?.user_id || null]
+      WHERE id = $1 AND prescription_id = $3 AND status = 'requested' RETURNING *`,
+    [refillId, actor?.user_id || null, locked.prescription_id]
   );
   if (!r.rows[0]) throwNotFound();
 
@@ -459,8 +510,8 @@ async function approveRefill(refillId, actor, pool = getPool()) {
     await pool.query(
       `UPDATE ng_rx_items
           SET refills_remaining = GREATEST(refills_remaining - 1, 0)
-        WHERE id = $1 AND refills_remaining > 0`,
-      [r.rows[0].item_id]
+        WHERE id = $1 AND prescription_id = $2 AND refills_remaining > 0`,
+      [r.rows[0].item_id, locked.prescription_id]
     );
   }
   await logEvent(r.rows[0].prescription_id, r.rows[0].item_id, actor,
@@ -469,10 +520,12 @@ async function approveRefill(refillId, actor, pool = getPool()) {
 }
 
 async function denyRefill(refillId, actor, { reason } = {}, pool = getPool()) {
+  if (isConnectionPool(pool)) return atomicMutation(pool, client => denyRefill(refillId, actor, { reason }, client));
+  const locked = await lockRefillDecision(refillId, pool);
   const r = await pool.query(
     `UPDATE ng_rx_refills SET status = 'denied', denied_at = NOW(), notes = COALESCE($2, notes)
-      WHERE id = $1 AND status = 'requested' RETURNING *`,
-    [refillId, reason || null]
+      WHERE id = $1 AND prescription_id = $3 AND status = 'requested' RETURNING *`,
+    [refillId, reason || null, locked.prescription_id]
   );
   if (!r.rows[0]) throwNotFound();
   await logEvent(r.rows[0].prescription_id, r.rows[0].item_id, actor,
@@ -550,6 +603,7 @@ module.exports = {
   cancel,
   complete,
   requestRefill,
+  requestPatientRefill,
   approveRefill,
   denyRefill,
   listEvents,

@@ -5,12 +5,7 @@ const { Pool } = require('pg');
 
 async function runMigration() {
   // Create pool with proper SSL handling
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: {
-      rejectUnauthorized: false
-    }
-  });
+  const pool = new Pool(require('../db/connectionConfig').buildDatabaseConfig(process.env, { requireUrl: true }));
   
   try {
     console.log('Connecting to database...');

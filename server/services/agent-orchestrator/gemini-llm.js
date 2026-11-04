@@ -90,6 +90,9 @@ You can search for VC and investment opportunities, grants, accelerators, and pi
 // =========================================================================
 
 function initialize() {
+  // Some route modules call initialize while being required. A deployment probe
+  // must not trigger even a small billed provider-verification request.
+  if (process.env.DOCTARX_DEPLOY_CHECK === 'true') return false;
   if (activeProvider) return true;  // Already initialized
 
   // ─── TRY CLAUDE FIRST ─────────────────────────────────────

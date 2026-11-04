@@ -7,11 +7,12 @@ const { createRequire } = require('node:module');
 const filename = require.resolve('../routes/appointments');
 const actual = createRequire(filename);
 function fixture(overrides = {}) {
-  const handlers = new Map(), router = {}, audits = [];
+  const handlers = new Map(), router = {}, audits = [], queries = [];
   for (const method of ['get','post','put','patch','delete','use']) router[method] = (path,...chain) => handlers.set(`${method} ${path}`,chain.at(-1));
   const row = { status:'scheduled', id:'synthetic-appointment',patient_id:'synthetic-patient',provider_id:'synthetic-provider',patient_market_scope:'NG',provider_market_scope:'NG',reason_for_visit:'Synthetic narrative',patient_notes:'Private patient note',provider_notes:'Private provider note',metadata:{triage:'Private triage'},patient_email:'private@example.invalid',room_id:'private-room',...overrides };
   let reads = 0;
-  const deps = { express:{Router:()=>router},'../db':{query:async sql=>{
+  const deps = { express:{Router:()=>router},'../db':{query:async (sql, values)=>{
+    queries.push({ sql, values });
     reads++;
     if(sql.includes('COUNT(*)'))return {rows:[{count:1}]};
     if(sql.includes('AS patient_market_scope')) {assert.match(sql,/AS provider_market_scope/);assert.match(sql,/COALESCE\(p.market_scope/);assert.match(sql,/COALESCE\(pr.market_scope/);}
@@ -19,7 +20,7 @@ function fixture(overrides = {}) {
     return {rows:[row]};
   }},'../middleware/auth':{authenticate(){},requireRole:()=>()=>{}},'../middleware/audit':{auditMiddleware:(action,resource,options)=>{audits.push({action,resource,options});return()=>{};}},'../middleware/financialRecordScope':{patientFinancialAccess:async()=>true},'../middleware/logger':{error(){}} };
   const mod={exports:{}};vm.runInNewContext(fs.readFileSync(filename,'utf8'),{require:n=>deps[n]||actual(n),module:mod,exports:mod.exports,console,process});
-  return {audits,get reads(){return reads;},async call(user,key='get /:id',body={}){const res={locals:{},set(){return this;},statusCode:200,status(n){this.statusCode=n;return this;},json(body){this.body=body;return this;}};await handlers.get(key)({params:{id:row.id},query:{},body,user},res);return res;}};
+  return {audits,queries,get reads(){return reads;},async call(user,key='get /:id',body={}){const res={locals:{},set(){return this;},statusCode:200,status(n){this.statusCode=n;return this;},json(body){this.body=body;return this;}};await handlers.get(key)({params:{id:row.id},query:{},body,user},res);return res;}};
 }
 test('appointment detail permits own patient/provider and in-market administrators',async()=>{
  for(const role of ['patient','provider','admin','super_admin']){const f=fixture();const r=await f.call({id:`synthetic-${role}`,role,marketScope:'NG'});assert.equal(r.statusCode,200);if(['patient','provider'].includes(role))assert.equal(r.body.appointment.reasonForVisit,'Synthetic narrative');else {assert.equal(r.body.appointment.reasonForVisit,undefined);assert.equal(r.body.appointment.patientNotes,undefined);assert.equal(r.body.appointment.providerNotes,undefined);assert.equal(r.body.appointment.metadata,undefined);assert.equal(r.body.appointment.patientEmail,undefined);assert.equal(r.body.appointment.roomId,undefined);assert.equal(r.body.appointment.id,'synthetic-appointment');}assert.equal(r.body.appointment.patientMarketScope,undefined);assert.equal(r.body.appointment.providerMarketScope,undefined);}
@@ -39,4 +40,23 @@ test('admin list, upcoming and unchanged update expose scheduling only; admin cl
 test('clinical read routes attach fail-closed metadata audit; writes declare field names only',()=>{
  const {audits}=fixture();const reads=audits.filter(a=>a.action==='read');assert.equal(reads.length,5);for(const audit of reads){assert.equal(audit.options.phiAccessed,true);assert.equal(audit.options.metadataOnly,true);assert.equal(audit.options.requireSuccess,true);}
  const updates=audits.filter(a=>a.action==='update');assert.ok(updates.some(a=>a.options.changedFields.includes('providerNotes')));for(const audit of updates)assert.equal(audit.options.metadataOnly,true);
+});
+
+test('patient upcoming query retains ongoing/recent visits and scopes both participants before its limit', async () => {
+  const f = fixture();
+  const response = await f.call({ id: 'synthetic-patient', role: 'patient', marketScope: 'NG' }, 'get /upcoming');
+  assert.equal(response.statusCode, 200);
+  assert.equal(f.queries.length, 1);
+  const { sql, values } = f.queries[0];
+  assert.match(sql, /\(a.status = 'in_progress' OR \(a.status IN \('scheduled', 'confirmed'\) AND a.scheduled_at >= \$2\)\)/);
+  assert.match(sql, /a.patient_id = \$3/);
+  assert.match(sql, /COALESCE\(p.market_scope/);
+  assert.match(sql, /COALESCE\(pr.market_scope/);
+  assert.match(sql, /p.role = 'patient' AND pr.role = 'provider'/);
+  assert.match(sql, /WHEN a.status = 'in_progress' THEN 0/);
+  assert.match(sql, /WHEN a.scheduled_at <= \$1 THEN 1/);
+  for (let index = 1; index <= values.length; index++) assert.ok(sql.includes('$' + index), 'Every bound parameter is referenced');
+  assert.match(sql, /LIMIT \$6/);
+  assert.equal(values[0].getTime() - values[1].getTime(), 2 * 60 * 60 * 1000);
+  assert.deepEqual(Array.from(values.slice(2)), ['synthetic-patient', 'NG', 'NG', 5]);
 });

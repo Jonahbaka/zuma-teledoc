@@ -341,7 +341,7 @@ test('pharmacy notifications and pharmacist Rx access are restricted to signed e
  assert.doesNotMatch(pharmacist,/preferred_pharmacy_id/);
  assert.doesNotMatch(routes,/\[rx\.preferred_pharmacy_id, rx\.routed_pharmacy_id/);
  const send=routes.slice(routes.indexOf("router.post('/:id/send'"),routes.indexOf("router.post('/:id/receive'"));
- assert.ok(send.indexOf('svc.sendToPharmacy') < send.indexOf('createPharmacyPrescriptionNotification'));
+ assert.ok(send.indexOf('prescriberRx.mutate') >= 0 && send.indexOf('prescriberRx.mutate') < send.indexOf('createPharmacyPrescriptionNotification'));
  assert.match(service,/pharmacy_response_status = 'pending_pharmacy_confirmation'/);
 });
 

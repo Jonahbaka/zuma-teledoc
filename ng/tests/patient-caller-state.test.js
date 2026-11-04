@@ -646,3 +646,141 @@ test('manual referral replay confirmation describes current completed or cancell
     assert.equal(view.storage.size, 0);
   }
 });
+
+function searchManualPatients(view, term) {
+  view.find('input').find(node => node.props['aria-label'] === 'Search patients').props.onChange({ target: { value: term } });
+  view.render();
+  return view.button('Search patients').props.onClick();
+}
+
+test('manual referral patient discovery can reach and select a patient beyond the original first twenty', async () => {
+  const rows = Array.from({ length: 25 }, (_, index) => ({ id: `discovery-${index + 1}`, firstName: `Discovery patient ${index + 1}` }));
+  const pages = []; let savedPatient;
+  const view = manualReferralView({
+    async get(url, options) {
+      if (url !== '/providers/me/patients') return { data: { ok: true, referrals: [] } };
+      const { page = 1, limit = 20 } = options?.params || {}; pages.push(page);
+      return { data: { success: true, patients: rows.slice((page - 1) * limit, page * limit), pagination: { hasMore: page * limit < rows.length } } };
+    },
+    async post(_url, body) { savedPatient = body.patient_user_id; return savedReferral; },
+  });
+  view.render(); await flush(view);
+  assert.ok(view.button('Load more patients'), 'patients after the first rendered page must be reachable');
+  await view.button('Load more patients').props.onClick(); await flush(view);
+  await view.button('Load more patients').props.onClick(); await flush(view);
+  assert.equal(view.button('Load more patients'), undefined);
+  view.button('Discovery patient 25').props.onClick(); view.render(); referralReason(view, 'Synthetic referral for later-page patient');
+  await saveReferral(view); assert.equal(savedPatient, 'discovery-25'); assert.deepEqual(pages.slice(0, 3), [1, 2, 3]);
+});
+
+test('manual referral search reaches the server and preserves the selected patient and draft across other results', async () => {
+  const requests = [];
+  const view = manualReferralView({ async get(url, options) {
+    if (url !== '/providers/me/patients') return { data: { ok: true, referrals: [] } };
+    assert.equal(options.params.search, undefined);
+    return { data: { success: true, patients: [{ id: patientA.id, firstName: 'Synthetic patient' }], pagination: { hasMore: false } } };
+  }, async post(url, body, options) {
+    assert.equal(url, '/providers/me/patients/search'); assert.equal(options.params, undefined); requests.push(body);
+    return { data: { success: true, patients: [{ id: 'found', firstName: 'Later patient' }], pagination: { hasMore: false } } };
+  } });
+  view.render(); await flush(view); fillManualReferral(view);
+  await searchManualPatients(view, ' Later patient '); await flush(view);
+  assert.equal(requests.at(-1).search, 'Later patient'); assert.equal(requests.at(-1).page, 1);
+  assert.ok(view.button('Later patient')); assert.ok(view.text().includes('Selected patient: '));
+  assert.ok(view.text().includes('Synthetic patient')); assert.equal(view.find('textarea').find(n => n.props.id === 'referral-reason').props.value, 'Synthetic new referral');
+  assert.equal(view.button('Save referral draft').props.disabled, false);
+});
+
+test('manual referral failed additional page can retry without losing earlier results or duplicating patients', async () => {
+  let later = 0;
+  const view = manualReferralView({ async get(url, options) {
+    if (url !== '/providers/me/patients') return { data: { ok: true, referrals: [] } };
+    const first = { id: patientA.id, firstName: 'Synthetic patient' };
+    if (options.params.page === 1) return { data: { success: true, patients: [first], pagination: { hasMore: true } } };
+    if (++later === 1) throw new Error('Synthetic later-page failure');
+    return { data: { success: true, patients: [first, { id: 'later', firstName: 'Later unique patient' }], pagination: { hasMore: false } } };
+  } });
+  view.render(); await flush(view); fillManualReferral(view);
+  await view.button('Load more patients').props.onClick(); await flush(view);
+  assert.ok(view.button('Synthetic patient')); assert.ok(view.button('Retry patient search'));
+  await view.button('Retry patient search').props.onClick(); await flush(view);
+  assert.equal(view.find('button').filter(node => strings(node.props.children).includes('Synthetic patient')).length, 1);
+  assert.ok(view.button('Later unique patient')); assert.equal(view.button('Retry patient search'), undefined);
+  assert.equal(view.find('textarea').find(n => n.props.id === 'referral-reason').props.value, 'Synthetic new referral');
+});
+
+test('manual referral search rejects late responses after a newer query or account change', async () => {
+  const pending = [], session = { current: 'A' };
+  const view = manualReferralView({ get(url) { return Promise.resolve(manualReferralResponse(url)); }, post(url, body, options) {
+    assert.equal(url, '/providers/me/patients/search'); assert.equal(options.params, undefined);
+    const request = { ...deferred(), signal: options.signal }; pending.push(request); return request.promise;
+  } }, { session, accountKey: 'A' });
+  view.render(); await flush(view);
+  const first = searchManualPatients(view, 'First'); const second = searchManualPatients(view, 'Second');
+  assert.equal(pending[0].signal.aborted, true);
+  pending[1].resolve({ data: { success: true, patients: [{ id: 'second', firstName: 'Current result' }] } }); await second; await flush(view);
+  pending[0].resolve({ data: { success: true, patients: [{ id: 'first', firstName: 'Obsolete result' }] } }); await first; await flush(view);
+  assert.ok(view.button('Current result')); assert.equal(view.button('Obsolete result'), undefined);
+  const third = searchManualPatients(view, 'Third'); session.current = 'B';
+  pending[2].resolve({ data: { success: true, patients: [{ id: 'third', firstName: 'Prior account result' }] } }); await third; await flush(view);
+  assert.equal(view.button('Prior account result'), undefined); view.unmount();
+});
+
+test('manual referral tracking identity survives pending, empty, failed and replaced patient searches', async () => {
+  const patient = { id: 'patient-tracked', firstName: 'Synthetic', lastName: 'Identity' };
+  const tracked = { id: 'tracked-referral', patient_user_id: patient.id, patient_display_name: 'Synthetic Identity', status: 'draft', reason: 'Synthetic tracking reason' };
+  const searches = [];
+  const search = () => { const pending = deferred(); searches.push(pending); return pending.promise; };
+  const view = manualReferralView({
+    get(url, options) {
+      if (url === '/ng/clinical/referrals') return Promise.resolve({ data: { ok: true, referrals: [tracked] } });
+      if (options?.params?.search) return search(); // Also reproduces the pre-fix GET behavior.
+      return Promise.resolve({ data: { success: true, patients: [patient] } });
+    },
+    post(url) { assert.equal(url, '/providers/me/patients/search'); return search(); },
+  });
+  const heading = () => strings(view.find('h3')[0].props.children);
+  view.render(); await flush(view); assert.equal(heading(), 'Synthetic Identity');
+  view.find('textarea').find(node => node.props.id === 'referral-outcome-tracked-referral').props.onChange({ target: { value: 'Synthetic sending outcome' } }); view.render();
+  const empty = searchManualPatients(view, 'No match'); view.render();
+  assert.equal(heading(), 'Synthetic Identity', 'pending picker changes cannot strip tracking identity');
+  searches[0].resolve({ data: { success: true, patients: [], pagination: { hasMore: false } } }); await empty; await flush(view);
+  assert.equal(heading(), 'Synthetic Identity'); assert.equal(view.button('Record sending').props.disabled, false);
+  const failure = searchManualPatients(view, 'Different search'); searches[1].reject(new Error('Synthetic offline')); await failure; await flush(view);
+  assert.equal(heading(), 'Synthetic Identity'); assert.ok(view.button('Retry patient search'));
+  const retry = view.button('Retry patient search').props.onClick(); searches[2].resolve({ data: { success: true, patients: [{ id: 'other', firstName: 'Other synthetic patient' }] } }); await retry; await flush(view);
+  assert.equal(heading(), 'Synthetic Identity');
+  const refresh = view.button('Refresh').props.onClick(); searches[3].resolve({ data: { success: true, patients: [] } }); await refresh; await flush(view);
+  assert.equal(heading(), 'Synthetic Identity');
+});
+
+test('manual referral tracking names come from each referral, including patients outside every picker page', async () => {
+  const view = manualReferralView({ async get(url) {
+    return { data: url === '/providers/me/patients' ? { success: true, patients: [] } : { ok: true, referrals: [
+      { id: 'later-ref', patient_user_id: 'later-patient', patient_display_name: 'Later page synthetic patient', status: 'sent' },
+      { id: 'unknown-ref', patient_user_id: 'unknown-patient', patient_display_name: null, status: 'completed' },
+    ] } };
+  } });
+  view.render(); await flush(view);
+  assert.deepEqual(view.find('h3').map(node => strings(node.props.children)), ['Later page synthetic patient', 'Patient referral']);
+});
+
+test('manual referral patient search, later pages, retry and refresh keep names and emails out of request URLs', async () => {
+  const term = 'Synthetic Patient synthetic@example.invalid', requests = []; let attempt = 0;
+  const view = manualReferralView({
+    async get(url, options) { requests.push({ url, options }); return manualReferralResponse(url); },
+    async post(url, body, options) {
+      requests.push({ url, body, options });
+      if (++attempt === 2) throw new Error('Synthetic offline');
+      return { data: { success: true, patients: [{ id: 'search-result', firstName: 'Synthetic result' }], pagination: { hasMore: attempt === 1 } } };
+    },
+  });
+  view.render(); await flush(view); await searchManualPatients(view, term); await flush(view);
+  await view.button('Load more patients').props.onClick(); await flush(view);
+  await view.button('Retry patient search').props.onClick(); await flush(view);
+  await view.button('Refresh').props.onClick(); await flush(view);
+  const searched = requests.filter(request => request.body);
+  assert.equal(searched.length, 4); assert.deepEqual(searched.map(request => request.body.page), [1, 2, 2, 1]);
+  for (const request of searched) { assert.equal(request.body.search, term); assert.equal(request.url, '/providers/me/patients/search'); }
+  for (const request of requests) assert.equal(JSON.stringify({ url: request.url, params: request.options?.params }).includes('Synthetic'), false);
+});

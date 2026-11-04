@@ -19,6 +19,7 @@
 
 import { execSync } from 'child_process';
 import https from 'https';
+import { buildProbeRequestOptions } from '../services/transport';
 import path from 'path';
 import type { CronTask, TaskResult } from '../types';
 import { info, warn } from '../logger';
@@ -96,13 +97,16 @@ interface SSLResult {
 }
 
 function checkSSL(domain: string): Promise<SSLResult> {
+  let transport;
+  try { transport = buildProbeRequestOptions(`https://${domain}/`); }
+  catch { return Promise.resolve({ domain, valid: false, error: 'Probe transport configuration is unavailable or unsafe.' }); }
   return new Promise((resolve) => {
     const req = https.request({
       host: domain,
       port: 443,
       method: 'HEAD',
       path: '/',
-      rejectUnauthorized: true,
+      ...transport,
       timeout: 10_000,
     }, (res) => {
       const cert = (res.socket as any).getPeerCertificate?.();
@@ -150,13 +154,14 @@ interface EndpointCheck {
 async function checkEndpoint(url: string): Promise<EndpointCheck> {
   const start = Date.now();
   try {
+    const transport = buildProbeRequestOptions(url);
     const https_module = await import('https');
     const http_module = await import('http');
-    const isHttps = url.startsWith('https');
+    const isHttps = new URL(url).protocol === 'https:';
     const mod = isHttps ? https_module : http_module;
 
     return await new Promise<EndpointCheck>((resolve) => {
-      const req = (mod as any).request(url, { method: 'GET', timeout: 8000, rejectUnauthorized: false }, (res: any) => {
+      const req = (mod as any).request(url, { method: 'GET', timeout: 8000, ...transport }, (res: any) => {
         const latencyMs = Date.now() - start;
         resolve({
           endpoint: url,

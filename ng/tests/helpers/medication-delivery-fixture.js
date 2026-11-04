@@ -2,12 +2,14 @@
 
 // Test-only data and transports. Never import this module into application code.
 const crypto = require('node:crypto');
+const { fixtureTargetSafety } = require('../../scripts/fixtureTargetSafety');
 
 async function createBrowserFixture({ pool, providerAvailable = true, uploaded = false } = {}) {
-  const target = new URL(pool.options.connectionString);
-  if (process.env.NODE_ENV !== 'test' || !['127.0.0.1', 'localhost'].includes(target.hostname) || !target.pathname.endsWith('_test')) {
+  if (process.env.NODE_ENV !== 'test') {
     throw new Error('Fixtures require NODE_ENV=test and a disposable loopback database ending in _test');
   }
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool: pool ?? null });
+  if (safety.skipped) throw new Error(safety.reason);
   process.env.ENCRYPTION_KEY ||= 'c'.repeat(64);
   const run = crypto.randomUUID();
   const suffix = run.replace(/-/g, '').slice(0, 16);

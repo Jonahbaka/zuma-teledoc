@@ -7,13 +7,20 @@ const db = require('../db');
 const { keysToCamel } = require('../../lib/utils');
 const { z } = require('zod');
 const { integrationUnavailable } = require('../utils/integrationReadiness');
-const { actorMarket, patientMarketSql } = require('../middleware/financialRecordScope');
+const { actorMarket } = require('../middleware/financialRecordScope');
 
 const uuid = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
 const knownMarket = (value) => ['US', 'USA', 'UNITED STATES', 'UNITED STATES OF AMERICA', 'NG', 'NIGERIA'].includes(String(value || '').trim().toUpperCase());
 const marketValue = (actor) => actor?.marketScope || actor?.market_scope || actor?.region || actor?.country;
 const inputError = () => Object.assign(new Error('Choose a valid prescription or supported record filter.'), { statusCode: 400, code: 'PRESCRIPTION_INPUT_INVALID' });
 const missing = () => Object.assign(new Error('Prescription not found.'), { statusCode: 404, code: 'PRESCRIPTION_NOT_FOUND' });
+// Use the same normalized value for recognizing and matching a patient's market.
+// Unknown values must never inherit a default market in this PHI boundary.
+const patientMarketValueSql = "UPPER(COALESCE(NULLIF(TRIM(pat.market_scope),''),NULLIF(TRIM(pat.region::text),''),NULLIF(TRIM(pat.country),''),''))";
+const prescriptionPatientMarketSql = `CASE
+  WHEN ${patientMarketValueSql} IN ('NG','NIGERIA') THEN 'NG'
+  WHEN ${patientMarketValueSql} IN ('US','USA','UNITED STATES','UNITED STATES OF AMERICA') THEN 'US'
+  ELSE NULL END`;
 
 class PrescriptionService {
   async createPrescription() { throw integrationUnavailable('Legacy prescription creation'); }
@@ -57,8 +64,7 @@ class PrescriptionService {
   _scope() {
     return `
       pat.role='patient' AND pat.is_active=TRUE
-      AND UPPER(COALESCE(NULLIF(TRIM(pat.market_scope),''),NULLIF(TRIM(pat.region::text),''),NULLIF(TRIM(pat.country),''),'')) IN ('US','USA','UNITED STATES','UNITED STATES OF AMERICA','NG','NIGERIA')
-      AND ${patientMarketSql('pat')}=$2
+      AND ${prescriptionPatientMarketSql}=$2
       AND ($3 IN ('admin','super_admin') OR $3='patient' AND p.patient_id=$4 OR $3='provider' AND p.provider_id=$4)
       AND ($3<>'provider' OR EXISTS (SELECT 1 FROM appointments a WHERE a.patient_id=p.patient_id AND a.provider_id=$4))`;
   }

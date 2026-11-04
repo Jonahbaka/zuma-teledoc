@@ -42,6 +42,7 @@
  */
 
 const fs = require('fs');
+const { immutableRuntime } = require('../../utils/runtimeStatePolicy');
 const path = require('path');
 const crypto = require('crypto');
 const db = require('../../db');
@@ -317,7 +318,7 @@ class DynamicSkillLoader {
   async loadAll() {
     // Create skills directory if it doesn't exist
     try {
-      if (!fs.existsSync(this.skillsDir)) {
+      if (!immutableRuntime() && !fs.existsSync(this.skillsDir)) {
         fs.mkdirSync(this.skillsDir, { recursive: true });
       }
     } catch (e) { /* ok */ }
@@ -405,6 +406,7 @@ class DynamicSkillLoader {
    * Start watching for changes (called by the run loop)
    */
   startWatching(intervalMs = 30000) {
+    if (immutableRuntime()) return;
     if (this.watchTimer) return;
     this.watchTimer = setInterval(() => this.scanForChanges(), intervalMs);
   }

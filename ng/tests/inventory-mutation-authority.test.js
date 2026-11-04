@@ -108,3 +108,14 @@ test('all three registered mutation routes delegate authenticated authority and 
     assert.equal(result.status, 503); assert.equal(result.headers['Cache-Control'], 'private, no-store'); assert.doesNotMatch(JSON.stringify(result.body), /Private|audit failure/);
   }
 });
+
+test('inventory read pagination has a stable batch tie-breaker and preserves pharmacy-bound parameters', async () => {
+  const calls = [];
+  const pool = { async query(sql, params) { calls.push({ sql, params }); return { rows: sql.includes('COUNT(*)') ? [{ count: '51' }] : [{ id: 'synthetic-batch' }] }; } };
+  const reader = load(require.resolve('../services/pharmacy/inventoryService'), { '../../../server/db': { getPool: () => pool } });
+  const result = await reader.getInventory('current-pharmacy', { page: 2, limit: 50 });
+  const page = calls.find(call => call.sql.includes('ORDER BY'));
+  assert.match(page.sql, /WHERE i\.pharmacy_id = \$1/); assert.match(page.sql, /ORDER BY d\.name ASC, i\.id ASC LIMIT \$2 OFFSET \$3/);
+  assert.deepEqual(Array.from(page.params), ['current-pharmacy', 50, 50]); assert.deepEqual(Array.from(calls.find(call => call.sql.includes('COUNT(*)')).params), ['current-pharmacy']);
+  assert.equal(result.page, 2); assert.equal(result.totalPages, 2); assert.equal(result.total, 51);
+});

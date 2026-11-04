@@ -1,6 +1,12 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { fixtureTargetSafety } = require('../../ng/scripts/fixtureTargetSafety');
+const target = process.env.SIMULATION_DATABASE_URL;
+if (target) {
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+}
 const crypto = require('node:crypto');
 const db = require('../db');
 const service = require('../services/telehealthConsentService');
@@ -45,10 +51,13 @@ test('consent check/history/revoke routes all apply current clinical patient sco
   }
 });
 
-const target=process.env.SIMULATION_DATABASE_URL;
 test('PostgreSQL consent capture/revocation requires current care and rolls back failed audit', {skip:!target},async()=>{
-  const url=new URL(target);assert.ok(['localhost','127.0.0.1'].includes(url.hostname)&&url.pathname.endsWith('_test'));
-  const {Pool}=require('pg');const pool=new Pool({connectionString:target});const client=await pool.connect();const oldTransaction=db.transaction;
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+  const {Pool}=require('pg');const pool=new Pool({connectionString:target});
+  const poolSafety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(poolSafety.skipped, false, poolSafety.reason);
+  const client=await pool.connect();const oldTransaction=db.transaction;
   let n=0,failAudit=false;
   try {
     await client.query('BEGIN');
@@ -65,11 +74,19 @@ test('PostgreSQL consent capture/revocation requires current care and rolls back
     const input={templateId:template,templateVersion:'synthetic-1',patientState:'CA',consentMethod:'verbal'};
     for(const id of [other,pharmacy])await assert.rejects(service.captureConsent(p,input,{user:actor(id)}),{statusCode:403});
     const consent=await service.captureConsent(p,input,{user:actor(p)});assert.equal(consent.isValid,true);
+    for(const id of [other,pharmacy]) {
+      await assert.rejects(service.hasValidConsent(p,'CA',actor(id)),{statusCode:403});
+      await assert.rejects(service.getPatientConsents(p,actor(id)),{statusCode:403});
+    }
+    assert.equal(await service.hasValidConsent(p,'CA',actor(p)),true);
+    assert.equal((await service.getPatientConsents(p,actor(provider))).length,1);
+    failAudit=true;await assert.rejects(service.getPatientConsents(p,actor(p)),/Synthetic audit unavailable/);failAudit=false;
     for(const id of [other,pharmacy])await assert.rejects(service.revokeConsent(consent.id,p,'Synthetic patient request',actor(id)),{statusCode:403});
     failAudit=true;await assert.rejects(service.revokeConsent(consent.id,p,'Synthetic patient request',actor(provider)),/Synthetic audit unavailable/);failAudit=false;
     assert.equal((await client.query('SELECT is_valid FROM telehealth_consents WHERE id=$1',[consent.id])).rows[0].is_valid,true);
     assert.equal((await service.revokeConsent(consent.id,p,'Synthetic patient request',actor(provider))).isValid,false);
+    assert.equal(await service.hasValidConsent(p,'CA',actor(p)),false);
     const own=await service.captureConsent(p,input,{user:actor(p)});assert.equal((await service.revokeConsent(own.id,p,'Synthetic patient request',actor(p))).isValid,false);
-    assert.equal((await client.query("SELECT count(*)::int AS n FROM audit_logs WHERE patient_id=$1 AND resource_type='telehealth_consent'",[p])).rows[0].n,4);
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM audit_logs WHERE patient_id=$1 AND resource_type='telehealth_consent'",[p])).rows[0].n,7);
   } finally {db.transaction=oldTransaction;await client.query('ROLLBACK');client.release();await pool.end();}
 });

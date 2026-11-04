@@ -51,17 +51,25 @@ async function runNgMigrations(pool) {
 
     const executed = await client.query('SELECT filename, checksum FROM ng_migrations');
     const executedFiles = new Map(executed.rows.map(r => [r.filename, r.checksum?.trim() || null]));
-
-    for (const file of files) {
+    // Load and validate the entire known history before executing pending SQL
+    // or adopting legacy checksums. Otherwise an earlier pending migration can
+    // commit before a later recorded file reveals source drift.
+    const manifest = files.map(file => {
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-      const digest = checksum(sql);
+      return { file, sql, digest: checksum(sql) };
+    });
+    for (const { file, digest } of manifest) {
+      const recorded = executedFiles.get(file);
+      if (recorded && recorded !== digest) {
+        throw new Error('[NG] Migration checksum mismatch: ' + file);
+      }
+    }
 
+    for (const { file, sql, digest } of manifest) {
       if (executedFiles.has(file)) {
         const recorded = executedFiles.get(file);
-        if (recorded && recorded !== digest) {
-          throw new Error('[NG] Migration checksum mismatch: ' + file);
-        }
         if (!recorded) {
+          console.warn('[NG] Adopting legacy checksum for ' + file + '; historical SQL is not verified.');
           await client.query(
             'UPDATE ng_migrations SET checksum=$2 WHERE filename=$1 AND checksum IS NULL',
             [file, digest]

@@ -1976,59 +1976,33 @@ router.put('/users/:id/status',
 
 /**
  * DELETE /api/admin/users/:id
- * Delete a user (Super Admin only)
+ * Permanent account erasure is not a supported lifecycle operation.
+ * A physical user DELETE can cascade through clinical records. Some audit and
+ * revision foreign keys block it, but they do not cover every patient/history
+ * shape. Do not replace this refusal with a table-count allowlist or silently
+ * deactivate the account. Retention/erasure needs an approved separate workflow.
  */
 router.delete('/users/:id',
   requireSuperAdmin,
-  auditMiddleware('delete', 'user'),
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      // Cannot delete own account
-      if (id === req.user.id) {
-        return res.status(400).json({
-          success: false,
-          error: 'Cannot delete your own account'
-        });
-      }
-      
-      // Get user info before deletion
-      const { rows: userRows } = await db.query(
-        `SELECT email, role, first_name, last_name FROM users WHERE id = $1`,
-        [id]
-      );
-      
-      if (userRows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          error: 'User not found'
-        });
-      }
-      
-      const userToDelete = userRows[0];
-      
-      // Delete user (cascades to related records)
-      await db.query(`DELETE FROM users WHERE id = $1`, [id]);
-      
-      logger.info('User deleted', {
-        deletedUserId: id,
-        deletedUserEmail: userToDelete.email,
-        deletedUserRole: userToDelete.role,
-        deletedBy: req.user.id
-      });
-      
-      res.json({
-        success: true,
-        message: `User ${userToDelete.email} has been deleted`
-      });
-    } catch (error) {
-      logger.error('Delete user error:', error);
-      res.status(500).json({
+  auditMiddleware('delete', 'user', {
+    metadataOnly: true,
+    description: 'Permanent account deletion refused to preserve clinical history',
+  }),
+  (req, res) => {
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({
         success: false,
-        error: 'Failed to delete user'
+        error: 'Cannot delete your own account'
       });
     }
+
+    // Fail before looking up a target or changing any account/clinical data,
+    // including when storage is unavailable or the target has no audit rows.
+    return res.status(409).json({
+      success: false,
+      code: 'USER_DELETION_UNAVAILABLE',
+      error: 'Permanent account deletion is unavailable because it may remove clinical history. Deactivate the account to suspend access while retaining records.'
+    });
   }
 );
 

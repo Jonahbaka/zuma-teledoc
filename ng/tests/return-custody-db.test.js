@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { Pool } = require('pg');
 const { createBrowserFixture } = require('./helpers/medication-delivery-fixture');
 const { createReturnCustodyService } = require('../services/pharmacy/returnCustodyService');
+const { fixtureTargetSafety } = require('../scripts/fixtureTargetSafety');
 const target = process.env.SIMULATION_DATABASE_URL;
 const approvals = { NG_RETURN_CUSTODY_ENABLED: 'true', NG_RETURN_CUSTODY_CLINICIAN_APPROVAL: 'isolated-clinician-only', NG_RETURN_CUSTODY_PRIVACY_APPROVAL: 'isolated-privacy-only', NG_RETURN_CUSTODY_OPERATIONS_APPROVAL: 'isolated-operations-only' };
 
@@ -33,9 +34,12 @@ const nomination = (version, receivingPharmacyId, now) => ({ version, receivingP
 const receipt = p => ({ version: p.version, nominationId: p.nominationId, idempotencyKey: crypto.randomUUID(), evidenceReference: 'isolated-witnessed-quarantine', physicallyReceivedAndQuarantined: true });
 
 test('PostgreSQL proposed alternate custody is current, atomic, minimal and separate from refund approval', { skip: !target }, async t => {
-  const url = new URL(target); assert.ok(['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'), 'Only an explicitly disposable loopback test database is supported.');
-  const previous = { NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY }; process.env.NODE_ENV = 'test';
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
   const pool = new Pool({ connectionString: target, max: 8 });
+  const actualTarget = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(actualTarget.skipped, false, actualTarget.reason);
+  const previous = { NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY }; process.env.NODE_ENV = 'test';
   try {
     const f = await createBrowserFixture({ pool }); const receiver = await createBrowserFixture({ pool }); const replacement = await createBrowserFixture({ pool });
     const orderId = await returnedParcel(f);

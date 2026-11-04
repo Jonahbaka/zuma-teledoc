@@ -4,6 +4,7 @@
  */
 
 const { Server } = require('socket.io');
+const { installBoundedUpgradeCleanup } = require('./boundedUpgradeRouting');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const db = require('../db');
@@ -267,6 +268,10 @@ const initializeSocket = (httpServer) => {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
   
   io = new Server(httpServer, {
+    // Other authenticated upgrade owners have their own bounded admission.
+    // The companion cleaner preserves unknown-path cleanup rather than
+    // leaving foreign sockets open when Engine.IO's cleaner is disabled.
+    destroyUpgrade: false,
     cors: {
       origin: [
         appUrl,
@@ -283,6 +288,7 @@ const initializeSocket = (httpServer) => {
     pingTimeout: 60000,
     pingInterval: 25000
   });
+  installBoundedUpgradeCleanup(httpServer);
 
   // Authentication middleware
   io.use(async (socket, next) => {

@@ -51,6 +51,17 @@ function requestRole(req) {
   return canonicalRole(req.user?.role || req.user?.ng_role);
 }
 
+// Use only server-owned parameter references. Evaluate current clinician
+// authority in the data-returning statement, not an earlier token/preflight.
+function currentNgClinicianSql(actorParameter) {
+  return `EXISTS (
+      SELECT 1 FROM users actor JOIN ng_providers profile ON profile.user_id = actor.id
+      WHERE actor.id = ${actorParameter} AND actor.role = 'provider'
+        AND actor.is_active = TRUE AND actor.market_scope = 'NG'
+        AND actor.provider_status = 'approved' AND profile.status = 'verified'
+    )`;
+}
+
 function buildPrescriptionNumber() {
   const ts = new Date().toISOString().replace(/[^0-9]/g, '').slice(2, 14);
   const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
@@ -90,6 +101,7 @@ function asyncHandler(fn) {
 // GET /clinical/prescriptions
 router.get('/prescriptions', asyncHandler(async (req, res) => {
   const pool = getPool();
+  res.set('Cache-Control', 'private, no-store');
   const userId = req.user.id || req.user.userId || req.user.sub;
   const role = assertClinicalListRole(req);
 
@@ -121,7 +133,7 @@ router.get('/prescriptions', asyncHandler(async (req, res) => {
           WHERE enc.patient_user_id = p.patient_user_id
           ORDER BY enc.created_at DESC LIMIT 1
         )
-      WHERE p.prescriber_user_id = $1
+      WHERE p.prescriber_user_id = $1 AND ${currentNgClinicianSql('$1')}
       ORDER BY p.created_at DESC
       LIMIT 100
     `;
@@ -223,6 +235,7 @@ router.post('/prescriptions', express.json(), asyncHandler(async (req, res) => {
 // GET /clinical/encounters
 router.get('/encounters', asyncHandler(async (req, res) => {
   const pool = getPool();
+  res.set('Cache-Control', 'private, no-store');
   const userId = req.user.id || req.user.userId || req.user.sub;
   const role = assertClinicalListRole(req);
   const { status, limit = 20 } = req.query;
@@ -235,6 +248,7 @@ router.get('/encounters', asyncHandler(async (req, res) => {
   } else {
     params.push(userId);
     conditions.push(`provider_user_id = $${params.length}`);
+    conditions.push(currentNgClinicianSql(`$${params.length}`));
   }
 
   if (status) {
@@ -419,6 +433,10 @@ router.post('/encounters/:id/notes/:noteId/amend', express.json(), asyncHandler(
 // GET /clinical/diagnoses
 router.get('/diagnoses', asyncHandler(async (req, res) => {
   const pool = getPool();
+  res.set('Cache-Control', 'private, no-store');
+  const role = requestRole(req);
+  const userId = requestUserId(req);
+  const clinician = ['provider', 'doctor', 'consultant', 'physician', 'specialist'].includes(role);
   const { patient_user_id, encounter_id, clinical_status } = req.query;
   const conditions = [];
   const params = [];
@@ -426,8 +444,8 @@ router.get('/diagnoses', asyncHandler(async (req, res) => {
   let targetPatientId = patient_user_id || null;
   if (!targetPatientId && encounter_id) {
     const encounter = await pool.query(
-      'SELECT patient_user_id FROM ng_clinical_encounters WHERE id = $1',
-      [encounter_id]
+      `SELECT patient_user_id FROM ng_clinical_encounters WHERE id = $1${clinician ? ' AND ' + currentNgClinicianSql('$2') : ''}`,
+      clinician ? [encounter_id, userId] : [encounter_id]
     );
     if (!encounter.rows.length) return res.status(404).json({ error: 'Encounter not found' });
     targetPatientId = encounter.rows[0].patient_user_id;
@@ -441,8 +459,6 @@ router.get('/diagnoses', asyncHandler(async (req, res) => {
       mode: 'read',
     });
   } else {
-    const role = requestRole(req);
-    const userId = requestUserId(req);
     if (role === 'patient') {
       targetPatientId = userId;
     } else if (['provider', 'doctor', 'consultant', 'physician', 'specialist'].includes(role)) {
@@ -456,6 +472,7 @@ router.get('/diagnoses', asyncHandler(async (req, res) => {
   if (targetPatientId) { params.push(targetPatientId); conditions.push(`patient_user_id = $${params.length}`); }
   if (encounter_id) { params.push(encounter_id); conditions.push(`encounter_id = $${params.length}`); }
   if (clinical_status) { params.push(clinical_status); conditions.push(`clinical_status = $${params.length}`); }
+  if (clinician) { params.push(userId); conditions.push(currentNgClinicianSql(`$${params.length}`)); }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const { rows } = await pool.query(
@@ -497,25 +514,38 @@ router.get('/referrals', asyncHandler(async (req, res) => {
   if (patient_user_id) {
     await assertClinicalAccess(req, { pool, patientUserId: patient_user_id, mode: 'read' });
     params.push(patient_user_id);
-    conditions.push(`patient_user_id = $${params.length}`);
+    conditions.push(`r.patient_user_id = $${params.length}`);
   } else if (role === 'patient') {
     params.push(userId);
-    conditions.push(`patient_user_id = $${params.length}`);
+    conditions.push(`r.patient_user_id = $${params.length}`);
   } else if (['provider', 'doctor', 'consultant', 'physician', 'specialist'].includes(role)) {
     params.push(userId);
-    conditions.push(`provider_user_id = $${params.length}`);
+    conditions.push(`r.provider_user_id = $${params.length}`);
   } else {
     return res.status(400).json({ error: 'patient_user_id required' });
   }
 
-  if (status) { params.push(status); conditions.push(`status = $${params.length}`); }
-  if (priority) { params.push(priority); conditions.push(`priority = $${params.length}`); }
+  // Resolve clinician authority in the same query that returns referral data.
+  // Token claims and a historical referral do not authorize a revoked NG profile.
+  // Patient self-access and explicit, audited admin access retain their paths.
+  if (['provider', 'doctor', 'consultant', 'physician', 'specialist'].includes(role)) {
+    params.push(userId);
+    conditions.push(currentNgClinicianSql(`$${params.length}`));
+  }
+
+  if (status) { params.push(status); conditions.push(`r.status = $${params.length}`); }
+  if (priority) { params.push(priority); conditions.push(`r.priority = $${params.length}`); }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const { rows } = await pool.query(
-    `SELECT * FROM ng_referrals ${where} ORDER BY created_at DESC LIMIT 100`,
+    `SELECT r.*, NULLIF(TRIM(CONCAT_WS(' ', patient.first_name, patient.last_name)), '') AS patient_display_name
+     FROM ng_referrals r
+     LEFT JOIN users patient ON patient.id = r.patient_user_id
+       AND patient.role = 'patient' AND patient.is_active = TRUE AND patient.market_scope = 'NG'
+     ${where} ORDER BY r.created_at DESC LIMIT 100`,
     params
   );
+  res.set('Cache-Control', 'private, no-store');
   res.json({ ok: true, referrals: rows, count: rows.length });
 }));
 

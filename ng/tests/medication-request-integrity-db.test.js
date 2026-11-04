@@ -4,14 +4,17 @@ const assert = require('node:assert/strict');
 const { Pool } = require('pg');
 const service = require('../services/pharmacy/medicationRequestService');
 const { createBrowserFixture } = require('./helpers/medication-delivery-fixture');
+const { fixtureTargetSafety } = require('../scripts/fixtureTargetSafety');
 const target = process.env.SIMULATION_DATABASE_URL;
 
 test('PostgreSQL availability response scope, audit rollback, reassignment and suspension stay intact', { skip: !target }, async () => {
-  const url = new URL(target);
-  assert.ok(['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'), 'Only isolated loopback test databases ending in _test are supported.');
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+  const pool = new Pool({ connectionString: target });
+  const actualTarget = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(actualTarget.skipped, false, actualTarget.reason);
   const previous = { NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY };
   process.env.NODE_ENV = 'test';
-  const pool = new Pool({ connectionString: target });
   try {
     const first = await createBrowserFixture({ pool });
     const second = await createBrowserFixture({ pool });

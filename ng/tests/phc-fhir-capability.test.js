@@ -306,6 +306,16 @@ test('encrypted laboratory values retain supported statuses, critical flags and 
   }
 });
 
+test('legacy laboratory plaintext is read only when every protection field is absent', () => {
+  const { toDiagnosticReport } = require('../services/interop/clinicalFhirService');
+  for (const envelope of [{}, { result_value_encrypted: null, result_value_iv: null, result_value_tag: null },
+    { result_value_encrypted: undefined, result_value_iv: null, result_value_tag: undefined }]) {
+    const report = toDiagnosticReport(labFixture({ ...envelope, result_value: 'Legacy synthetic value' }));
+    assert.equal(report.contained[0].valueString, 'Legacy synthetic value');
+    assertR4(report);
+  }
+});
+
 test('unreadable encrypted laboratory results fail HTTP reads without exposing or falling back to plaintext', async (t) => {
   const { encrypt } = require('../../lib/encryption');
   const previousKey = process.env.ENCRYPTION_KEY;
@@ -320,6 +330,17 @@ test('unreadable encrypted laboratory results fail HTTP reads without exposing o
       for (const invalid of [
         { result_value_tag: (encrypted.tag.startsWith('0') ? '1' : '0') + encrypted.tag.slice(1) },
         { result_value_iv: null }, { result_value_tag: null },
+        // A surviving protection field must never revive legacy plaintext,
+        // even when ciphertext is missing or falsy.
+        { result_value_encrypted: null }, { result_value_encrypted: undefined },
+        { result_value_encrypted: '' }, { result_value_encrypted: false },
+        { result_value_encrypted: 0 },
+        { result_value_encrypted: null, result_value_tag: null },
+        { result_value_encrypted: null, result_value_iv: null },
+        { result_value_encrypted: '', result_value_iv: null, result_value_tag: null },
+        { result_value_iv: '' }, { result_value_tag: '' },
+        { result_value_iv: {} }, { result_value_tag: [] },
+        { result_value_encrypted: { toString: () => 'not a stored value' } },
       ]) {
         state.labRows = [labFixture(), { ...row, ...invalid }];
         const response = await get('DiagnosticReport', { query: { encounter: ids.encounter, _count: '1' } });

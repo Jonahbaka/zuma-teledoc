@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Loader2, RefreshCw, Search, Send, Share2 } from 'lucide-react';
 import api from '@/lib/api';
 import PortalPageHeader from '@/components/branding/PortalPageHeader';
@@ -22,6 +22,10 @@ const referralPayload = (form) => ({
   clinical_notes: form.clinicalNotes.trim() || null,
   destination_type: 'internal',
 });
+// Keep patient names/emails out of URLs and URL-based telemetry.
+const readPatients = (page, search, signal) => search
+  ? api.post('/providers/me/patients/search', { limit: 12, page, search }, { signal })
+  : api.get('/providers/me/patients', { signal, params: { limit: 12, page } });
 const confirmedReferral = (data) => data?.ok === true && uuid.test(data.referral?.id || '')
   && ['draft', 'sent', 'accepted', 'declined', 'completed', 'cancelled'].includes(data.referral.status);
 const transitions = {
@@ -50,6 +54,13 @@ export function NigeriaProviderReferralsWorkspace({ session, accountKey } = {}) 
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [patientPage, setPatientPage] = useState(1);
+  const [patientHasMore, setPatientHasMore] = useState(false);
+  const [patientLoading, setPatientLoading] = useState(false);
+  const [patientError, setPatientError] = useState(null);
+  const patientRequest = useRef(null);
+  const patientQuery = useRef('');
   const [form, setForm] = useState(emptyForm);
   const [outcomes, setOutcomes] = useState({});
   const [recovery, setRecovery] = useState(true);
@@ -67,6 +78,9 @@ export function NigeriaProviderReferralsWorkspace({ session, accountKey } = {}) 
   const loadData = useCallback(async () => {
     if (!isCurrent()) return;
     request.current?.abort();
+    patientRequest.current?.abort();
+    patientRequest.current = null;
+    setPatientLoading(false); setPatientError(null);
     const controller = new AbortController();
     request.current = controller;
     setLoading(true);
@@ -74,7 +88,7 @@ export function NigeriaProviderReferralsWorkspace({ session, accountKey } = {}) 
     setPatients([]);
     setReferrals([]);
     const result = await Promise.allSettled([
-      api.get('/providers/me/patients', { signal: controller.signal }),
+      readPatients(1, patientQuery.current, controller.signal),
       api.get('/ng/clinical/referrals', { signal: controller.signal }),
     ]);
     if (!isCurrent() || controller.signal.aborted) return;
@@ -83,7 +97,8 @@ export function NigeriaProviderReferralsWorkspace({ session, accountKey } = {}) 
     if (patientResult.status === 'fulfilled' && patientResult.value.data?.success && Array.isArray(patientResult.value.data.patients)) {
       const rows = patientResult.value.data.patients;
       setPatients(rows);
-      setForm((current) => rows.some((patient) => patient.id === current.patientUserId) ? current : { ...current, patientUserId: '' });
+      setPatientPage(1);
+      setPatientHasMore(patientResult.value.data.pagination?.hasMore === true);
     } else nextErrors.patients = 'Your patient list could not be loaded. Refresh before creating a referral.';
     const referralResult = result[1];
     if (referralResult.status === 'fulfilled' && referralResult.value.data?.ok && Array.isArray(referralResult.value.data.referrals)) setReferrals(referralResult.value.data.referrals);
@@ -91,6 +106,32 @@ export function NigeriaProviderReferralsWorkspace({ session, accountKey } = {}) 
     setErrors(nextErrors);
     setLoading(false);
   }, [isCurrent]);
+
+  const searchPatients = async (page = 1, query = searchTerm.trim()) => {
+    if (!isCurrent() || busy.current || loading) return;
+    if (page > 1 && patientRequest.current) return;
+    patientRequest.current?.abort();
+    const controller = new AbortController();
+    patientRequest.current = controller;
+    patientQuery.current = query;
+    setPatientLoading(true); setPatientError(null);
+    if (page === 1) { setPatients([]); setPatientHasMore(false); setPatientPage(1); }
+    try {
+      const { data } = await readPatients(page, query, controller.signal);
+      if (!isCurrent() || controller.signal.aborted || patientRequest.current !== controller) return;
+      if (!data?.success || !Array.isArray(data.patients)) throw new Error();
+      setPatients((current) => page === 1 ? data.patients : [...current, ...data.patients.filter(row => !current.some(known => known.id === row.id))]);
+      setPatientPage(page); setPatientHasMore(data.pagination?.hasMore === true);
+      setErrors((current) => { const next = { ...current }; delete next.patients; return next; });
+    } catch {
+      if (isCurrent() && !controller.signal.aborted && patientRequest.current === controller) setPatientError({ page, query });
+    } finally {
+      if (patientRequest.current === controller) {
+        patientRequest.current = null;
+        if (isCurrent()) setPatientLoading(false);
+      }
+    }
+  };
 
   const checkSavedSubmission = useCallback(async () => {
     if (!isCurrent() || busy.current) return;
@@ -145,18 +186,13 @@ export function NigeriaProviderReferralsWorkspace({ session, accountKey } = {}) 
     mounted.current = true;
     setSubmitting(false);
     setForm(emptyForm());
+    setSelectedPatient(null);
     setOutcomes({});
     setSearchTerm('');
     loadData();
     checkSavedSubmission();
-    return () => { request.current?.abort(); mounted.current = false; };
+    return () => { request.current?.abort(); patientRequest.current?.abort(); mounted.current = false; };
   }, [loadData, checkSavedSubmission]);
-
-  const filteredPatients = useMemo(() => patients.filter((patient) => {
-    if (!searchTerm.trim()) return true;
-    const query = searchTerm.toLowerCase();
-    return ([patient.firstName, patient.lastName].filter(Boolean).join(' ') + ' ' + (patient.email || '')).toLowerCase().includes(query);
-  }), [patients, searchTerm]);
 
   const updateForm = (field, value) => { draftVersion.current += 1; setForm((current) => ({ ...current, [field]: value })); };
   const canonicalDraft = JSON.stringify(referralPayload(form));
@@ -165,7 +201,7 @@ export function NigeriaProviderReferralsWorkspace({ session, accountKey } = {}) 
   const submitReferral = async (event) => {
     event.preventDefault();
     if (!isCurrent() || busy.current || loading || errors.patients) return;
-    if (!patients.some((patient) => patient.id === form.patientUserId) || !form.reason.trim()) {
+    if (selectedPatient?.id !== form.patientUserId || !form.reason.trim()) {
       toast({ title: 'Missing referral details', description: 'Select a patient and enter the referral reason.', variant: 'destructive' });
       return;
     }
@@ -191,7 +227,7 @@ export function NigeriaProviderReferralsWorkspace({ session, accountKey } = {}) 
       if (!confirmedReferral(data)) throw new Error('Submission not confirmed');
       confirmSubmission(currentAttempt.key);
       toast({ title: 'Referral save confirmed', description: 'Current recorded status: ' + data.referral.status + '. This confirmation does not establish delivery to a receiving team.' });
-      if (draftVersion.current === submittedVersion) setForm(emptyForm());
+      if (draftVersion.current === submittedVersion) { setForm(emptyForm()); setSelectedPatient(null); }
       await loadData();
     } catch (failure) {
       if (!isCurrent()) return;
@@ -249,10 +285,18 @@ export function NigeriaProviderReferralsWorkspace({ session, accountKey } = {}) 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Share2 className="h-5 w-5 text-blue-600" aria-hidden="true" />Select patient</CardTitle><CardDescription>Patients connected to your provider account.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
-          <div className="relative"><Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" aria-hidden="true" /><Input aria-label="Search patients" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search patients" className="pl-11" disabled={loading || submitting} /></div>
-          {!loading && !errors.patients && (filteredPatients.length ? <div className="space-y-3">{filteredPatients.slice(0, 12).map((patient) => <button key={patient.id} type="button" disabled={submitting} aria-pressed={form.patientUserId === patient.id} onClick={() => updateForm('patientUserId', patient.id)} className={'w-full rounded-2xl border px-4 py-4 text-left transition ' + (form.patientUserId === patient.id ? 'border-blue-400 bg-blue-50' : 'border-slate-200 hover:border-blue-300')}>
+          <div className="flex flex-wrap gap-2">
+            <div className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" aria-hidden="true" /><Input aria-label="Search patients" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); searchPatients(); } }} maxLength={100} placeholder="Search name or email" className="pl-11" disabled={loading || submitting} /></div>
+            <Button type="button" variant="outline" disabled={loading || submitting} onClick={() => searchPatients()}>Search patients</Button>
+          </div>
+          <p className="text-sm text-slate-600">Search your connected patients by name or email, or load the next page.</p>
+          {patientLoading && <p role="status">Loading matching patients…</p>}
+          {patientError && <div role="alert" className="portal-error"><p>Patient search could not be loaded. Your referral details are preserved.</p><Button variant="outline" disabled={patientLoading || loading || submitting} onClick={() => searchPatients(patientError.page, patientError.query)}>Retry patient search</Button></div>}
+          {selectedPatient && <p className="rounded-xl bg-blue-50 p-3 text-blue-950">Selected patient: {[selectedPatient.firstName, selectedPatient.lastName].filter(Boolean).join(' ') || 'Patient'}{selectedPatient.email ? ' · ' + selectedPatient.email : ''}</p>}
+          {!loading && !errors.patients && (patients.length ? <div className="space-y-3">{patients.map((patient) => <button key={patient.id} type="button" disabled={submitting} aria-pressed={form.patientUserId === patient.id} onClick={() => { setSelectedPatient(patient); updateForm('patientUserId', patient.id); }} className={'w-full rounded-2xl border px-4 py-4 text-left transition ' + (form.patientUserId === patient.id ? 'border-blue-400 bg-blue-50' : 'border-slate-200 hover:border-blue-300')}>
             <p className="font-semibold text-slate-950">{[patient.firstName, patient.lastName].filter(Boolean).join(' ') || 'Patient'}</p><p className="mt-1 text-slate-600">{patient.email || 'Email not recorded'}</p>
-          </button>)}</div> : <p className="portal-empty">{searchTerm ? 'No patients match your search.' : 'No patients are available for this provider account.'}</p>)}
+          </button>)}</div> : !patientLoading && !patientError ? <p className="portal-empty">{patientQuery.current ? 'No patients match your search.' : 'No patients are available for this provider account.'}</p> : null)}
+          {patientHasMore && <Button type="button" variant="outline" disabled={patientLoading || loading || submitting} onClick={() => searchPatients(patientPage + 1, patientQuery.current)}>Load more patients</Button>}
         </CardContent>
       </Card>
       <Card>
@@ -269,7 +313,7 @@ export function NigeriaProviderReferralsWorkspace({ session, accountKey } = {}) 
     </div>
     <Card><CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-blue-600" aria-hidden="true" />Referral tracking</CardTitle><CardDescription>Statuses record care-team decisions. External delivery requires the agreed partner channel.</CardDescription></CardHeader>
       <CardContent className="space-y-5">{!loading && !errors.referrals && (referrals.length ? referrals.map((referral) => <div key={referral.id} className="rounded-2xl border border-slate-200 p-5">
-        <div className="flex flex-wrap items-center gap-3"><h3 className="font-semibold">{patients.find((patient) => patient.id === referral.patient_user_id) ? [patients.find((patient) => patient.id === referral.patient_user_id).firstName, patients.find((patient) => patient.id === referral.patient_user_id).lastName].filter(Boolean).join(' ') : 'Patient referral'}</h3><span className="rounded-lg bg-blue-50 px-3 py-2 font-medium text-blue-800">{String(referral.status || 'Status not recorded').replaceAll('_', ' ')}</span><span className="rounded-lg bg-slate-100 px-3 py-2 text-slate-700">{referral.priority || 'Priority not recorded'}</span></div>
+        <div className="flex flex-wrap items-center gap-3"><h3 className="font-semibold">{referral.patient_display_name || 'Patient referral'}</h3><span className="rounded-lg bg-blue-50 px-3 py-2 font-medium text-blue-800">{String(referral.status || 'Status not recorded').replaceAll('_', ' ')}</span><span className="rounded-lg bg-slate-100 px-3 py-2 text-slate-700">{referral.priority || 'Priority not recorded'}</span></div>
         <p className="mt-3 leading-7 text-slate-700">{referral.reason || 'Reason not recorded'}</p><p className="mt-2 text-slate-600">Destination: {referral.target_name || 'Not recorded'}</p>
         {referral.response_summary && <p className="mt-3 rounded-xl bg-slate-50 p-4 text-slate-700">Recorded outcome: {referral.response_summary}</p>}
         {transitions[referral.status]?.length > 0 && <div className="mt-5 space-y-3"><Label htmlFor={'referral-outcome-' + referral.id}>Communication or outcome</Label><textarea id={'referral-outcome-' + referral.id} value={outcomes[referral.id] || ''} onChange={(event) => setOutcomes((current) => ({ ...current, [referral.id]: event.target.value }))} maxLength={6000} rows={2} disabled={submitting} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-3" /><div className="flex flex-wrap gap-3">{transitions[referral.status].map(([status, label]) => <Button key={status} variant="outline" disabled={submitting || !(outcomes[referral.id] || '').trim()} onClick={() => updateReferralStatus(referral, status)}>{label}</Button>)}</div></div>}

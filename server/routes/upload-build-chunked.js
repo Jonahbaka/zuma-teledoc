@@ -1,5 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const { blockReleaseMutation } = require('../utils/releaseRollbackPolicy');
+// Before authentication, upload parsing or any writes; no request can enable it.
+// Read-only authenticated deployment status and logs retain their normal routes.
+router.use(blockReleaseMutation);
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
@@ -10,13 +14,17 @@ const PM2_APP_NAME = process.env.PM2_APP_NAME || 'zuma-teledoc';
 const CRONOPS_ROOT = '/home/ec2-user/zuma-teledoc/cronops';
 const CHUNK_DIR = '/tmp/build-chunks';
 
-// Ensure chunk directory exists
-fs.mkdirSync(CHUNK_DIR, { recursive: true });
+// Do not create upload state at module import while release mutations are blocked.
 
-const upload = multer({
-  dest: CHUNK_DIR,
-  limits: { fileSize: 100 * 1024 * 1024 } // 100MB per chunk
-});
+// Construct storage only after the release guard. Multer disk storage creates
+// its destination during construction, even before any request is parsed.
+function parseReleaseUpload(req, res, next) {
+  const upload = multer({
+    dest: CHUNK_DIR,
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB per chunk
+  });
+  return upload.single('chunk')(req, res, next);
+}
 
 /**
  * Chunked upload endpoint
@@ -30,7 +38,7 @@ const upload = multer({
  *      -H "x-deploy-token: $DEPLOY_SECRET"
  */
 
-router.post('/', upload.single('chunk'), (req, res) => {
+router.post('/', parseReleaseUpload, (req, res) => {
   const token = req.headers['x-deploy-token'];
   if (!DEPLOY_SECRET || token !== DEPLOY_SECRET) {
     if (req.file) fs.unlinkSync(req.file.path);

@@ -51,10 +51,7 @@ function createSimulationPool(env = process.env) {
   return {
     ...resolved,
     pool: new Pool({
-      connectionString: resolved.url,
-      ssl: resolved.url.includes('sslmode=') || resolved.url.includes('neon.tech')
-        ? { rejectUnauthorized: false }
-        : false,
+      ...require('../../server/db/connectionConfig').buildDatabaseConfig({ ...env, DATABASE_URL: resolved.url }, { requireUrl: true }),
       max: Number(env.SIMULATION_DB_POOL_MAX || 4),
       connectionTimeoutMillis: Number(env.SIMULATION_DB_CONNECT_TIMEOUT_MS || 8000),
       query_timeout: Number(env.SIMULATION_DB_QUERY_TIMEOUT_MS || 15000),

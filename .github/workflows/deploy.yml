@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 concurrency:
@@ -15,11 +16,24 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      # Read-only acceptance check. This never dispatches or reruns paid jobs.
+      # Pending, unavailable or failed checks block this deployment attempt.
+      - name: Require complete-release rollback
+        run: bash scripts/check-release-rollback.sh
+
+      - name: Require exact-commit CI and CareOps acceptance
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/verify_release_checks.py
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -56,6 +70,11 @@ jobs:
           tar --exclude='.next/cache' -czf /tmp/doctarx-next-artifact.tar.gz .next public/robots.txt public/sitemap.xml public/ng-presentation
           ls -lh /tmp/doctarx-next-artifact.tar.gz
           echo "Artifact BUILD_ID=$(cat .next/BUILD_ID)"
+
+      - name: Recheck exact-commit acceptance before upload
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/verify_release_checks.py
 
       - name: Upload artifact and start EC2 deploy
         env:

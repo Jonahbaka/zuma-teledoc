@@ -11,46 +11,20 @@
 require('dotenv').config();
 
 const { Pool } = require('pg');
-const fs = require('fs');
-const path = require('path');
-const { resolveNeonUrl } = require('./resolve-neon-url');
-
-// ─── SSL config for non-Neon URLs ────────────────────────────────────────────
-function buildSslConfig(rawUrl) {
-  if (!rawUrl || !rawUrl.includes('sslmode=')) return false;
-
-  const certPath = process.env.PGSSLROOTCERT
-    ? path.resolve(process.cwd(), process.env.PGSSLROOTCERT)
-    : null;
-
-  if (rawUrl.includes('sslmode=verify-full') && certPath && fs.existsSync(certPath)) {
-    return { rejectUnauthorized: true, ca: fs.readFileSync(certPath).toString() };
-  }
-  return { rejectUnauthorized: false };
-}
+const { buildDatabaseConfig, isNeonHost } = require('./connectionConfig');
+const { resolveNeonConfig } = require('./resolve-neon-url');
 
 // ─── Lazy pool (initialized on first use after Neon IPv4 resolution) ─────────
 let _pool = null;
 let _poolInit = null;
 
 async function initPool() {
-  const rawUrl = process.env.DATABASE_URL;
-  const isNeon = rawUrl && rawUrl.includes('neon.tech');
-
-  let connectionString, ssl;
-
-  if (isNeon) {
-    ({ connectionString, ssl } = await resolveNeonUrl(rawUrl));
-  } else {
-    ssl = buildSslConfig(rawUrl);
-    connectionString = rawUrl
-      ? rawUrl.replace(/[?&]sslmode=[^&]+/, (m) => (m.startsWith('?') ? '?' : '')).replace(/\?$/, '')
-      : rawUrl;
-  }
+  const initialConfig = buildDatabaseConfig(process.env);
+  const isNeon = isNeonHost(initialConfig.host);
+  const connection = isNeon ? await resolveNeonConfig(initialConfig) : initialConfig;
 
   const pool = new Pool({
-    connectionString,
-    ssl,
+    ...connection,
     max: isNeon ? 5 : (parseInt(process.env.DB_POOL_MAX) || 10),
     keepAlive: true,
     keepAliveInitialDelayMillis: parseInt(process.env.DB_KEEPALIVE_DELAY_MS, 10) || 10000,
@@ -61,7 +35,7 @@ async function initPool() {
   });
 
   pool.on('error', (err) => {
-    console.error('Unexpected database pool error:', err);
+    console.error('Unexpected database pool error:', { code: 'DATABASE_POOL_ERROR' });
     // DO NOT process.exit() — kills Cloud Run containers before port binds
   });
 
@@ -96,7 +70,9 @@ const query = async (text, params) => {
     }
     return result;
   } catch (error) {
-    console.error('Database query error:', { text: text.substring(0, 100), error: error.message });
+    // SQL text and driver errors can include clinical values or credentials.
+    // Preserve the original rejection for callers without copying it to logs.
+    console.error('Database query error:', { code: 'DATABASE_QUERY_FAILED' });
     throw error;
   }
 };
@@ -111,7 +87,8 @@ const getClient = async () => {
     console.error('Client has been checked out for more than 30 seconds!');
   }, 30000);
 
-  client.release = () => { clearTimeout(timeout); return release(); };
+  // Preserve node-postgres discard/error semantics for failed transactions.
+  client.release = (...args) => { clearTimeout(timeout); return release(...args); };
   client.query = (...args) => originalQuery(...args);
   return client;
 };
@@ -173,7 +150,7 @@ function getPool() {
 
 // Kick off init eagerly so the proxy window is short.
 getPoolInstance().catch((err) => {
-  console.error('Eager pool init failed (will retry on demand):', err.message);
+  console.error('Database pool initialization failed:', { code: /^DATABASE_[A-Z_]+$/.test(err?.code || '') ? err.code : 'DATABASE_INITIALIZATION_FAILED' });
 });
 
 module.exports = {

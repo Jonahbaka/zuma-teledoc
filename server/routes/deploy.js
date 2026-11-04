@@ -1,5 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const { blockReleaseMutation } = require('../utils/releaseRollbackPolicy');
+// Before authentication, upload parsing or any writes; no request can enable it.
+// Read-only authenticated deployment status and logs retain their normal routes.
+router.use(blockReleaseMutation);
 const path = require('path');
 const { buildDeployCommand, PROJECT_ROOT } = require('./deploy-command');
 const { runDetachedCommand } = require('./run-detached-command');

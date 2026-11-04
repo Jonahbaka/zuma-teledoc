@@ -118,8 +118,19 @@ function toDiagnosticReport(row) {
     throw Object.assign(new Error('The laboratory report cannot be safely represented from its recorded state.'), { statusCode: 503 });
   }
   const code=coded(testName,loincCode,'http://loinc.org');
-  const result=row.result_value_encrypted?decrypt(row.result_value_encrypted,row.result_value_iv,row.result_value_tag):row.result_value;
-  if(row.result_value_encrypted && result===null)throw Object.assign(new Error('The laboratory result could not be securely read.'),{statusCode:503});
+  const protectedValue = [row.result_value_encrypted, row.result_value_iv, row.result_value_tag];
+  // Any surviving envelope field is evidence of a protected value, including an
+  // empty ciphertext. A damaged envelope must not revive a stale plaintext copy.
+  // All-null/absent envelopes retain the existing legacy plaintext read path.
+  const hasProtectedValue = protectedValue.some(value => value !== null && value !== undefined);
+  let result = row.result_value;
+  if (hasProtectedValue) {
+    if (!protectedValue.every(value => typeof value === 'string' && value.length > 0)) {
+      throw Object.assign(new Error('The laboratory result could not be securely read.'), { statusCode: 503 });
+    }
+    result = decrypt(...protectedValue);
+    if (result === null) throw Object.assign(new Error('The laboratory result could not be securely read.'), { statusCode: 503 });
+  }
   const observation={resourceType:'Observation',id:'laboratory-result',status:row.status==='partial'?'preliminary':row.status,code,subject:{reference:`Patient/${row.patient_user_id}`},...(row.collected_at?{effectiveDateTime:iso(row.collected_at)}:{})};
   if(result!==null && result!==undefined && String(result).trim().length)observation.valueString=String(result);
   else observation.dataAbsentReason=absent;

@@ -14,7 +14,7 @@
  *   streams           – { [socketId]: MediaStream }  remote media
  *   phase             – 'idle' | 'connecting' | 'joined' | 'error'
  *   error             – error message string when phase==='error'
- *   connectionQuality – 'good' | 'fair' | 'poor' | null (RTCPeerConnection stats)
+ *   connectionQuality – 'good' | 'fair' | 'poor' | 'unknown' | null (RTCPeerConnection stats)
  *   self              – this client's participant object
  *   setMute(kind, muted) – toggle local audio/video tracks
  *   startScreenShare()   – getDisplayMedia and replace video track in all peers
@@ -26,6 +26,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { installSocketSessionRefresh } from '@/lib/socketSession';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { conf } from './conferenceApi';
+import { createRtcQualitySampler, worstConnectionQuality } from '@/lib/rtcConnectionQuality.cjs';
 
 let ioPromise = null;
 function loadSocketIO() {
@@ -299,40 +300,23 @@ export function useConferenceSignaling({ roomId, enabled = true, displayName = '
 
   // ── Connection quality polling ─────────────────────────────────────────────
   useEffect(() => {
-    const id = setInterval(async () => {
-      const pcs = Array.from(pcByPeer.current.values()).filter(
-        (pc) => pc.connectionState === 'connected'
-      );
-      if (!pcs.length) { setConnectionQuality(null); return; }
-
-      let totalLoss = 0;
-      let totalRtt  = 0;
-      let count     = 0;
-
-      await Promise.all(
-        pcs.map(async (pc) => {
-          try {
-            const stats = await pc.getStats();
-            stats.forEach((report) => {
-              if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
-                if (typeof report.fractionLost === 'number') { totalLoss += report.fractionLost; count++; }
-                if (typeof report.roundTripTime === 'number') { totalRtt  += report.roundTripTime; }
-              }
-            });
-          } catch {}
-        })
-      );
-
-      if (!count) { setConnectionQuality(null); return; }
-      const avgLoss = totalLoss / count;
-      const avgRtt  = totalRtt  / count;
-      if      (avgLoss < 0.02 && avgRtt < 0.15) setConnectionQuality('good');
-      else if (avgLoss < 0.05 && avgRtt < 0.30) setConnectionQuality('fair');
-      else                                        setConnectionQuality('poor');
-    }, 5000);
-
-    return () => clearInterval(id);
-  }, []);
+    if (!enabled || !isAuthenticated) { setConnectionQuality(null); return undefined; }
+    let cancelled = false, timer = null;
+    const sample = createRtcQualitySampler();
+    const tick = async () => {
+      const epoch = mediaEpoch.current;
+      const peers = Array.from(pcByPeer.current.entries());
+      const qualities = await Promise.all(peers.map(([, pc]) => sample(pc)));
+      if (cancelled) return;
+      if (epoch === mediaEpoch.current && peers.length === pcByPeer.current.size && peers.every(([id, pc]) => pcByPeer.current.get(id) === pc)) {
+        // A healthy leg must not average away another participant's bad audio.
+        setConnectionQuality(worstConnectionQuality(qualities));
+      }
+      timer = setTimeout(tick, 5000);
+    };
+    tick();
+    return () => { cancelled = true; if (timer !== null) clearTimeout(timer); setConnectionQuality(null); };
+  }, [enabled, isAuthenticated, roomId, currentUserId, reconnectKey]);
 
   // ── Public actions ─────────────────────────────────────────────────────────
   const setMute = useCallback((kind, muted) => {

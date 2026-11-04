@@ -4,13 +4,17 @@ const assert = require('node:assert/strict');
 const { Pool } = require('pg');
 const service = require('../services/pharmacy/pharmacistRxService');
 const { createBrowserFixture } = require('./helpers/medication-delivery-fixture');
+const { fixtureTargetSafety } = require('../scripts/fixtureTargetSafety');
 const target = process.env.SIMULATION_DATABASE_URL;
 const pause = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
 test('PostgreSQL pharmacist gateway serializes suspension/rerouting and never commits without its audit', { skip: !target }, async t => {
-  const url = new URL(target); assert.ok(['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'), 'Only an explicitly disposable loopback database is supported.');
-  const previous = { NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY }; process.env.NODE_ENV = 'test';
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
   const pool = new Pool({ connectionString: target, max: 8 });
+  const actualTarget = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(actualTarget.skipped, false, actualTarget.reason);
+  const previous = { NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY }; process.env.NODE_ENV = 'test';
   try {
     const f = await createBrowserFixture({ pool }); const other = await createBrowserFixture({ pool });
     await t.test('nullable and explicit lifecycle filters use the PostgreSQL prescription enum consistently', async () => {

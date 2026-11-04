@@ -203,3 +203,28 @@ Still required before production readiness is claimed:
 
 No production database, backup, credentials, infrastructure, or deployed application
 was accessed or changed when preparing these controls.
+
+## 7. Account lifecycle is not record erasure
+
+The generic `DELETE /api/admin/users/:id` endpoint now refuses permanent account
+removal before any target lookup or account/clinical mutation. Its former physical user deletion
+could cascade through clinical tables. Existing audit foreign keys and immutable
+revision records can block some deletions, but are not a complete preservation
+control for every clinical record set. The admin role-management page no longer
+offers that destructive action. Requests reaching the refusal attempt metadata-only
+failure auditing; an audit storage failure does not undo the refusal. Authentication
+or role denials occur before that route-specific audit.
+
+Existing account deactivation/status controls, patient self-deactivation, and the
+reversible test-account lifecycle are unchanged. A refused deletion does not
+silently deactivate an account. Deactivation retains records; it is not erasure.
+
+Any future erasure workflow requires separately approved institutional retention,
+legal-hold and data-handling decisions, a complete dependency/backup assessment,
+and independent release review. This safeguard does not prescribe a retention
+period, create an erasure entitlement, or authorize database changes. Do not
+replace it with a partial table-count allowlist or a production feature bypass.
+
+This source safeguard is not evidence that production data was deleted or that a
+restore was performed. Validate it on the exact proposed release alongside the
+existing release gates; no real deletion is required to verify the refusal.

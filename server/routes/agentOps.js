@@ -185,7 +185,8 @@ router.post('/runtime/run-next', ...adminOnly, async (_req, res) => {
     const task = await operationalAgentRuntime.runNextTask();
     res.json({ success: true, data: task || { status: 'idle', reason: 'No queued tasks' } });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    const unavailable = ['WORKER_ADMISSION_CLOSED', 'AGENT_EXECUTION_DISABLED'].includes(error.code);
+    res.status(unavailable ? 503 : 500).json({ success: false, code: unavailable ? error.code : undefined, error: error.message });
   }
 });
 
@@ -195,7 +196,8 @@ router.post('/runtime/tasks/:id/run', ...adminOnly, async (req, res) => {
     const task = await operationalAgentRuntime.runNextTask(req.params.id);
     res.json({ success: true, data: task || { status: 'idle', reason: 'Task is not queued or was already claimed' } });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    const unavailable = ['WORKER_ADMISSION_CLOSED', 'AGENT_EXECUTION_DISABLED'].includes(error.code);
+    res.status(unavailable ? 503 : 500).json({ success: false, code: unavailable ? error.code : undefined, error: error.message });
   }
 });
 

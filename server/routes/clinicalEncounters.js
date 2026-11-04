@@ -33,7 +33,9 @@ function clinicalFailure(res, error) {
     error: status === 400 ? 'Valid clinical references and record details are required.'
       : status === 403 ? error.code === 'CLINICAL_NOTE_RELEASE_NOT_CONFIGURED' ? 'Clinical notes are not available through a configured patient-release workflow.' : 'This clinical record is not available in your current authorized context.'
       : status === 404 ? 'Clinical record not found.'
-      : status === 409 ? 'The clinical record no longer accepts this change. Refresh the current record; signed notes require an amendment.'
+      : status === 409 ? error.code === 'CLINICAL_NOTE_REVISION_CONFLICT'
+        ? 'The note changed after it was loaded. Keep your draft and review the current note before saving or signing.'
+        : 'The clinical record no longer accepts this change. Refresh the current record; signed notes require an amendment.'
       : 'Clinical records are temporarily unavailable. No record change has been confirmed.',
     code: /^(?:CLINICAL_[A-Z_]+|CONSENT_REQUIRED)$/.test(error.code || '') ? error.code : status === 400 ? 'CLINICAL_INPUT_INVALID' : 'CLINICAL_REQUEST_UNAVAILABLE' });
 }
@@ -110,6 +112,10 @@ const createAmendmentSchema = z.object({
   icdCodes: z.array(z.string()).optional(),
   cptCodes: z.array(z.string()).optional()
 });
+
+const noteRevisionSchema = z.string().regex(/^[a-f\d]{64}$/).optional();
+const updateNoteSchema = createNoteSchema.partial().extend({ expectedRevision: noteRevisionSchema });
+const signNoteSchema = z.object({ expectedRevision: noteRevisionSchema });
 
 const allergySchema = z.object({
   allergen: z.string().min(1),
@@ -197,7 +203,8 @@ router.post('/',
         try {
           const consent = await telehealthConsentService.validateConsentForEncounter(
             data.patientId,
-            data.patientState
+            data.patientState,
+            req.user
           );
           data.telehealthConsentId = consent.id;
         } catch (consentError) {
@@ -425,7 +432,7 @@ router.put('/notes/:noteId',
   auditMiddleware('update', 'clinical_note', { phiAccessed: true }),
   async (req, res) => {
     try {
-      const data = validate(createNoteSchema.partial(), req.body);
+      const data = validate(updateNoteSchema, req.body);
       
       const note = await clinicalEncounterService.updateNote(
         req.params.noteId,
@@ -455,9 +462,11 @@ router.post('/notes/:noteId/sign',
   auditMiddleware('update', 'clinical_note', { description: 'Sign clinical note' }),
   async (req, res) => {
     try {
+      const data = validate(signNoteSchema, req.body || {});
       const note = await clinicalEncounterService.signNote(
         req.params.noteId,
-        req.user.id
+        req.user.id,
+        data
       );
       
       res.json({
@@ -1227,7 +1236,7 @@ router.get('/consent/check',
         });
       }
       
-      const hasConsent = await telehealthConsentService.hasValidConsent(checkPatientId, state);
+      const hasConsent = await telehealthConsentService.hasValidConsent(checkPatientId, state, req.user);
       
       res.json({
         success: true,
@@ -1236,10 +1245,7 @@ router.get('/consent/check',
       });
     } catch (error) {
       logger.error('Check consent error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to check consent'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );
@@ -1253,7 +1259,7 @@ router.get('/patient/:patientId/consents',
   canAccessPatient,
   async (req, res) => {
     try {
-      const consents = await telehealthConsentService.getPatientConsents(req.params.patientId);
+      const consents = await telehealthConsentService.getPatientConsents(req.params.patientId, req.user);
       
       res.json({
         success: true,
@@ -1261,10 +1267,7 @@ router.get('/patient/:patientId/consents',
       });
     } catch (error) {
       logger.error('Get consents error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get consents'
-      });
+      return clinicalFailure(res, error);
     }
   }
 );

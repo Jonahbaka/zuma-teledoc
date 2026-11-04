@@ -53,7 +53,7 @@ test('AI import never updates an existing note or accepts malformed references',
 const source=fs.readFileSync(path.join(__dirname,'../../app/(dashboard)/provider/encounters/[id]/page.js'),'utf8');
 function view() {
   let result; let resolve; let imported; const messages=[];
-  const context={ currentNoteDraft:{current:{subjective:'',objective:'',assessment:'',plan:'',physicalExam:''}},currentEncounter:{current:canonicalId},currentAiSuggestion:{current:suggestionId},encounterId:canonicalId,aiSuggestionId:suggestionId,importVersion:{current:0},setImportingDraft(){},setNoteDraft(value){result=value;},setImportedAiSuggestionId(value){imported=value;},toast(value){messages.push(value);},clinicalEhrAPI:{getReviewedAiDraft:()=>new Promise(done=>{resolve=done;})} };
+  const context={ operation:{current:null},mounted:{current:true},editorRef:{current:{}},installEditor(){},soapFields: note => note, changeDraft(value){result=value;}, currentNoteDraft:{current:{subjective:'',objective:'',assessment:'',plan:'',physicalExam:''}},currentEncounter:{current:canonicalId},currentAiSuggestion:{current:suggestionId},encounterId:canonicalId,aiSuggestionId:suggestionId,importVersion:{current:0},setImportingDraft(){},setNoteDraft(value){result=value;},setImportedAiSuggestionId(value){imported=value;},toast(value){messages.push(value);},clinicalEhrAPI:{getReviewedAiDraft:()=>new Promise(done=>{resolve=done;})} };
   vm.runInNewContext(source.slice(source.indexOf('  const importReviewedDraft ='),source.indexOf('  const createOrUpdateNote =')).replace('const importReviewedDraft =','globalThis.importReviewedDraft ='),context);
   return {context,request:context.importReviewedDraft,resolve:()=>resolve({data:{success:true,aiSuggestionId:suggestionId,noteDraft:{subjective:'Reviewed'}}}),result:()=>result,imported:()=>imported,messages};
 }
@@ -67,7 +67,8 @@ test('explicit UI import preserves edits made before or during loading and ignor
 test('import remains separate from save/sign; imported source creates a new note', () => {
   const importHandler=source.slice(source.indexOf('  const importReviewedDraft ='),source.indexOf('  const createOrUpdateNote ='));
   assert.doesNotMatch(importHandler,/\.createNote\(|\.updateNote\(|\.signNote\(/);
-  assert.match(source,/if \(!importedAiSuggestionId && latestNote/);
+  assert.match(importHandler,/installEditor\(\{ encounterId: requestedEncounter, note: null/);
+  assert.match(source,/aiSuggestionId: importedAiSuggestionId/);
   const backend=fs.readFileSync(path.join(__dirname,'../services/clinicalEncounterService.js'),'utf8');
   assert.match(backend,/new_values->>'aiSuggestionId'=\$1/);
   assert.match(backend,/CLINICAL_AI_ALREADY_IMPORTED/);
@@ -100,7 +101,7 @@ test('same reviewed source replay returns existing note; conflicting replay cann
 
  test('delayed save completion cannot clear provenance on another encounter', () => {
   const save = source.slice(source.indexOf('  const createOrUpdateNote ='), source.indexOf('  const signNote ='));
-  assert.match(save, /const currentSave = \(\) => currentEncounter.current === requestedEncounter && importVersion.current === requestVersion/);
+  assert.match(save, /const currentSave = \(\) => mounted.current && currentEncounter.current === requestedEncounter && operation.current === request/);
   assert.match(save, /if \(!currentSave\(\)\) return;[\s\S]*?setImportedAiSuggestionId\(null\)/);
 });
 

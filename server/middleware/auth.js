@@ -72,6 +72,9 @@ function isPasswordChangeAllowedRequest(req) {
  * Verify JWT access token
  */
 const authenticate = async (req, res, next) => {
+  // Keep diagnostics limited to server-controlled stages. Dependency errors can
+  // contain credentials, SQL values or clinical data, even in their stack/name.
+  let failureStage = 'token_verification';
   try {
     // Get token from Authorization header or cookie
     let token = null;
@@ -95,6 +98,7 @@ const authenticate = async (req, res, next) => {
     const decoded = jwt.verify(token, ACCESS_TOKEN_SECRET);
     
     // Get user from database
+    failureStage = 'user_lookup';
     const { rows } = await db.query(
       `SELECT id, email, role, first_name, last_name, is_active, mfa_enabled, provider_status, access_level,
               must_change_password, testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier,
@@ -120,8 +124,17 @@ const authenticate = async (req, res, next) => {
       });
     }
     
+    failureStage = 'session_verification';
     await assertCurrentSession(db, decoded, user);
     req.authSessionId = decoded.sessionId || null;
+    // Server-only metadata for revocable long-lived voice authorization. Do
+    // not attach raw tokens or let request bodies supply this binding.
+    req.authSessionContext = Object.freeze({
+      userId: user.id,
+      familyId: decoded.sessionId || null,
+      credentialVersion: Number.isSafeInteger(decoded.sessionVersion) ? decoded.sessionVersion : null,
+      expiresAt: Number.isSafeInteger(decoded.exp) ? decoded.exp * 1000 : null
+    });
 
     const isPasswordChangeAllowed = isPasswordChangeAllowedRequest(req);
 
@@ -134,9 +147,11 @@ const authenticate = async (req, res, next) => {
       });
     }
     
+    failureStage = 'membership_lookup';
     const financialAccess = await consumerMembership.readAuthority(user.id, { knownUser: user });
     req.financialAccess = financialAccess;
     // Attach current financial authority without promoting a cached paid tier.
+    failureStage = 'user_context';
     req.user = {
       id: user.id,
       email: user.email,
@@ -167,8 +182,8 @@ const authenticate = async (req, res, next) => {
     
     next();
   } catch (error) {
-    if (error.statusCode === 401) return res.status(401).json({ success: false, error: 'Session is no longer valid' });
-    if (error.name === 'TokenExpiredError') {
+    if (error?.statusCode === 401) return res.status(401).json({ success: false, error: 'Session is no longer valid' });
+    if (error?.name === 'TokenExpiredError') {
       return res.status(401).json({
         success: false,
         error: 'Token expired',
@@ -176,7 +191,7 @@ const authenticate = async (req, res, next) => {
       });
     }
     
-    if (error.name === 'JsonWebTokenError') {
+    if (error?.name === 'JsonWebTokenError') {
       return res.status(401).json({
         success: false,
         error: 'Invalid token',
@@ -184,11 +199,11 @@ const authenticate = async (req, res, next) => {
       });
     }
     
-    logger.error('Authentication error', { error: error.message, stack: error.stack });
-    console.error('Auth middleware error:', error.message);
+    logger.error('Authentication error', { code: 'AUTHENTICATION_FAILED', stage: failureStage });
     return res.status(500).json({
       success: false,
-      error: 'Authentication failed: ' + error.message
+      error: 'Authentication failed',
+      code: 'AUTHENTICATION_FAILED'
     });
   }
 };

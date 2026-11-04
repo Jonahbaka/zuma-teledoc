@@ -30,6 +30,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Require complete-release rollback
+        run: bash scripts/check-release-rollback.sh
+
       - name: Recover EC2 host and DoctaRx service
         env:
           AWS_ACCESS_KEY_ID_RAW: ${{ secrets.ACCESS_KEY_ID }}

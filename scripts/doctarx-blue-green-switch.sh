@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Must fail before inspecting/moving build slots or contacting a process manager.
+bash "$(cd "$(dirname "$0")" && pwd)/check-release-rollback.sh"
+
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 NGINX_CONF="${NGINX_CONF:-/etc/nginx/conf.d/doctarx.conf}"
 SOURCE_DIST="${1:-${NEXT_STAGING_DIR:-.next.build}}"
@@ -133,7 +136,7 @@ if [ "${DEPLOY_TRANSPORT:-auto}" = cloudflare-tunnel ] || { [ ! -f "$NGINX_CONF"
     stop_pm2_name "$candidate_name"
     if [ "$rc" != 0 ] && [ "$switched" = yes ]; then
       log "restoring ${app_name} to ${previous_dist}"
-      NODE_ENV=production PORT="$origin_port" NEXT_DIST_DIR="$previous_dist" APP_BUILD_ID="$previous_build_id" \
+      DOCTARX_DEPLOY_CHECK=false NODE_ENV=production PORT="$origin_port" NEXT_DIST_DIR="$previous_dist" APP_BUILD_ID="$previous_build_id" \
         pm2 restart "$app_name" --update-env
       wait_for_api_health "$origin_port" || true
       pm2 save >/dev/null 2>&1 || true
@@ -141,13 +144,13 @@ if [ "${DEPLOY_TRANSPORT:-auto}" = cloudflare-tunnel ] || { [ ! -f "$NGINX_CONF"
     exit "$rc"
   }
   trap candidate_cleanup EXIT
-  NODE_ENV=production PORT="$candidate_port" NEXT_DIST_DIR="$candidate_dist" APP_BUILD_ID="$build_id" \
+  DOCTARX_DEPLOY_CHECK=true NODE_ENV=production PORT="$candidate_port" NEXT_DIST_DIR="$candidate_dist" APP_BUILD_ID="$build_id" \
     pm2 start server/index.js --name "$candidate_name" --cwd "$PROJECT_ROOT" --wait-ready --listen-timeout 15000 --kill-timeout 30000 --max-memory-restart 1500M --time
   wait_for_api_health "$candidate_port" "$build_id"
   wait_for_ng_health "$candidate_port"
   stop_pm2_name "$candidate_name"
   switched=yes
-  NODE_ENV=production PORT="$origin_port" NEXT_DIST_DIR="$candidate_dist" APP_BUILD_ID="$build_id" \
+  DOCTARX_DEPLOY_CHECK=false NODE_ENV=production PORT="$origin_port" NEXT_DIST_DIR="$candidate_dist" APP_BUILD_ID="$build_id" \
     pm2 restart "$app_name" --update-env
   wait_for_api_health "$origin_port"
   wait_for_ng_health "$origin_port"

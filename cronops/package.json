@@ -8,7 +8,7 @@
     "start": "ts-node --project tsconfig.json index.ts",
     "start:prod": "ts-node --project tsconfig.json --transpile-only index.ts",
     "dev": "CRONOPS_DRY_RUN=true ts-node --project tsconfig.json index.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
     "run-task": "ts-node --project tsconfig.json scripts/run-task.ts"
   },
   "dependencies": {

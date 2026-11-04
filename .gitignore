@@ -112,6 +112,7 @@ __pycache__/
 
 # Local browser/e2e evidence artifacts
 artifacts/
+private-uploads/
 
 # Runtime blue/green deployment slots
 .next.blue/
@@ -126,3 +127,7 @@ artifacts/
 .next-public-platform-preview/
 .next-membership-platform-preview/
 .next-medication-preview/
+
+# Local voice prototype compiler output
+.next-voice-lab/
+.next-voice-build/

@@ -10,6 +10,7 @@ const path = require('path');
 const { execSync, spawn } = require('child_process');
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
+const { assertCodeMutationAllowed } = require('../utils/runtimeStatePolicy');
 
 // ═══════════════════════════════════════════════════════════════════
 // SAFE PATH RESOLUTION — Prevent directory traversal
@@ -101,6 +102,7 @@ function readFile(relativePath) {
 }
 
 function writeFile(relativePath, content) {
+  assertCodeMutationAllowed('writeFile');
   const fullPath = safePath(relativePath);
   const dir = path.dirname(fullPath);
   if (!fs.existsSync(dir)) {
@@ -122,6 +124,7 @@ function writeFile(relativePath, content) {
 }
 
 function createFile(relativePath, content = '') {
+  assertCodeMutationAllowed('createFile');
   const fullPath = safePath(relativePath);
   if (fs.existsSync(fullPath)) {
     throw new Error(`File already exists: ${relativePath}`);
@@ -130,6 +133,7 @@ function createFile(relativePath, content = '') {
 }
 
 function deleteFile(relativePath) {
+  assertCodeMutationAllowed('deleteFile');
   const fullPath = safePath(relativePath);
   if (!fs.existsSync(fullPath)) {
     throw new Error(`File not found: ${relativePath}`);
@@ -231,6 +235,7 @@ function diffFiles(relativePath, newContent) {
 const activeProcesses = new Map();
 
 function executeCode(code, language = 'javascript', timeout = 15000) {
+  assertCodeMutationAllowed('executeCode');
   const execId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   let output = '', error = '', exitCode = null;
   const startTime = Date.now();
@@ -318,6 +323,7 @@ function executeCode(code, language = 'javascript', timeout = 15000) {
 
 // Run a persistent terminal session (for dev servers etc.)
 function spawnProcess(command, name) {
+  assertCodeMutationAllowed('spawnProcess');
   const id = Date.now().toString(36);
   const proc = spawn(command, { cwd: PROJECT_ROOT, shell: true, env: process.env });
   const logs = [];
@@ -344,6 +350,7 @@ function getProcessOutput(id) {
 }
 
 function killProcess(id) {
+  assertCodeMutationAllowed('killProcess');
   const p = activeProcesses.get(id);
   if (!p) return false;
   p.proc.kill('SIGTERM');
@@ -451,6 +458,7 @@ Provide the corrected code and explain what was wrong.`;
 }
 
 async function createTool(description, requirements = {}) {
+  assertCodeMutationAllowed('createTool');
   const prompt = `Create a new tool/utility for the DoctaRx telehealth platform.
 
 DESCRIPTION: ${description}
@@ -589,6 +597,7 @@ function getProjectStats() {
 }
 
 function getLintErrors() {
+  assertCodeMutationAllowed('getLintErrors');
   try {
     const output = execSync('npx next lint --format json 2>/dev/null || true', {
       cwd: PROJECT_ROOT,
@@ -606,6 +615,7 @@ function getLintErrors() {
 // ═══════════════════════════════════════════════════════════════════
 
 function gitStatus() {
+  assertCodeMutationAllowed('gitStatus');
   try {
     const status = execSync('git status --porcelain', { cwd: PROJECT_ROOT, encoding: 'utf8' });
     const branch = execSync('git branch --show-current', { cwd: PROJECT_ROOT, encoding: 'utf8' }).trim();
@@ -617,6 +627,7 @@ function gitStatus() {
 }
 
 function gitDiff(filePath) {
+  assertCodeMutationAllowed('gitDiff');
   try {
     const cmd = filePath ? `git diff -- "${filePath}"` : 'git diff';
     return execSync(cmd, { cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 10000 }).substring(0, 50000);
@@ -626,6 +637,7 @@ function gitDiff(filePath) {
 }
 
 function gitLog(count = 20) {
+  assertCodeMutationAllowed('gitLog');
   try {
     return execSync(`git log --oneline -${count}`, { cwd: PROJECT_ROOT, encoding: 'utf8' });
   } catch (e) {
@@ -638,6 +650,7 @@ function gitLog(count = 20) {
 // ═══════════════════════════════════════════════════════════════════
 
 function gitAdd(files = '.') {
+  assertCodeMutationAllowed('gitAdd');
   try {
     const target = Array.isArray(files) ? files.map(f => `"${f}"`).join(' ') : files;
     const output = execSync(`git add ${target}`, { cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 10000 });
@@ -648,6 +661,7 @@ function gitAdd(files = '.') {
 }
 
 function gitCommit(message) {
+  assertCodeMutationAllowed('gitCommit');
   try {
     const output = execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, {
       cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 30000
@@ -659,6 +673,7 @@ function gitCommit(message) {
 }
 
 function gitPush(branch = null, force = false) {
+  assertCodeMutationAllowed('gitPush');
   try {
     const currentBranch = branch || execSync('git branch --show-current', { cwd: PROJECT_ROOT, encoding: 'utf8' }).trim();
     const forceFlag = force ? ' --force' : '';
@@ -672,6 +687,7 @@ function gitPush(branch = null, force = false) {
 }
 
 function gitPull(branch = null) {
+  assertCodeMutationAllowed('gitPull');
   try {
     const currentBranch = branch || execSync('git branch --show-current', { cwd: PROJECT_ROOT, encoding: 'utf8' }).trim();
     const output = execSync(`git pull origin ${currentBranch}`, {
@@ -684,6 +700,7 @@ function gitPull(branch = null) {
 }
 
 function gitCreateBranch(branchName, checkout = true) {
+  assertCodeMutationAllowed('gitCreateBranch');
   try {
     const cmd = checkout ? `git checkout -b ${branchName}` : `git branch ${branchName}`;
     const output = execSync(cmd, { cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 10000 });
@@ -694,6 +711,7 @@ function gitCreateBranch(branchName, checkout = true) {
 }
 
 function gitCheckout(branch) {
+  assertCodeMutationAllowed('gitCheckout');
   try {
     const output = execSync(`git checkout ${branch}`, { cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 10000 });
     return { success: true, branch, output };
@@ -703,6 +721,7 @@ function gitCheckout(branch) {
 }
 
 function gitBranches() {
+  assertCodeMutationAllowed('gitBranches');
   try {
     const local = execSync('git branch', { cwd: PROJECT_ROOT, encoding: 'utf8' }).trim().split('\n').map(b => {
       const isCurrent = b.startsWith('*');
@@ -719,6 +738,7 @@ function gitBranches() {
 }
 
 function gitCommitAndPush(message, files = '.') {
+  assertCodeMutationAllowed('gitCommitAndPush');
   const addResult = gitAdd(files);
   if (!addResult.success) return { success: false, step: 'add', error: addResult.error };
   
@@ -732,6 +752,7 @@ function gitCommitAndPush(message, files = '.') {
 }
 
 function gitRemoteInfo() {
+  assertCodeMutationAllowed('gitRemoteInfo');
   try {
     const remotes = execSync('git remote -v', { cwd: PROJECT_ROOT, encoding: 'utf8' }).trim();
     const url = execSync('git config --get remote.origin.url', { cwd: PROJECT_ROOT, encoding: 'utf8' }).trim();
@@ -749,6 +770,7 @@ const db = require('../db');
 
 // Read-only queries (safe for agents)
 async function dbQuery(sql, params = []) {
+  assertCodeMutationAllowed('dbQuery');
   // Safety: block destructive operations unless explicitly allowed
   const upperSql = sql.trim().toUpperCase();
   const readOnly = upperSql.startsWith('SELECT') || upperSql.startsWith('EXPLAIN') || upperSql.startsWith('SHOW');
@@ -770,6 +792,7 @@ async function dbQuery(sql, params = []) {
 
 // Write queries (requires explicit approval flag)
 async function dbExecute(sql, params = [], { approved = false } = {}) {
+  assertCodeMutationAllowed('dbExecute');
   const upperSql = sql.trim().toUpperCase();
   const isDDL = upperSql.startsWith('CREATE') || upperSql.startsWith('ALTER') || upperSql.startsWith('DROP');
   const isDML = upperSql.startsWith('INSERT') || upperSql.startsWith('UPDATE') || upperSql.startsWith('DELETE');
@@ -842,6 +865,7 @@ async function dbDiagnose() {
 // ═══════════════════════════════════════════════════════════════════
 
 async function createSubAgent({ name, codeName, agentType, description, mission, systemPrompt, capabilities, parentAgent, autonomyLevel = 1 }) {
+  assertCodeMutationAllowed('createSubAgent');
   // Register in database
   const result = await db.query(`
     INSERT INTO ai_agents (agent_type, display_name, description, system_prompt, capabilities, status)
@@ -930,6 +954,7 @@ async function listSubAgents() {
 }
 
 async function deactivateSubAgent(agentType) {
+  assertCodeMutationAllowed('deactivateSubAgent');
   await db.query(`UPDATE ai_agents SET status = 'inactive' WHERE agent_type = $1`, [agentType]);
   return { success: true, agentType, status: 'deactivated' };
 }

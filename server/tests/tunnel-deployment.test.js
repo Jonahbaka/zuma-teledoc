@@ -11,13 +11,13 @@ const root=path.resolve(__dirname,'../..');
 const bash=process.env.DEPLOY_TEST_BASH || '/bin/bash';
 const bashAvailable=process.platform!=='win32' || fs.existsSync(bash);
 
-for (const wrongBuild of [false,true]) test(`direct tunnel deployment ${wrongBuild ? 'restores the prior build when final identity differs' : 'validates candidate and switches only the named app'}`,{skip:bashAvailable ? false : 'Linux deployment script is executed in the GitHub Linux gate'},()=>{
+for (const wrongBuild of [false,true]) test(`historical tunnel internals (test-only guard stub) ${wrongBuild ? 'restores the prior build when final identity differs' : 'validates candidate and switches only the named app'}`,{skip:bashAvailable ? false : 'Linux deployment script is executed in the GitHub Linux gate'},()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'doctarx-switch-'));
   try {
     for(const d of ['bin','.next','incoming'])fs.mkdirSync(path.join(dir,d));
     fs.writeFileSync(path.join(dir,'.next/BUILD_ID'),'old-build');fs.writeFileSync(path.join(dir,'incoming/BUILD_ID'),'new-build');
     const executable=(name,body)=>fs.writeFileSync(path.join(dir,'bin',name),`#!/usr/bin/env bash\nset -euo pipefail\n${body}\n`,{mode:0o755});
-    executable('pm2',`printf '%s %s %s\\n' "$*" "\${NEXT_DIST_DIR:-unset}" "\${PORT:-unset}" >> "$PROJECT_ROOT/pm2-commands"
+    executable('pm2',`printf '%s %s %s %s\\n' "$*" "\${NEXT_DIST_DIR:-unset}" "\${PORT:-unset}" "\${DOCTARX_DEPLOY_CHECK:-unset}" >> "$PROJECT_ROOT/pm2-commands"
 if [ "$1" = jlist ]; then printf '%s' '[{"name":"doctarx","pm2_env":{"status":"online","NEXT_DIST_DIR":".next"}}]'; fi
 if [ "$1" = restart ]; then printf '%s' "$NEXT_DIST_DIR" > "$PROJECT_ROOT/current-dist"; fi`);
     executable('curl',`dist=$(cat "$PROJECT_ROOT/current-dist" 2>/dev/null || echo .next)
@@ -28,6 +28,9 @@ case "$*" in */api/ng/health*) printf '%s' '{"status":"ok"}';; *) printf '{"stat
     executable('sleep','exit 0');
     const script=fs.readFileSync(path.join(root,'scripts/doctarx-blue-green-switch.sh'),'utf8').replace(/\r\n/g,'\n');
     fs.writeFileSync(path.join(dir,'switch.sh'),script);
+    // Inspect retained internals only. The real unmodified gate is separately
+    // exercised by deploy-guard.test.js and cannot be enabled by environment.
+    fs.writeFileSync(path.join(dir,'check-release-rollback.sh'),'#!/bin/bash\nexit 0\n');
     // A fresh PATH excludes a host nginx installation. Node remains the actual
     // JSON parser, while PM2/curl/sleep are isolated test transports.
     const nodeDir=path.dirname(process.execPath).replace(/\\/g,'/');
@@ -36,8 +39,10 @@ case "$*" in */api/ng/health*) printf '%s' '{"status":"ok"}';; *) printf '{"stat
     assert.equal(result.status,wrongBuild?1:0,result.stdout+'\n'+result.stderr);
     const commands=fs.readFileSync(path.join(dir,'pm2-commands'),'utf8');
     assert.match(commands,/start server\/index.js --name doctarx-deploy-check/);assert.match(commands,/restart doctarx --update-env .next.blue 8080/);
+    assert.match(commands,/start server\/index.js --name doctarx-deploy-check[^\n]* \.next.blue 8081 true/);
+    assert.match(commands,/restart doctarx --update-env \.next.blue 8080 false/);
     assert.doesNotMatch(commands,/cftunnel|cloudflared|cronops|delete doctarx /);
-    if(wrongBuild){assert.equal(fs.readFileSync(path.join(dir,'current-dist'),'utf8'),'.next');assert.match(commands,/restart doctarx --update-env .next 8080/);}
+    if(wrongBuild){assert.equal(fs.readFileSync(path.join(dir,'current-dist'),'utf8'),'.next');assert.match(commands,/restart doctarx --update-env \.next 8080 false/);}
     else assert.equal(fs.readFileSync(path.join(dir,'.doctarx-active-port'),'utf8').trim(),'8080');
   } finally {fs.rmSync(dir,{recursive:true,force:true});}
 });

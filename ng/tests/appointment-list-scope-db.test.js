@@ -80,6 +80,33 @@ test('appointment list applies current actor, patient and provider market scope 
     assert.equal(denied.body.success, false);
     const invalidFilter = await request(provider, { status: 'unknown_status' });
     assert.equal(invalidFilter.response.status, 400);
+
+    // Ongoing consultations remain discoverable after their original start;
+    // a recent confirmed visit survives normal late arrival, terminal and old
+    // scheduled visits do not. This runs the real SQL and auth/audit chain.
+    const currentIds = Array.from({ length: 5 }, () => crypto.randomUUID());
+    for (const [index, status, hoursAgo] of [[0, 'in_progress', 4], [1, 'confirmed', 1], [2, 'completed', 1], [3, 'cancelled', 1], [4, 'scheduled', 4]]) {
+      await client.query(`INSERT INTO appointments (id,patient_id,provider_id,scheduled_at,type,status)
+        VALUES ($1,$2,$3,NOW() - ($4::int * INTERVAL '1 hour'),'video',$5)`, [currentIds[index], patient.id, provider.id, hoursAgo, status]);
+    }
+    const patientToken = jwt.sign({ userId: patient.id, role: 'super_admin', marketScope: 'US' }, process.env.JWT_ACCESS_SECRET, { expiresIn: 600 });
+    const getUpcoming = async () => {
+      const response = await fetch(base + '/upcoming?limit=50&patientId=' + usPatient.id, { headers: { authorization: 'Bearer ' + patientToken, 'x-doctarx-market': 'US' } });
+      return { response, body: await response.json() };
+    };
+    const current = await getUpcoming();
+    assert.equal(current.response.status, 200);
+    assert.equal(current.response.headers.get('cache-control'), 'private, no-store');
+    const includedIds = current.body.appointments.map(row => row.id);
+    assert.ok(includedIds.includes(currentIds[0]));
+    assert.ok(includedIds.includes(currentIds[1]));
+    for (const excluded of currentIds.slice(2)) assert.equal(includedIds.includes(excluded), false);
+    assert.ok(includedIds.indexOf(currentIds[0]) < includedIds.indexOf(currentIds[1]));
+    assert.ok(current.body.appointments.every(row => row.patientId === patient.id));
+    await client.query("UPDATE users SET market_scope='US' WHERE id=$1", [provider.id]);
+    const mismatched = await getUpcoming();
+    assert.equal(mismatched.response.status, 200);
+    assert.equal(mismatched.body.appointments.some(row => currentIds.includes(row.id)), false);
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));
     db.query = originalQuery;

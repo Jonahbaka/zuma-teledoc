@@ -21,9 +21,15 @@ const appointmentsSql = `WITH clinician AS (
   WHERE p.role='patient' AND p.is_active=TRUE AND p.market_scope='NG'
   GROUP BY p.id
 )`;
-async function listNgProviderPatients(db, actorId, {limit,offset}) {
-  const count = await db.query(`${appointmentsSql} SELECT COUNT(*) AS count FROM patient_visits`,[actorId]);
-  const result = await db.query(`${appointmentsSql} SELECT * FROM patient_visits ORDER BY id,last_visit DESC LIMIT $2 OFFSET $3`,[actorId,limit,offset]);
-  return {rows:result.rows,total:Number(count.rows[0]?.count || 0)};
+async function listNgProviderPatients(db, actorId, { limit, offset, search = '' }) {
+  if (typeof search !== 'string' || search.length > 100) throw Object.assign(new Error('Invalid patient search'), { status: 400 });
+  const term = search.trim().replace(/\s+/g, ' ').toLowerCase();
+  // Search only the already-authorized patient set, before count/pagination.
+  // POSITION treats %, _ and apostrophes literally; user text is always bound.
+  const filter = term ? " WHERE POSITION($2::text IN LOWER(CONCAT_WS(' ',first_name,last_name,email))) > 0" : '';
+  const values = term ? [actorId, term] : [actorId];
+  const count = await db.query(`${appointmentsSql} SELECT COUNT(*) AS count FROM patient_visits${filter}`, values);
+  const result = await db.query(`${appointmentsSql} SELECT * FROM patient_visits${filter} ORDER BY id,last_visit DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, [...values, limit, offset]);
+  return { rows: result.rows, total: Number(count.rows[0]?.count || 0) };
 }
 module.exports = { listNgProviderPatients };

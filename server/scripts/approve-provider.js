@@ -6,15 +6,10 @@
 
 require('dotenv').config();
 
-// Force SSL mode
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
+// Use the shared transport policy without changing global TLS settings.
 const { Pool } = require('pg');
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+const pool = new Pool(require('../db/connectionConfig').buildDatabaseConfig(process.env, { requireUrl: true }));
 
 async function main() {
   console.log('\n=== DoctaRx Provider Approval ===\n');

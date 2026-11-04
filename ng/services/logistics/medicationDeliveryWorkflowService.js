@@ -586,7 +586,7 @@ function createMedicationDeliveryWorkflowService(options = {}) {
     if (f.digital_prescription_id) {
       const rx = (await client.query('SELECT * FROM ng_digital_prescriptions WHERE id=$1 FOR UPDATE', [f.digital_prescription_id])).rows[0];
       const actor = { kind: 'pharmacist', user_id: f.pharmacist_user_id };
-      if (['cancelled', 'expired'].includes(rx.lifecycle_status)) { await audit(client, order, null, 'handover_requires_clinical_review', { prescriptionId: rx.id }); return; }
+      if (['cancelled', 'expired'].includes(rx.lifecycle_status)) { await audit(client, order, null, 'handover_requires_clinical_review', { prescriptionId: rx.id }); return true; }
       const allItems = (await client.query('SELECT * FROM ng_rx_items WHERE prescription_id=$1 ORDER BY position FOR UPDATE', [rx.id])).rows;
       const rows = allItems.filter(item => item.fulfillment_order_id === orderId);
       if (!rows.length || requiresQuantityReview(allItems) || (['fully_dispensed', 'completed'].includes(rx.lifecycle_status) && !hasCompleteDispensingEvidence(allItems))) return holdForClinicalReview(client, order, rx.id, 'dispense_quantity_conflict');

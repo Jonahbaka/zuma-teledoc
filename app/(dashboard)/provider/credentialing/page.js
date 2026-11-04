@@ -17,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { toast } from '@/components/ui/use-toast';
 import { Progress } from '@/components/ui/progress';
 import { toProviderPortalPath } from '@/lib/providerPortal';
+import PrivateDocumentUpload from '@/components/credentialing/PrivateDocumentUpload';
 
 // Step configuration with icons
 const STEPS = [
@@ -1008,10 +1009,7 @@ function CredentialingContent() {
                     );
                   })}
                 </div>
-                <Button variant="outline">
-                  <Upload className="w-4 h-4 mr-2" />
-                  Upload Document
-                </Button>
+                <PrivateDocumentUpload ownerId={user?.id} onSaved={document => setCredentialing(previous => ({ ...previous, documents: [document, ...(previous?.documents || [])] }))} />
               </div>
             )}
 

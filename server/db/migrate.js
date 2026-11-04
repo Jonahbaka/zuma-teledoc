@@ -3,8 +3,6 @@
  * Runs all migrations to set up the DoctaRx production database
  */
 
-require('dotenv').config();
-const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -15,31 +13,13 @@ function checksum(sql) {
   return crypto.createHash('sha256').update(sql, 'utf8').digest('hex');
 }
 
-// Database configuration
-let connectionString = process.env.DATABASE_URL || '';
-let sslConfig = false;
-
-if (connectionString && connectionString.includes('sslmode=')) {
-  const certPath = process.env.PGSSLROOTCERT
-    ? path.resolve(process.cwd(), process.env.PGSSLROOTCERT)
-    : null;
-
-  if (connectionString.includes('sslmode=verify-full') && certPath && fs.existsSync(certPath)) {
-    sslConfig = {
-      rejectUnauthorized: true,
-      ca: fs.readFileSync(certPath).toString()
-    };
-  } else {
-    sslConfig = { rejectUnauthorized: false };
-  }
-
-  connectionString = connectionString.replace(/[?&]sslmode=[^&]+/, (match) =>
-    match.startsWith('?') ? '?' : ''
-  ).replace(/\?$/, '');
-}
-
 function createMigrationPool() {
-  return new Pool({ connectionString, ssl: sslConfig });
+  // Only mutation-runner execution loads environment/transport configuration.
+  // Importing migration definitions for candidate checks has no setup effects.
+  require('dotenv').config();
+  const { Pool } = require('pg');
+  const { buildDatabaseConfig } = require('./connectionConfig');
+  return new Pool(buildDatabaseConfig(process.env));
 }
 
 const migrations = [
@@ -3055,6 +3035,10 @@ const SQL_FILE_MIGRATIONS = [
   {
     name: '044_clinical_narrative_encryption',
     file: '044_clinical_narrative_encryption.sql'
+  },
+  {
+    name: '045_clinical_lab_workflow',
+    file: '045_clinical_lab_workflow.sql'
   },
   {
     name: '400_agent_orchestrator_schema',

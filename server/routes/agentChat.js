@@ -206,13 +206,14 @@ function sanitizeAgentText(input) {
 // =========================================================================
 // UPLOADS (PDF/images/docs for analysis)
 // =========================================================================
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'agent-chat');
-try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch { /* ignore */ }
+const { ensureRuntimeDirectory } = require('../utils/runtimeStatePolicy');
 
 // Use disk storage; we store metadata in DB.
 const upload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+    destination: (_req, _file, cb) => {
+      try { cb(null, ensureRuntimeDirectory('agentChat')); } catch (error) { cb(error); }
+    },
     filename: (_req, file, cb) => {
       const safe = String(file.originalname || 'upload')
         .replace(/[^\w.\-]+/g, '_')

@@ -15,6 +15,7 @@ const BaseAgent = require('../base-agent');
 const fs = require('fs');
 const path = require('path');
 const db = require('../../../db');
+const { assertCodeMutationAllowed } = require('../../../utils/runtimeStatePolicy');
 
 class DevOpsAgent extends BaseAgent {
   // Subscribe to system error events (Nervous System)
@@ -150,6 +151,7 @@ CONSTRAINTS:
    * Apply a safe auto-fix (only for low-risk changes)
    */
   async applyFix(filePath, oldCode, newCode, reason) {
+    assertCodeMutationAllowed('devops.applyFix');
     try {
       const fullPath = path.resolve(this.projectRoot, filePath);
       if (!fullPath.startsWith(this.projectRoot)) return false;

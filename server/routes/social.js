@@ -1,5 +1,5 @@
 /**
- * Social Media Automation API — Production Grade
+ * Social draft and recorded-activity API; publication is unavailable.
  * All routes use PostgreSQL, require authentication, and support AI content generation.
  *
  * POST   /api/social/account/add          — Connect a social media account
@@ -25,6 +25,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
+const socialScheduler = require('../services/socialSchedulerService');
 
 // ── Auth guard ──────────────────────────────────────────────────────────────
 router.use(authenticate);
@@ -43,61 +44,17 @@ function getAnthropicClient() {
   }
 }
 
-// Platform publish stubs — structured for real API key integration
-// Each function is ready to accept env-var credentials and call real APIs
-async function publishToPlatform(platform, post, account) {
-  const creds = {
-    tiktok: {
-      accessToken: account.access_token,
-      refreshToken: account.refresh_token,
-    },
-    instagram: {
-      accessToken: account.access_token,
-      pageId: process.env.INSTAGRAM_PAGE_ID,
-    },
-    youtube: {
-      accessToken: account.access_token,
-      channelId: process.env.YOUTUBE_CHANNEL_ID,
-    },
-    twitter: {
-      apiKey: process.env.TWITTER_API_KEY,
-      apiSecret: process.env.TWITTER_API_SECRET,
-      accessToken: account.access_token,
-      accessSecret: account.refresh_token,
-    },
-    facebook: {
-      accessToken: account.access_token,
-      pageId: process.env.FACEBOOK_PAGE_ID,
-    },
-    linkedin: {
-      accessToken: account.access_token,
-      organizationId: process.env.LINKEDIN_ORG_ID,
-    },
-  };
-
-  // When real API keys are set, swap the stub below for actual SDK calls.
-  // The structure and credential wiring are already correct.
-  const platformId = `${platform}_${Date.now()}`;
-  const platformUrl = `https://${platform}.com/doctarx/post/${platformId}`;
-
-  // TODO (per platform):
-  // tiktok:    POST https://open.tiktokapis.com/v2/post/publish/video/init/
-  // instagram: POST https://graph.instagram.com/me/media + /me/media_publish
-  // youtube:   videos.insert via googleapis
-  // twitter:   POST https://api.twitter.com/2/tweets
-  // facebook:  POST https://graph.facebook.com/{page-id}/feed
-  // linkedin:  POST https://api.linkedin.com/v2/ugcPosts
-
-  return {
-    platform,
-    platform_post_id: platformId,
-    platform_url: platformUrl,
-    status: 'published',
-    published_at: new Date().toISOString(),
-  };
+// No independent route-level publisher may manufacture success while the
+// shared publishing boundary is unavailable. Auth runs before this handler.
+function rejectUnavailablePublishing(_req, res) {
+  const unavailable = socialScheduler.publisherUnavailable();
+  return res.status(unavailable.status).json({
+    success: false,
+    code: unavailable.code,
+    error: unavailable.message,
+  });
 }
 
-// ── Ensure tables exist (failsafe — migrations should have created these) ───
 async function ensureTables() {
   await db.pool.query(`
     CREATE TABLE IF NOT EXISTS social_accounts (
@@ -323,144 +280,11 @@ router.delete('/post/:id', async (req, res) => {
   }
 });
 
-// POST /post/:id/schedule
-router.post('/post/:id/schedule', async (req, res) => {
-  try {
-    const { scheduledTime, platforms } = req.body;
-    const userId = req.user?.id;
-
-    if (!scheduledTime) return res.status(400).json({ success: false, error: 'scheduledTime is required' });
-
-    const schedDate = new Date(scheduledTime);
-    if (schedDate <= new Date()) {
-      return res.status(400).json({ success: false, error: 'scheduledTime must be in the future' });
-    }
-
-    const result = await db.pool.query(
-      `UPDATE social_posts SET
-        status = 'scheduled',
-        scheduled_time = $1,
-        platforms = COALESCE($2, platforms),
-        updated_at = NOW()
-       WHERE id = $3 AND user_id = $4 AND status IN ('draft', 'failed')
-       RETURNING title, scheduled_time`,
-      [schedDate.toISOString(), platforms ? JSON.stringify(platforms) : null, req.params.id, userId]
-    );
-
-    if (result.rowCount === 0) return res.status(404).json({ success: false, error: 'Post not found or not editable' });
-
-    res.json({
-      success: true,
-      message: `Scheduled for ${schedDate.toLocaleString()}`,
-      scheduledTime: result.rows[0].scheduled_time,
-      title: result.rows[0].title,
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// POST /post/:id/publish-now
-router.post('/post/:id/publish-now', async (req, res) => {
-  try {
-    const { platforms: requestedPlatforms } = req.body;
-    const userId = req.user?.id;
-
-    const postResult = await db.pool.query(
-      `SELECT * FROM social_posts WHERE id = $1 AND user_id = $2`,
-      [req.params.id, userId]
-    );
-    if (postResult.rowCount === 0) return res.status(404).json({ success: false, error: 'Post not found' });
-
-    const post = postResult.rows[0];
-    const platforms = requestedPlatforms || post.platforms || [];
-
-    if (!platforms.length) {
-      return res.status(400).json({ success: false, error: 'No platforms specified for publishing' });
-    }
-
-    // Get connected accounts for these platforms
-    const accountsResult = await db.pool.query(
-      `SELECT * FROM social_accounts WHERE user_id = $1 AND platform = ANY($2) AND status = 'active'`,
-      [userId, platforms]
-    );
-
-    const results = [];
-    for (const platform of platforms) {
-      const account = accountsResult.rows.find(a => a.platform === platform);
-      try {
-        const publishResult = await publishToPlatform(platform, post, account || {});
-        const platformPostId = genId('pp');
-        await db.pool.query(
-          `INSERT INTO social_platform_posts
-             (id, post_id, account_id, platform, platform_post_id, platform_url, status, published_at)
-           VALUES ($1, $2, $3, $4, $5, $6, 'published', NOW())`,
-          [platformPostId, post.id, account?.id || null, platform, publishResult.platform_post_id, publishResult.platform_url]
-        );
-        results.push({ platform, status: 'published', url: publishResult.platform_url });
-      } catch (pubErr) {
-        results.push({ platform, status: 'failed', error: pubErr.message });
-      }
-    }
-
-    const allPublished = results.every(r => r.status === 'published');
-    const anyPublished = results.some(r => r.status === 'published');
-
-    await db.pool.query(
-      `UPDATE social_posts SET
-        status = $1, published_at = NOW(), updated_at = NOW()
-       WHERE id = $2`,
-      [allPublished ? 'published' : anyPublished ? 'partial' : 'failed', post.id]
-    );
-
-    // Update account post counts
-    if (anyPublished) {
-      const publishedPlatforms = results.filter(r => r.status === 'published').map(r => r.platform);
-      await db.pool.query(
-        `UPDATE social_accounts SET post_count = post_count + 1, last_posted_at = NOW()
-         WHERE user_id = $1 AND platform = ANY($2)`,
-        [userId, publishedPlatforms]
-      );
-    }
-
-    res.json({
-      success: anyPublished,
-      message: `Published to ${results.filter(r => r.status === 'published').length}/${platforms.length} platforms`,
-      results,
-    });
-  } catch (err) {
-    console.error('[social/publish-now]', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// POST /post/:id/retry
-router.post('/post/:id/retry', async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    const postResult = await db.pool.query(
-      `SELECT * FROM social_posts WHERE id = $1 AND user_id = $2 AND status = 'failed'`,
-      [req.params.id, userId]
-    );
-    if (postResult.rowCount === 0) return res.status(404).json({ success: false, error: 'Failed post not found' });
-
-    const post = postResult.rows[0];
-    if (post.retry_count >= 3) {
-      return res.status(400).json({ success: false, error: 'Maximum retry attempts (3) reached' });
-    }
-
-    // Reset to scheduled if it had a scheduled time, otherwise draft
-    const newStatus = post.scheduled_time && new Date(post.scheduled_time) > new Date() ? 'scheduled' : 'draft';
-    await db.pool.query(
-      `UPDATE social_posts SET status = $1, retry_count = retry_count + 1, last_error = NULL, updated_at = NOW() WHERE id = $2`,
-      [newStatus, post.id]
-    );
-
-    res.json({ success: true, message: `Post queued for retry (attempt ${post.retry_count + 1}/3)`, newStatus });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+// Scheduling/retrying an unavailable provider must not promise delivery or
+// mutate existing post state. Draft editing and historical reads remain intact.
+router.post('/post/:id/schedule', rejectUnavailablePublishing);
+router.post('/post/:id/publish-now', rejectUnavailablePublishing);
+router.post('/post/:id/retry', rejectUnavailablePublishing);
 
 // GET /posts
 router.get('/posts', async (req, res) => {

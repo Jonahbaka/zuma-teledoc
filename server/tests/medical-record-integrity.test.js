@@ -2,6 +2,15 @@
 
 const test=require('node:test');
 const assert=require('node:assert/strict');
+const { fixtureTargetSafety } = require('../../ng/scripts/fixtureTargetSafety');
+// Reject configured fixture targets before application imports initialize a pool
+// or dotenv can alter the original environment. Missing targets still skip.
+const target = process.env.SIMULATION_DATABASE_URL;
+if (target) {
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+}
+
 const crypto=require('node:crypto');
 const db=require('../db');
 const records=require('../services/medicalRecordService');
@@ -22,11 +31,13 @@ test('medical document input and unsupported roles fail before storage or attach
   } finally {db.getPool=original;}
 });
 
-const target=process.env.SIMULATION_DATABASE_URL;
 test('medical documents enforce actual HTTP care and market scope, explicit release, retained revisions, stale-write conflicts and atomic audit rollback',{skip:!target},async()=>{
-  const url=new URL(target);
-  assert.ok(['localhost','127.0.0.1'].includes(url.hostname)&&url.pathname.endsWith('_test'));
-  const {Pool}=require('pg');const pool=new Pool({connectionString:target});const client=await pool.connect();
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+  const {Pool}=require('pg');const pool=new Pool({connectionString:target});
+  const poolSafety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(poolSafety.skipped, false, poolSafety.reason);
+  const client = await pool.connect();
   const oldQuery=db.query,oldPool=db.getPool;
   const oldSecret=process.env.JWT_ACCESS_SECRET;const oldEncryption=process.env.ENCRYPTION_KEY;
   process.env.JWT_ACCESS_SECRET='doctarx-medical-record-rollback-http-secret-32';

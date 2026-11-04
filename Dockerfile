@@ -43,6 +43,7 @@ COPY --from=builder /app/server ./server
 
 # Copy shared libraries
 COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/shared ./shared
 
 # Copy Nigeria region API/data layer used by /api/ng/*
 COPY --from=builder /app/ng ./ng

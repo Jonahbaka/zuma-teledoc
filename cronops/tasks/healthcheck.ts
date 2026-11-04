@@ -22,6 +22,7 @@
 import https from 'https';
 import http from 'http';
 import os from 'os';
+import { buildProbeRequestOptions } from '../services/transport';
 import type { CronTask, TaskResult } from '../types';
 import { info, warn } from '../logger';
 import { healthCheck as dbHealthCheck } from '../services/db';
@@ -44,16 +45,19 @@ interface ServiceCheck {
 // ─── HTTP ping helper ─────────────────────────────────────────
 
 function httpGet(url: string, timeoutMs = 8000): Promise<ServiceCheck> {
+  let transport;
+  try { transport = buildProbeRequestOptions(url); }
+  catch { return Promise.resolve({ name: url, ok: false, error: 'Probe transport configuration is unavailable or unsafe.' }); }
   return new Promise((resolve) => {
     const start = Date.now();
     const name = url;
-    const isHttps = url.startsWith('https');
+    const isHttps = new URL(url).protocol === 'https:';
     const mod = isHttps ? https : http;
 
     const req = (mod as any).request(url, {
       method: 'GET',
       timeout: timeoutMs,
-      rejectUnauthorized: false, // health checks on self-signed certs are fine
+      ...transport,
     }, (res: any) => {
       const latencyMs = Date.now() - start;
       const ok = res.statusCode >= 200 && res.statusCode < 500;

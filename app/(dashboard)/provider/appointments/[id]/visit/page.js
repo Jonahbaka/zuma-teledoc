@@ -22,14 +22,21 @@ import { toProviderPortalPath } from '@/lib/providerPortal';
 
 export default function ProviderVisitPage() {
   const params = useParams();
+  return <ProviderVisitEditor key={params.id} />;
+}
+
+function ProviderVisitEditor() {
+  const params = useParams();
   const pathname = usePathname();
   const router = useRouter();
   const appointmentId = params.id;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [appointment, setAppointment] = useState(null);
   const [visit, setVisit] = useState(null);
+  const readOnly = Boolean(visit?.isSigned || visit?.isLocked);
   const [patientInsurance, setPatientInsurance] = useState(null);
   const [preferredPharmacy, setPreferredPharmacy] = useState(null);
 
@@ -176,12 +183,18 @@ export default function ProviderVisitPage() {
   };
 
   const fetchAppointmentAndVisit = async () => {
+    setLoading(true);
+    setLoadError(false);
     try {
       const [aptRes, visitRes, triageRes] = await Promise.all([
         api.get(`/appointments/${appointmentId}`),
-        api.get(`/visits/appointment/${appointmentId}`).catch(() => ({ data: { visit: null } })),
+        api.get(`/visits/appointment/${appointmentId}`),
         api.get(`/triage/appointment/${appointmentId}`).catch(() => ({ data: { triage: null } }))
       ]);
+
+      if (!aptRes.data?.success || !aptRes.data.appointment || !visitRes.data?.success || !Object.prototype.hasOwnProperty.call(visitRes.data, 'visit')) {
+        throw new Error('Visit record unavailable');
+      }
 
       if (aptRes.data.success) {
         const appointmentData = aptRes.data.appointment;
@@ -213,6 +226,7 @@ export default function ProviderVisitPage() {
         setFollowUpNotes(v.followUpNotes || '');
       }
     } catch (error) {
+      setLoadError(true);
       toast({
         title: 'Error',
         description: 'Failed to load appointment details',
@@ -224,6 +238,7 @@ export default function ProviderVisitPage() {
   };
 
   const handleSave = async (sign = false) => {
+    if (loading || loadError || saving || !appointment || readOnly) return;
     setSaving(true);
     try {
       const visitData = {
@@ -269,6 +284,7 @@ export default function ProviderVisitPage() {
   };
 
   const handleApplyAISuggestion = (field, value) => {
+    if (readOnly) return;
     switch (field) {
       case 'subjective':
         setSubjective(value);
@@ -286,6 +302,7 @@ export default function ProviderVisitPage() {
   };
 
   const handleVitalChange = (field, value) => {
+    if (readOnly) return;
     setVitals(prev => ({ ...prev, [field]: value }));
   };
 
@@ -293,6 +310,17 @@ export default function ProviderVisitPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div role="alert" className="text-center py-12">
+        <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" aria-hidden="true" />
+        <h2 className="text-xl font-semibold text-slate-900">Visit note could not be opened</h2>
+        <p className="mt-2 text-slate-600">Existing notes must load before editing. Your saved content has not been changed.</p>
+        <Button className="mt-4" onClick={fetchAppointmentAndVisit}>Try again</Button>
       </div>
     );
   }
@@ -332,14 +360,14 @@ export default function ProviderVisitPage() {
               <Button
                 variant="outline"
                 onClick={() => handleSave(false)}
-                disabled={saving}
+                disabled={saving || readOnly}
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                 Save Draft
               </Button>
               <Button
                 onClick={() => handleSave(true)}
-                disabled={saving}
+                disabled={saving || readOnly}
                 className="bg-gradient-to-r from-blue-500 to-blue-600"
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
@@ -351,6 +379,11 @@ export default function ProviderVisitPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {readOnly && (
+          <p role="status" className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-900">
+            This visit note is signed or locked and is read-only. Its recorded content cannot be edited here.
+          </p>
+        )}
         <div className="grid grid-cols-12 gap-6 h-[calc(100vh-80px)]">
           {/* Patient Sidebar */}
           <div className="col-span-3 bg-white rounded-3xl shadow-sm border border-gray-100 p-6 flex flex-col h-full">
@@ -474,6 +507,7 @@ export default function ProviderVisitPage() {
                 <div>
                   <Label className="text-xs">BP Systolic</Label>
                   <Input
+                    readOnly={readOnly}
                     type="number"
                     placeholder="120"
                     value={vitals.bloodPressureSystolic}
@@ -484,6 +518,7 @@ export default function ProviderVisitPage() {
                 <div>
                   <Label className="text-xs">BP Diastolic</Label>
                   <Input
+                    readOnly={readOnly}
                     type="number"
                     placeholder="80"
                     value={vitals.bloodPressureDiastolic}
@@ -494,6 +529,7 @@ export default function ProviderVisitPage() {
                 <div>
                   <Label className="text-xs">Heart Rate</Label>
                   <Input
+                    readOnly={readOnly}
                     type="number"
                     placeholder="72"
                     value={vitals.heartRate}
@@ -504,6 +540,7 @@ export default function ProviderVisitPage() {
                 <div>
                   <Label className="text-xs">Temp (°F)</Label>
                   <Input
+                    readOnly={readOnly}
                     type="number"
                     step="0.1"
                     placeholder="98.6"
@@ -515,6 +552,7 @@ export default function ProviderVisitPage() {
                 <div>
                   <Label className="text-xs">Resp Rate</Label>
                   <Input
+                    readOnly={readOnly}
                     type="number"
                     placeholder="16"
                     value={vitals.respiratoryRate}
@@ -525,6 +563,7 @@ export default function ProviderVisitPage() {
                 <div>
                   <Label className="text-xs">O2 Sat (%)</Label>
                   <Input
+                    readOnly={readOnly}
                     type="number"
                     placeholder="98"
                     value={vitals.oxygenSaturation}
@@ -535,6 +574,7 @@ export default function ProviderVisitPage() {
                 <div>
                   <Label className="text-xs">Weight (lbs)</Label>
                   <Input
+                    readOnly={readOnly}
                     type="number"
                     placeholder="150"
                     value={vitals.weight}
@@ -545,6 +585,7 @@ export default function ProviderVisitPage() {
                 <div>
                   <Label className="text-xs">Height (in)</Label>
                   <Input
+                    readOnly={readOnly}
                     type="number"
                     placeholder="68"
                     value={vitals.height}
@@ -574,6 +615,7 @@ export default function ProviderVisitPage() {
                     Subjective
                   </Label>
                   <textarea
+                    readOnly={readOnly}
                     value={subjective}
                     onChange={(e) => setSubjective(e.target.value)}
                     placeholder="Patient's history, symptoms, and complaints..."
@@ -588,6 +630,7 @@ export default function ProviderVisitPage() {
                     Objective
                   </Label>
                   <textarea
+                    readOnly={readOnly}
                     value={objective}
                     onChange={(e) => setObjective(e.target.value)}
                     placeholder="Physical examination findings, test results..."
@@ -602,6 +645,7 @@ export default function ProviderVisitPage() {
                     Assessment
                   </Label>
                   <textarea
+                    readOnly={readOnly}
                     value={assessment}
                     onChange={(e) => setAssessment(e.target.value)}
                     placeholder="Clinical impression, diagnoses..."
@@ -616,6 +660,7 @@ export default function ProviderVisitPage() {
                     Plan
                   </Label>
                   <textarea
+                    readOnly={readOnly}
                     value={plan}
                     onChange={(e) => setPlan(e.target.value)}
                     placeholder="Treatment plan, medications, follow-up..."
@@ -684,6 +729,7 @@ export default function ProviderVisitPage() {
                 <div className="flex items-center gap-3 mb-4">
                   <input
                     type="checkbox"
+                    disabled={readOnly}
                     id="followUp"
                     checked={followUpRequired}
                     onChange={(e) => setFollowUpRequired(e.target.checked)}
@@ -693,6 +739,7 @@ export default function ProviderVisitPage() {
                 </div>
                 {followUpRequired && (
                   <textarea
+                    readOnly={readOnly}
                     value={followUpNotes}
                     onChange={(e) => setFollowUpNotes(e.target.value)}
                     placeholder="Follow-up instructions and timeline..."

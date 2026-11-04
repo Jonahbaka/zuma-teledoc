@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { fixtureTargetSafety } = require('../scripts/fixtureTargetSafety');
 const crypto = require('node:crypto');
 const Module = require('node:module');
 const express = require('express');
@@ -50,7 +51,7 @@ function validInput(overrides = {}) {
 }
 
 function scriptedPool(options = {}) {
-  const state = { freshAccess: true, relationship: 'native', appointmentMatches: true, pharmacies: [{ id: pharmacyId, delivery_enabled: true }], ...options };
+  const state = { freshAccess: true, accountStatus: 'active', relationship: 'native', appointmentMatches: true, pharmacies: [{ id: pharmacyId, delivery_enabled: true }], ...options };
   const calls = [];
   const client = {
     released: false,
@@ -58,8 +59,8 @@ function scriptedPool(options = {}) {
       calls.push({ sql, params });
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [] };
       if (sql.includes('FROM users actor')) {
-        for (const predicate of ["actor.role = 'provider'", 'actor.is_active = TRUE', "actor.market_scope = 'NG'", "actor.provider_status = 'approved'", "provider.status = 'verified'", "patient.role = 'patient'", "patient.market_scope = 'NG'", 'patient.is_active = TRUE', 'FOR SHARE OF actor, provider, patient']) assert.ok(sql.includes(predicate), predicate);
-        return { rows: state.freshAccess ? [{ user_id: providerId, role: 'provider', provider_id: profileId }] : [] };
+        for (const predicate of ["actor.account_status = 'active'", "actor.role = 'provider'", 'actor.is_active = TRUE', "actor.market_scope = 'NG'", "actor.provider_status = 'approved'", "provider.status = 'verified'", "patient.role = 'patient'", "patient.market_scope = 'NG'", 'patient.is_active = TRUE', 'FOR SHARE OF actor, provider, patient']) assert.ok(sql.includes(predicate), predicate);
+        return { rows: state.freshAccess && state.accountStatus === 'active' ? [{ user_id: providerId, role: 'provider', provider_id: profileId }] : [] };
       }
       if (sql.includes('SELECT id FROM ng_appointments') && sql.includes('FOR SHARE')) {
         assert.deepEqual(params, [appointmentId, patientId, profileId]);
@@ -135,7 +136,7 @@ test('native and completed shared NG care relationships authorize attributed, au
 });
 
 test('stale actor approval, cross-market/foreign patient context and missing care relationships deny prescribing', async () => {
-  for (const options of [{ freshAccess: false }, { relationship: null }]) {
+  for (const options of [{ freshAccess: false }, { accountStatus: 'suspended' }, { relationship: null }]) {
     const pool = scriptedPool(options);
     await withRoute(pool, provider, async (post) => { assert.equal((await post(validInput())).status, 403); });
     assert.equal(pool.calls.some((call) => call.sql.includes('INSERT INTO ng_digital_prescriptions')), false);
@@ -191,9 +192,12 @@ test('patient and administrative sessions do not inherit provider prescribing ri
 
 const target = process.env.SIMULATION_DATABASE_URL;
 test('PostgreSQL prescribing binds real demo care context and rolls back every fixture and failed write', { skip: !target }, async () => {
-  const url = new URL(target);
-  assert.ok(['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'), 'Only isolated loopback test databases are accepted');
-  const { Pool } = require('pg'); const pool = new Pool({ connectionString: target }); const client = await pool.connect();
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+  const { Pool } = require('pg'); const pool = new Pool({ connectionString: target });
+  const poolSafety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(poolSafety.skipped, false, poolSafety.reason);
+  const client = await pool.connect();
   let savepoint = false;
   let failAudit = false;
   let databaseFailure;
@@ -229,6 +233,12 @@ test('PostgreSQL prescribing binds real demo care context and rolls back every f
       assert.deepEqual(stored, { patient_user_id: patient.id, provider_id: existingProvider.profile_id, provider_user_id: existingProvider.id, appointment_id: ownVisit.id });
       const rejected = await post({ ...ownInput, appointmentId: otherVisit.id }); assert.equal(rejected.status, 403);
       assert.equal((await client.query('SELECT COUNT(*) FROM ng_digital_prescriptions WHERE notes=$1', [marker])).rows[0].count, '1');
+      await client.query('SAVEPOINT suspended_provider_account');
+      await client.query("UPDATE users SET account_status='suspended' WHERE id=$1", [existingProvider.id]);
+      const suspended = await post({ ...ownInput, notes: marker + ' suspended' }); assert.equal(suspended.status, 403);
+      assert.equal((await client.query('SELECT COUNT(*) FROM ng_digital_prescriptions WHERE notes=$1', [marker + ' suspended'])).rows[0].count, '0');
+      await client.query('ROLLBACK TO SAVEPOINT suspended_provider_account');
+      await client.query('RELEASE SAVEPOINT suspended_provider_account');
       failAudit = true;
       const failed = await post({ ...ownInput, notes: marker + ' audit failure' }); assert.equal(failed.status, 503);
       assert.equal((await client.query('SELECT COUNT(*) FROM ng_digital_prescriptions WHERE notes=$1', [marker + ' audit failure'])).rows[0].count, '0');

@@ -1,7 +1,12 @@
 const db = require('../../db');
+const { backgroundWorkAllowed } = require('../../utils/backgroundWorkPolicy');
+const { immutableRuntime } = require('../../utils/runtimeStatePolicy');
+const { createWorkAdmissionBarrier } = require('../../utils/workAdmissionBarrier');
 const { AGENT_REGISTRY, classifyTask, getAgentById } = require('./agentRegistry');
 const { getTool, listTools } = require('./toolRegistry');
 
+const executionBarrier = createWorkAdmissionBarrier();
+let workerGeneration = 0;
 let workerTimer = null;
 let workerBusy = false;
 let workerState = {
@@ -387,6 +392,7 @@ async function executeTask(task) {
 
 async function claimNextTask(taskId = null) {
   const client = await db.getClient();
+  let discard = false;
   try {
     await client.query('BEGIN');
     const params = [];
@@ -423,14 +429,15 @@ async function claimNextTask(taskId = null) {
     await client.query('COMMIT');
     return updated.rows[0];
   } catch (error) {
+    discard = true;
     try { await client.query('ROLLBACK'); } catch (_) {}
     throw error;
   } finally {
-    client.release();
+    client.release(discard);
   }
 }
 
-async function runNextTask(taskId = null) {
+async function executeNextTask(taskId = null) {
   const task = await claimNextTask(taskId);
   if (!task) return null;
 
@@ -464,6 +471,20 @@ async function runNextTask(taskId = null) {
     workerState.lastError = error.message;
     return updated.rows[0];
   }
+}
+
+function executionAllowed() {
+  return process.env.DOCTARX_DEPLOY_CHECK !== 'true' && process.env.AGENT_RUNTIME_DISABLED !== 'true' && !immutableRuntime();
+}
+
+function getWorkerState() {
+  const execution = executionBarrier.snapshot();
+  return Object.freeze({ ...workerState, busy: workerBusy || !execution.idle, ...execution });
+}
+
+function runNextTask(taskId = null) {
+  if (!executionAllowed()) return Promise.reject(Object.assign(new Error('Operational agent execution is unavailable in this process.'), { code: 'AGENT_EXECUTION_DISABLED', status: 503 }));
+  return executionBarrier.run(() => executeNextTask(taskId));
 }
 
 async function getTaskToolCalls(taskId) {
@@ -567,7 +588,9 @@ async function getHealth() {
     worker: {
       processRunning: workerState.running,
       intervalMs: workerState.intervalMs,
-      busy: workerBusy,
+      busy: getWorkerState().busy,
+      admissionClosed: getWorkerState().admissionClosed,
+      activeCount: getWorkerState().activeCount,
       lastPollAt: workerState.lastPollAt,
       lastRunAt: workerState.lastRunAt,
       lastError: workerState.lastError,
@@ -604,18 +627,24 @@ async function getHealth() {
 }
 
 function startAgentWorker({ intervalMs = Number(process.env.AGENT_RUNTIME_POLL_INTERVAL_MS || 15000) } = {}) {
-  if (process.env.AGENT_RUNTIME_DISABLED === 'true') {
-    workerState.running = false;
-    workerState.lastError = 'AGENT_RUNTIME_DISABLED=true';
-    return workerState;
+  if (!backgroundWorkAllowed() || !executionAllowed() || executionBarrier.snapshot().admissionClosed) {
+    stopAgentWorker();
+    workerState.lastError = 'Background agent worker disabled or draining';
+    return getWorkerState();
   }
+  if (!Number.isInteger(intervalMs) || intervalMs < 100 || intervalMs > 86400000) {
+    stopAgentWorker();
+    throw new RangeError('Agent poll interval must be an integer from 100 to 86400000 milliseconds.');
+  }
+  if (workerTimer) return getWorkerState();
 
-  if (workerTimer) return workerState;
-
+  const generation = ++workerGeneration;
   workerState.running = true;
   workerState.intervalMs = intervalMs;
   workerTimer = setInterval(async () => {
-    if (workerBusy) return;
+    // clearInterval alone cannot invalidate an already queued callback. Old
+    // generations must remain fenced even if a later timer is started.
+    if (generation !== workerGeneration || !workerState.running || !backgroundWorkAllowed() || !executionAllowed() || executionBarrier.snapshot().admissionClosed || workerBusy) return;
     workerBusy = true;
     workerState.lastPollAt = new Date().toISOString();
     try {
@@ -628,14 +657,24 @@ function startAgentWorker({ intervalMs = Number(process.env.AGENT_RUNTIME_POLL_I
   }, intervalMs);
 
   if (workerTimer.unref) workerTimer.unref();
-  return workerState;
+  return getWorkerState();
 }
 
 function stopAgentWorker() {
+  workerGeneration += 1;
   if (workerTimer) clearInterval(workerTimer);
   workerTimer = null;
   workerState.running = false;
-  return workerState;
+  // This pauses polling only. It does not claim that active/manual work stopped.
+  return getWorkerState();
+}
+
+function drainAgentWorker(options) {
+  executionBarrier.closeAdmission();
+  stopAgentWorker();
+  // Terminal for this module/process lifetime, including after timeout. Restart
+  // requires a new serving process; there is intentionally no reset/unfence API.
+  return executionBarrier.drain(options);
 }
 
 module.exports = {
@@ -652,6 +691,8 @@ module.exports = {
   getHealth,
   startAgentWorker,
   stopAgentWorker,
+  drainAgentWorker,
+  getWorkerState,
   registry: AGENT_REGISTRY,
   tools: listTools,
 };

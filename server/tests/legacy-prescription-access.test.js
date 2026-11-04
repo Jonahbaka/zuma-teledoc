@@ -11,6 +11,7 @@ const { z } = require('zod');
 const utils = require('../../lib/utils');
 const marketScope = require('../utils/marketScope');
 const readiness = require('../utils/integrationReadiness');
+const { fixtureTargetSafety } = require('../../ng/scripts/fixtureTargetSafety');
 const { getUSPatientControl } = require('../../ng/tests/helpers/isolated-market-controls');
 const id = crypto.randomUUID();
 const providerId = crypto.randomUUID();
@@ -79,13 +80,165 @@ test('unsupported and stale readers are denied before prescription/history retri
   assert.ok(calls.includes('ROLLBACK'));
 });
 
+
+// Contract tests use the expression emitted by the real service, not a parallel
+// implementation of its market policy. The optional PostgreSQL check below also
+// executes this exact expression, while the hermetic matrix needs no database.
+const marketCases = [
+  ['NG', null, null, 'NG'], [' ng ', 'US', 'US', 'NG'],
+  [' Nigeria ', null, 'US', 'NG'], ['US', 'NG', 'NG', 'US'],
+  [' usa ', null, null, 'US'], [' united states ', null, null, 'US'],
+  [' United States of America ', null, null, 'US'],
+  ['', 'NG', 'US', 'NG'], ['   ', ' nigeria ', 'US', 'NG'],
+  [null, ' NG ', 'US', 'NG'], [null, '', ' nigeria ', 'NG'],
+  ['', ' ', ' usa ', 'US'], [null, null, ' United States ', 'US'],
+  ['CA', 'NG', 'US', null], ['unknown', 'US', 'NG', null],
+  [null, 'CA', 'NG', null], ['', '', 'CA', null],
+  [null, null, null, null], ['', '', '', null], [' ', ' ', ' ', null],
+  ['\tNG\t', null, null, null], ['\nUS', null, null, null], ['\t', 'NG', null, null],
+];
+function marketExpression(scope) {
+  const expression = scope.match(/CASE\b[\s\S]*?\bEND/);
+  assert.ok(expression, 'scope must contain an explicit fail-closed market CASE');
+  assert.equal((scope.match(/\bCASE\b/g) || []).length, 1);
+  const compact = expression[0].replace(/\s+/g, ' ').trim();
+  const clauses = [...compact.matchAll(/WHEN (UPPER\(.*?\)) IN \(([^)]+)\) THEN '(NG|US)'/g)];
+  assert.equal(clauses.length, 2);
+  for (const clause of clauses) {
+    assert.match(clause[1], /^UPPER\(COALESCE\(NULLIF\(TRIM\(pat\.market_scope\),\s*''\),\s*NULLIF\(TRIM\(pat\.region::text\),\s*''\),\s*NULLIF\(TRIM\(pat\.country\),\s*''\),\s*''\)\)$/);
+  }
+  assert.equal(clauses[0][1], clauses[1][1], 'recognition and matching normalize identically');
+  assert.equal(compact, 'CASE ' + clauses.map((clause) => clause[0]).join(' ') + ' ELSE NULL END');
+  const branches = clauses.flatMap((clause) => clause[2].split(',').map((alias) => {
+    assert.match(alias.trim(), /^'[^']+'$/);
+    return [alias.trim().slice(1, -1), clause[3]];
+  }));
+  assert.deepEqual(branches.sort(), [
+    ['NG', 'NG'], ['NIGERIA', 'NG'], ['US', 'US'], ['USA', 'US'],
+    ['UNITED STATES', 'US'], ['UNITED STATES OF AMERICA', 'US'],
+  ].sort());
+  assert.match(scope.slice(expression.index + expression[0].length), /^\s*=\s*\$2/);
+  return {
+    sql: expression[0],
+    evaluate(row) {
+      // PostgreSQL TRIM without a character argument removes spaces, not tabs.
+      const value = [row.market_scope, row.region, row.country]
+        .map((item) => item == null ? '' : String(item).replace(/^ +| +$/g, ''))
+        .find((item) => item !== '') || '';
+      return branches.find((branch) => branch[0] === value.toUpperCase())?.[1] ?? null;
+    },
+  };
+}
+
+test('legacy recorded market scope has one canonical trimmed, blank-skipping, fail-closed CASE', () => {
+  const scope = parts({}).service._scope();
+  const expression = marketExpression(scope);
+  for (const [market_scope, region, country, expected] of marketCases) {
+    assert.equal(expression.evaluate({ market_scope, region, country }), expected, JSON.stringify([market_scope, region, country]));
+  }
+  assert.match(scope, /pat\.role='patient' AND pat\.is_active=TRUE/);
+  assert.match(scope, /\$3 IN \('admin','super_admin'\) OR \$3='patient' AND p\.patient_id=\$4 OR \$3='provider' AND p\.provider_id=\$4/);
+  assert.match(scope, /\$3<>'provider' OR EXISTS \(SELECT 1 FROM appointments a WHERE a\.patient_id=p\.patient_id AND a\.provider_id=\$4\)/);
+});
+
+test('actual legacy detail, history and list queries share canonical market scope and durable audit boundaries', async () => {
+  for (const [market_scope, region, country, expected] of marketCases) {
+    for (const market of ['NG', 'US']) for (const role of ['patient', 'provider', 'admin', 'super_admin']) {
+      const session = { id, role, marketScope: market };
+      const current = { id, role, market_scope: market, is_active: true, provider_status: 'approved' };
+      const patient = { market_scope, region, country };
+      let calls = []; let failAudit = false;
+      const record = { id: recordId, patient_id: id, provider_id: id, medication_name: 'Private matrix medication' };
+      const api = parts({ async connect() { return { async query(sql, parameters) {
+        calls.push({ sql, parameters });
+        if (sql.includes('FROM users WHERE')) return { rows: [current] };
+        if (sql.includes('FROM prescriptions')) {
+          assert.ok(sql.includes(api.service._scope()), 'every read must use the same scope');
+          assert.equal(parameters[1], market); assert.equal(parameters[2], role); assert.equal(parameters[3], id);
+          return { rows: marketExpression(sql).evaluate(patient) === market ? [record] : [] };
+        }
+        if (sql.includes('FROM prescription_history')) return { rows: [{ id: recordId, new_values: { marker: 'Private matrix history' } }] };
+        if (sql.includes('INSERT INTO audit_logs')) {
+          assert.equal(parameters[0], id);
+          assert.equal(JSON.stringify(parameters).includes('Private'), false);
+          if (failAudit) throw new Error('Private audit outage');
+        }
+        return { rows: [] };
+      }, release() {} }; } });
+      const operations = [
+        ['detail', () => api.service.getPrescriptionById(recordId, session)],
+        ['history', () => api.service.getPrescriptionHistory(recordId, session)],
+        ['list', () => role === 'patient' ? api.service.getPatientPrescriptions(id, {}, session) : api.service.getProviderPrescriptions(id, {}, session)],
+      ];
+      for (const [operation, invoke] of operations) {
+        calls = [];
+        const allowed = expected === market;
+        if (!allowed && operation !== 'list') {
+          await assert.rejects(invoke(), (error) => error.statusCode === 404 && error.code === 'PRESCRIPTION_NOT_FOUND');
+          assert.equal(calls.some(({ sql }) => sql.includes('FROM prescription_history') || sql.includes('INSERT INTO audit_logs')), false);
+          assert.equal(calls.at(-1).sql, 'ROLLBACK');
+        } else {
+          const result = await invoke();
+          if (operation === 'list') assert.equal(result.length, allowed ? 1 : 0);
+          assert.equal(calls.filter(({ sql }) => sql.includes('INSERT INTO audit_logs')).length, 1);
+          assert.equal(calls.at(-1).sql, 'COMMIT');
+          if (allowed) {
+            failAudit = true; calls = [];
+            await assert.rejects(invoke(), /Private audit outage/);
+            assert.equal(calls.at(-1).sql, 'ROLLBACK');
+            assert.equal(calls.some(({ sql }) => sql === 'COMMIT'), false);
+            failAudit = false;
+          }
+        }
+      }
+    }
+  }
+});
+
+// Keep validation in the same path as the optional integration test, before
+// constructing a Pool and again before connect/query. Never use DATABASE_URL.
+async function isolatedFixturePool(env = process.env, createPool = (options) => new (require('pg').Pool)(options)) {
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', env });
+  assert.equal(safety.skipped, false, safety.reason);
+  const pool = createPool({ connectionString: env.SIMULATION_DATABASE_URL, statement_timeout: 10000 });
+  const effective = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool, env });
+  if (effective.skipped) { await pool.end(); assert.fail(effective.reason); }
+  return pool;
+}
+
+test('legacy optional fixture rejects unsafe targets before Pool construction and contradictory pools before connect/query', async () => {
+  const safe = 'postgresql://fixture:fixture@127.0.0.1:5432/legacy_test';
+  let constructions = 0; let ended = 0;
+  for (const value of [undefined, '', 'not a URL', 'https://127.0.0.1/legacy_test',
+    'postgresql://remote.invalid/legacy_test', 'postgresql://localhost/production',
+    safe + '?host=remote.invalid', safe + '?database=production', safe + '#fragment']) {
+    await assert.rejects(isolatedFixturePool({ NODE_ENV: 'test', SIMULATION_DATABASE_URL: value, DATABASE_URL: safe }, () => { constructions++; }));
+  }
+  await assert.rejects(isolatedFixturePool({ NODE_ENV: ' Production ', SIMULATION_DATABASE_URL: safe }, () => { constructions++; }));
+  assert.equal(constructions, 0);
+  for (const options of [{ connectionString: safe, host: 'remote.invalid' },
+    { connectionString: safe, database: 'production' }, { connectionString: safe, port: 6543 },
+    { connectionString: safe, stream: {} }, { host: '127.0.0.1', database: 'different_test', port: 5432 }]) {
+    await assert.rejects(isolatedFixturePool({ NODE_ENV: 'test', SIMULATION_DATABASE_URL: safe }, () => ({
+      options, async end() { ended++; }, connect() { assert.fail('unsafe pool connected'); }, query() { assert.fail('unsafe pool queried'); },
+    })));
+  }
+  assert.equal(ended, 5);
+  const verified = await isolatedFixturePool({ NODE_ENV: 'test', SIMULATION_DATABASE_URL: safe }, (options) => ({ options }));
+  assert.equal(verified.options.connectionString, safe);
+});
+
 const target = process.env.SIMULATION_DATABASE_URL;
 test('actual PostgreSQL/HTTP history and lists enforce current actor, owning care, supported market and durable audit with rollback-only controls', { skip: !target }, async () => {
-  const url = new URL(target); assert.ok(['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'));
-  const { Pool } = require('pg'); const pool = new Pool({ connectionString: target }); const client = await pool.connect(); let sequence = 0; let savepoint; let failAudit = false;
+  const pool = await isolatedFixturePool(); const client = await pool.connect(); let sequence = 0; let savepoint; let failAudit = false;
   const baseline = (await client.query('SELECT COUNT(*)::int AS count FROM prescriptions')).rows[0].count;
   try {
     await client.query('BEGIN');
+    const expression = marketExpression(parts({}).service._scope());
+    for (const [market_scope, region, country, expected] of marketCases) {
+      const result = await client.query(`SELECT ${expression.sql} AS market FROM (VALUES ($1::text,$2::text,$3::text)) AS pat(market_scope,region,country)`, [market_scope, region, country]);
+      assert.equal(result.rows[0].market, expected);
+    }
     const patient = (await client.query("SELECT id FROM users WHERE email='patient@demo.doctarx.com' AND is_active=TRUE AND role='patient' AND market_scope='NG'")).rows[0];
     const other = (await client.query("SELECT id FROM users WHERE email='government@demo.doctarx.com' AND is_active=TRUE AND role='patient' AND market_scope='NG'")).rows[0];
     const provider = (await client.query("SELECT id FROM users WHERE email='doctor@demo.doctarx.com' AND is_active=TRUE AND role='provider' AND provider_status='approved' AND market_scope='NG'")).rows[0];

@@ -65,6 +65,31 @@ test('review audit failure rolls physical status and inventory changes back toge
   assert.equal(f.state.f.inventory_released_at,undefined);assert.equal(f.state.events.length,0);assert.equal(f.state.calls.at(-1).sql,'ROLLBACK');
 });
 
+test('cancelled or expired Rx handover records physical facts and review without clinical or FHIR dispensing', async()=>{
+  for (const lifecycle_status of ['cancelled','expired']) {
+    const f=fixture(); f.state.rx.lifecycle_status=lifecycle_status; Object.assign(f.state.items[0],{status:'available',dispensed_quantity:0});
+    const original=structuredClone(f.state.items);
+    const pickup=await f.refresh('picked_up'); assert.equal(pickup.status,'in_transit'); assert.equal(pickup.clinicalReviewRequired,true); assert.ok(pickup.delivery.pickupProof);
+    const delivered=await f.refresh('delivered'); assert.equal(delivered.status,'delivered'); assert.ok(delivered.delivery.deliveryProof); assert.equal(delivered.payment.medicines.status,'verified');
+    await f.refresh('delivered'); assert.equal(f.state.stockReserved,0); assert.equal(f.state.ledger.length,1);
+    assert.equal(f.state.rx.lifecycle_status,lifecycle_status); assert.deepEqual(f.state.items,original);
+    assert.equal(f.state.events.filter(event=>event.action==='handover_requires_clinical_review').length,1);
+    assert.equal(f.state.calls.some(({sql})=>/UPDATE ng_rx_items|UPDATE ng_digital_prescriptions|ng_fhir_medication_dispenses|ng_medication_refunds/.test(sql)),false);
+    assert.equal(f.state.calls.filter(({sql})=>sql.includes('FROM ng_pharmacies')).length,9,'Only the existing load calls run; no FHIR context read is attempted');
+    assert.equal(f.state.external,0); assert.equal(f.state.calls.at(-1).sql,'COMMIT');
+  }
+});
+
+test('inactive-Rx review audit failure rolls handover back before any dispensing can be recorded', async()=>{
+  for (const lifecycle_status of ['cancelled','expired']) {
+    const f=fixture({auditFails:true}); f.state.rx.lifecycle_status=lifecycle_status;
+    await assert.rejects(f.refresh('picked_up'),/Isolated audit failure/);
+    assert.equal(f.state.rx.lifecycle_status,lifecycle_status); assert.equal(f.state.order.status,'dispatched'); assert.equal(f.state.booking.status,'booked'); assert.equal(f.state.stockReserved,2);
+    assert.equal(f.state.f.inventory_released_at,undefined); assert.equal(f.state.events.length,0); assert.equal(f.state.ledger.length,0);
+    assert.equal(f.state.calls.some(({sql})=>sql.includes('ng_fhir_medication_dispenses')),false); assert.equal(f.state.calls.at(-1).sql,'ROLLBACK');
+  }
+});
+
 
 test('historical order-to-signed-quantity mismatch preserves pickup and delivery instead of dispensing a short quantity', async()=>{
   const f=fixture();f.state.rx.lifecycle_status='received';Object.assign(f.state.items[0],{status:'available',dispensed_quantity:0});

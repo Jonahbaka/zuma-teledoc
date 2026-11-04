@@ -66,26 +66,42 @@ test('browser gate checks the approved headline and both exact metadata titles',
 test('voice design has truthful clinician boundaries and no pretend live controls', () => {
   assert.match(homepage, /id="language-voice"/);
   assert.match(homepage, /href="#language-voice"/);
-  for (const language of ['English', 'Nigerian English', 'Hausa', 'Igbo', 'Yoruba']) {
-    assert.ok(homepage.includes(`<li>${language}</li>`), language);
-  }
+  assert.match(homepage, /<VoiceLanguageCoverage \/>/);
+  const coverage = read('components/marketing/VoiceLanguageCoverage.jsx');
+  assert.match(coverage, /AFRICAN_GEMINI_LIVE_LANGUAGES\.map/);
+  assert.match(coverage, /DOCUMENTED_GEMINI_LIVE_LANGUAGES\.filter/);
+  assert.match(coverage, /Across Africa and beyond/);
+  assert.match(homepage, /global platform connecting patients and providers/);
+  assert.match(homepage, /href="\/provider\/register"/);
+  assert.doesNotMatch(coverage, /experimental|pending|in development|coming soon|clinical.*validated|Igbo/i);
   assert.doesNotMatch(homepage, /getUserMedia|SpeechRecognition|\/api\/voice|href="\/voice-lab"|Start recording|Start voice session/);
   assert.doesNotMatch(homepage, /all languages|every language|clinically validated|100%|instant diagnosis/i);
 });
 
-test('generated hero shows a patient and doctor, is local and dimensioned', () => {
-  assert.match(homepage, /AI-generated scene of a pregnant patient at a Nigerian primary healthcare centre speaking with a doctor on a tablet/);
-  assert.match(homepage, /phc-maternity-doctor-hero-v5\.webp/);
+test('generated medical voice hero is local, dimensioned and optimized', () => {
+  assert.match(homepage, /AI-generated medical voice concept showing a patient speaking with a doctor through a luminous voice orb and sound waves in a primary healthcare centre/);
+  assert.match(homepage, /medical-live-voice-hero-v6\.webp/);
   assert.doesNotMatch(homepage, /ai-language-voice-hero-v1\.webp|patient-doctor-hero-v2\.webp|multilingual-patient-doctor-hero-v3\.webp|3D concept illustration/);
-  assert.match(homepage, /width=\{1536\} height=\{1024\} priority/);
-  const image = fs.readFileSync(path.join(root, 'public/marketing/doctarx/phc-maternity-doctor-hero-v5.webp'));
+  assert.match(homepage, /width=\{1672\} height=\{941\} priority/);
+  const image = fs.readFileSync(path.join(root, 'public/marketing/doctarx/medical-live-voice-hero-v6.webp'));
   assert.equal(image.toString('ascii', 0, 4), 'RIFF');
   assert.equal(image.toString('ascii', 8, 12), 'WEBP');
   assert.ok(image.length < 250000, 'hero remains suitable for mobile delivery');
 });
 
-test('both browser gates check the current patient-and-doctor hero', () => {
-  const heroAlt = homepage.match(/<Image src="\/marketing\/doctarx\/phc-maternity-doctor-hero-v5\.webp" alt="([^"]+)"/)[1];
+test('voice artwork replaces the previous hero without inventing a product logo or controls', () => {
+  assert.doesNotMatch(homepage, /phc-maternity-doctor-hero-v5/);
+  assert.equal((homepage.match(/medical-live-voice-hero-v6/g) || []).length, 1);
+  assert.match(homepage, /className=\{styles.heroVoiceBrand\} aria-hidden="true"><DoctaRxLogo tone="light" glow=\{false\}/);
+  assert.match(css, /\.heroVoiceVisual \{ position: relative; \}/);
+  assert.match(css, /\.heroImage \{[^}]*width: 100%;[^}]*height: auto;[^}]*aspect-ratio: 1672 \/ 941;[^}]*object-fit: contain/);
+  assert.match(css, /\.heroVoiceBrand \{[^}]*pointer-events: none/);
+  assert.match(css, /\.heroVoiceBrand > svg \{[^}]*width: 100%;[^}]*height: auto/);
+  assert.doesNotMatch(homepage, /aria-label="(?:Start|Stop|Mute).*voice|recording now|listening now/i);
+});
+
+test('both browser gates check the current medical voice hero', () => {
+  const heroAlt = homepage.match(/<Image src="\/marketing\/doctarx\/medical-live-voice-hero-v6\.webp" alt="([^"]+)"/)[1];
   for (const file of ['scripts/e2e-homepage-launch.cjs', 'scripts/e2e-public-platform.cjs']) {
     const browser = read(file);
     assert.ok(browser.includes(heroAlt), `${file} checks the current hero`);

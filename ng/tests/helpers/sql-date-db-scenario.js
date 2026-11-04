@@ -8,13 +8,16 @@ const { createBrowserFixture } = require('./medication-delivery-fixture');
 const gateway = require('../../services/pharmacy/pharmacistRxService');
 const inbox = require('../../services/pharmacy/clinicalInboxService');
 const fhir = require('../../services/interop/medicationFhirService');
+const { fixtureTargetSafety } = require('../../scripts/fixtureTargetSafety');
 const request = (checkout, body = {}) => ({ version: checkout.version, idempotencyKey: crypto.randomUUID(), ...body });
 async function run() {
-  const target = new URL(process.env.SIMULATION_DATABASE_URL);
-  assert.ok(['localhost','127.0.0.1'].includes(target.hostname) && target.pathname.endsWith('_test'), 'Only an explicitly disposable loopback database is supported.');
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
   assert.equal(process.env.NODE_ENV, 'test');
-  const pool = new Pool({ connectionString: target.href, max: 4, options: '-c timezone=UTC' });
+  const pool = new Pool({ connectionString: process.env.SIMULATION_DATABASE_URL, max: 4, options: '-c timezone=UTC' });
   try {
+    const actualTarget = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+    assert.equal(actualTarget.skipped, false, actualTarget.reason);
     const client = await pool.connect();
     try {
       for (const style of ['ISO, YMD','SQL, DMY']) {

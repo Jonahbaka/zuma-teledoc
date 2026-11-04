@@ -6,6 +6,7 @@
 
 const express = require('express');
 const router = express.Router();
+const { backgroundWorkAllowed } = require('../../server/utils/backgroundWorkPolicy');
 
 // Import NG routes
 const discoveryRoutes = require('./discovery');
@@ -36,7 +37,7 @@ const rbac                  = require('../middleware/rbac');
 let discoverySeedScheduled = false;
 
 function scheduleDiscoverySeed() {
-  if (discoverySeedScheduled || process.env.NG_AUTO_SEED_DISCOVERY === 'false') {
+  if (!backgroundWorkAllowed() || discoverySeedScheduled || process.env.NG_AUTO_SEED_DISCOVERY === 'false') {
     return;
   }
 

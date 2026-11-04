@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Calendar, Clock, MessageSquare, Plus, Video } from 'lucide-react';
 import { appointmentsAPI } from '@/lib/api';
+import { isActiveAppointment, canOpenVideoVisit } from '@/lib/patientAppointments.cjs';
 import PortalPageHeader from '@/components/branding/PortalPageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -39,10 +40,11 @@ export default function NigeriaPatientAppointmentsPage() {
     const loadAppointments = async () => {
       setLoading(true); setError(''); setAppointments([]);
       try {
-        const params = ['all','upcoming'].includes(filter) ? undefined : { status: filter };
-        const response = await appointmentsAPI.getAll(params);
+        const response = filter === 'upcoming'
+          ? await appointmentsAPI.getUpcoming(50)
+          : await appointmentsAPI.getAll(filter === 'all' ? undefined : { status: filter });
         if (!response.data?.success || !Array.isArray(response.data.appointments)) throw new Error();
-        if (!cancelled) setAppointments(filter === 'upcoming' ? response.data.appointments.filter((item) => ['scheduled','confirmed','in_progress'].includes(item.status)) : response.data.appointments);
+        if (!cancelled) setAppointments(response.data.appointments);
       } catch {
         if (!cancelled) setError('Visits could not be loaded. Please try again.');
       } finally {
@@ -55,7 +57,7 @@ export default function NigeriaPatientAppointmentsPage() {
   }, [filter, revision]);
 
   const summary = useMemo(() => {
-    const upcoming = appointments.filter((item) => ['scheduled', 'confirmed'].includes(String(item.status || '').toLowerCase())).length;
+    const upcoming = appointments.filter(isActiveAppointment).length;
     const completed = appointments.filter((item) => String(item.status || '').toLowerCase() === 'completed').length;
     const video = appointments.filter((item) => String(item.type || '').toLowerCase() === 'video').length;
     return { upcoming, completed, video };
@@ -155,9 +157,9 @@ export default function NigeriaPatientAppointmentsPage() {
                     <Link href={`/ng/patient/appointments/${appointment.id}`}>
                       <Button variant="outline">View Details</Button>
                     </Link>
-                    {appointment.type === 'video' && ['scheduled', 'confirmed'].includes(String(appointment.status || '').toLowerCase()) ? (
+                    {canOpenVideoVisit(appointment) ? (
                       <Link href={`/ng/patient/appointments/${appointment.id}/call`}>
-                        <Button className="bg-blue-700 text-white hover:bg-blue-800">Join Call</Button>
+                        <Button className="bg-blue-700 text-white hover:bg-blue-800">{appointment.status === 'in_progress' ? 'Return to Call' : 'Join Call'}</Button>
                       </Link>
                     ) : null}
                     <Link href="/ng/patient/messages">

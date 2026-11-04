@@ -11,6 +11,12 @@ Never put real values in this document or Git. Validate production variables thr
 | `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_API_URL`, `COOKIE_DOMAIN`, `PORT`, `NODE_ENV` | Runtime origin/cookies | HTTPS production origin; `NODE_ENV=production`. |
 | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `NEXT_PUBLIC_SENTRY_DSN` | Error monitoring | Do not send PHI or secrets; sampling requires privacy review. |
 
+## Express error monitoring
+
+The Express API uses the installed Sentry v10 error handler before its terminal JSON error response. Set `SENTRY_DSN` only through the approved deployment configuration; this code change does not activate a service or authorize external data sharing.
+
+The Express client exports redacted errors only. `SENTRY_TRACES_SAMPLE_RATE` does not enable Express tracing. Request/user data, free-text exception messages, breadcrumbs, attachments, logs, spans, and sessions are withheld. Error type and relative locations of loaded application modules remain available for diagnosis. See [Express Sentry safety and verification](docs/SENTRY_EXPRESS_SAFETY_2026-11-04.md) for limitations. The separate Next.js/browser Sentry configurations are not covered by this guard and require their own privacy review before activation.
+
 ## Nigeria video
 
 - LiveKit: `NG_LIVEKIT_URL`, `NG_LIVEKIT_API_KEY`, `NG_LIVEKIT_API_SECRET`.

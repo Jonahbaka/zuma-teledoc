@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const rxRouter = require('../services/rx-engine/rxRouter');
 const privateUpload = require('../services/rx-engine/privatePrescriptionUploadService');
+const patientPrescriptionList = require('../services/rx-engine/patientPrescriptionListService');
 const multer = require('multer');
 const { requireRole } = require('../../server/middleware/auth');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: privateUpload.MAX_IMAGE_BYTES, files: 1, fields: 0, parts: 1 } }).single('image');
@@ -85,6 +86,7 @@ router.post('/prescriptions/upload', requireRole('patient'), (req, res, next) =>
 });
 
 router.get('/prescriptions/:id/image', requireRole('patient'), async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) return res.status(400).json({ error: 'Invalid prescription.' });
   try {
     const image = await privateUpload.readOwnedImage(getPool(), req, req.params.id);
@@ -140,51 +142,13 @@ router.post('/prescriptions/:prescriptionId/route', async (req, res) => {
   }
 });
 
-// Get patient prescriptions
+// Get the authenticated account's own uploaded and digital prescriptions.
 router.get('/prescriptions', async (req, res) => {
-  try {
-    const pool = getPool();
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = ((parseInt(req.query.page) || 1) - 1) * limit;
-    const uploaded = await pool.query(
-      `SELECT id, status, created_at, items, prescriber_name, ocr_confidence,
-              is_controlled_substance, expires_at
-       FROM ng_prescriptions WHERE patient_user_id = $1
-       ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-      [req.user.id, limit, offset]
-    );
-    const digital = await pool.query(
-      `SELECT rx.id,
-              rx.status,
-              rx.dispense_status,
-              rx.pharmacy_response_status,
-              rx.created_at,
-              rx.items,
-              rx.prescription_number,
-              rx.expires_at,
-              provider.full_name AS prescriber_name,
-              pharmacy.name AS pharmacy_name,
-              pharmacy.phone AS pharmacy_phone,
-              pharmacy.whatsapp_business_number,
-              rx.fulfillment_preference,
-              rx.confirmed_price_ngn,
-              rx.pharmacy_notes
-         FROM ng_digital_prescriptions rx
-         JOIN ng_providers provider ON provider.id = rx.provider_id
-         LEFT JOIN ng_pharmacies pharmacy
-           ON pharmacy.id = COALESCE(rx.routed_pharmacy_id, rx.preferred_pharmacy_id, rx.dispensed_by_pharmacy_id)
-        WHERE rx.patient_user_id = $1
-        ORDER BY rx.created_at DESC
-        LIMIT $2 OFFSET $3`,
-      [req.user.id, limit, offset]
-    );
-
-    res.json([
-      ...digital.rows.map((row) => ({ ...row, source_type: 'provider_digital_prescription' })),
-      ...uploaded.rows.map((row) => ({ ...row, source_type: 'patient_uploaded_prescription' })),
-    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await patientPrescriptionList.list(getPool(), req.user, req.query)); }
+  catch (error) {
+    res.status(error.status === 403 ? 403 : 503).json({ error: error.status === 403
+      ? 'Prescription access denied.' : 'Prescription records are temporarily unavailable.' });
   }
 });
 

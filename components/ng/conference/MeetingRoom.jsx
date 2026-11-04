@@ -238,7 +238,7 @@ function ControlBar({
       <div className="flex min-w-0 items-center gap-2 text-xs text-slate-400">
         <span className="hidden items-center gap-1 sm:flex">
           {qIcon}
-          {connectionQuality && <span className="capitalize">{connectionQuality}</span>}
+          {connectionQuality && <span className="capitalize">{connectionQuality === 'unknown' ? 'Not measured' : connectionQuality}</span>}
         </span>
         <span className="flex items-center gap-1">
           <Radio className="h-3.5 w-3.5 text-blue-500" />

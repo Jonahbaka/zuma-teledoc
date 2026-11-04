@@ -78,9 +78,9 @@ async function recordBreakGlass(pool, {
   }
 }
 
-async function findProviderProfile(pool, userId) {
+async function findProviderProfile(pool, userId, lock = false) {
   const result = await pool.query(
-    'SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1',
+    'SELECT id FROM ng_providers WHERE user_id = $1 LIMIT 1' + (lock ? ' FOR SHARE' : ''),
     [userId]
   );
   return result.rows[0]?.id || null;
@@ -92,6 +92,7 @@ async function hasClinicalRelationship(pool, {
   patientUserId,
   appointmentId,
   encounterId,
+  lock = false,
 }) {
   if (appointmentId) {
     const appointment = await pool.query(
@@ -100,7 +101,7 @@ async function hasClinicalRelationship(pool, {
         WHERE id = $1
           AND patient_user_id = $2
           AND provider_id = $3
-        LIMIT 1`,
+        LIMIT 1${lock ? ' FOR SHARE' : ''}`,
       [appointmentId, patientUserId, providerId]
     );
     if (appointment.rows.length) return true;
@@ -113,10 +114,24 @@ async function hasClinicalRelationship(pool, {
         WHERE id = $1
           AND patient_user_id = $2
           AND provider_user_id = $3
-        LIMIT 1`,
+        LIMIT 1${lock ? ' FOR SHARE' : ''}`,
       [encounterId, patientUserId, providerUserId]
     );
     if (encounter.rows.length) return true;
+  }
+
+  if (lock) {
+    // Called with a transaction client. Lock one sufficient witness without
+    // changing the existing OR policy; PostgreSQL cannot row-lock a UNION.
+    const witnesses = [
+      ['SELECT id FROM ng_appointments WHERE patient_user_id = $1 AND provider_id = $2 LIMIT 1 FOR SHARE', [patientUserId, providerId]],
+      ['SELECT id FROM ng_clinical_encounters WHERE patient_user_id = $1 AND provider_user_id = $2 LIMIT 1 FOR SHARE', [patientUserId, providerUserId]],
+      ['SELECT id FROM provider_patient_relationships WHERE patient_id = $1 AND provider_id = $2 AND is_active = TRUE LIMIT 1 FOR SHARE', [patientUserId, providerUserId]],
+    ];
+    for (const [sql, params] of witnesses) {
+      if ((await pool.query(sql, params)).rows.length) return true;
+    }
+    return false;
   }
 
   const relationship = await pool.query(
@@ -143,6 +158,7 @@ async function assertClinicalAccess(req, {
   encounterId = null,
   appointmentId = null,
   mode = 'read',
+  lock = false,
 } = {}) {
   if (!pool) throw new Error('pool is required');
 
@@ -182,7 +198,7 @@ async function assertClinicalAccess(req, {
     throw httpError(403, 'Clinical record access denied.', 'CLINICAL_ACCESS_DENIED');
   }
 
-  const providerId = await findProviderProfile(pool, userId);
+  const providerId = await findProviderProfile(pool, userId, lock);
   if (!providerId) {
     throw httpError(403, 'An active Nigeria provider profile is required.', 'PROVIDER_PROFILE_REQUIRED');
   }
@@ -193,6 +209,7 @@ async function assertClinicalAccess(req, {
     patientUserId,
     appointmentId,
     encounterId,
+    lock,
   });
   if (!related) {
     throw httpError(403, 'Clinical record access denied.', 'CLINICAL_ACCESS_DENIED');

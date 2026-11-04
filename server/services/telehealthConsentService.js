@@ -10,7 +10,8 @@
 
 const db = require('../db');
 const logger = require('../middleware/logger');
-const { encrypt, decrypt } = require('../../lib/encryption');
+const { encrypt } = require('../../lib/encryption');
+const { assertClinicalPatientAccess, references, denied } = require('./clinicalPatientAccessService');
 const { keysToCamel } = require('../../lib/utils');
 
 class TelehealthConsentService {
@@ -109,7 +110,7 @@ class TelehealthConsentService {
     } = consentData;
     
     return db.transaction(async client => {
-    await require('./clinicalPatientAccessService').assertClinicalPatientAccess(client, patientId, req?.user, { lock: true });
+    await assertClinicalPatientAccess(client, patientId, req?.user, { lock: true });
     // Validate template exists
     const { rows: templates } = await client.query(
       `SELECT id, version FROM telehealth_consent_templates WHERE id = $1
@@ -170,60 +171,75 @@ class TelehealthConsentService {
   }
   
   /**
-   * Get patient's valid consent for a state
+   * Retain read authority and audit evidence in one transaction.
    */
-  async getValidConsent(patientId, state) {
-    const { rows } = await db.query(
-      `SELECT tc.*, 
-              tct.title as template_title, tct.content_plain as template_content
-       FROM telehealth_consents tc
-       JOIN telehealth_consent_templates tct ON tct.id = tc.template_id
-       WHERE tc.patient_id = $1
-       AND tc.patient_state = $2
-       AND tc.is_valid = true
-       AND (tc.expires_at IS NULL OR tc.expires_at > NOW())
-       ORDER BY tc.consent_captured_at DESC
-       LIMIT 1`,
-      [patientId, state]
-    );
-    
-    if (rows.length === 0) {
-      return null;
-    }
-    
-    return this._formatConsent(rows[0]);
+  async _readConsents(patientId, actor, operation, read) {
+    references(patientId, actor?.id);
+    if (!['patient', 'provider'].includes(actor.role)) throw denied(403, 'CLINICAL_ACCESS_DENIED', 'Current clinical authority is required.');
+    return db.transaction(async client => {
+      // Hold current account, market, clinician verification and care witnesses
+      // until protected records and their read audit have committed together.
+      await assertClinicalPatientAccess(client, patientId, actor, { lock: true });
+      const rows = await read(client);
+      const result = rows.map(row => this._formatConsent(row));
+      await client.query(`INSERT INTO audit_logs (user_id,action,resource_type,patient_id,description,new_values,phi_accessed,success)
+        VALUES($1,'read','telehealth_consent',$2,'Authorized consent read',$3::jsonb,TRUE,TRUE)`,
+      [actor.id, patientId, JSON.stringify({ operation, recordCount: rows.length })]);
+      return result;
+    });
   }
-  
+
+  async getValidConsent(patientId, state, actor) {
+    if (typeof state !== 'string' || state.length !== 2) throw denied(400, 'CONSENT_STATE_INVALID', 'A two-character patient state is required.');
+    const rows = await this._readConsents(patientId, actor, 'validity', async client => {
+      const result = await client.query(
+        `SELECT tc.*,
+                tct.title as template_title, tct.content_plain as template_content
+         FROM telehealth_consents tc
+         JOIN telehealth_consent_templates tct ON tct.id = tc.template_id
+         WHERE tc.patient_id = $1
+         AND tc.patient_state = $2
+         AND tc.is_valid = true AND tc.revoked_at IS NULL
+         AND (tc.expires_at IS NULL OR tc.expires_at > NOW())
+         ORDER BY tc.consent_captured_at DESC, tc.id
+         LIMIT 1 FOR SHARE OF tc`,
+        [patientId, state]
+      );
+      return result.rows;
+    });
+    return rows[0] || null;
+  }
+
   /**
    * Check if patient has valid consent for telehealth in a state
    */
-  async hasValidConsent(patientId, state) {
-    const consent = await this.getValidConsent(patientId, state);
+  async hasValidConsent(patientId, state, actor) {
+    const consent = await this.getValidConsent(patientId, state, actor);
     return consent !== null;
   }
-  
+
   /**
    * Get all consents for a patient
    */
-  async getPatientConsents(patientId) {
-    const { rows } = await db.query(
-      `SELECT tc.*,
-              tct.title as template_title, tct.version as template_version_display
-       FROM telehealth_consents tc
-       JOIN telehealth_consent_templates tct ON tct.id = tc.template_id
-       WHERE tc.patient_id = $1
-       ORDER BY tc.consent_captured_at DESC`,
-      [patientId]
-    );
-    
-    return rows.map(r => this._formatConsent(r));
+  async getPatientConsents(patientId, actor) {
+    return this._readConsents(patientId, actor, 'history', async client => {
+      const { rows } = await client.query(
+        `SELECT tc.*,
+                tct.title as template_title, tct.version as template_version_display
+         FROM telehealth_consents tc
+         JOIN telehealth_consent_templates tct ON tct.id = tc.template_id
+         WHERE tc.patient_id = $1
+         ORDER BY tc.consent_captured_at DESC, tc.id FOR SHARE OF tc`,
+        [patientId]
+      );
+      return rows;
+    });
   }
-  
+
   /**
    * Revoke a consent
    */
   async revokeConsent(consentId, patientId, reason, actor) {
-    const { assertClinicalPatientAccess, references, denied } = require('./clinicalPatientAccessService');
     references(consentId, patientId, actor?.id);
     if (typeof reason !== 'string' || !reason.trim() || reason.length > 1000) throw denied(400, 'CONSENT_REASON_INVALID', 'A bounded revocation reason is required.');
     return db.transaction(async client => {
@@ -263,8 +279,8 @@ class TelehealthConsentService {
    * Validate consent for a telehealth encounter
    * Returns the consent if valid, or throws an error with guidance
    */
-  async validateConsentForEncounter(patientId, patientState) {
-    const consent = await this.getValidConsent(patientId, patientState);
+  async validateConsentForEncounter(patientId, patientState, actor) {
+    const consent = await this.getValidConsent(patientId, patientState, actor);
     
     if (!consent) {
       const error = new Error('Valid telehealth consent required');

@@ -186,89 +186,92 @@ router.post('/register', async (req, res) => {
     // Determine provider status
     const providerStatus = data.role === 'provider' ? 'pending' : null;
     
-    // Create user
-    const { rows } = await db.query(
-      `INSERT INTO users (
-        email, password_hash, role, first_name, last_name,
-        date_of_birth, phone, license_number, license_state,
-        specialty, npi_number, credentials, provider_status,
-        address_line1, address_line2, city, state, zip_code, country,
-        hipaa_consent_at, terms_accepted_at, is_verified
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
-      RETURNING id, email, role, first_name, last_name`,
-      [
-        data.email,
-        passwordHash,
-        data.role,
-        data.firstName,
-        data.lastName,
-        data.dateOfBirth || null,
-        data.phone || null,
-        data.licenseNumber || null,
-        data.licenseState || null,
-        data.specialty || null,
-        data.npiNumber || null,
-        data.credentials || null,
-        providerStatus,
-        data.addressLine1 || null,
-        data.addressLine2 || null,
-        data.city || null,
-        data.region || null,
-        data.postalCode || null,
-        data.country || null,
-        data.hipaaConsent ? new Date() : null,
-        data.termsAccepted ? new Date() : null,
-        false // Don't auto-verify - require email verification
-      ]
-    );
-    
-    const user = rows[0];
-
-    if (String(data.country || '').toUpperCase() === 'NG') {
-      await db.query(
-        `UPDATE users
-            SET region = 'NG',
-                market_scope = 'NG',
-                account_status = COALESCE(account_status, 'active'),
-                coverage_status = CASE WHEN role = 'patient' THEN 'self_pay' ELSE coverage_status END,
-                updated_at = NOW()
-          WHERE id = $1`,
-        [user.id]
-      ).catch((metadataError) => {
-        logger.warn('Failed to set Nigeria registration metadata', {
-          userId: user.id,
-          error: metadataError.message
-        });
-      });
-    }
-    const currentRegistration = await db.query('SELECT market_scope FROM users WHERE id=$1', [user.id]);
-    user.market_scope = currentRegistration.rows[0]?.market_scope;
-    
-    // Create subscription record (free tier by default)
-    await db.query(
-      `INSERT INTO subscriptions (user_id, tier, status) VALUES ($1, 'free', 'active')`,
-      [user.id]
-    );
-    
-    // Generate email verification token
+    const marketScope = String(data.country || '').toUpperCase() === 'NG' ? 'NG' : 'US';
     const verificationToken = generateToken(32);
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 24); // 24 hour expiration
-    
-    await db.query(
-      `INSERT INTO email_verification_tokens (user_id, token, expires_at)
-       VALUES ($1, $2, $3)`,
-      [user.id, hash(verificationToken), expiresAt]
-    );
-    
-    const { accessToken, refreshToken } = await authSessions.issueSession({ ...user, password_hash: passwordHash }, req, generateTokens);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    // Set cookies
+    // One commit owns the account, market, subscription, verification, session,
+    // and audit. A failed dependent write must leave no account to strand retry.
+    const { user, accessToken, refreshToken } = await db.transaction(async (client) => {
+      // Create user
+      const { rows } = await client.query(
+        `INSERT INTO users (
+          email, password_hash, role, first_name, last_name,
+          date_of_birth, phone, license_number, license_state,
+          specialty, npi_number, credentials, provider_status,
+          address_line1, address_line2, city, state, zip_code, country,
+          hipaa_consent_at, terms_accepted_at, is_verified, market_scope
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+        RETURNING id, email, role, first_name, last_name, market_scope`,
+        [
+          data.email,
+          passwordHash,
+          data.role,
+          data.firstName,
+          data.lastName,
+          data.dateOfBirth || null,
+          data.phone || null,
+          data.licenseNumber || null,
+          data.licenseState || null,
+          data.specialty || null,
+          data.npiNumber || null,
+          data.credentials || null,
+          providerStatus,
+          data.addressLine1 || null,
+          data.addressLine2 || null,
+          data.city || null,
+          data.region || null,
+          data.postalCode || null,
+          data.country || null,
+          data.hipaaConsent ? new Date() : null,
+          data.termsAccepted ? new Date() : null,
+          false, // Don't auto-verify - require email verification
+          marketScope
+        ]
+      );
+    
+      const user = rows[0];
+
+      if (marketScope === 'NG') {
+        await client.query(
+          `UPDATE users
+              SET region = 'NG',
+                  market_scope = 'NG',
+                  account_status = COALESCE(account_status, 'active'),
+                  coverage_status = CASE WHEN role = 'patient' THEN 'self_pay' ELSE coverage_status END,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [user.id]
+        );
+      }
+    
+      // Create subscription record (free tier by default)
+      await client.query(
+        `INSERT INTO subscriptions (user_id, tier, status) VALUES ($1, 'free', 'active')`,
+        [user.id]
+      );
+    
+      await client.query(
+        `INSERT INTO email_verification_tokens (user_id, token, expires_at)
+         VALUES ($1, $2, $3)`,
+        [user.id, hash(verificationToken), expiresAt]
+      );
+    
+      const tokens = await authSessions.issueSessionInTransaction(client, { ...user, password_hash: passwordHash }, req, generateTokens);
+
+      // Unlike the best-effort login audit, registration audit is part of the
+      // account commit and contains no password, token, or clinical data.
+      await client.query(
+        `INSERT INTO audit_logs (user_id, action, resource_type, ip_address, user_agent, description, new_values, success)
+         VALUES ($1, 'login', 'session', $2, $3, 'Successful registration login', $4::jsonb, TRUE)`,
+        [user.id, req.ip || null, req.get('user-agent') || null, JSON.stringify({ registration: true, marketScope })]
+      );
+      return { user, ...tokens };
+    });
+
+    // Never expose usable credentials or send welcome messages before COMMIT.
     setAuthCookies(res, accessToken, refreshToken);
-    
-    // Audit log
-    await auditLogin(req, true, user.id);
-    
+
     // Send verification email, welcome email, and create in-app notification
     try {
       const emailService = require('../services/email');
@@ -346,7 +349,19 @@ router.post('/register', async (req, res) => {
       });
     }
     
-    logger.error('Registration error', { error: error.message });
+    // The preflight lookup cannot arbitrate concurrent signup requests. The
+    // database email/role constraint is authoritative, including its race loser.
+    if (error.code === '23505' && ['users_email_role_key', 'users_email_key'].includes(error.constraint)) {
+      return res.status(409).json({
+        success: false,
+        error: 'An account with this email already exists for this role'
+      });
+    }
+
+    logger.error('Registration error', {
+      code: 'REGISTRATION_FAILED',
+      databaseCode: /^[A-Z0-9]{5}$/.test(String(error.code || '')) ? error.code : 'UNKNOWN'
+    });
     res.status(500).json({
       success: false,
       error: 'Registration failed'

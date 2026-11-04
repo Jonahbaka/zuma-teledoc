@@ -15,14 +15,18 @@ async function storeSession(client,user,request,generateTokens,familyId=crypto.r
     VALUES($1,$2,$3,$4,NOW()+INTERVAL '7 days',$5)`,[user.id,hash(tokens.refreshToken),request.ip||null,request.get?.('user-agent')||null,familyId]);
   return tokens;
 }
+// Registration already owns a transaction and its newly inserted user is not
+// visible on another connection. Reuse that client without weakening the same
+// locked credential/MFA checks used for ordinary login.
+async function issueSessionInTransaction(client,snapshot,request,generateTokens) {
+  const current=await lockedUser(client,snapshot.id);
+  // Password/MFA verification happened outside the transaction. Do not mint a
+  // session if credentials or factor policy changed while it was in flight.
+  if(snapshot.role!==current.role || snapshot.password_hash!==current.password_hash || Boolean(snapshot.mfa_enabled)!==Boolean(current.mfa_enabled) || (snapshot.mfa_secret??null)!==(current.mfa_secret??null))throw rejected('Credentials changed; sign in again');
+  return storeSession(client,current,request,generateTokens);
+}
 async function issueSession(snapshot,request,generateTokens) {
-  return db.transaction(async client=>{
-    const current=await lockedUser(client,snapshot.id);
-    // Password/MFA verification happened outside the transaction. Do not mint a
-    // session if credentials or factor policy changed while it was in flight.
-    if(snapshot.role!==current.role || snapshot.password_hash!==current.password_hash || Boolean(snapshot.mfa_enabled)!==Boolean(current.mfa_enabled) || (snapshot.mfa_secret??null)!==(current.mfa_secret??null))throw rejected('Credentials changed; sign in again');
-    return storeSession(client,current,request,generateTokens);
-  });
+  return db.transaction(client=>issueSessionInTransaction(client,snapshot,request,generateTokens));
 }
 async function rotateSession(decoded,refreshToken,request,generateTokens) {
   return db.transaction(async client=>{
@@ -81,4 +85,4 @@ async function changeCredentials({userId,expectedPasswordHash,newPasswordHash,re
   require('../routes/openclawAdapter').revokeAdapterSessions(userId);
   return result;
 }
-module.exports={issueSession,rotateSession,revokeSession,assertCurrentSession,changeCredentials};
+module.exports={issueSession,issueSessionInTransaction,rotateSession,revokeSession,assertCurrentSession,changeCredentials};

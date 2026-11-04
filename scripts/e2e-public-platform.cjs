@@ -348,16 +348,21 @@ async function publicScope(browser, scope, width) {
     await page.getByText('Device location is unavailable. Choose an area to continue.', { exact: true }).waitFor();
     check(await page.getByText('Using your device location', { exact: true }).count() === 0, scope.market + ': denied permission must not claim a device location.');
     check(await page.getByRole('contentinfo').count() === 1, scope.market + ': public homepage has one shared footer.');
-    check(await page.locator('main img[alt="AI-generated scene of a pregnant patient at a Nigerian primary healthcare centre speaking with a doctor on a tablet"]').count() === 1, scope.market + ': hero uses the patient-and-doctor image with accessible text.');
+    check(await page.locator('main img[alt="AI-generated medical voice concept showing a patient speaking with a doctor through a luminous voice orb and sound waves in a primary healthcare centre"]').count() === 1, scope.market + ': hero uses the medical voice concept with accessible text.');
     check(await page.getByRole('group', { name: 'Illustrative conversation from Hausa to English', exact: true }).count() === 1, scope.market + ': hero makes the language context explicit.');
     const footer = page.getByRole('contentinfo');
     assert.equal(await footer.getByRole('link', { name: 'Find pharmacies', exact: true }).getAttribute('href'), scope.directory);
     assert.equal(await footer.getByRole('link', { name: 'Patient sign in', exact: true }).getAttribute('href'), (scope.market === 'NG' ? '/ng/patient' : '/patient') + '/login');
     assert.equal(await footer.getByRole('link', { name: 'DoctaRx CareOps', exact: true }).getAttribute('href'), '/careops/login');
     assert.equal(await page.locator('#language-voice').count(), 1, 'Language voice content remains available in each market.');
-    for (const language of ['English', 'Nigerian English', 'Hausa', 'Igbo', 'Yoruba']) {
-      assert.equal(await page.getByRole('list', { name: 'Language voice', exact: true }).getByText(language, { exact: true }).count(), 1);
+    for (const language of ['Hausa', 'Igbo', 'Yoruba', 'Swahili']) {
+      assert.equal(await page.getByRole('list', { name: 'African language voice choices', exact: true }).getByText(language, { exact: true }).count(), 1);
     }
+    await page.getByText('Explore more languages', { exact: true }).click();
+    for (const language of ['English', 'French', 'Portuguese', 'Spanish']) {
+      assert.equal(await page.getByRole('list', { name: 'More language voice choices', exact: true }).getByText(language, { exact: true }).count(), 1);
+    }
+    await page.getByText('Explore more languages', { exact: true }).click();
     assert.equal(await page.locator('main').getByRole('link', { name: 'Explore language voice', exact: true }).getAttribute('href'), '#language-voice');
     assert.equal(await page.locator('a[href="/voice-lab"]').count(), 0, 'Marketing does not expose the gated voice prototype.');
     await capture(page, 'DoctaRx ' + scope.market + ' homepage ' + size);

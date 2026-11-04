@@ -249,6 +249,10 @@ test('Nigeria eRx draft requires matching approved clinical review and remains u
   };
   await assert.rejects(rx.createDraft(input),
     { code: 'CLINICAL_AI_CARE_ACTION_REVIEW_REQUIRED' });
+  const gateway = require('../services/rx-engine/prescriberRxService');
+  const { clinical_ai_source_suggestion_id, clinical_ai_source_encounter_id, ...manual } = input;
+  const gatewayInput = { ...manual, aiSourceSuggestionId: clinical_ai_source_suggestion_id, phcEncounterId: clinical_ai_source_encounter_id };
+  await assert.rejects(gateway.create(pool, doctor, gatewayInput), { code: 'CLINICAL_AI_CARE_ACTION_REVIEW_REQUIRED' });
   await review(encounter, source);
   const drafted = await rx.createDraft(input);
   assert.equal(drafted.clinical_ai_source_suggestion_id, source.id);
@@ -256,6 +260,13 @@ test('Nigeria eRx draft requires matching approved clinical review and remains u
   assert.equal(drafted.lifecycle_status, 'drafted');
   assert.equal(drafted.signed_at, null);
   assert.equal(drafted.routed_pharmacy_id, null);
+  for (const requestInput of [manual, gatewayInput]) {
+    const authorized = await gateway.create(pool, doctor, requestInput);
+    assert.equal(authorized.provider_id, provider.id); assert.equal(authorized.patient_user_id, patient.id);
+    assert.equal(authorized.lifecycle_status, 'drafted'); assert.equal(authorized.signed_at, null); assert.equal(authorized.routed_pharmacy_id, null);
+    assert.equal(authorized.clinical_ai_source_suggestion_id, requestInput === manual ? null : source.id);
+    assert.equal((await pool.query("SELECT COUNT(*)::int AS count FROM audit_logs WHERE resource_id=$1 AND user_id=$2 AND action='create'", [authorized.id,doctor.id])).rows[0].count, 1);
+  }
   await assert.rejects(rx.createDraft({
     ...input, patient_user_id: otherPatient.id,
   }), { code: 'CLINICAL_AI_RX_CONTEXT_DENIED' });

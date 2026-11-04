@@ -136,6 +136,12 @@ const nextConfig = {
 
   // Experimental features
   experimental: {
+    // Optional bounded-resource validation; normal builds keep Next's defaults.
+    ...(process.env.DOCTARX_LOW_MEMORY_BUILD === 'true' ? {
+      cpus: 1,
+      webpackBuildWorker: true,
+      webpackMemoryOptimizations: true,
+    } : {}),
     optimizePackageImports: ['lucide-react'],
     serverActions: {
       allowedOrigins: ['doctarx.com', 'www.doctarx.com', 'localhost:3000']

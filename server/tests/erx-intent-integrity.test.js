@@ -2,6 +2,15 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { fixtureTargetSafety } = require('../../ng/scripts/fixtureTargetSafety');
+// Reject configured fixture targets before application imports initialize a pool
+// or dotenv can alter the original environment. Missing targets still skip.
+const target = process.env.SIMULATION_DATABASE_URL;
+if (target) {
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+}
+
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -83,11 +92,13 @@ test('prescription cancellation HTTP preserves sign-in/provider gates and return
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
 
-const target = process.env.SIMULATION_DATABASE_URL;
 test('PostgreSQL modern draft binds current patient, clinician, market and appointment atomically without changing existing demo accounts', { skip: !target }, async () => {
-  const url = new URL(target);
-  assert.ok(['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'), 'Use only an isolated loopback database ending in _test');
-  const { Pool } = require('pg'); const pool = new Pool({ connectionString: target }); const client = await pool.connect();
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+  const { Pool } = require('pg'); const pool = new Pool({ connectionString: target });
+  const poolSafety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(poolSafety.skipped, false, poolSafety.reason);
+  const client = await pool.connect();
   const originalQuery = db.query; const originalPool = db.getPool; let serial = 0; let failAudit = false;
   const routePool = { query: (...args) => client.query(...args), async connect() {
     const point = 'erx_' + (++serial);

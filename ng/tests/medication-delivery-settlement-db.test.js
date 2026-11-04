@@ -6,16 +6,20 @@ const crypto = require('node:crypto');
 const { Pool } = require('pg');
 const { createBrowserFixture } = require('./helpers/medication-delivery-fixture');
 
+const { fixtureTargetSafety } = require('../scripts/fixtureTargetSafety');
 const target = process.env.SIMULATION_DATABASE_URL;
 const input = (checkout, body = {}) => ({ version: checkout.version, idempotencyKey: crypto.randomUUID(), ...body });
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 async function bounded(promise) { let timer; try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Financial lock barrier timed out')), 10000); })]); } finally { clearTimeout(timer); } }
 
 test('real PostgreSQL settlement reserves exact liabilities and verifies actual gateway payout evidence once', { skip: !target }, async t => {
-  const url = new URL(target); assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname) && url.pathname.endsWith('_test'));
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+  const pool = new Pool({ connectionString: target, max: 6 });
+  const actualTarget = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(actualTarget.skipped, false, actualTarget.reason);
   const previous = { NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY };
   process.env.NODE_ENV = 'test'; process.env.ENCRYPTION_KEY ||= 'c'.repeat(64);
-  const pool = new Pool({ connectionString: target, max: 6 });
   try {
     async function fixture({ returned = false } = {}) {
       const f = await createBrowserFixture({ pool });

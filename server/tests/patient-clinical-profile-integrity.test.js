@@ -2,6 +2,15 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { fixtureTargetSafety } = require('../../ng/scripts/fixtureTargetSafety');
+// Reject configured fixture targets before application imports initialize a pool
+// or dotenv can alter the original environment. Missing targets still skip.
+const target = process.env.SIMULATION_DATABASE_URL;
+if (target) {
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+}
+
 const crypto = require('node:crypto');
 const express = require('express');
 const jwt = require('jsonwebtoken');
@@ -28,10 +37,13 @@ test('clinical profile operations require an explicit current session and reject
   } finally { db.getPool = originalPool; }
 });
 
-const target = process.env.SIMULATION_DATABASE_URL;
 test('actual clinical profile HTTP and PostgreSQL enforce current care and market, own history, record IDs, encounter lineage and atomic audits', { skip: !target }, async () => {
-  const url = new URL(target); assert.ok(['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'));
-  const { Pool } = require('pg'); const pool = new Pool({ connectionString: target }); const client = await pool.connect();
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+  const { Pool } = require('pg'); const pool = new Pool({ connectionString: target });
+  const poolSafety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(poolSafety.skipped, false, poolSafety.reason);
+  const client = await pool.connect();
   const oldQuery = db.query; const oldPool = db.getPool; const oldSecret = process.env.JWT_ACCESS_SECRET;
   process.env.JWT_ACCESS_SECRET = 'isolated-profile-current-authority-http-secret';
   const logger = require('../middleware/logger'); const logging = { info: logger.info, error: logger.error, audit: logger.audit }; logger.info = logger.error = logger.audit = () => {};

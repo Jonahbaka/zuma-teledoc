@@ -1993,8 +1993,11 @@ const QualityBadge = ({ quality }) => {
   };
 
   return (
-    <div className={`pointer-events-auto mx-auto mt-2 w-fit rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] backdrop-blur-xl ${classes[level] || classes.idle}`}>
-      Quality: {quality?.label || 'Not connected'}
+    <div className="mx-auto mt-2 max-w-sm text-center" role="status" aria-live="polite">
+      <div className={`pointer-events-auto mx-auto w-fit rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur-xl ${classes[level] || classes.idle}`}>
+        Quality: {quality?.label || 'Not connected'}
+      </div>
+      {quality?.guidance && <p className="mt-1 text-xs leading-5 text-slate-200">{quality.guidance}</p>}
     </div>
   );
 };

@@ -20,6 +20,7 @@ function harness({ api = {}, payments = {}, shell = false, auth = { value: { use
   };
   const jsx=(type,props,key)=>({type,props,key});
   const dependencies = {
+    '@/lib/patientAppointments.cjs': require('../../lib/patientAppointments.cjs'),
     react, 'react/jsx-runtime': { jsx,jsxs:jsx }, 'next/navigation': { useParams:()=>params, useRouter:()=>({push:url=>pushes.push(url)}) },
     'next/link': { __esModule:true, default:'a' }, 'lucide-react':new Proxy({},{get:(_,name)=>Symbol(name)}),
     '@/lib/api': { __esModule:true, default:{ get:async()=>({data:{success:true,appointment:row}}), ...api }, paymentsAPI:{ getAppointmentPayment:async()=>({data:{success:true,paymentRequired:true,paymentCompleted:false}}), ...payments } },
@@ -79,4 +80,12 @@ test('dismissed confirmation sends nothing and current confirmed cancellation re
 test('failed or mismatched cancellation acknowledgement does not redirect or invent cancelled status',async()=>{
   const view=harness({api:{put:async()=>({data:{success:true,appointment:{...row,id:'other',status:'cancelled'}}})}});view.render();await flush(view);await view.button('Cancel Appointment').props.onClick();await flush(view);
   assert.equal(view.pushes.length,0);assert.ok(view.button('Cancel Appointment'));assert.equal(view.toasts.at(-1).title,'Cancel Failed');
+});
+
+test('call entry respects server-admitted statuses after coverage is checked', async () => {
+  for (const status of ['scheduled', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show', 'unknown']) {
+    const view = harness({ api: { get: async () => ({ data: { success: true, appointment: { ...row, status } } }) }, payments: { getAppointmentPayment: async () => ({ data: { success: true, coverageApproved: true, paymentRequired: false } }) } });
+    view.render(); await flush(view);
+    assert.equal(Boolean(view.button('Join Video Call')), ['scheduled', 'confirmed', 'in_progress'].includes(status), String(status));
+  }
 });

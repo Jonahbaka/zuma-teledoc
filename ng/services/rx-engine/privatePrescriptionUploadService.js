@@ -21,8 +21,8 @@ async function normalizeImage(file) {
   } catch { throw fail(400, 'This image could not be read. Choose a clear JPEG or PNG image up to 5 MB.'); }
 }
 
-async function requirePatient(client, userId) {
-  const { rows } = await client.query("SELECT id FROM users WHERE id=$1 AND role='patient' AND market_scope='NG' AND is_active=true", [userId]);
+async function requirePatient(client, userId, lock = false) {
+  const { rows } = await client.query("SELECT id FROM users WHERE id=$1 AND role='patient' AND market_scope='NG' AND is_active=true" + (lock ? " FOR SHARE" : ""), [userId]);
   if (!rows.length) throw fail(403, 'Patient access is required.');
 }
 
@@ -64,33 +64,56 @@ async function saveSubmission(pool, req, { image, text }) {
   finally { client.release(); }
 }
 
+// Keep current patient eligibility and submission ownership stable through the
+// mandatory audit. No result leaves this boundary until COMMIT succeeds.
+async function withPatientSubmissionRead(pool, req, read) {
+  if (!req?.user?.id) throw fail(403, 'Patient access is required.');
+  const client = await pool.connect();
+  let rollbackError;
+  try {
+    await client.query('BEGIN');
+    await requirePatient(client, req.user.id, true);
+    const result = await read(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (failure) { rollbackError = failure; }
+    throw error;
+  } finally { client.release(rollbackError); }
+}
+
 // Read only: a missing receipt is not proof an earlier request failed.
 async function readSubmissionReceipt(pool, req, requestId) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId || '')) throw fail(400, 'Invalid submission reference.');
-  await requirePatient(pool, req.user?.id);
-  const { rows } = await pool.query(`
-    SELECT rx.id, rx.status FROM ng_prescriptions rx
-    JOIN users actor ON actor.id = rx.patient_user_id
-    WHERE rx.patient_user_id = $1 AND rx.submission_key = $2
-      AND actor.role = 'patient' AND actor.market_scope = 'NG' AND actor.is_active = true
-  `, [req.user.id, requestId]);
-  if (!rows.length) throw fail(404, 'No saved submission is visible for this reference yet.');
-  await pool.query(`INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,phi_accessed,success,description)
-    VALUES ($1,'read','prescription_submission',$2,$1,true,true,'Patient reconciled prescription submission receipt')`, [req.user.id, rows[0].id]);
-  return { prescriptionId: rows[0].id, status: rows[0].status,
-    requiresVerification: ['uploaded', 'parsing', 'parsed'].includes(rows[0].status) };
+  return withPatientSubmissionRead(pool, req, async (client) => {
+    const { rows } = await client.query(`
+      SELECT rx.id, rx.status FROM ng_prescriptions rx
+      JOIN users actor ON actor.id = rx.patient_user_id
+      WHERE rx.patient_user_id = $1 AND rx.submission_key = $2
+        AND actor.role = 'patient' AND actor.market_scope = 'NG' AND actor.is_active = true
+      FOR SHARE OF rx
+    `, [req.user.id, requestId]);
+    if (!rows.length) throw fail(404, 'No saved submission is visible for this reference yet.');
+    const result = { prescriptionId: rows[0].id, status: rows[0].status,
+      requiresVerification: ['uploaded', 'parsing', 'parsed'].includes(rows[0].status) };
+    await client.query(`INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,phi_accessed,success,description)
+      VALUES ($1,'read','prescription_submission',$2,$1,true,true,'Patient reconciled prescription submission receipt')`, [req.user.id, rows[0].id]);
+    return result;
+  });
 }
 
 async function readOwnedImage(pool, req, id) {
-  await requirePatient(pool, req.user.id);
-  const { rows } = await pool.query('SELECT image_data_encrypted FROM ng_prescriptions WHERE id=$1 AND patient_user_id=$2', [id, req.user.id]);
-  if (!rows[0]?.image_data_encrypted) throw fail(404, 'Prescription image not found.');
-  const envelope = rows[0].image_data_encrypted;
-  const decoded = decrypt(envelope.encrypted, envelope.iv, envelope.tag);
-  if (!decoded) throw fail(503, 'This image could not be opened.');
-  await pool.query(`INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,phi_accessed,success,description)
-    VALUES ($1,'read','prescription_submission',$2,$1,true,true,'Patient viewed submitted prescription image')`, [req.user.id, id]);
-  return Buffer.from(decoded, 'base64');
+  return withPatientSubmissionRead(pool, req, async (client) => {
+    const { rows } = await client.query('SELECT image_data_encrypted FROM ng_prescriptions WHERE id=$1 AND patient_user_id=$2 FOR SHARE', [id, req.user.id]);
+    if (!rows[0]?.image_data_encrypted) throw fail(404, 'Prescription image not found.');
+    const envelope = rows[0].image_data_encrypted;
+    const decoded = decrypt(envelope.encrypted, envelope.iv, envelope.tag);
+    if (!decoded) throw fail(503, 'This image could not be opened.');
+    const image = Buffer.from(decoded, 'base64');
+    await client.query(`INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,phi_accessed,success,description)
+      VALUES ($1,'read','prescription_submission',$2,$1,true,true,'Patient viewed submitted prescription image')`, [req.user.id, id]);
+    return image;
+  });
 }
 
 async function assertProviderSubmissionAccess(pool, req, patientUserId) {
@@ -104,8 +127,10 @@ async function assertProviderSubmissionAccess(pool, req, patientUserId) {
        JOIN users patient ON patient.id = $2
       WHERE actor.id = $1 AND actor.role = 'provider'
         AND actor.market_scope = 'NG' AND actor.is_active = TRUE
+        AND actor.account_status = 'active'
         AND actor.provider_status = 'approved' AND provider.status = 'verified'
-        AND patient.role = 'patient' AND patient.market_scope = 'NG'`,
+        AND patient.role = 'patient' AND patient.market_scope = 'NG'
+      FOR SHARE OF actor, provider, patient`,
     [req.user.id, patientUserId]
   );
   if (!rows.length) throw fail(403, 'Clinical record access denied.');
@@ -114,6 +139,7 @@ async function assertProviderSubmissionAccess(pool, req, patientUserId) {
       pool,
       patientUserId,
       mode: 'read',
+      lock: true,
     });
   } catch (error) {
     if (error.statusCode !== 403 || error.code !== 'CLINICAL_ACCESS_DENIED') throw error;
@@ -122,7 +148,7 @@ async function assertProviderSubmissionAccess(pool, req, patientUserId) {
     const shared = await pool.query(
       `SELECT id FROM appointments
         WHERE provider_id = $1 AND patient_id = $2 AND status = 'completed'
-        LIMIT 1`,
+        LIMIT 1 FOR SHARE`,
       [req.user.id, patientUserId]
     );
     if (!shared.rows.length) throw error;
@@ -140,45 +166,70 @@ async function auditProviderRead(pool, req, patientUserId, resourceId, descripti
   );
 }
 
+// Hold current provider/account approval and patient market through retrieval and
+// the mandatory audit. The caller receives no plaintext until COMMIT succeeds.
+// This preserves existing native/shared relationship rules; it is not a new
+// clinical relationship, patient self-access, or prescribing policy.
+async function withProviderSubmissionRead(pool, req, patientUserId, read) {
+  // Prefer the native pool client: the database facade's getClient wrapper does
+  // not forward release(error), which is needed to discard failed rollbacks.
+  const client = typeof pool.connect === 'function' ? await pool.connect()
+    : typeof pool.getPool === 'function' ? await (await pool.getPool()).connect()
+      : await pool.getClient();
+  let rollbackError;
+  try {
+    await client.query('BEGIN');
+    await assertProviderSubmissionAccess(client, req, patientUserId);
+    const result = await read(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (failure) { rollbackError = failure; }
+    throw error;
+  } finally { client.release(rollbackError); }
+}
+
 async function listProviderSubmissions(pool, req, patientUserId) {
-  await assertProviderSubmissionAccess(pool, req, patientUserId);
-  const { rows } = await pool.query(
-    `SELECT id, status, created_at,
-            (image_data_encrypted IS NOT NULL) AS has_image,
-            (submitted_text_encrypted IS NOT NULL) AS has_text
-       FROM ng_prescriptions
-      WHERE patient_user_id = $1
-        AND (image_data_encrypted IS NOT NULL OR submitted_text_encrypted IS NOT NULL)
-      ORDER BY created_at DESC LIMIT 50`,
-    [patientUserId]
-  );
-  await auditProviderRead(pool, req, patientUserId, patientUserId, 'Provider viewed patient prescription submission list');
-  return rows;
+  return withProviderSubmissionRead(pool, req, patientUserId, async (client) => {
+    const { rows } = await client.query(
+      `SELECT id, status, created_at,
+              (image_data_encrypted IS NOT NULL) AS has_image,
+              (submitted_text_encrypted IS NOT NULL) AS has_text
+         FROM ng_prescriptions
+        WHERE patient_user_id = $1
+          AND (image_data_encrypted IS NOT NULL OR submitted_text_encrypted IS NOT NULL)
+        ORDER BY created_at DESC LIMIT 50 FOR SHARE`,
+      [patientUserId]
+    );
+    await auditProviderRead(client, req, patientUserId, patientUserId, 'Provider viewed patient prescription submission list');
+    return rows;
+  });
 }
 
 async function readProviderSubmission(pool, req, patientUserId, id) {
-  await assertProviderSubmissionAccess(pool, req, patientUserId);
-  const { rows } = await pool.query(
-    `SELECT id, status, image_data_encrypted, submitted_text_encrypted
-       FROM ng_prescriptions WHERE id = $1 AND patient_user_id = $2`,
-    [id, patientUserId]
-  );
-  const row = rows[0];
-  if (!row || (!row.image_data_encrypted && !row.submitted_text_encrypted)) throw fail(404, 'Submission not found.');
-  const open = (envelope) => {
-    if (!envelope) return null;
-    const plaintext = decrypt(envelope.encrypted, envelope.iv, envelope.tag);
-    if (!plaintext) throw fail(503, 'This submission could not be opened.');
-    return plaintext;
-  };
-  const submission = {
-    id: row.id,
-    status: row.status,
-    imageBase64: open(row.image_data_encrypted),
-    text: open(row.submitted_text_encrypted),
-  };
-  await auditProviderRead(pool, req, patientUserId, id, 'Provider viewed patient-submitted prescription');
-  return submission;
+  return withProviderSubmissionRead(pool, req, patientUserId, async (client) => {
+    const { rows } = await client.query(
+      `SELECT id, status, image_data_encrypted, submitted_text_encrypted
+         FROM ng_prescriptions WHERE id = $1 AND patient_user_id = $2 FOR SHARE`,
+      [id, patientUserId]
+    );
+    const row = rows[0];
+    if (!row || (!row.image_data_encrypted && !row.submitted_text_encrypted)) throw fail(404, 'Submission not found.');
+    const open = (envelope) => {
+      if (!envelope) return null;
+      const plaintext = decrypt(envelope.encrypted, envelope.iv, envelope.tag);
+      if (!plaintext) throw fail(503, 'This submission could not be opened.');
+      return plaintext;
+    };
+    const submission = {
+      id: row.id,
+      status: row.status,
+      imageBase64: open(row.image_data_encrypted),
+      text: open(row.submitted_text_encrypted),
+    };
+    await auditProviderRead(client, req, patientUserId, id, 'Provider viewed patient-submitted prescription');
+    return submission;
+  });
 }
 
 module.exports = {

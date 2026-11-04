@@ -14,6 +14,7 @@
 require('dotenv').config();
 
 const { Pool } = require('pg');
+const { buildDatabaseConfig } = require('./connectionConfig');
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -28,20 +29,10 @@ const WRITE_KEYWORD_RE = /\b(INSERT|UPDATE|DELETE|CREATE|DROP|TRUNCATE|ALTER)\b/
 let backupPool = null;
 
 if (isEnabled) {
-  // Strip sslmode= from the connection string — pg handles SSL via config object.
-  let connectionString = BACKUP_DATABASE_URL;
-  let sslConfig = { rejectUnauthorized: false }; // default for backup replica
-
-  if (connectionString.includes('sslmode=')) {
-    connectionString = connectionString
-      .replace(/[?&]sslmode=[^&]+/, (match) => (match.startsWith('?') ? '?' : ''))
-      .replace(/\?$/, '');
-    // sslConfig already set to { rejectUnauthorized: false } above
-  }
-
+  const connection = buildDatabaseConfig(process.env, { urlKey: 'BACKUP_DATABASE_URL',
+    caKey: process.env.BACKUP_PGSSLROOTCERT ? 'BACKUP_PGSSLROOTCERT' : 'PGSSLROOTCERT', requireUrl: true, forceTls: true });
   backupPool = new Pool({
-    connectionString,
-    ssl: sslConfig,
+    ...connection,
     max: 3,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000

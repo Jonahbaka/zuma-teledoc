@@ -355,6 +355,7 @@ router.get('/me/patients',
       
       if (marketScope === 'NG') {
         const { rows, total } = await listNgProviderPatients(db, req.user.id, { limit, offset });
+        res.set('Cache-Control', 'private, no-store');
         return res.json({ success: true, patients: rows.map(keysToCamel), pagination: getPaginationMeta(total, page, limit) });
       }
 
@@ -400,6 +401,35 @@ router.get('/me/patients',
         success: false,
         error: 'Failed to get patients'
       });
+    }
+  }
+);
+
+/**
+ * POST /api/providers/me/patients/search
+ * Read-only Nigeria patient search. Names and emails belong in the body,
+ * never the request URL, which can appear in access logs or breadcrumbs.
+ */
+router.post('/me/patients/search',
+  authenticate,
+  requireRole('provider'),
+  express.json(),
+  async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    if (getAuthenticatedMarketScope(req.user) !== 'NG') return res.status(403).json({ success: false, error: 'Nigeria provider account required.' });
+    const search = req.body?.search;
+    if (typeof search !== 'string' || search.length > 100) return res.status(400).json({ success: false, error: 'Patient search must be text of at most 100 characters.' });
+    let filters;
+    try { filters = validate(paginationSchema, req.body); }
+    catch { return res.status(400).json({ success: false, error: 'Invalid patient search pagination.' }); }
+    const { page, limit } = parseQueryParams(filters);
+    try {
+      const { rows, total } = await listNgProviderPatients(db, req.user.id, { limit, offset: (page - 1) * limit, search });
+      return res.json({ success: true, patients: rows.map(keysToCamel), pagination: getPaginationMeta(total, page, limit) });
+    } catch {
+      // Never log the search term, request body, or database error details.
+      logger.error('Provider patient search failed');
+      return res.status(500).json({ success: false, error: 'Failed to search patients' });
     }
   }
 );

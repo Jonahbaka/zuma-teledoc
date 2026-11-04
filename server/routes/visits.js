@@ -7,8 +7,8 @@ const express = require('express');
 const db = require('../db');
 const logger = require('../middleware/logger');
 const { authenticate, requireRole, canAccessPatient } = require('../middleware/auth');
-const { auditMiddleware, auditPhiAccess } = require('../middleware/audit');
-const { encrypt, decrypt, encryptFields, decryptFields } = require('../../lib/encryption');
+const { auditMiddleware, auditPhiAccess, logAuditEvent } = require('../middleware/audit');
+const { encrypt } = require('../../lib/encryption');
 const { validate, createVisitSchema, signVisitSchema, paginationSchema } = require('../../lib/validation');
 const { keysToCamel, parseQueryParams, getPaginationMeta } = require('../../lib/utils');
 const {
@@ -16,7 +16,36 @@ const {
   recordProviderUsage,
 } = require('../../ng/services/providers/providerAccessService');
 
+const visitReads = require('../services/visitReadService');
+
 const router = express.Router();
+
+const auditReference = value => typeof value === 'string' && /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(value) ? value : null;
+
+async function visitReadFailure(req, res, error) {
+  const status = [400, 403, 404, 503].includes(error.statusCode) ? error.statusCode : 503;
+  // The service has rolled back before this separate, metadata-only attempt
+  // audit. Never copy the error, query, or clinical content into audit storage.
+  await logAuditEvent({
+    userId: auditReference(req.user?.id), action: 'read', resourceType: 'visit',
+    resourceId: auditReference(req.params.id),
+    patientId: req.user?.role === 'patient' ? auditReference(req.user.id) : null,
+    ipAddress: req.ip, userAgent: req.get('user-agent'),
+    description: 'Visit read denied or unavailable', phiAccessed: true, success: false,
+    errorMessage: `Request failed with status ${status}`,
+    newValues: { operation: req.params.appointmentId ? 'appointment_visit_read' : 'visit_read',
+      ...(auditReference(req.params.appointmentId) ? { appointmentId: req.params.appointmentId } : {}) },
+  });
+  // Database or decryption errors may contain clinical content. Do not log or
+  // echo them; the caller receives only this fixed public failure contract.
+  return res.status(status).json({ success: false,
+    error: status === 400 ? 'A valid visit reference is required.'
+      : status === 403 ? 'This visit is not available in your current care context.'
+      : status === 404 ? 'Visit not found.' : 'Visit records are temporarily unavailable.',
+    code: status === 400 ? 'CLINICAL_REFERENCE_INVALID' : status === 403 ? 'CLINICAL_ACCESS_DENIED'
+      : status === 404 ? 'CLINICAL_VISIT_NOT_FOUND' : 'CLINICAL_VISIT_READ_UNAVAILABLE',
+  });
+}
 
 /**
  * POST /api/visits
@@ -147,115 +176,13 @@ router.post('/',
  * GET /api/visits/:id
  * Get visit details with decrypted content
  */
-router.get('/:id',
-  authenticate,
-  auditPhiAccess('visit'),
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      const { rows } = await db.query(
-        `SELECT v.*,
-                a.scheduled_at, a.type as appointment_type, a.reason_for_visit,
-                p.first_name as patient_first_name, p.last_name as patient_last_name,
-                p.date_of_birth as patient_dob,
-                pr.first_name as provider_first_name, pr.last_name as provider_last_name,
-                pr.credentials as provider_credentials
-         FROM visits v
-         JOIN appointments a ON a.id = v.appointment_id
-         JOIN users p ON p.id = v.patient_id
-         JOIN users pr ON pr.id = v.provider_id
-         WHERE v.id = $1`,
-        [id]
-      );
-      
-      if (rows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          error: 'Visit not found'
-        });
-      }
-      
-      const visit = rows[0];
-      
-      // Check access
-      if (req.user.role === 'patient' && visit.patient_id !== req.user.id) {
-        return res.status(403).json({
-          success: false,
-          error: 'Access denied'
-        });
-      }
-      
-      if (req.user.role === 'provider' && visit.provider_id !== req.user.id) {
-        // Check if provider has relationship with patient
-        const { rows: relationship } = await db.query(
-          `SELECT 1 FROM appointments 
-           WHERE provider_id = $1 AND patient_id = $2 LIMIT 1`,
-          [req.user.id, visit.patient_id]
-        );
-        
-        if (relationship.length === 0) {
-          return res.status(403).json({
-            success: false,
-            error: 'Access denied'
-          });
-        }
-      }
-      
-      // Decrypt SOAP content
-      const decrypted = {
-        id: visit.id,
-        appointmentId: visit.appointment_id,
-        patientId: visit.patient_id,
-        providerId: visit.provider_id,
-        patient: {
-          firstName: visit.patient_first_name,
-          lastName: visit.patient_last_name,
-          dateOfBirth: visit.patient_dob
-        },
-        provider: {
-          firstName: visit.provider_first_name,
-          lastName: visit.provider_last_name,
-          credentials: visit.provider_credentials
-        },
-        appointment: {
-          scheduledAt: visit.scheduled_at,
-          type: visit.appointment_type,
-          reasonForVisit: visit.reason_for_visit
-        },
-        subjective: decrypt(visit.subjective_encrypted, visit.subjective_iv, visit.subjective_tag),
-        objective: decrypt(visit.objective_encrypted, visit.objective_iv, visit.objective_tag),
-        assessment: decrypt(visit.assessment_encrypted, visit.assessment_iv, visit.assessment_tag),
-        plan: decrypt(visit.plan_encrypted, visit.plan_iv, visit.plan_tag),
-        vitals: visit.vitals_encrypted 
-          ? JSON.parse(decrypt(visit.vitals_encrypted, visit.vitals_iv, visit.vitals_tag))
-          : null,
-        icdCodes: visit.icd_codes,
-        cptCodes: visit.cpt_codes,
-        isSigned: visit.is_signed,
-        signedAt: visit.signed_at,
-        isLocked: visit.is_locked,
-        followUpRequired: visit.follow_up_required,
-        followUpNotes: visit.follow_up_notes,
-        createdAt: visit.created_at,
-        updatedAt: visit.updated_at
-      };
-      
-      res.locals.patientId = visit.patient_id;
-      
-      res.json({
-        success: true,
-        visit: decrypted
-      });
-    } catch (error) {
-      logger.error('Get visit error', { error: error.message });
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get visit'
-      });
-    }
-  }
-);
+router.get('/:id', authenticate, async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  try {
+    const visit = await visitReads.read(req.user, { id: req.params.id }, { ipAddress: req.ip, userAgent: req.get('user-agent') });
+    return res.json({ success: true, visit });
+  } catch (error) { return visitReadFailure(req, res, error); }
+});
 
 /**
  * PUT /api/visits/:id
@@ -566,58 +493,13 @@ router.get('/patient/:patientId',
  * GET /api/visits/appointment/:appointmentId
  * Get visit by appointment ID
  */
-router.get('/appointment/:appointmentId',
-  authenticate,
-  async (req, res) => {
-    try {
-      const { appointmentId } = req.params;
-      
-      const { rows } = await db.query(
-        `SELECT v.*, 
-                p.first_name as patient_first_name,
-                p.last_name as patient_last_name
-         FROM visits v
-         JOIN users p ON p.id = v.patient_id
-         WHERE v.appointment_id = $1
-         LIMIT 1`,
-        [appointmentId]
-      );
-      
-      if (rows.length === 0) {
-        return res.json({
-          success: true,
-          visit: null
-        });
-      }
-      
-      // Check access
-      const visit = rows[0];
-      if (req.user.role === 'patient' && visit.patient_id !== req.user.id) {
-        return res.status(403).json({
-          success: false,
-          error: 'Unauthorized'
-        });
-      }
-      if (req.user.role === 'provider' && visit.provider_id !== req.user.id) {
-        return res.status(403).json({
-          success: false,
-          error: 'Unauthorized'
-        });
-      }
-      
-      res.json({
-        success: true,
-        visit: keysToCamel(rows[0])
-      });
-    } catch (error) {
-      logger.error('Get visit by appointment error', { error: error.message });
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get visit'
-      });
-    }
-  }
-);
+router.get('/appointment/:appointmentId', authenticate, async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  try {
+    const visit = await visitReads.read(req.user, { appointmentId: req.params.appointmentId }, { ipAddress: req.ip, userAgent: req.get('user-agent') });
+    return res.json({ success: true, visit });
+  } catch (error) { return visitReadFailure(req, res, error); }
+});
 
 /**
  * GET /api/visits/provider/recent

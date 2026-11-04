@@ -21,6 +21,7 @@ const db = { query(...args) {
 const logger = require('../middleware/logger');
 const { encrypt } = require('../../lib/encryption');
 const { readClinicalField, readClinicalNarrative } = require('./clinicalContentService');
+const { noteRevision, assertNoteRevision } = require('./clinicalNoteRevision');
 const { keysToCamel } = require('../../lib/utils');
 const clinicalError = (statusCode, code, message) => Object.assign(new Error(message), { statusCode, code });
 const uuid = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
@@ -471,6 +472,7 @@ class ClinicalEncounterService {
       await client.query('BEGIN');
       const existing = await this._lockNote(client, noteId, providerId);
       if (existing.is_signed || existing.is_locked) throw clinicalError(409, 'CLINICAL_NOTE_IMMUTABLE', 'Signed or locked notes cannot be modified. Create an amendment instead.');
+      assertNoteRevision(existing, noteData.expectedRevision);
     
     // Build update
     const updates = [];
@@ -553,7 +555,7 @@ class ClinicalEncounterService {
     );
     
     if (!rows[0]) throw clinicalError(409, 'CLINICAL_NOTE_IMMUTABLE', 'The note no longer accepts draft changes.');
-    await this._audit(client, providerId, 'clinical_note', rows[0], 'update', { encounterId: existing.encounter_id, version: existing.version, signed: false, changedFields: Object.keys(noteData) });
+    await this._audit(client, providerId, 'clinical_note', rows[0], 'update', { encounterId: existing.encounter_id, version: existing.version, signed: false, changedFields: Object.keys(noteData).filter(field => field !== 'expectedRevision') });
     const result = this._formatNote(rows[0]);
     await client.query('COMMIT');
     logger.info('Clinical note updated', { noteId, providerId });
@@ -567,7 +569,7 @@ class ClinicalEncounterService {
    * Sign and lock a clinical note
    * Creates a cryptographic hash of the note content for integrity verification
    */
-  async signNote(noteId, providerId) {
+  async signNote(noteId, providerId, { expectedRevision } = {}) {
     this._references(noteId, providerId);
     const client = await db.getPool().connect();
     
@@ -576,6 +578,7 @@ class ClinicalEncounterService {
       
       const note = await this._lockNote(client, noteId, providerId);
       if (note.is_signed || note.is_locked) throw clinicalError(409, 'CLINICAL_NOTE_IMMUTABLE', 'This note is already signed or locked.');
+      assertNoteRevision(note, expectedRevision);
       
       // Create signature hash of encrypted content
       const contentToHash = [
@@ -830,6 +833,7 @@ class ClinicalEncounterService {
       providerId: note.provider_id,
       noteType: note.note_type,
       version: note.version,
+      revision: noteRevision(note),
       parentNoteId: note.parent_note_id,
       isAmendment: note.is_amendment,
       amendmentReason: readClinicalNarrative(note, 'amendment_reason'),

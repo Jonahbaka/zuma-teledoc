@@ -4,11 +4,16 @@ const assert=require('node:assert/strict');
 const {Pool}=require('pg');
 const service=require('../services/pharmacy/inventoryVerificationService');
 const {createBrowserFixture}=require('./helpers/medication-delivery-fixture');
+const {fixtureTargetSafety}=require('../scripts/fixtureTargetSafety');
 const target=process.env.SIMULATION_DATABASE_URL;
 const pause=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return{promise,resolve};};
 test('PostgreSQL inventory verification commits with its audit and serializes current authority and prior status',{skip:!target},async t=>{
-  const url=new URL(target);assert.ok(['localhost','127.0.0.1'].includes(url.hostname)&&url.pathname.endsWith('_test'),'Only explicitly disposable loopback databases are supported.');
-  const previous={NODE_ENV:process.env.NODE_ENV,ENCRYPTION_KEY:process.env.ENCRYPTION_KEY};process.env.NODE_ENV='test';const pool=new Pool({connectionString:target,max:8});
+  const safety=fixtureTargetSafety({source:'SIMULATION_DATABASE_URL'});
+  assert.equal(safety.skipped,false,safety.reason);
+  const pool=new Pool({connectionString:target,max:8});
+  const actualTarget=fixtureTargetSafety({source:'SIMULATION_DATABASE_URL',pool});
+  assert.equal(actualTarget.skipped,false,actualTarget.reason);
+  const previous={NODE_ENV:process.env.NODE_ENV,ENCRYPTION_KEY:process.env.ENCRYPTION_KEY};process.env.NODE_ENV='test';
   try{
     const f=await createBrowserFixture({pool});const other=await createBrowserFixture({pool});const actor=f.superAdmin;const id=f.inventoryId;
     const row=async()=>(await pool.query('SELECT availability_verification_status,availability_verified_at,availability_verified_by,availability_source,availability_notes,quantity_available,quantity_reserved,selling_price FROM ng_pharmacy_inventory WHERE id=$1',[id])).rows[0];

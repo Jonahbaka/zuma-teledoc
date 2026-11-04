@@ -2,6 +2,15 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { fixtureTargetSafety } = require('../../ng/scripts/fixtureTargetSafety');
+// Reject configured fixture targets before application imports initialize a pool
+// or dotenv can alter the original environment. Missing targets still skip.
+const target = process.env.SIMULATION_DATABASE_URL;
+if (target) {
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+}
+
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -55,10 +64,13 @@ test('a stale unsigned note snapshot cannot overwrite a signed row at the final 
   } finally { db.query = oldQuery; db.getPool = oldPool; service._lockNote = oldLock; }
 });
 
-const target = process.env.SIMULATION_DATABASE_URL;
 test('PostgreSQL encounters and notes retain current market, exact care lineage, immutable signatures, transactional audits and safe HTTP access', { skip: !target }, async () => {
-  const url = new URL(target); assert.ok(['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'));
-  const { Pool } = require('pg'); const pool = new Pool({ connectionString: target }); const client = await pool.connect();
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+  const { Pool } = require('pg'); const pool = new Pool({ connectionString: target });
+  const poolSafety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(poolSafety.skipped, false, poolSafety.reason);
+  const client = await pool.connect();
   const oldQuery = db.query; const oldPool = db.getPool; const oldSecret = process.env.JWT_ACCESS_SECRET;
   const logger = require('../middleware/logger'); const oldLogging = { info: logger.info, error: logger.error, audit: logger.audit };
   logger.info = logger.error = logger.audit = () => {};
@@ -164,9 +176,45 @@ test('PostgreSQL encounters and notes retain current market, exact care lineage,
       const notesBefore = await rowCount('clinical_notes'); await assert.rejects(operation(), /Isolated clinical audit failure/); assert.deepEqual(await noteSnapshot(), original); assert.equal(await rowCount('clinical_notes'), notesBefore);
     }
     failAudit = false;
-    await service.updateNote(note.id, provider, { subjective: 'Revised protected note' });
+    // Actual PostgreSQL coverage, executed only with the existing guarded synthetic
+    // fixture target. Unlike the DB-free adapter suite, these check real SQL and
+    // savepoint rollback. The enclosing fixture is single-client, not a race test.
+    const { noteRevision } = require('../services/clinicalNoteRevision');
+    const revision = noteRevision(await noteSnapshot());
+    assert.equal((await service.getNoteById(note.id, provider, 'provider')).revision, revision);
+    const revised = await service.updateNote(note.id, provider, { subjective: 'Revised protected note', expectedRevision: revision });
+    assert.notEqual(revised.revision, revision);
+    assert.equal(revised.revision, noteRevision(await noteSnapshot()));
+    const afterPartial = await noteSnapshot();
+    for (const field of ['objective', 'assessment', 'plan', 'vitals', 'physical_exam', 'follow_up_notes']) {
+      for (const suffix of ['_encrypted', '_iv', '_tag']) assert.equal(afterPartial[field + suffix], original[field + suffix], field + suffix);
+    }
+    for (const field of ['icd_codes', 'cpt_codes', 'follow_up_required', 'follow_up_interval']) assert.deepEqual(afterPartial[field], original[field], field);
+    const mutationAudits = async () => Number((await client.query("SELECT count(*) FROM audit_logs WHERE resource_id=$1 AND action='update'", [note.id])).rows[0].count);
+    const auditsBeforeConflict = await mutationAudits();
+    for (const operation of [
+      () => service.updateNote(note.id, provider, { plan: 'Stale fixture edit', expectedRevision: revision }),
+      () => service.signNote(note.id, provider, { expectedRevision: revision }),
+    ]) {
+      await assert.rejects(operation(), { statusCode: 409, code: 'CLINICAL_NOTE_REVISION_CONFLICT' });
+      assert.deepEqual(await noteSnapshot(), afterPartial);
+      assert.equal(await mutationAudits(), auditsBeforeConflict);
+    }
+    failAudit = true;
+    for (const operation of [
+      () => service.updateNote(note.id, provider, { plan: 'Rollback fixture edit', expectedRevision: revised.revision }),
+      () => service.signNote(note.id, provider, { expectedRevision: revised.revision }),
+    ]) {
+      await assert.rejects(operation(), /Isolated clinical audit failure/);
+      assert.deepEqual(await noteSnapshot(), afterPartial);
+      assert.equal(await mutationAudits(), auditsBeforeConflict);
+    }
+    failAudit = false;
     assert.equal((await service.getNoteById(note.id, provider, 'provider')).subjective, 'Revised protected note');
-    const signed = await service.signNote(note.id, provider); assert.equal(signed.isSigned, true); assert.ok(signed.signatureHash);
+    const signed = await service.signNote(note.id, provider, { expectedRevision: revised.revision });
+    assert.notEqual(signed.revision, revised.revision);
+    assert.equal(signed.revision, noteRevision(await noteSnapshot()));
+    assert.equal(signed.isSigned, true); assert.ok(signed.signatureHash);
     const immutable = await noteSnapshot();
     await assert.rejects(service.updateNote(note.id, provider, { subjective: 'Must not overwrite signature' }), { code: 'CLINICAL_NOTE_IMMUTABLE' });
     await assert.rejects(service.signNote(note.id, provider), { code: 'CLINICAL_NOTE_IMMUTABLE' });

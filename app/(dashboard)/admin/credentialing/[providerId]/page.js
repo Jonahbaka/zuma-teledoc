@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from '@/components/ui/use-toast';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import PrivateDocumentDownload from '@/components/credentialing/PrivateDocumentDownload';
 
 const STEP_STATUS_COLORS = {
   not_started: 'bg-gray-200 dark:bg-gray-700',
@@ -701,12 +702,7 @@ export default function AdminCredentialingDetailPage() {
                         }`}>
                           {doc.status?.replace(/_/g, ' ')}
                         </span>
-                        <Button size="sm" variant="ghost">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost">
-                          <Download className="w-4 h-4" />
-                        </Button>
+                        <PrivateDocumentDownload documentId={doc.id} />
                       </div>
                     </div>
                   ))}

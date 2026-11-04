@@ -5,12 +5,16 @@ const crypto = require('node:crypto');
 const { Pool } = require('pg');
 const service = require('../services/pharmacy/inventoryMutationService');
 const { createBrowserFixture } = require('./helpers/medication-delivery-fixture');
+const { fixtureTargetSafety } = require('../scripts/fixtureTargetSafety');
 const target = process.env.SIMULATION_DATABASE_URL;
 const pause = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 test('PostgreSQL inventory mutations retain current authority through stock changes and mandatory audit', { skip: !target }, async t => {
-  const url = new URL(target); assert.ok(['localhost','127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'), 'Only explicitly disposable loopback databases are supported.');
-  const previous = { NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY }; process.env.NODE_ENV = 'test';
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
   const pool = new Pool({ connectionString: target, max: 8 });
+  const actualTarget = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(actualTarget.skipped, false, actualTarget.reason);
+  const previous = { NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY }; process.env.NODE_ENV = 'test';
   const fixture = () => createBrowserFixture({ pool });
   const row = async f => (await pool.query('SELECT row_to_json(i) AS data FROM ng_pharmacy_inventory i WHERE id=$1', [f.inventoryId])).rows[0].data;
   const audits = async f => (await pool.query("SELECT actor_user_id,action,details FROM ng_compliance_audit_log WHERE pharmacy_id=$1 AND action LIKE 'pharmacy_inventory_%' ORDER BY created_at,id", [f.pharmacyId])).rows;

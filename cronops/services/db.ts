@@ -11,31 +11,25 @@
  *  read-only transactions). Write methods require explicit opt-in.
  */
 
-import { Pool, PoolClient, QueryResult } from 'pg';
-import path from 'path';
-import fs from 'fs';
-import { DATABASE_URL, PGSSLROOTCERT, DRY_RUN } from '../config';
+import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
+import { DATABASE_URL, PGSSLROOTCERT, NODE_ENV, DRY_RUN } from '../config';
+// CronOps runs from source with ts-node inside the complete release checkout.
+const { buildDatabaseConfig } = require('../../server/db/connectionConfig');
 
 let pool: Pool | null = null;
 
 function getPool(): Pool {
   if (pool) return pool;
 
-  const sslCert = fs.existsSync(PGSSLROOTCERT) ? fs.readFileSync(PGSSLROOTCERT).toString() : undefined;
-
-  // Strip sslmode from connection string (pg handles SSL via ssl option)
-  const connectionString = DATABASE_URL.replace(/[?&]sslmode=[^&]+/, '');
-
   pool = new Pool({
-    connectionString,
-    ssl: sslCert ? { rejectUnauthorized: true, ca: sslCert } : { rejectUnauthorized: false },
+    ...buildDatabaseConfig({ ...process.env, NODE_ENV, DATABASE_URL, PGSSLROOTCERT }, { requireUrl: true }),
     max: 3,                       // conservative — don't starve the main app
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
   });
 
   pool.on('error', (err) => {
-    console.error('[CronOps DB] Pool error:', err.message);
+    console.error('[CronOps DB] Pool connection unavailable.');
   });
 
   return pool;
@@ -44,7 +38,7 @@ function getPool(): Pool {
 /**
  * Execute a read-only SQL query.
  */
-export async function query<T = Record<string, unknown>>(
+export async function query<T extends QueryResultRow = Record<string, unknown>>(
   text: string,
   params?: unknown[]
 ): Promise<QueryResult<T>> {
@@ -55,7 +49,7 @@ export async function query<T = Record<string, unknown>>(
 /**
  * Execute a write query — blocked in DRY_RUN mode.
  */
-export async function write<T = Record<string, unknown>>(
+export async function write<T extends QueryResultRow = Record<string, unknown>>(
   text: string,
   params?: unknown[]
 ): Promise<QueryResult<T>> {
@@ -107,7 +101,7 @@ export async function healthCheck(): Promise<{ ok: boolean; latencyMs: number; e
     await query('SELECT 1 AS ping');
     return { ok: true, latencyMs: Date.now() - start };
   } catch (err) {
-    return { ok: false, latencyMs: Date.now() - start, error: (err as Error).message };
+    return { ok: false, latencyMs: Date.now() - start, error: 'Database connection unavailable.' };
   }
 }
 

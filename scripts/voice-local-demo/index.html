@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DoctaRx local generated-tone demo</title><link rel="stylesheet" href="/style.css"></head>
+<body><main>
+<p class="eyebrow">DoctaRx developer rehearsal</p><h1>Try the audio pipeline locally.</h1>
+<section class="notice" aria-label="Simulation boundaries"><strong>Generated tones, not an AI conversation.</strong><p>This page uses the browser’s Web Audio and AudioWorklet pipeline with a generated input stream. It never requests a microphone, sends data to a provider, or produces speech or translations. Language choices test routing only. Nothing here establishes spoken-language quality or clinical readiness.</p><p>The provider, authorization permit and transcription messages are simulated in memory. The application’s real login, consent, provider and production gates are not exercised or changed.</p></section>
+<section aria-label="Generated audio controls"><h2>Run a 30-second rehearsal</h2>
+<label for="language">Language routing code</label><select id="language"></select>
+<label class="check"><input id="consent" type="checkbox">I want to play quiet generated tones from this local page. This is not microphone or patient consent.</label>
+<p id="status" role="status">Checking browser support…</p>
+<div class="controls"><button id="start" disabled>Start generated audio</button><button id="stop" disabled>Stop and clear</button><button id="capture" disabled aria-pressed="false">Pause generated input</button><button id="speaker" disabled aria-pressed="false">Mute output tones</button><button id="reply" disabled>Send a one-second test tone</button><button id="interrupt" disabled>Interrupt queued tone</button></div>
+<p>Keep your speaker volume low. Stop, hiding this page or leaving it ends the local session. A new run requires a new acknowledgment.</p><p id="warning" role="alert"></p><p id="metrics">No generated input received.</p>
+</section>
+<section aria-label="Simulated provider markers"><h2>Fixed English transport markers</h2><p>These messages describe the fixture. They are not speech recognition or local-language translations.</p><div id="captions"></div></section>
+<section aria-label="Local evidence"><h2>Inspect the run</h2><p>Event names such as “microphone.started” and “provider.ready” come from the shared controller. Here they refer only to the generated source and in-memory simulator. No raw audio is recorded. Browser scheduling does not prove that you heard a tone.</p><button id="evidence">Show local run details</button><pre id="report">No report requested.</pre></section>
+<p class="footer">Real Gemini onboarding is separate: see docs/voice/VOICE_LOCAL_GENERATED_DEMO.md and GEMINI_FREE_DEMO_CONNECTION.md in the checkout. This page is not part of the deployed application.</p>
+</main><script src="/client.js" defer></script></body></html>

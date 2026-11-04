@@ -4,13 +4,17 @@ const assert = require('node:assert/strict');
 const { Pool } = require('pg');
 const service = require('../services/pharmacy/clinicalInboxService');
 const { createBrowserFixture } = require('./helpers/medication-delivery-fixture');
+const { fixtureTargetSafety } = require('../scripts/fixtureTargetSafety');
 const target = process.env.SIMULATION_DATABASE_URL;
 const pause = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
 test('PostgreSQL clinical inbox authority, rerouting and audit rollback are transactional', { skip: !target }, async t => {
-  const url = new URL(target); assert.ok(['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'), 'Use only an explicitly disposable loopback test database.');
-  const previous = { NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY }; process.env.NODE_ENV = 'test';
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
   const pool = new Pool({ connectionString: target, max: 8 });
+  const actualTarget = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(actualTarget.skipped, false, actualTarget.reason);
+  const previous = { NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY }; process.env.NODE_ENV = 'test';
   try {
     const f = await createBrowserFixture({ pool }); const other = await createBrowserFixture({ pool });
     await pool.query("UPDATE ng_digital_prescriptions SET pharmacy_response_status='pending_pharmacy_confirmation',confirmed_price_ngn=1234.50,pharmacy_notes='Isolated private note' WHERE id=$1", [f.prescriptionId]);

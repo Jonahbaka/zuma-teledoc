@@ -43,7 +43,9 @@ export const DRY_RUN = opt_env('CRONOPS_DRY_RUN', 'false') === 'true';
 // ─── Database ─────────────────────────────────────────────────
 
 export const DATABASE_URL = require_env('DATABASE_URL');
-export const PGSSLROOTCERT = opt_env('PGSSLROOTCERT', path.resolve(__dirname, '..', 'global-bundle.pem'));
+// Use the platform trust store unless an operator explicitly supplies a public CA file.
+// A missing/invalid configured CA must fail closed, never fall back to insecure TLS.
+export const PGSSLROOTCERT = opt_env('PGSSLROOTCERT');
 
 // ─── Stripe ───────────────────────────────────────────────────
 

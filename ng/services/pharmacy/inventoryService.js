@@ -38,7 +38,8 @@ class InventoryService {
 
     const countSql = 'SELECT COUNT(*) AS count ' + sql.slice(sql.indexOf('FROM ng_pharmacy_inventory'));
 
-    sql += ` ORDER BY d.name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    // Batch IDs break medicine-name ties so page boundaries remain deterministic.
+    sql += ` ORDER BY d.name ASC, i.id ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
 
     const [items, countResult] = await Promise.all([

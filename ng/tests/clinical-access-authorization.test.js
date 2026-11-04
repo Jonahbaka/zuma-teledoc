@@ -147,3 +147,57 @@ test('break-glass access fails closed when audit storage is unavailable', async 
     (error) => error.statusCode === 503 && error.code === 'BREAK_GLASS_AUDIT_UNAVAILABLE'
   );
 });
+
+test('default clinical access retains unlocked UNION witnesses without adding status policy', async () => {
+  for (const lock of [undefined, false]) {
+    const pool = scriptedPool([{ rows: [{ id: 'profile' }] }, { rows: [{ id: 'witness' }] }]);
+    await assertClinicalAccess(request({ id: 'provider', role: 'provider' }), { pool, patientUserId: 'patient', ...(lock === undefined ? {} : { lock }) });
+    assert.equal(pool.calls.length, 2);
+    assert.match(pool.calls[1].sql, /UNION/);
+    assert.match(pool.calls[1].sql, /is_active = TRUE/);
+    for (const { sql } of pool.calls) assert.doesNotMatch(sql, /FOR SHARE|\bstatus\s*=/i);
+  }
+});
+
+test('locked clinical access accepts each original OR witness and locks the selected row', async () => {
+  const tables = ['ng_appointments', 'ng_clinical_encounters', 'provider_patient_relationships'];
+  for (let branch = 0; branch < tables.length; branch++) {
+    const pool = scriptedPool([{ rows: [{ id: 'profile' }] }, ...Array.from({ length: branch }, () => ({ rows: [] })), { rows: [{ id: 'witness' }] }]);
+    const access = await assertClinicalAccess(request({ id: 'provider', role: 'provider' }), { pool, patientUserId: 'patient', lock: true });
+    assert.equal(access.providerId, 'profile');
+    assert.equal(pool.calls.length, branch + 2);
+    assert.match(pool.calls[0].sql, /FOR SHARE/);
+    for (let index = 0; index <= branch; index++) {
+      const { sql, params } = pool.calls[index + 1];
+      assert.match(sql, new RegExp(`FROM ${tables[index]}\\b`));
+      assert.match(sql, /LIMIT 1\s+FOR SHARE/);
+      assert.doesNotMatch(sql, /UNION|\bstatus\s*=/i);
+      assert.deepEqual(params, ['patient', index === 0 ? 'profile' : 'provider']);
+      if (index === 2) assert.match(sql, /is_active = TRUE/);
+    }
+  }
+});
+
+test('locked explicit witness misses fall through to other witnesses and exhaustion denies', async () => {
+  const base = { patientUserId: 'patient', appointmentId: 'stale-appointment', encounterId: 'stale-encounter', lock: true };
+  for (const allowed of [true, false]) {
+    const pool = scriptedPool([{ rows: [{ id: 'profile' }] }, ...Array.from({ length: 4 }, () => ({ rows: [] })), { rows: allowed ? [{ id: 'relationship' }] : [] }]);
+    const pending = assertClinicalAccess(request({ id: 'provider', role: 'provider' }), { pool, ...base });
+    if (allowed) assert.equal((await pending).providerId, 'profile');
+    else await assert.rejects(pending, error => error.statusCode === 403 && error.code === 'CLINICAL_ACCESS_DENIED');
+    assert.equal(pool.calls.length, 6);
+    assert.deepEqual(pool.calls[1].params, ['stale-appointment', 'patient', 'profile']);
+    assert.deepEqual(pool.calls[2].params, ['stale-encounter', 'patient', 'provider']);
+    for (const { sql } of pool.calls) assert.match(sql, /FOR SHARE/);
+  }
+});
+
+test('locked explicit appointment or encounter remains sufficient regardless of status', async () => {
+  for (const key of ['appointmentId', 'encounterId']) {
+    const pool = scriptedPool([{ rows: [{ id: 'profile' }] }, { rows: [{ id: 'witness' }] }]);
+    await assertClinicalAccess(request({ id: 'provider', role: 'provider' }), { pool, patientUserId: 'patient', [key]: 'witness', lock: true });
+    assert.equal(pool.calls.length, 2);
+    assert.match(pool.calls[1].sql, /FOR SHARE/);
+    assert.doesNotMatch(pool.calls[1].sql, /\bstatus\s*=/i);
+  }
+});

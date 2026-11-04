@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { fixtureTargetSafety } = require('../scripts/fixtureTargetSafety');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const service = require('../services/rx-engine/privatePrescriptionUploadService');
@@ -53,10 +54,12 @@ test('idempotent submissions preserve the stored status and do not restart compl
 
 const target = process.env.SIMULATION_DATABASE_URL;
 test('PostgreSQL private submission preserves encryption, pending review, retry identity and ownership', { skip: !target }, async () => {
-  const url = new URL(target);
-  assert.ok(['localhost','127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'), 'Only isolated loopback test databases are accepted');
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
   const { Pool } = require('pg');
   const pool = new Pool({ connectionString:target });
+  const poolSafety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(poolSafety.skipped, false, poolSafety.reason);
   const client = await pool.connect();
   const previous = process.env.ENCRYPTION_KEY;
   process.env.ENCRYPTION_KEY ||= '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
@@ -89,7 +92,8 @@ test('PostgreSQL private submission preserves encryption, pending review, retry 
     );
     const providerReq = { user: { id: provider.id, role: 'provider' }, headers: {} };
     const providerQueries = [];
-    const providerPool = { query: (sql, params) => { providerQueries.push(sql); return client.query(sql, params); } };
+    const providerConnection = { query: (sql, params) => { providerQueries.push(sql); return connection.query(sql, params); }, release() {} };
+    const providerPool = { connect: async () => providerConnection, query: providerConnection.query };
     const listed = await service.listProviderSubmissions(providerPool, providerReq, account.id);
     assert.ok(listed.some((row) => row.id === first.prescriptionId && row.has_image));
     const opened = await service.readProviderSubmission(providerPool, providerReq, account.id, first.prescriptionId);
@@ -114,9 +118,11 @@ test('PostgreSQL private submission preserves encryption, pending review, retry 
 });
 
 test('PostgreSQL submission contention and receipt lookup preserve exact intent without content deduplication', { skip: !target }, async () => {
-  const url = new URL(target);
-  assert.ok(['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('_test'));
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
   const { Pool } = require('pg'); const pool = new Pool({ connectionString: target, statement_timeout: 15000 });
+  const poolSafety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(poolSafety.skipped, false, poolSafety.reason);
   const first = await pool.connect(), second = await pool.connect();
   const key = crypto.randomUUID(), newKey = crypto.randomUUID(); let patient, secondPromise;
   const previous = process.env.ENCRYPTION_KEY;

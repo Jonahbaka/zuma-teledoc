@@ -186,7 +186,7 @@ async function seedReferrals(pool, origin, receiver) {
 
 async function main() {
   abortGuard();
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = new Pool(require('../../server/db/connectionConfig').buildDatabaseConfig(process.env, { requireUrl: true }));
   abortGuard(pool);
   try {
     const origin = await syntheticProvider(pool, 'origin');

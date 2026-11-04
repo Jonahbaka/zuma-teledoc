@@ -2,6 +2,15 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { fixtureTargetSafety } = require('../../ng/scripts/fixtureTargetSafety');
+// Reject configured fixture targets before application imports initialize a pool
+// or dotenv can alter the original environment. Missing targets still skip.
+const target = process.env.SIMULATION_DATABASE_URL;
+if (target) {
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+}
+
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const vm = require('node:vm');
@@ -232,11 +241,13 @@ test('authorized allergy and medication state changes protect reasons and roll b
   } finally { db.getPool = oldPool; logger.info = oldInfo; }
 });
 
-const target = process.env.SIMULATION_DATABASE_URL;
 test('isolated PostgreSQL narrative migration reruns without modifying older plaintext history', { skip: !target }, async () => {
-  const safety = require('../../ng/scripts/fixtureTargetSafety').fixtureTargetSafety({ env: { ...process.env, DATABASE_URL: target } });
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
   assert.equal(safety.skipped, false, safety.reason);
-  const { Pool } = require('pg'); const pool = new Pool({ connectionString: target, statement_timeout: 10000 }); const client = await pool.connect();
+  const { Pool } = require('pg'); const pool = new Pool({ connectionString: target, statement_timeout: 10000 });
+  const poolSafety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(poolSafety.skipped, false, poolSafety.reason);
+  const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('CREATE TEMP TABLE clinical_notes (id uuid,follow_up_notes text,amendment_reason text) ON COMMIT DROP');

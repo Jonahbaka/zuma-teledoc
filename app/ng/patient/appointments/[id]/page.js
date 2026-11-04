@@ -16,12 +16,11 @@ import {
   X,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { canOpenVideoVisit } from '@/lib/patientAppointments.cjs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
 import { formatDateTime } from '@/lib/utils';
-
-const activeStatuses = ['scheduled', 'confirmed', 'pharmacy_reviewing', 'provider_reviewing'];
 
 const getStatusTone = (status) => {
   const value = String(status || '').toLowerCase();
@@ -122,8 +121,8 @@ export default function NigeriaAppointmentDetailPage() {
   }
 
   const status = String(appointment.status || 'scheduled').toLowerCase();
-  const canJoinVideo = appointment.type === 'video' && activeStatuses.includes(status);
-  const canCancel = !['cancelled', 'completed'].includes(status);
+  const canJoinVideo = canOpenVideoVisit(appointment);
+  const canCancel = ['scheduled', 'confirmed'].includes(status);
 
   return (
     <div className="space-y-6">

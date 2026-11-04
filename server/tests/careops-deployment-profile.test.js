@@ -46,6 +46,21 @@ test('actual Next profile config changes entry/proxy/identity without altering d
     const configuredRequire = name => name === './lib/deploymentProfile.cjs' ? { resolveDeploymentProfile:()=>resolveDeploymentProfile(env) } : actualRequire(name);
     vm.runInNewContext(fs.readFileSync(path.join(root, 'next.config.js'), 'utf8'), { module: sandboxModule, require: configuredRequire, process: { env }, __dirname: root, URL }); return sandboxModule.exports;
   }
+    for (const env of [{}, valid]) {
+      const baseline = load(env);
+      assert.equal(baseline.experimental.cpus, undefined);
+      assert.equal(baseline.experimental.webpackBuildWorker, undefined);
+      assert.equal(baseline.experimental.webpackMemoryOptimizations, undefined);
+      const bounded = load({ ...env, DOCTARX_LOW_MEMORY_BUILD: 'true' });
+      assert.equal(bounded.experimental.cpus, 1);
+      assert.equal(bounded.experimental.webpackBuildWorker, true);
+      assert.equal(bounded.experimental.webpackMemoryOptimizations, true);
+      assert.equal(bounded.distDir, baseline.distDir);
+      assert.equal(JSON.stringify(await bounded.redirects()), JSON.stringify(await baseline.redirects()));
+      assert.equal(JSON.stringify(await bounded.rewrites()), JSON.stringify(await baseline.rewrites()));
+      assert.equal(JSON.stringify(await bounded.headers()), JSON.stringify(await baseline.headers()));
+      assert.equal(JSON.stringify(bounded.env), JSON.stringify(baseline.env));
+    }
     const config = load(valid);
     assert.equal(config.distDir, '.next-careops'); assert.equal(config.env.NEXT_PUBLIC_API_URL, '/api');
     assert.ok((await config.redirects()).some(row => row.source === '/' && row.destination === '/careops'));

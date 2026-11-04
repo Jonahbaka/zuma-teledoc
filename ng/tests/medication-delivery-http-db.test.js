@@ -8,14 +8,17 @@ const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
 const { createBrowserFixture } = require('./helpers/medication-delivery-fixture');
 
+const { fixtureTargetSafety } = require('../scripts/fixtureTargetSafety');
 const target = process.env.SIMULATION_DATABASE_URL;
 test('real medication HTTP routes enforce current JWT account roles, pharmacy scope and verified benefit authority', { skip: !target }, async t => {
-  const url = new URL(target);
-  assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname) && url.pathname.endsWith('_test'));
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+  const pool = new Pool({ connectionString: target, max: 6 });
+  const actualTarget = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(actualTarget.skipped, false, actualTarget.reason);
   const previous = Object.fromEntries(['NODE_ENV', 'DATABASE_URL', 'ENCRYPTION_KEY', 'JWT_ACCESS_SECRET', 'NG_RETURN_CUSTODY_ENABLED'].map(name => [name, process.env[name]]));
   const secret = crypto.randomBytes(48).toString('hex');
   Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: target, ENCRYPTION_KEY: 'c'.repeat(64), JWT_ACCESS_SECRET: secret, NG_RETURN_CUSTODY_ENABLED: 'false' });
-  const pool = new Pool({ connectionString: target, max: 6 });
   const db = require('../../server/db'); const oldPool = db.getPool; const oldQuery = db.query;
   db.getPool = () => pool; db.query = (sql, params) => pool.query(sql, params);
   const workflowPath = require.resolve('../services/logistics/medicationDeliveryWorkflowService');

@@ -1,35 +1,24 @@
 'use strict';
 
-const { resolve4 } = require('dns').promises;
+const { resolve4 } = require('node:dns').promises;
+const net = require('node:net');
+const { isNeonHost, configError } = require('./connectionConfig');
 
-/**
- * For Neon PostgreSQL endpoints:
- * - Pre-resolves hostname to an IPv4 address (Neon endpoints return both A and AAAA
- *   records, but many on-prem / consumer ISP networks cannot route IPv6).
- * - Strips ?sslmode= from the URL so pg doesn't duplicate the SSL config.
- * - Preserves the original hostname as ssl.servername for TLS SNI.
- *
- * For non-Neon URLs the input is returned unchanged.
- */
-async function resolveNeonUrl(connectionString) {
-  if (!connectionString || !connectionString.includes('neon.tech')) {
-    return { connectionString, ssl: null };
-  }
-
-  const stripped = connectionString
-    .replace(/[?&]sslmode=[^&]+/, (m) => (m.startsWith('?') ? '?' : ''))
-    .replace(/\?$/, '');
-
-  const url = new URL(stripped);
-  const originalHostname = url.hostname;
-
-  const [ipv4] = await resolve4(originalHostname);
-  url.hostname = ipv4;
-
-  return {
-    connectionString: url.toString(),
-    ssl: { rejectUnauthorized: false, servername: originalHostname },
-  };
+// Keep the accepted config and original certificate identity. Only change the
+// dialing address, never parse/rebuild a URL that could override TLS settings.
+async function resolveNeonConfig(config, { lookup = resolve4, timeoutMs = 5000 } = {}) {
+  if (!isNeonHost(config.host)) return config;
+  if (config.ssl?.rejectUnauthorized !== true || config.ssl.servername !== config.host || typeof config.ssl.checkServerIdentity !== 'function') throw configError('DATABASE_TLS_REQUIRED');
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 10000) throw configError('DATABASE_DNS_TIMEOUT_INVALID');
+  let timer;
+  try {
+    const addresses = await Promise.race([
+      Promise.resolve().then(() => lookup(config.host)),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(configError('DATABASE_DNS_UNAVAILABLE')), timeoutMs); }),
+    ]);
+    if (!Array.isArray(addresses) || !addresses.length || !net.isIPv4(addresses[0])) throw configError('DATABASE_DNS_UNAVAILABLE');
+    return { ...config, host: addresses[0], ssl: { ...config.ssl } };
+  } catch { throw configError('DATABASE_DNS_UNAVAILABLE'); }
+  finally { clearTimeout(timer); }
 }
-
-module.exports = { resolveNeonUrl };
+module.exports = { resolveNeonConfig };

@@ -1,3 +1,5 @@
+const { assertReleaseRollbackReady } = require('../utils/releaseRollbackPolicy');
+
 const PROJECT_ROOT = '/home/ec2-user/zuma-teledoc';
 const CRONOPS_ROOT = `${PROJECT_ROOT}/cronops`;
 const DEPLOY_BUILD_MEMORY_MB = process.env.DEPLOY_BUILD_MEMORY_MB || '4096';
@@ -103,6 +105,7 @@ function wrapPhase(name, steps) {
 // The supervising poller treats anything else (no terminal marker + dead PID,
 // or lock timeout) as an incomplete/unknown deploy and reports failure.
 function buildDeployCommand(deployId) {
+  assertReleaseRollbackReady();
   const id = String(deployId || '').replace(/[^A-Za-z0-9_.-]/g, '') || 'unknown';
   const chain = [
     wrapPhase('build', buildPhase()),

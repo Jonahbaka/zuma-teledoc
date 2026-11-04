@@ -1,5 +1,6 @@
 'use client';
 
+import { canOpenVideoVisit } from '@/lib/patientAppointments.cjs';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -216,7 +217,7 @@ export function AppointmentDetailWorkspace({ session, accountKey, appointmentId,
         </div>
 
         <div className="space-y-4">
-          {appointment.type === 'video' && appointment.status !== 'cancelled' && appointment.status !== 'completed' && (
+          {canOpenVideoVisit(appointment) && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Video Appointment</CardTitle>

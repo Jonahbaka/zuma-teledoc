@@ -5,6 +5,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { AFRICAN_GEMINI_LIVE_LANGUAGES, DOCUMENTED_GEMINI_LIVE_LANGUAGES } = require('../shared/voiceLanguageCatalog.cjs');
 const { chromium } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
 
@@ -31,12 +32,25 @@ async function main() {
           await page.getByRole('heading', { level: 1, name: /AI-first telehealth\.\s*Human care\./ }).waitFor();
           await page.evaluate(() => document.fonts.ready);
           assert.match(await page.title(), /AI-First Telehealth.*Language Voice/);
-          const hero = page.getByAltText('AI-generated scene of a pregnant patient at a Nigerian primary healthcare centre speaking with a doctor on a tablet');
+          const hero = page.getByAltText('AI-generated medical voice concept showing a patient speaking with a doctor through a luminous voice orb and sound waves in a primary healthcare centre');
           await hero.evaluate(image => image.decode());
+          assert.equal(await hero.count(), 1);
+          assert.deepEqual(await hero.evaluate(image => ({ width: image.getAttribute('width'), height: image.getAttribute('height'), fit: getComputedStyle(image).objectFit })), { width: '1672', height: '941', fit: 'contain' });
+          assert.equal(await hero.locator('..').locator('[aria-hidden="true"] svg[aria-label="DoctaRx"]').count(), 1);
           assert.equal(await page.getByRole('group', { name: 'Illustrative conversation from Hausa to English', exact: true }).count(), 1);
           assert.equal(await page.locator('main').count(), 1);
           assert.equal(await page.getByRole('contentinfo').count(), 1);
           assert.equal(await page.locator('#language-voice').count(), 1);
+          const african = page.getByRole('list', { name: 'African language voice choices', exact: true });
+          assert.deepEqual(await african.locator('li').allTextContents(), AFRICAN_GEMINI_LIVE_LANGUAGES.map(item => item.name));
+          assert.equal(await page.getByRole('link', { name: 'Join as a provider', exact: true }).getAttribute('href'), '/provider/register');
+          const more = page.locator('#language-voice details');
+          await more.locator('summary').click();
+          assert.equal(await more.evaluate(element => element.open), true);
+          assert.deepEqual(await page.getByRole('list', { name: 'More language voice choices', exact: true }).locator('li').allTextContents(), DOCUMENTED_GEMINI_LIVE_LANGUAGES.filter(item => !item.african).map(item => item.name));
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `${market} ${width}: expanded language overflow`);
+          await more.locator('summary').click();
+          assert.equal(await more.evaluate(element => element.open), false);
           assert.equal(await page.locator('a[href="/voice-lab"]').count(), 0);
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `${market} ${width}: horizontal overflow`);
 
@@ -74,6 +88,7 @@ async function main() {
           }).map(element => ({ text: element.textContent.trim().slice(0, 80), size: getComputedStyle(element).fontSize })));
           assert.deepEqual(smallText, [], 'All visible text meets the existing 16px minimum.');
           await page.screenshot({ path: path.join(output, `${market}-${width}-viewport.png`) });
+          await page.locator('figure').first().screenshot({ path: path.join(output, `${market}-${width}-voice-hero.png`) });
           await page.screenshot({ path: path.join(output, `${market}-${width}-full.png`), fullPage: true });
           const audit = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
           const violations = audit.violations.map(item => ({ id: item.id, impact: item.impact, nodes: item.nodes.map(node => ({ target: node.target, failureSummary: node.failureSummary })) }));
@@ -81,7 +96,7 @@ async function main() {
           fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify(results, null, 2));
           assert.deepEqual(errors, [], `${market} ${width}: page errors`);
           assert.deepEqual(violations, [], `${market} ${width}: accessibility violations`);
-          console.log(`${market} ${width}: headline, patient/doctor image, metadata, anchor history, menu, overflow and accessibility passed`);
+          console.log(`${market} ${width}: headline, medical voice image, metadata, anchor history, menu, overflow and accessibility passed`);
         } finally { await context.close(); }
       }
     }

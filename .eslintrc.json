@@ -2,7 +2,10 @@
   "extends": ["next/core-web-vitals"],
   "ignorePatterns": [
     "public/mediapipe/**/*.js",
-    "public/mediapipe-wasm/**/*.js"
+    "public/mediapipe-wasm/**/*.js",
+    ".next-voice-lab/**",
+    ".next-voice-build/**",
+    "artifacts/voice-browser/bundle/**"
   ],
   "rules": {
     "react/no-unescaped-entities": "off",

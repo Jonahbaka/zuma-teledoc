@@ -1,4 +1,5 @@
 'use client';
+import ManualLabPanel from '@/components/clinical/ManualLabPanel';
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -26,6 +27,12 @@ import { toast } from '@/components/ui/use-toast';
 import { formatDateTime } from '@/lib/utils';
 import { toProviderPortalPath } from '@/lib/providerPortal';
 
+const SOAP_FIELDS = ['subjective', 'objective', 'assessment', 'plan'];
+const soapFields = note => Object.fromEntries(SOAP_FIELDS.map(field => [field, typeof note?.[field] === 'string' ? note[field] : '']));
+const validRevision = note => /^[a-f0-9]{64}$/.test(note?.revision || '');
+const newestNote = notes => [...notes].sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0)
+  || (b.version || 0) - (a.version || 0) || String(b.id).localeCompare(String(a.id)))[0] || null;
+
 function ProviderEncounterChartContent() {
   const params = useParams();
   const pathname = usePathname();
@@ -37,6 +44,13 @@ function ProviderEncounterChartContent() {
   const currentEncounter = useRef(encounterId);
   currentEncounter.current = encounterId;
   const importVersion = useRef(0);
+  const mounted = useRef(false);
+  const loadVersion = useRef(0);
+  const operation = useRef(null);
+  const [editor, setEditor] = useState(null);
+  const editorRef = useRef(null);
+  const [signingNote, setSigningNote] = useState(false);
+  const installEditor = value => { editorRef.current = value; setEditor(value); };
   const [importingDraft, setImportingDraft] = useState(false);
   const [importedAiSuggestionId, setImportedAiSuggestionId] = useState(null);
   const [aiStage, setAiStage] = useState('consultation_brief');
@@ -50,17 +64,11 @@ function ProviderEncounterChartContent() {
   const [intents, setIntents] = useState([]);
 
   const [savingNote, setSavingNote] = useState(false);
-  const [noteDraft, setNoteDraft] = useState({
-    noteType: 'soap',
-    subjective: '',
-    objective: '',
-    assessment: '',
-    plan: '',
-    physicalExam: ''
-  });
-
+  const [noteDraft, setNoteDraft] = useState({ noteType: 'soap', ...soapFields(null) });
   const currentNoteDraft = useRef(noteDraft);
   currentNoteDraft.current = noteDraft;
+  const changeDraft = value => { currentNoteDraft.current = value; setNoteDraft(value); };
+  const dirtyDraft = () => SOAP_FIELDS.some(field => currentNoteDraft.current[field] !== editorRef.current?.fields[field]);
 
   const [showAmend, setShowAmend] = useState(false);
   const [amending, setAmending] = useState(false);
@@ -95,8 +103,12 @@ function ProviderEncounterChartContent() {
     scheduleClass: ''
   });
 
-  const load = async () => {
+  const load = async ({ reloadEditor = false } = {}) => {
     const requestedEncounter = encounterId;
+    const requestedDraft = currentNoteDraft.current;
+    const requestedEditor = editorRef.current;
+    const request = ++loadVersion.current;
+    const currentLoad = () => mounted.current && currentEncounter.current === requestedEncounter && request === loadVersion.current;
     setLoading(true);
     try {
       const [encRes, notesRes, intentsRes] = await Promise.all([
@@ -105,24 +117,44 @@ function ProviderEncounterChartContent() {
         clinicalEhrAPI.getEncounterPrescriptionIntents(encounterId)
       ]);
 
-      if (currentEncounter.current !== requestedEncounter) return;
+      if (!currentLoad()) return;
       if (encRes.data?.success) setEncounter(encRes.data.encounter);
-      if (notesRes.data?.success) setNotes(notesRes.data.notes || []);
+      if (notesRes.data?.success) {
+        const loadedNotes = notesRes.data.notes || [];
+        setNotes(loadedNotes);
+        // An established editor owns its exact note and revision. Background
+        // reads never replace a clinician's draft or silently retarget a save.
+        if (!editorRef.current || reloadEditor && editorRef.current === requestedEditor && currentNoteDraft.current === requestedDraft) {
+          const boundId = reloadEditor && editorRef.current?.note?.id;
+          const note = boundId ? loadedNotes.find(item => item.id === boundId) : newestNote(loadedNotes);
+          if (boundId && !note) throw new Error('The selected note could not be reloaded.');
+          const fields = soapFields(note);
+          installEditor({ encounterId: requestedEncounter, note, fields });
+          changeDraft({ noteType: note?.noteType || 'soap', ...fields });
+          if (reloadEditor) setImportedAiSuggestionId(null);
+        }
+      }
       if (intentsRes.data?.success) setIntents(intentsRes.data.prescriptionIntents || []);
     } catch (e) {
-      toast({ title: 'Error', description: 'Failed to load encounter chart', variant: 'destructive' });
+      if (currentLoad()) toast({ title: 'Error', description: 'Failed to load encounter chart', variant: 'destructive' });
     } finally {
-      if (currentEncounter.current === requestedEncounter) setLoading(false);
+      if (currentLoad()) setLoading(false);
     }
   };
 
   useEffect(() => {
+    mounted.current = true;
+    operation.current = null;
+    installEditor(null);
+    setSigningNote(false); setAmending(false); setShowAmend(false);
+    setAmendment({ reason: '', ...soapFields(null) });
     importVersion.current += 1;
     setEncounter(null); setNotes([]); setIntents([]);
     setImportedAiSuggestionId(null); setImportingDraft(false); setSavingNote(false);
     setAiReviewDraft(null); setAiEditable(null); setAiWorking(false);
-    setNoteDraft({ noteType: 'soap', subjective: '', objective: '', assessment: '', plan: '', physicalExam: '' });
+    changeDraft({ noteType: 'soap', ...soapFields(null) });
     load();
+    return () => { mounted.current = false; loadVersion.current += 1; importVersion.current += 1; operation.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encounterId]);
 
@@ -133,10 +165,19 @@ function ProviderEncounterChartContent() {
     setImportingDraft(false);
   }, [aiSuggestionId]);
 
-  const latestNote = useMemo(() => {
-    if (!notes.length) return null;
-    return notes[0];
-  }, [notes]);
+  const latestNote = useMemo(() => newestNote(notes), [notes]);
+  const selectedNote = editor ? editor.note : latestNote;
+  const editorReady = editor?.encounterId === encounterId;
+  const noteDirty = editorReady && SOAP_FIELDS.some(field => noteDraft[field] !== editor.fields[field]);
+  const noteBusy = savingNote || signingNote || amending;
+  const canSign = editorReady && editor?.note && !editor.note.isSigned && !editor.note.isLocked
+    && validRevision(editor.note) && !noteDirty && !noteBusy && !importedAiSuggestionId && !importingDraft;
+  const startNewNote = () => {
+    if (!mounted.current || currentEncounter.current !== encounterId || operation.current || importingDraft || (editorRef.current && dirtyDraft())) return;
+    installEditor({ encounterId, note: null, fields: soapFields(null) });
+    changeDraft({ noteType: 'soap', ...soapFields(null) });
+    setImportedAiSuggestionId(null);
+  };
 
   const prepareEncounterAiDraft = async () => {
     const selectedEncounter = encounterId;
@@ -179,6 +220,7 @@ function ProviderEncounterChartContent() {
   };
 
   const importReviewedDraft = async () => {
+    if (operation.current || !mounted.current || !editorRef.current) return;
     const hasText = () => ['subjective', 'objective', 'assessment', 'plan', 'physicalExam'].some(field => currentNoteDraft.current[field]?.trim());
     if (hasText()) {
       toast({ title: 'Draft preserved', description: 'Save or clear your current draft before importing. Nothing was overwritten.', variant: 'destructive' });
@@ -195,7 +237,8 @@ function ProviderEncounterChartContent() {
         return;
       }
       if (!response.data?.success || response.data.aiSuggestionId !== aiSuggestionId) throw new Error('Draft reference mismatch');
-      setNoteDraft({ ...response.data.noteDraft, physicalExam: '' });
+      installEditor({ encounterId: requestedEncounter, note: null, fields: soapFields(null) });
+      changeDraft({ ...response.data.noteDraft, ...soapFields(response.data.noteDraft) });
       setImportedAiSuggestionId(response.data.aiSuggestionId);
       toast({ title: 'Reviewed draft loaded', description: 'Review and edit these fields, then save a new unsigned note. Signing remains a separate action.' });
     } catch (error) {
@@ -206,56 +249,91 @@ function ProviderEncounterChartContent() {
   };
 
   const createOrUpdateNote = async () => {
+    const baseline = editorRef.current;
+    if (operation.current || importingDraft || !mounted.current || !baseline || baseline.encounterId !== encounterId) return;
+    const target = baseline.note;
+    if (target && (target.isSigned || target.isLocked || !validRevision(target))) return;
+    const submitted = { ...currentNoteDraft.current };
+    const changes = Object.fromEntries(SOAP_FIELDS.filter(field => submitted[field] !== baseline.fields[field]).map(field => [field, submitted[field]]));
+    if (target && !Object.keys(changes).length || !target && !SOAP_FIELDS.some(field => submitted[field]?.trim())) return;
     const requestedEncounter = encounterId;
-    const requestVersion = importVersion.current;
-    const currentSave = () => currentEncounter.current === requestedEncounter && importVersion.current === requestVersion;
+    const request = {};
+    operation.current = request;
+    loadVersion.current += 1;
+    const currentSave = () => mounted.current && currentEncounter.current === requestedEncounter && operation.current === request;
     setSavingNote(true);
     try {
-      if (!importedAiSuggestionId && latestNote && !latestNote.isSigned && latestNote.providerId) {
-        // Update existing unsigned note
-        const res = await clinicalEhrAPI.updateNote(latestNote.id, noteDraft);
-        if (!currentSave()) return;
-        if (res.data?.success) toast({ title: 'Note updated', variant: 'success' });
-      } else {
-        const res = await clinicalEhrAPI.createNote(encounterId, { ...noteDraft, ...(importedAiSuggestionId ? { aiSuggestionId: importedAiSuggestionId } : {}) });
-        if (!currentSave()) return;
-        if (res.data?.success) {
-          setImportedAiSuggestionId(null);
-          toast({ title: 'Note created', variant: 'success' });
-        }
-      }
+      const res = target
+        ? await clinicalEhrAPI.updateNote(target.id, { ...changes, expectedRevision: target.revision })
+        : await clinicalEhrAPI.createNote(requestedEncounter, { ...submitted, ...(importedAiSuggestionId ? { aiSuggestionId: importedAiSuggestionId } : {}) });
+      if (!currentSave()) return;
+      if (!res.data?.success || !res.data.note?.id || !validRevision(res.data.note)) throw new Error('The saved note revision could not be confirmed.');
+      // Preserve edits typed after submission while advancing only the saved
+      // baseline. Responses need not repeat decrypted SOAP content.
+      const fields = soapFields(submitted);
+      installEditor({ encounterId: requestedEncounter, note: res.data.note, fields });
+      setNotes(current => [...current.filter(note => note.id !== res.data.note.id), { ...res.data.note, ...fields }]);
+      setImportedAiSuggestionId(null);
+      toast({ title: target ? 'Note updated' : 'Note created', variant: 'success' });
       await load();
     } catch (e) {
-      if (currentSave()) toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to save note', variant: 'destructive' });
+      if (currentSave()) toast({ title: 'Draft preserved', description: e?.response?.status === 409
+        ? 'This note changed elsewhere. Your edits are preserved. Review the current saved note before trying again.'
+        : e?.response?.data?.error || 'The save was not confirmed. Your edits are preserved.', variant: 'destructive' });
     } finally {
-      if (currentEncounter.current === requestedEncounter) setSavingNote(false);
+      if (currentSave()) { operation.current = null; setSavingNote(false); }
     }
   };
 
   const signNote = async () => {
-    if (!latestNote) return;
+    const baseline = editorRef.current;
+    if (operation.current || importingDraft || importedAiSuggestionId || !mounted.current || !baseline || baseline.encounterId !== encounterId
+      || !baseline.note || baseline.note.isSigned || baseline.note.isLocked || !validRevision(baseline.note) || dirtyDraft()) return;
+    const requestedEncounter = encounterId;
+    const request = {};
+    operation.current = request;
+    loadVersion.current += 1;
+    const currentSign = () => mounted.current && currentEncounter.current === requestedEncounter && operation.current === request;
+    setSigningNote(true);
     try {
-      const res = await clinicalEhrAPI.signNote(latestNote.id);
-      if (res.data?.success) toast({ title: 'Note signed', variant: 'success' });
+      const res = await clinicalEhrAPI.signNote(baseline.note.id, { expectedRevision: baseline.note.revision });
+      if (!currentSign()) return;
+      if (!res.data?.success || !res.data.note?.isSigned) throw new Error('Signature could not be confirmed.');
+      installEditor({ ...baseline, note: res.data.note });
+      toast({ title: 'Note signed', variant: 'success' });
       await load();
     } catch (e) {
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to sign note', variant: 'destructive' });
+      if (currentSign()) toast({ title: 'Signature not confirmed', description: e?.response?.data?.error || 'Review the current saved note before signing.', variant: 'destructive' });
+    } finally {
+      if (currentSign()) { operation.current = null; setSigningNote(false); }
     }
   };
 
   const submitAmendment = async () => {
-    if (!latestNote) return;
+    if (!selectedNote || operation.current || !mounted.current || !editorReady || currentEncounter.current !== encounterId || editorRef.current?.note?.id !== selectedNote.id) return;
+    const requestedEncounter = encounterId;
+    const submitted = { ...amendment };
+    const request = {};
+    operation.current = request;
+    loadVersion.current += 1;
+    const currentAmendment = () => mounted.current && currentEncounter.current === requestedEncounter && operation.current === request;
     setAmending(true);
     try {
-      const res = await clinicalEhrAPI.amendNote(latestNote.id, amendment);
-      if (res.data?.success) toast({ title: 'Amendment created', variant: 'success' });
+      const res = await clinicalEhrAPI.amendNote(selectedNote.id, submitted);
+      if (!currentAmendment()) return;
+      if (!res.data?.success || !res.data.note?.id || !validRevision(res.data.note)) throw new Error('The amendment revision could not be confirmed.');
+      const fields = soapFields(submitted);
+      installEditor({ encounterId: requestedEncounter, note: res.data.note, fields });
+      changeDraft({ noteType: 'amendment', ...fields });
+      setNotes(current => [...current.filter(note => note.id !== res.data.note.id), { ...res.data.note, ...fields }]);
+      toast({ title: 'Amendment created', variant: 'success' });
       setShowAmend(false);
-      setAmendment({ reason: '', subjective: '', objective: '', assessment: '', plan: '' });
+      setAmendment({ reason: '', ...soapFields(null) });
       await load();
     } catch (e) {
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to create amendment', variant: 'destructive' });
+      if (currentAmendment()) toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to create amendment', variant: 'destructive' });
     } finally {
-      setAmending(false);
+      if (currentAmendment()) { operation.current = null; setAmending(false); }
     }
   };
 
@@ -320,6 +398,7 @@ function ProviderEncounterChartContent() {
         </div>
       </div>
 
+      <ManualLabPanel encounterId={encounterId} />
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
           <Card>
@@ -427,21 +506,21 @@ function ProviderEncounterChartContent() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {latestNote ? (
+              {selectedNote ? (
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-slate-600">
-                    Latest note: {latestNote.createdAt ? formatDateTime(latestNote.createdAt) : '—'} · Version {latestNote.version || 1}
+                    Latest note: {selectedNote.createdAt ? formatDateTime(selectedNote.createdAt) : '—'} · Version {selectedNote.version || 1}
                   </div>
                   <div className="flex items-center gap-2">
-                    {latestNote.isSigned ? (
+                    {selectedNote.isSigned ? (
                       <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Signed</Badge>
                     ) : (
                       <Badge variant="secondary">Unsigned</Badge>
                     )}
-                    {latestNote.isSigned ? (
-                      <Button variant="outline" onClick={() => setShowAmend(true)}>Amend</Button>
+                    {selectedNote.isSigned ? (
+                      <Button variant="outline" disabled={noteBusy} onClick={() => setShowAmend(true)}>Amend</Button>
                     ) : (
-                      <Button onClick={signNote} className="bg-blue-600 hover:bg-blue-700">
+                      <Button disabled={!canSign} onClick={signNote} className="bg-blue-600 hover:bg-blue-700">
                         <ClipboardSignature className="w-4 h-4 mr-2" />
                         Sign
                       </Button>
@@ -455,7 +534,7 @@ function ProviderEncounterChartContent() {
               {aiSuggestionId && (
                 <div className="rounded-lg border border-violet-200 p-3 space-y-2">
                   <p className="text-sm">Import a clinician-reviewed SOAP draft into an empty editor. This does not save or sign a note, and never replaces an existing note.</p>
-                  <Button variant="outline" onClick={importReviewedDraft} disabled={importingDraft || savingNote}>
+                  <Button variant="outline" onClick={importReviewedDraft} disabled={importingDraft || noteBusy || !editorReady}>
                     {importingDraft ? 'Loading reviewed draft…' : 'Load reviewed AI draft'}
                   </Button>
                   {importedAiSuggestionId && <p className="text-xs">Save creates a new unsigned note with recorded AI-source provenance. Verify every field before saving.</p>}
@@ -463,27 +542,31 @@ function ProviderEncounterChartContent() {
               )}
               <div className="grid gap-4">
                 <div className="space-y-2">
-                  <Label>Subjective</Label>
-                  <Textarea value={noteDraft.subjective} onChange={(e) => setNoteDraft({ ...noteDraft, subjective: e.target.value })} />
+                  <Label htmlFor="note-subjective">Subjective</Label>
+                  <Textarea id="note-subjective" value={noteDraft.subjective} disabled={!editorReady || signingNote || (editor?.note && !validRevision(editor.note)) || !!editor?.note?.isSigned || !!editor?.note?.isLocked} onChange={(e) => changeDraft({ ...currentNoteDraft.current, subjective: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Objective</Label>
-                  <Textarea value={noteDraft.objective} onChange={(e) => setNoteDraft({ ...noteDraft, objective: e.target.value })} />
+                  <Label htmlFor="note-objective">Objective</Label>
+                  <Textarea id="note-objective" value={noteDraft.objective} disabled={!editorReady || signingNote || (editor?.note && !validRevision(editor.note)) || !!editor?.note?.isSigned || !!editor?.note?.isLocked} onChange={(e) => changeDraft({ ...currentNoteDraft.current, objective: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Assessment</Label>
-                  <Textarea value={noteDraft.assessment} onChange={(e) => setNoteDraft({ ...noteDraft, assessment: e.target.value })} />
+                  <Label htmlFor="note-assessment">Assessment</Label>
+                  <Textarea id="note-assessment" value={noteDraft.assessment} disabled={!editorReady || signingNote || (editor?.note && !validRevision(editor.note)) || !!editor?.note?.isSigned || !!editor?.note?.isLocked} onChange={(e) => changeDraft({ ...currentNoteDraft.current, assessment: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Plan</Label>
-                  <Textarea value={noteDraft.plan} onChange={(e) => setNoteDraft({ ...noteDraft, plan: e.target.value })} />
+                  <Label htmlFor="note-plan">Plan</Label>
+                  <Textarea id="note-plan" value={noteDraft.plan} disabled={!editorReady || signingNote || (editor?.note && !validRevision(editor.note)) || !!editor?.note?.isSigned || !!editor?.note?.isLocked} onChange={(e) => changeDraft({ ...currentNoteDraft.current, plan: e.target.value })} />
                 </div>
               </div>
 
-              <Button onClick={createOrUpdateNote} disabled={savingNote} className="bg-blue-600 hover:bg-blue-700">
+              <Button onClick={createOrUpdateNote} disabled={!editorReady || noteBusy || importingDraft || !!editor?.note?.isSigned || !!editor?.note?.isLocked || (editor?.note ? !validRevision(editor.note) || !noteDirty : !SOAP_FIELDS.some(field => noteDraft[field]?.trim()))} className="bg-blue-600 hover:bg-blue-700">
                 {savingNote ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                 Save Note
               </Button>
+              <Button variant="outline" onClick={startNewNote} disabled={!editorReady || noteBusy || importingDraft || noteDirty}>New Note</Button>
+              <Button variant="outline" onClick={() => { if (!operation.current && !importingDraft) load({ reloadEditor: true }); }} disabled={!editorReady || noteBusy || importingDraft || loading}>Discard edits and reload saved note</Button>
+              {noteDirty && <p className="text-sm text-amber-700">Unsaved edits. Save before signing.</p>}
+              {editor?.note && !validRevision(editor.note) && <p className="text-sm text-amber-700">The saved note revision is unavailable. Reload the chart before editing or signing.</p>}
             </CardContent>
           </Card>
         </div>

@@ -12,19 +12,10 @@ const z = require('zod');
 const { keysToCamel, keysToSnake } = require('../../lib/utils');
 const logger = require('../middleware/logger');
 const multer = require('multer');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const credentialDocuments = require('../services/credentialDocumentService');
 
 // Configure multer for document uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/credentialing/');
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${uuidv4()}`;
-    cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
-  }
-});
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -124,7 +115,7 @@ router.get('/me', authenticate, requireRole(['provider']), async (req, res) => {
       credentialing: {
         ...credentialing,
         steps: stepRows.map(keysToCamel),
-        documents: docRows.map(keysToCamel),
+        documents: docRows.map(row => keysToCamel(credentialDocuments.publicDocument(row))),
         references: refRows.map(keysToCamel),
         workHistory: workRows.map(keysToCamel),
         stepsConfig: CREDENTIALING_STEPS
@@ -669,51 +660,20 @@ router.post('/references', authenticate, requireRole(['provider']), async (req, 
  */
 router.post('/documents', authenticate, requireRole(['provider']), upload.single('document'), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No file uploaded' });
-    }
-    
-    const { documentType, expiryDate } = req.body;
-    
-    // Get credentialing ID
-    const { rows: credRows } = await db.query(
-      'SELECT id FROM provider_credentialing WHERE provider_id = $1',
-      [req.user.id]
-    );
-    
-    if (credRows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Credentialing record not found' });
-    }
-    
-    const { rows } = await db.query(
-      `INSERT INTO credentialing_documents (
-        credentialing_id, document_type, document_name, file_url,
-        file_size, mime_type, expiry_date
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *`,
-      [
-        credRows[0].id,
-        documentType,
-        req.file.originalname,
-        `/uploads/credentialing/${req.file.filename}`,
-        req.file.size,
-        req.file.mimetype,
-        expiryDate || null
-      ]
-    );
-    
-    await logCredentialingAction(credRows[0].id, 'document_uploaded', req.user.id, req.user.role, {
-      documentType,
-      fileName: req.file.originalname
-    });
-    
-    res.status(201).json({
-      success: true,
-      document: keysToCamel(rows[0])
-    });
+    const document = await credentialDocuments.save(db.getPool(), req.user, req.file, req.body);
+    res.set('Cache-Control', 'private, no-store').status(201).json({ success: true, document: keysToCamel(document) });
   } catch (error) {
-    logger.error('Upload document error', { error: error.message, userId: req.user.id });
-    res.status(500).json({ success: false, error: 'Failed to upload document' });
+    res.status(error.status || 503).json({ success: false, error: error.status < 500 ? error.message : 'Private document storage is unavailable.' });
+  }
+});
+
+router.get('/documents/:id/content', authenticate, requireRole(['provider', 'admin', 'super_admin']), async (req, res) => {
+  res.set({ 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+  try {
+    const { bytes } = await credentialDocuments.read(db.getPool(), req.user, req.params.id);
+    res.set('Content-Disposition', 'attachment; filename="credential-document"').type('application/octet-stream').send(bytes);
+  } catch (error) {
+    res.status(error.status || 503).json({ success: false, error: 'Document unavailable.' });
   }
 });
 
@@ -870,7 +830,7 @@ router.get('/admin/:providerId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9
       credentialing: {
         ...credentialing,
         steps: steps.rows.map(keysToCamel),
-        documents: documents.rows.map(keysToCamel),
+        documents: documents.rows.map(row => keysToCamel(credentialDocuments.publicDocument(row))),
         references: references.rows.map(keysToCamel),
         workHistory: workHistory.rows.map(keysToCamel),
         auditLog: auditLog.rows.map(keysToCamel),

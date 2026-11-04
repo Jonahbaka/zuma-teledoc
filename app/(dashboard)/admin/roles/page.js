@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import {
-  Users, Plus, Shield, ShieldCheck, Stethoscope, User, Trash2,
+  Users, Plus, Shield, ShieldCheck, Stethoscope, User,
   Loader2, Search, MoreVertical, Check, X, Edit, Mail, Key,
   UserPlus, AlertTriangle, CheckCircle, Clock, Ban
 } from 'lucide-react';
@@ -192,30 +192,6 @@ export default function AdminRolesPage() {
     }
   };
 
-  const handleDeleteUser = async (userId) => {
-    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      const response = await adminAPI.deleteUser(userId);
-      
-      if (response.data.success) {
-        toast({
-          title: 'User Deleted',
-          description: 'User has been permanently removed',
-        });
-        loadUsers();
-      }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.error || 'Failed to delete user',
-        variant: 'destructive'
-      });
-    }
-  };
-
   // Filter users by search
   const filteredUsers = users.filter(u =>
     u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -330,6 +306,12 @@ export default function AdminRolesPage() {
         </div>
       </div>
 
+      {isSuperAdmin && (
+        <p className="text-base text-muted-foreground">
+          Permanent deletion is unavailable because it may remove clinical history. Deactivate accounts to suspend access while retaining records.
+        </p>
+      )}
+
       {/* Users Table */}
       <Card>
         <CardContent className="p-0">
@@ -413,22 +395,14 @@ export default function AdminRolesPage() {
                             <Button
                               size="sm"
                               variant="outline"
+                              aria-label={`${user.isActive ? 'Deactivate' : 'Reactivate'} account for ${user.firstName} ${user.lastName}`}
+                              title={user.isActive ? 'Deactivate account, retaining records' : 'Reactivate account'}
                               onClick={() => handleUpdateUserStatus(user.id, user.isActive ? 'inactive' : 'active')}
                             >
                               {user.isActive ? <Ban className="w-4 h-4" /> : <Check className="w-4 h-4" />}
                             </Button>
                           )}
                           
-                          {/* Delete (Super Admin only, not self) */}
-                          {isSuperAdmin && !isCurrentUser && (
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleDeleteUser(user.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          )}
                         </div>
                       </td>
                     </tr>

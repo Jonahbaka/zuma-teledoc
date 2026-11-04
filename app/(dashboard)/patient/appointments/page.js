@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   Calendar, Plus, Filter, Search, Video, Phone, 
@@ -18,46 +18,39 @@ export default function PatientAppointments() {
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchAppointments = useCallback(async () => {
-    try {
-      setLoading(true);
-      
-      const params = {};
-      if (filter && filter !== 'all') {
-        params.status = filter;
-      }
-      
-      const response = await appointmentsAPI.getAll(params);
-      
-      // Use the same simple pattern as the dashboard (which works)
-      if (response?.data?.success && Array.isArray(response.data.appointments)) {
-        setAppointments(response.data.appointments);
-      } else {
-        setAppointments([]);
-      }
-    } catch (error) {
-      // Production-safe error handling - set empty array on error
-      setAppointments([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [filter]);
+  const [error, setError] = useState('');
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    fetchAppointments();
-  }, [fetchAppointments]);
-
-  // Also refresh when page becomes visible (e.g., after redirect from booking)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        fetchAppointments();
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    setAppointments([]);
+    const loadAppointments = async () => {
+      try {
+        const response = filter === 'upcoming'
+          ? await appointmentsAPI.getUpcoming(50)
+          : await appointmentsAPI.getAll(filter === 'all' ? undefined : { status: filter });
+        if (!response?.data?.success || !Array.isArray(response.data.appointments)) throw new Error();
+        if (!cancelled) setAppointments(response.data.appointments);
+      } catch {
+        if (!cancelled) setError('Visits could not be loaded. Please try again.');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [fetchAppointments]);
+    loadAppointments();
+    return () => { cancelled = true; };
+  }, [filter, revision]);
+
+  // Returning from a call or booking refreshes the authoritative visit state.
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') setRevision((value) => value + 1);
+    };
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => document.removeEventListener('visibilitychange', refreshWhenVisible);
+  }, []);
 
   const filteredAppointments = (() => {
     try {
@@ -95,7 +88,7 @@ export default function PatientAppointments() {
 
   const filters = [
     { value: 'all', label: 'All' },
-    { value: 'scheduled', label: 'Upcoming' },
+    { value: 'upcoming', label: 'Upcoming' },
     { value: 'completed', label: 'Completed' },
     { value: 'cancelled', label: 'Cancelled' }
   ];
@@ -161,6 +154,8 @@ export default function PatientAppointments() {
         </CardContent>
       </Card>
 
+      {error && <div className="portal-error"><p role="alert">{error}</p><Button variant="outline" className="mt-3" onClick={() => setRevision((value) => value + 1)}>Try again</Button></div>}
+
       {/* Appointments List */}
       {loading ? (
         <div className="space-y-4">
@@ -170,7 +165,7 @@ export default function PatientAppointments() {
             </div>
           ))}
         </div>
-      ) : filteredAppointments.length === 0 ? (
+      ) : error ? null : filteredAppointments.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />

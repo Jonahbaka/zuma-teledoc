@@ -3,6 +3,9 @@
 // Real application routes, PostgreSQL and browser UI; only the external courier
 // and payment transports are replaced in this isolated test process.
 const assert = require('node:assert/strict');
+const { fixtureTargetSafety } = require('../ng/scripts/fixtureTargetSafety');
+const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+assert.equal(safety.skipped, false, safety.reason);
 const crypto = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -16,7 +19,9 @@ const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 
 const target = process.env.SIMULATION_DATABASE_URL;
-if (!target || !['127.0.0.1', 'localhost'].includes(new URL(target).hostname) || !new URL(target).pathname.endsWith('_test')) throw new Error('Use a disposable loopback database ending in _test.');
+const pool = new Pool(require('../server/db/connectionConfig').buildDatabaseConfig({ ...process.env, DATABASE_URL: target }, { requireUrl: true }));
+const actualTarget = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+assert.equal(actualTarget.skipped, false, actualTarget.reason);
 process.env.DATABASE_URL = target;
 process.env.NODE_ENV = 'test';
 process.env.JWT_ACCESS_SECRET = 'isolated-medication-browser-access-secret-at-least-32-characters';
@@ -41,7 +46,6 @@ const workflow = require(workflowPath);
 const { createBrowserFixture } = require('../ng/tests/helpers/medication-delivery-fixture');
 let currentService;
 require.cache[workflowPath].exports = new Proxy({}, { get(_value, method) { return method === 'createMedicationDeliveryWorkflowService' ? workflow.createMedicationDeliveryWorkflowService : (...args) => currentService[method](...args); } });
-const pool = new Pool({ connectionString: target });
 const runtime = [];
 const consoleErrors = [];
 const serverErrors = [];

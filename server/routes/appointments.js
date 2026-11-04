@@ -70,6 +70,7 @@ function appointmentForActor(appointment, role) {
 
 const SAME_MINUTE_BUFFER_MS = 5 * 60 * 1000;
 const PROVIDER_UPCOMING_LOOKBACK_MS = 2 * 60 * 60 * 1000;
+const PATIENT_UPCOMING_LOOKBACK_MS = 2 * 60 * 60 * 1000;
 const MAX_UPCOMING_LIMIT = 50;
 
 const getAuthenticatedMarketScope = (user = {}) =>
@@ -469,14 +470,41 @@ router.get('/upcoming', authenticate, auditMiddleware('read', 'appointment', app
           ABS(EXTRACT(EPOCH FROM (a.scheduled_at - $1))),
           a.scheduled_at ASC
       `;
+    } else if (userRole === 'patient') {
+      // A consultation must remain discoverable after its start time. Keep
+      // ongoing visits until the clinician ends them, and allow a bounded
+      // arrival window for scheduled/confirmed visits that started recently.
+      whereConditions.push(`(a.status = 'in_progress' OR (a.status IN ('scheduled', 'confirmed') AND a.scheduled_at >= $${paramIndex++}))`);
+      values.push(new Date(referenceTime.getTime() - PATIENT_UPCOMING_LOOKBACK_MS));
+      whereConditions.push(`a.patient_id = $${paramIndex++}`);
+      values.push(req.user.id);
+      whereConditions.push(`${userMarketScopeSql('p')} = $${paramIndex++}`);
+      values.push(authenticatedMarketScope);
+      whereConditions.push(`${userMarketScopeSql('pr')} = $${paramIndex++}`);
+      values.push(authenticatedMarketScope);
+      whereConditions.push("p.role = 'patient' AND pr.role = 'provider'");
+      orderByClause = `
+        ORDER BY
+          CASE
+            WHEN a.status = 'in_progress' THEN 0
+            WHEN a.scheduled_at <= $1 THEN 1
+            ELSE 2
+          END,
+          ABS(EXTRACT(EPOCH FROM (a.scheduled_at - $1))),
+          a.scheduled_at ASC
+      `;
     } else {
       whereConditions.push(`a.scheduled_at > $1`);
       whereConditions.push(`a.status IN ('scheduled', 'confirmed')`);
-
-      if (userRole === 'patient') {
-        whereConditions.push(`a.patient_id = $${paramIndex++}`);
-        values.push(req.user.id);
-      }
+      // Match list/detail authority: neither administrative role grants access
+      // outside the authenticated market. Scope both participants before LIMIT
+      // and require real patient/provider relationships, including for US rows
+      // whose legacy market fields normalize to the default scope.
+      whereConditions.push(`${userMarketScopeSql('p')} = $${paramIndex++}`);
+      values.push(authenticatedMarketScope);
+      whereConditions.push(`${userMarketScopeSql('pr')} = $${paramIndex++}`);
+      values.push(authenticatedMarketScope);
+      whereConditions.push("p.role = 'patient' AND pr.role = 'provider'");
     }
     
     const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
@@ -497,7 +525,7 @@ router.get('/upcoming', authenticate, auditMiddleware('read', 'appointment', app
     );
     
     if (userRole === 'patient') (res.locals ||= {}).patientId = req.user.id;
-    res.json({
+    res.set('Cache-Control', 'private, no-store').json({
       success: true,
       appointments: rows.map(row => appointmentForActor(row, req.user.role))
     });

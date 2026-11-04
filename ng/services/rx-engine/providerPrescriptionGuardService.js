@@ -50,7 +50,7 @@ async function assertProviderPrescriptionContext(client, req, input) {
        JOIN ng_providers provider ON provider.user_id = actor.id
        JOIN users patient ON patient.id = $2
       WHERE actor.id = $1 AND actor.role = 'provider'
-        AND actor.is_active = TRUE AND actor.market_scope = 'NG'
+        AND actor.is_active = TRUE AND actor.account_status = 'active' AND actor.market_scope = 'NG'
         AND actor.provider_status = 'approved' AND provider.status = 'verified'
         AND patient.role = 'patient' AND patient.market_scope = 'NG' AND patient.is_active = TRUE
       FOR SHARE OF actor, provider, patient`,

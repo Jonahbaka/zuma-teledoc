@@ -8,6 +8,9 @@
 
 set -euo pipefail
 
+# Block before loading environment secrets, installing or mutating live state.
+bash "$(cd "$(dirname "$0")" && pwd)/scripts/check-release-rollback.sh"
+
 # ── Colours ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[deploy]${NC} $*"; }

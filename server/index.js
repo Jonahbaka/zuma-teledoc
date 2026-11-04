@@ -3,12 +3,23 @@
  * Cloud Run compatible - binds to PORT immediately
  */
 
-// Load environment variables first so PORT and all secrets are available immediately
-require('dotenv').config();
+// Legacy serving keeps its existing environment loading. A sealed release cannot
+// silently opt out of immutable-runtime checks by changing an environment flag.
+const { immutableRuntime, assertServingModeSupported } = require('./utils/runtimeStatePolicy');
+if (!immutableRuntime()) require('dotenv').config();
+if (process.env.DOCTARX_DEPLOY_CHECK === 'true') {
+  module.exports = require('./runtime/candidateServer').startCandidateServer();
+} else {
+assertServingModeSupported();
+const { backgroundWorkAllowed } = require('./utils/backgroundWorkPolicy');
 // Preserve existing cookie defaults; reject an unknown explicit deployment mode
 // before listening instead of failing individual authentication requests.
 require('./utils/authCookiePolicy').authCookieDomain();
 if (require('../lib/deploymentProfile.cjs').resolveDeploymentProfile().careops) throw new Error('CareOps is a frontend-only profile. Use careops:start and the existing shared backend.');
+
+// Initialize Sentry before loading Express/HTTP; disabled deployments do not load the SDK.
+const { initSentry, sentryErrorHandler } = require('./middleware/sentry');
+const sentryState = initSentry();
 
 // STEP 1: Minimal imports that cannot crash
 const express = require('express');
@@ -17,8 +28,10 @@ const fs = require('fs');
 const { execSync } = require('child_process');
 const packageJson = require('../package.json');
 const app = express();
+// Install before any static serving or asynchronous initialization.
+app.use(require('./middleware/creatorAssetGuard'));
 const PORT = parseInt(process.env.PORT, 10) || 8080;
-const HOST = '0.0.0.0';
+const HOST = process.env.DOCTARX_DEPLOY_CHECK === 'true' ? '127.0.0.1' : '0.0.0.0';
 const NEXT_READY_TIMEOUT_MS = parseInt(process.env.NEXT_READY_TIMEOUT_MS, 10) || 180000;
 const NEXT_WARMUP_GRACE_MS = parseInt(process.env.NEXT_WARMUP_GRACE_MS, 10) || 45000;
 const serverStartedAt = new Date();
@@ -120,20 +133,34 @@ const server = app.listen(PORT, HOST, () => {
 
 // Initialize Socket.io for real-time chat
 let socketService = null;
-try {
-  socketService = require('./services/socketService');
-  socketService.initializeSocket(server);
-  console.log('🔌 Real-time chat enabled');
-} catch (err) {
-  console.error('⚠️ Socket.io initialization failed:', err.message);
-}
+let voicePcmRuntime = null;
+let operationalAgentRuntime = null;
+if (process.env.DOCTARX_DEPLOY_CHECK !== 'true') {
+  try {
+    socketService = require('./services/socketService');
+    socketService.initializeSocket(server);
+    console.log('🔌 Real-time chat enabled');
+  } catch (err) {
+    console.error('⚠️ Socket.io initialization failed:', err.message);
+  }
 
-// Initialize OpenClaw WebSocket adapter (bridges OpenClaw protocol → Hive)
-try {
-  const { initOpenClawAdapter } = require('./routes/openclawAdapter');
-  initOpenClawAdapter(server);
-} catch (err) {
-  console.error('⚠️ OpenClaw adapter failed:', err.message);
+  // Initialize OpenClaw WebSocket adapter (bridges OpenClaw protocol → Hive)
+  try {
+    const { initOpenClawAdapter } = require('./routes/openclawAdapter');
+    initOpenClawAdapter(server);
+  } catch (err) {
+    console.error('⚠️ OpenClaw adapter failed:', err.message);
+  }
+
+
+  // Development evaluation surface only. No approval source, credential source,
+  // SDK factory or provider binding is installed. Flags alone cannot enable it.
+  try {
+    voicePcmRuntime = require('./services/voice/voicePcmRuntime').createVoicePcmRuntime({
+      httpServer: server, authenticate: require('./middleware/auth').authenticate,
+      expectedOrigin: process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com', env: process.env
+    });
+  } catch { console.error('Voice PCM evaluation is unavailable.'); }
 }
 
 // Minimal health check - available immediately
@@ -453,6 +480,12 @@ app.use((req, res, next) => {
   // Always allow health/readiness immediately.
   if (req.path === '/health' || req.path === '/api/health' || req.path === '/readyz') return next();
 
+  // A deployment candidate is a loopback readiness probe, never an alternate
+  // serving instance. Do not expose routes while optional systems are disabled.
+  if (process.env.DOCTARX_DEPLOY_CHECK === 'true' && req.path !== '/api/ng/health') {
+    return res.status(503).json({ success: false, error: 'Deployment readiness check only' });
+  }
+
   // Once initialized, let real routes handle it.
   // For API routes: they can be ready before Next.
   if (initialized && (req.path.startsWith('/api') || (nextReady && handle))) return next();
@@ -502,7 +535,6 @@ async function initializeApp() {
   
   // Logger (console only)
   const logger = require('./middleware/logger');
-  const { initSentry, sentryErrorHandler } = require('./middleware/sentry');
   
   console.log('⚙️ Configuring middleware...');
   
@@ -510,7 +542,6 @@ async function initializeApp() {
   app.set('trust proxy', 1);
   
   // Sentry
-  const sentryState = initSentry(app);
   if (sentryState.enabled) {
     console.log('🔍 Sentry: Enabled');
   }
@@ -649,7 +680,8 @@ async function initializeApp() {
   });
   
   // Serve uploads
-  app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+  app.use('/uploads', require('./middleware/privateCredentialUploads'));
+  app.use('/uploads', express.static(require('./utils/runtimeStatePolicy').runtimePath('publicUploads')));
   
   // Ensure agent/CRM/credential DB tables exist before loading routes
   try {
@@ -699,8 +731,12 @@ async function initializeApp() {
   loadRoute('/api/stripe', './routes/stripe');
   loadRoute('/api/membership', './routes/membership');
   loadRoute('/api/credentialing', './routes/credentialing');
+  loadRoute('/api/clinical-labs', './routes/clinicalLabs');
   loadRoute('/api/contact', './routes/contact');
   loadRoute('/api/clinical-encounters', './routes/clinicalEncounters');
+  loadRoute('/api/voice-lab', './routes/voiceLab');
+  loadRoute('/api/voice-live', './routes/voiceLive');
+  if (voicePcmRuntime) app.use('/api/voice-pcm-evaluation', voicePcmRuntime.router);
   loadRoute('/api/testing-links', './routes/testingLinks');
   loadRoute('/api/interop', './routes/interoperability');
   loadRoute('/api/predictive', './routes/predictive');
@@ -756,145 +792,152 @@ async function initializeApp() {
 
   console.log('✅ API routes loading complete (+ Hive Gateway + OpenClaw REST API)');
   
-  // Initialize Predictive Intelligence Engine (non-blocking)
-  try {
-    const predictiveEngine = require('./services/predictive-engine');
-    predictiveEngine.initialize().then(() => {
-      console.log('🧠 Predictive Intelligence Engine: Online');
-    }).catch(err => {
-      console.error('🧠 Predictive Engine: Init warning -', err.message);
-    });
-  } catch (err) {
-    console.error('🧠 Predictive Engine: Not available -', err.message);
-  }
+  // A candidate health-check process does not initialize optional agent,
+  // predictive, outreach or integration systems. Normal serving processes retain
+  // their existing middleware; dedicated scheduler flags are checked separately.
+  if (process.env.DOCTARX_DEPLOY_CHECK !== 'true') {
+    // Initialize Predictive Intelligence Engine (non-blocking)
+    try {
+      const predictiveEngine = require('./services/predictive-engine');
+      predictiveEngine.initialize().then(() => {
+        console.log('🧠 Predictive Intelligence Engine: Online');
+      }).catch(err => {
+        console.error('🧠 Predictive Engine: Init warning -', err.message);
+      });
+    } catch (err) {
+      console.error('🧠 Predictive Engine: Not available -', err.message);
+    }
 
-  // Initialize AI Agent Orchestrator (non-blocking)
-  try {
-    const agentOrchestrator = require('./services/agent-orchestrator');
-    agentOrchestrator.initialize().then(() => {
-      console.log('🤖 AI Agent Orchestrator: Online');
+    // Initialize AI Agent Orchestrator (non-blocking)
+    try {
+      const agentOrchestrator = require('./services/agent-orchestrator');
+      agentOrchestrator.initialize().then(() => {
+        console.log('🤖 AI Agent Orchestrator: Online');
 
-      // Stream real-time Agent Ops events to admin consoles.
-      try {
-        if (socketService?.emitAgentOpsEvent) {
-          const claudeConfigured = Boolean(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY);
-          const geminiConfigured = Boolean(process.env.GEMINI_API_KEY);
+        // Stream real-time Agent Ops events to admin consoles.
+        try {
+          if (socketService?.emitAgentOpsEvent) {
+            const claudeConfigured = Boolean(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY);
+            const geminiConfigured = Boolean(process.env.GEMINI_API_KEY);
 
-          // Initial heartbeat when orchestrator comes online.
-          socketService.emitAgentOpsEvent({
-            type: 'agent-ops.system.online',
-            severity: 'info',
-            source: 'orchestrator',
-            payload: {
-              status: 'online',
-              mode: agentOrchestrator.operatingMode || 'observation',
-              llm: {
-                primary: 'claude',
-                fallback: 'gemini',
-                claudeConfigured,
-                geminiConfigured
-              }
-            },
-            createdAt: new Date().toISOString()
-          });
-
-          // Bridge event bus -> websocket stream.
-          if (agentOrchestrator.eventBus?.subscribe) {
-            agentOrchestrator.eventBus.subscribe('*', async (event) => {
-              socketService.emitAgentOpsEvent({
-                type: event.type,
-                severity: event.severity || 'info',
-                source: event.source || 'event-bus',
-                payload: event.payload || {},
-                createdAt: event.timestamp ? new Date(event.timestamp).toISOString() : new Date().toISOString()
-              });
+            // Initial heartbeat when orchestrator comes online.
+            socketService.emitAgentOpsEvent({
+              type: 'agent-ops.system.online',
+              severity: 'info',
+              source: 'orchestrator',
+              payload: {
+                status: 'online',
+                mode: agentOrchestrator.operatingMode || 'observation',
+                llm: {
+                  primary: 'claude',
+                  fallback: 'gemini',
+                  claudeConfigured,
+                  geminiConfigured
+                }
+              },
+              createdAt: new Date().toISOString()
             });
+
+            // Bridge event bus -> websocket stream.
+            if (agentOrchestrator.eventBus?.subscribe) {
+              agentOrchestrator.eventBus.subscribe('*', async (event) => {
+                socketService.emitAgentOpsEvent({
+                  type: event.type,
+                  severity: event.severity || 'info',
+                  source: event.source || 'event-bus',
+                  payload: event.payload || {},
+                  createdAt: event.timestamp ? new Date(event.timestamp).toISOString() : new Date().toISOString()
+                });
+              });
+            }
           }
+        } catch (streamErr) {
+          console.error('⚠️ Agent Ops stream bridge warning:', streamErr.message);
         }
-      } catch (streamErr) {
-        console.error('⚠️ Agent Ops stream bridge warning:', streamErr.message);
-      }
-    }).catch(err => {
-      console.error('🤖 Agent Orchestrator: Init warning -', err.message);
-    });
-  } catch (err) {
-    console.error('🤖 Agent Orchestrator: Not available -', err.message);
-  }
+      }).catch(err => {
+        console.error('🤖 Agent Orchestrator: Init warning -', err.message);
+      });
+    } catch (err) {
+      console.error('🤖 Agent Orchestrator: Not available -', err.message);
+    }
 
-  // Operational Agent Runtime: DB-backed task queue with safe tool calls and approvals.
-  try {
-    const operationalAgentRuntime = require('./services/agent-runtime/runtime');
-    const state = operationalAgentRuntime.startAgentWorker();
-    console.log(`Operational Agent Runtime: ${state.running ? 'ONLINE' : 'OFFLINE'} (${state.intervalMs || 'disabled'}ms poll)`);
-  } catch (err) {
-    console.error('Operational Agent Runtime: Not available -', err.message);
-  }
+    // Operational Agent Runtime: DB-backed task queue with safe tool calls and approvals.
+    try {
+      operationalAgentRuntime = require('./services/agent-runtime/runtime');
+      const state = operationalAgentRuntime.startAgentWorker();
+      console.log(`Operational Agent Runtime: ${state.running ? 'ONLINE' : 'OFFLINE'} (${state.intervalMs || 'disabled'}ms poll)`);
+    } catch (err) {
+      console.error('Operational Agent Runtime: Not available -', err.message);
+    }
 
-  // ═══ APP NERVE BRIDGE — Connect real app actions to agent nervous system ═══
-  try {
-    const nerveBridge = require('./services/agent-orchestrator/app-nerve-bridge');
-    app.use(nerveBridge.middleware());
-    console.log('🧬 App Nerve Bridge: CONNECTED — Agents can sense real app activity');
-  } catch (err) {
-    console.error('🧬 App Nerve Bridge: Not available -', err.message);
-  }
+    // ═══ APP NERVE BRIDGE — Connect real app actions to agent nervous system ═══
+    try {
+      const nerveBridge = require('./services/agent-orchestrator/app-nerve-bridge');
+      app.use(nerveBridge.middleware());
+      console.log('🧬 App Nerve Bridge: CONNECTED — Agents can sense real app activity');
+    } catch (err) {
+      console.error('🧬 App Nerve Bridge: Not available -', err.message);
+    }
 
-  // ═══ FINANCIAL SERVICE — Corporate Treasury & Accounting ═══
-  try {
-    const financialService = require('./services/financialService');
-    financialService.initialize().then(() => {
-      console.log('💰 Financial Service: ONLINE — Corporate Treasury active');
-    }).catch(err => {
-      console.error('💰 Financial Service: Init warning -', err.message);
-    });
-  } catch (err) {
-    console.error('💰 Financial Service: Not available -', err.message);
-  }
+    // ═══ FINANCIAL SERVICE — Corporate Treasury & Accounting ═══
+    try {
+      const financialService = require('./services/financialService');
+      financialService.initialize().then(() => {
+        console.log('💰 Financial Service: ONLINE — Corporate Treasury active');
+      }).catch(err => {
+        console.error('💰 Financial Service: Init warning -', err.message);
+      });
+    } catch (err) {
+      console.error('💰 Financial Service: Not available -', err.message);
+    }
 
-  // ═══ AGENT SOCIAL — The Agora ═══
-  try {
-    const agentSocialService = require('./services/agentSocialService');
-    agentSocialService.initialize().then(() => {
-      console.log('🏛️ Agent Social (The Agora): ONLINE — Agent society active');
-    }).catch(err => {
-      console.error('🏛️ Agent Social: Init warning -', err.message);
-    });
-  } catch (err) {
-    console.error('🏛️ Agent Social: Not available -', err.message);
-  }
+    // ═══ AGENT SOCIAL — The Agora ═══
+    try {
+      const agentSocialService = require('./services/agentSocialService');
+      agentSocialService.initialize().then(() => {
+        console.log('🏛️ Agent Social (The Agora): ONLINE — Agent society active');
+      }).catch(err => {
+        console.error('🏛️ Agent Social: Init warning -', err.message);
+      });
+    } catch (err) {
+      console.error('🏛️ Agent Social: Not available -', err.message);
+    }
 
-  // ═══ NEMOCLAW — OpenShell Secure Sandbox for Medical Agents ═══
-  try {
-    const nemoClawService = require('./services/nemoclaw');
-    const agentOrchestrator = (() => { try { return require('./services/agent-orchestrator'); } catch { return null; } })();
-    nemoClawService.initialize({
-      orchestrator: agentOrchestrator,
-      db,
-      app
-    }).then(() => {
-      const status = nemoClawService.getOperationalStatus?.();
-      if (status?.state === 'online') {
-        console.log('🛡️ NemoClaw: ONLINE - dedicated sandbox runtime active');
-      } else {
-        console.warn(`🛡️ NemoClaw: DEGRADED - ${status?.reason || 'compatibility mode active'}`);
-      }
-    }).catch(err => {
-      console.error('🛡️ NemoClaw: Init warning -', err.message);
-    });
-  } catch (err) {
-    console.error('🛡️ NemoClaw: Not available -', err.message);
-  }
+    // ═══ NEMOCLAW — OpenShell Secure Sandbox for Medical Agents ═══
+    try {
+      const nemoClawService = require('./services/nemoclaw');
+      const agentOrchestrator = (() => { try { return require('./services/agent-orchestrator'); } catch { return null; } })();
+      nemoClawService.initialize({
+        orchestrator: agentOrchestrator,
+        db,
+        app
+      }).then(() => {
+        const status = nemoClawService.getOperationalStatus?.();
+        if (status?.state === 'online') {
+          console.log('🛡️ NemoClaw: ONLINE - dedicated sandbox runtime active');
+        } else {
+          console.warn(`🛡️ NemoClaw: DEGRADED - ${status?.reason || 'compatibility mode active'}`);
+        }
+      }).catch(err => {
+        console.error('🛡️ NemoClaw: Init warning -', err.message);
+      });
+    } catch (err) {
+      console.error('🛡️ NemoClaw: Not available -', err.message);
+    }
 
-  // ═══ CRM SERVICE — AI Agent Customer Relationship Management ═══
-  try {
-    const crmService = require('./services/crmService');
-    crmService.initialize().then(() => {
-      console.log('📇 CRM Service: ONLINE — Agent outreach system ready');
-    }).catch(err => {
-      console.error('📇 CRM: Init warning -', err.message);
-    });
-  } catch (err) {
-    console.error('📇 CRM: Not available -', err.message);
+    // ═══ CRM SERVICE — AI Agent Customer Relationship Management ═══
+    try {
+      const crmService = require('./services/crmService');
+      crmService.initialize().then(() => {
+        console.log('📇 CRM Service: ONLINE — Agent outreach system ready');
+      }).catch(err => {
+        console.error('📇 CRM: Init warning -', err.message);
+      });
+    } catch (err) {
+      console.error('📇 CRM: Not available -', err.message);
+    }
+  } else {
+    console.log('[BOOT] Background initialization disabled for this process');
   }
   
   // 404 for API
@@ -902,6 +945,9 @@ async function initializeApp() {
     res.status(404).json({ success: false, error: 'Endpoint not found' });
   });
   
+  // Capture errors before the terminal JSON handler consumes them.
+  sentryErrorHandler(app);
+
   // Global error handler — feeds The Debugger
   app.use((err, req, res, next) => {
     console.error('Error:', err.message);
@@ -919,13 +965,20 @@ async function initializeApp() {
     });
   });
   
-  // Sentry error handler
-  sentryErrorHandler(app);
-  
   // Graceful shutdown
+  let shutdownStarted = false;
   const gracefulShutdown = async (signal) => {
+    if (shutdownStarted) return;
+    shutdownStarted = true;
     console.log(`${signal} received. Shutting down...`);
     try {
+      // Close agent execution admission before the first asynchronous cleanup.
+      // A timeout is an incomplete shutdown, never proof of a safe release fence.
+      if (operationalAgentRuntime) {
+        const result = await operationalAgentRuntime.drainAgentWorker({ timeoutMs: 10000 });
+        if (!result.drained) throw new Error('Operational agent drain incomplete');
+      }
+      if (voicePcmRuntime) await voicePcmRuntime.close();
       try { const nc = require('./services/nemoclaw'); await nc.shutdown(); } catch {}
       if (db) await db.close();
       process.exit(0);
@@ -956,10 +1009,10 @@ async function initializeApp() {
   console.log('✅ Express API ready');
 
   // Start Social Media Scheduler
-  try {
+  if (backgroundWorkAllowed()) try {
     const socialScheduler = require('./services/socialSchedulerService');
-    socialScheduler.start();
-    console.log('✅ Social Media Scheduler started');
+    const status = socialScheduler.start();
+    console.log('[BOOT] Social scheduler: ' + (status?.isRunning ? 'running' : 'unavailable'));
   } catch (err) {
     console.error('⚠️  Social Scheduler failed to start:', err.message);
   }
@@ -1037,3 +1090,5 @@ async function initializeApp() {
 }
 
 module.exports = app;
+
+}

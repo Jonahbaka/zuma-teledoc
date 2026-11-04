@@ -557,7 +557,7 @@ async function teardown(pool) {
   const t0 = Date.now();
   let pool;
   try {
-    pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    pool = new Pool(require('../../server/db/connectionConfig').buildDatabaseConfig(process.env, { requireUrl: true }));
     const safety = fixtureTargetSafety({ pool, env: process.env });
     if (safety.skipped) throw new Error(safety.reason);
     await seedAgents(pool);

@@ -1,5 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const { blockReleaseMutation, assertReleaseRollbackReady } = require('../utils/releaseRollbackPolicy');
+// Before authentication, upload parsing or any writes; no request can enable it.
+// Read-only authenticated deployment status and logs retain their normal routes.
+router.use(blockReleaseMutation);
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
@@ -49,10 +53,15 @@ const INJECTABLE_ENV_KEYS = new Set([
   'DEPLOY_SECRET',
 ]);
 
-const upload = multer({
-  dest: '/tmp/',
-  limits: { fileSize: 500 * 1024 * 1024 },
-});
+// Construct storage only after the release guard. Multer disk storage creates
+// its destination during construction, even before any request is parsed.
+function parseReleaseUpload(req, res, next) {
+  const upload = multer({
+    dest: '/tmp/',
+    limits: { fileSize: 500 * 1024 * 1024 },
+  });
+  return upload.single('tarball')(req, res, next);
+}
 
 function shQuote(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
@@ -242,6 +251,7 @@ function writeScript(filePath, content) {
 }
 
 function artifactDeployScript({ deployId, tmpFile, gitSha, branch, scriptPath }) {
+  assertReleaseRollbackReady();
   const target = gitSha || `origin/${branch}`;
   const quotedTmp = shQuote(tmpFile);
   const quotedProject = shQuote(PROJECT_ROOT);
@@ -322,7 +332,7 @@ echo "[deploy] complete $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 `;
 }
 
-router.post('/', upload.single('tarball'), async (req, res) => {
+router.post('/', parseReleaseUpload, async (req, res) => {
   let auth;
   try {
     auth = await authorizeDeployRequest(req);

@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { Pool } = require('pg');
 const { createBrowserFixture } = require('./helpers/medication-delivery-fixture');
 
+const { fixtureTargetSafety } = require('../scripts/fixtureTargetSafety');
 const target = process.env.SIMULATION_DATABASE_URL;
 const request = (checkout, body = {}) => ({ version: checkout.version, idempotencyKey: crypto.randomUUID(), ...body });
 
@@ -44,11 +45,13 @@ async function quoted(f, { payDelivery = true } = {}) {
 }
 
 test('real PostgreSQL medication checkout, payment, courier and refund workflows remain isolated and financially auditable', { skip: !target }, async t => {
-  const url = new URL(target);
-  assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname) && url.pathname.endsWith('_test'), 'Use only an explicitly disposable loopback test database');
+  const safety = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL' });
+  assert.equal(safety.skipped, false, safety.reason);
+  const pool = new Pool({ connectionString: target, max: 6 });
+  const actualTarget = fixtureTargetSafety({ source: 'SIMULATION_DATABASE_URL', pool });
+  assert.equal(actualTarget.skipped, false, actualTarget.reason);
   const previous = { NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY };
   process.env.NODE_ENV = 'test'; process.env.ENCRYPTION_KEY ||= 'c'.repeat(64);
-  const pool = new Pool({ connectionString: target, max: 6 });
   const fixture = options => createBrowserFixture({ pool, ...options });
   const partnerFixture = async () => {
     const f = await fixture();
@@ -611,6 +614,67 @@ test('real PostgreSQL medication checkout, payment, courier and refund workflows
           assert.equal(replay.status, outcome.value.status); assert.deepEqual(await counts(), before); assert.equal(f.state.bookCalls, bookCalls); assert.equal(f.state.refundCalls, 0);
         } finally { release(); if (action) await action; if (update) await update; }
       }
+    });
+
+    await t.test('cancelled or expired Rx pickup enters review without creating clinical or FHIR dispensing', async () => {
+      for (const status of ['cancelled','expired']) {
+        const f = await fixture(); const orderId = await quoted(f); await act(f, orderId, 'dispatch', f.pharmacist);
+        await pool.query('UPDATE ng_digital_prescriptions SET lifecycle_status=$2::ng_rx_status WHERE id=$1', [f.prescriptionId, status]);
+        const items = async () => (await pool.query('SELECT id,status,dispensed_quantity FROM ng_rx_items WHERE prescription_id=$1 ORDER BY position,id', [f.prescriptionId])).rows;
+        const before = await items(), paymentCalls = [f.state.initializeCalls, f.state.verifyCalls];
+        const dispenses = async () => (await pool.query('SELECT COUNT(*)::int AS count FROM ng_fhir_medication_dispenses WHERE order_id=$1', [orderId])).rows[0].count;
+        await f.advanceDelivery('picked_up'); const pickup = await f.service.refresh(orderId, f.patient);
+        assert.equal(pickup.status, 'in_transit'); assert.equal(pickup.clinicalReviewRequired, true); assert.ok(pickup.delivery.pickupProof);
+        assert.equal(pickup.payment.medicines.status, 'verified'); assert.equal(await dispenses(), 0); assert.deepEqual(await items(), before);
+        await f.advanceDelivery('delivered'); const delivered = await f.service.refresh(orderId, f.patient);
+        assert.equal(delivered.status, 'delivered'); assert.equal(delivered.clinicalReviewRequired, true); assert.ok(delivered.delivery.deliveryProof);
+        const ledger = async () => (await pool.query('SELECT id,account,debit_minor,credit_minor FROM ng_medication_ledger WHERE order_id=$1 ORDER BY id', [orderId])).rows;
+        const deliveredLedger = await ledger(); assert.ok(deliveredLedger.some(row => row.account === 'management_revenue' && BigInt(row.credit_minor) > 0n));
+        await f.service.refresh(orderId, f.patient);
+        assert.deepEqual(await ledger(), deliveredLedger); assert.deepEqual(await items(), before); assert.equal(await dispenses(), 0);
+        assert.equal((await pool.query('SELECT lifecycle_status FROM ng_digital_prescriptions WHERE id=$1', [f.prescriptionId])).rows[0].lifecycle_status, status);
+        assert.equal((await pool.query('SELECT quantity_reserved FROM ng_pharmacy_inventory WHERE id=$1', [f.inventoryId])).rows[0].quantity_reserved, 0);
+        assert.equal((await pool.query("SELECT COUNT(*)::int AS count FROM ng_medication_events WHERE order_id=$1 AND action='handover_requires_clinical_review'", [orderId])).rows[0].count, 1);
+        assert.deepEqual([f.state.initializeCalls, f.state.verifyCalls], paymentCalls); assert.equal(f.state.bookCalls, 1); assert.equal(f.state.refundCalls, 0);
+      }
+    });
+
+    await t.test('inactive-Rx review audit SQL failure rolls physical handover back and permits one safe retry', async () => {
+      const { createMedicationDeliveryWorkflowService } = require('../services/logistics/medicationDeliveryWorkflowService');
+      for (const status of ['cancelled','expired']) {
+        const f = await fixture(); const orderId = await quoted(f); await act(f, orderId, 'dispatch', f.pharmacist);
+        await pool.query('UPDATE ng_digital_prescriptions SET lifecycle_status=$2::ng_rx_status WHERE id=$1', [f.prescriptionId, status]);
+        await f.advanceDelivery('picked_up');
+        const badPool = { query: (...args) => pool.query(...args), async connect() { const client = await pool.connect(); return { release: () => client.release(), query(sql, params) {
+          if (sql.includes('INSERT INTO ng_compliance_audit_log') && params[3] === 'medication_handover_requires_clinical_review') return client.query('SELECT 1/0');
+          return client.query(sql, params);
+        } }; } };
+        const broken = createMedicationDeliveryWorkflowService({ ...f.serviceOptions, pool: badPool });
+        await assert.rejects(broken.refresh(orderId, f.patient), error => error.code === '22012');
+        const facts = (await pool.query(`SELECT
+          (SELECT status FROM ng_orders WHERE id=$1) AS status,
+          (SELECT status FROM ng_medication_bookings WHERE order_id=$1) AS booking,
+          (SELECT inventory_released_at FROM ng_medication_fulfillments WHERE order_id=$1) AS released,
+          (SELECT quantity_reserved FROM ng_pharmacy_inventory WHERE id=$2) AS reserved,
+          (SELECT COUNT(*)::int FROM ng_medication_events WHERE order_id=$1 AND action='handover_requires_clinical_review') AS holds,
+          (SELECT COUNT(*)::int FROM ng_fhir_medication_dispenses WHERE order_id=$1) AS dispenses`, [orderId, f.inventoryId])).rows[0];
+        assert.deepEqual(facts, { status: 'dispatched', booking: 'booked', released: null, reserved: 1, holds: 0, dispenses: 0 });
+        const retry = await f.service.refresh(orderId, f.patient); assert.equal(retry.status, 'in_transit'); assert.equal(retry.clinicalReviewRequired, true);
+        assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM ng_fhir_medication_dispenses WHERE order_id=$1', [orderId])).rows[0].count, 0);
+        assert.equal(f.state.bookCalls, 1); assert.equal(f.state.refundCalls, 0);
+      }
+    });
+
+    await t.test('a later Rx cancellation does not delete or rewrite already recorded FHIR handover facts', async () => {
+      const f = await fixture(); const orderId = await quoted(f); await act(f, orderId, 'dispatch', f.pharmacist);
+      await f.advanceDelivery('picked_up'); await f.service.refresh(orderId, f.patient);
+      const recorded = async () => (await pool.query('SELECT * FROM ng_fhir_medication_dispenses WHERE order_id=$1 ORDER BY id', [orderId])).rows;
+      const before = await recorded(); assert.equal(before.length, 1);
+      await pool.query("UPDATE ng_digital_prescriptions SET lifecycle_status='cancelled' WHERE id=$1", [f.prescriptionId]);
+      await f.advanceDelivery('delivered'); await f.service.refresh(orderId, f.patient); await f.service.refresh(orderId, f.patient);
+      assert.deepEqual(await recorded(), before);
+      assert.equal((await pool.query('SELECT lifecycle_status FROM ng_digital_prescriptions WHERE id=$1', [f.prescriptionId])).rows[0].lifecycle_status, 'cancelled');
+      assert.equal(f.state.refundCalls, 0);
     });
 
     await t.test('fresh higher courier quote requires new consent and only an exact additional payment', async () => {
