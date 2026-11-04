@@ -355,11 +355,12 @@ async function publicScope(browser, scope, width) {
     assert.equal(await footer.getByRole('link', { name: 'Patient sign in', exact: true }).getAttribute('href'), (scope.market === 'NG' ? '/ng/patient' : '/patient') + '/login');
     assert.equal(await footer.getByRole('link', { name: 'DoctaRx CareOps', exact: true }).getAttribute('href'), '/careops/login');
     assert.equal(await page.locator('#language-voice').count(), 1, 'Language voice content remains available in each market.');
-    for (const language of ['Hausa', 'Igbo', 'Yoruba', 'Swahili']) {
+    for (const language of ['Hausa', 'Yoruba', 'Swahili', 'Zulu']) {
       assert.equal(await page.getByRole('list', { name: 'African language voice choices', exact: true }).getByText(language, { exact: true }).count(), 1);
     }
+    assert.equal(await page.getByRole('list', { name: 'African language voice choices', exact: true }).getByText('Igbo', { exact: true }).count(), 0, 'Experimental Igbo evaluation must not be advertised as documented Live support.');
     await page.getByText('Explore more languages', { exact: true }).click();
-    for (const language of ['English', 'French', 'Portuguese', 'Spanish']) {
+    for (const language of ['English', 'French', 'Portuguese (Brazil)', 'Portuguese (Portugal)', 'Spanish']) {
       assert.equal(await page.getByRole('list', { name: 'More language voice choices', exact: true }).getByText(language, { exact: true }).count(), 1);
     }
     await page.getByText('Explore more languages', { exact: true }).click();
