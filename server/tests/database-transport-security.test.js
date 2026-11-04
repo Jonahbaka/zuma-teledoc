@@ -167,15 +167,16 @@ test('actual pg TLS handshake accepts matching peers and rejects wrong identity,
   try {
     for (const scenario of ['dns', 'ip', 'neon', 'wrong-dns', 'wrong-ip', 'untrusted', 'no-tls']) {
       const server = await postgresTlsFixture(certificates, scenario.startsWith('wrong') ? 'wrong' : 'matching', scenario !== 'no-tls');
-      const host = scenario === 'ip' || scenario === 'wrong-ip' ? '127.0.0.1' : scenario === 'neon' ? 'tenant.fixture.neon.tech' : 'db.fixture.invalid';
-      let config = buildDatabaseConfig(production({ DATABASE_URL: `postgresql://fixture:fixture@${host}:${server.port}/fixture`, ...(scenario === 'untrusted' ? {} : { PGSSLROOTCERT: certificates.ca }) }));
-      if (scenario === 'neon') config = await resolveNeonConfig(config, { lookup: async () => ['127.0.0.1'] });
-      else config = { ...config, host: '127.0.0.1' }; // Test transport only; pinned original identity remains unchanged.
-      const client = new Client({ ...config, connectionTimeoutMillis: 2000 });
+      let client;
       try {
+        const host = scenario === 'ip' || scenario === 'wrong-ip' ? '127.0.0.1' : scenario === 'neon' ? 'tenant.fixture.neon.tech' : 'db.fixture.invalid';
+        let config = buildDatabaseConfig(production({ DATABASE_URL: `postgresql://fixture:fixture@${host}:${server.port}/fixture`, ...(scenario === 'untrusted' ? {} : { PGSSLROOTCERT: certificates.ca }) }));
+        if (scenario === 'neon') config = await resolveNeonConfig(config, { lookup: async () => ['127.0.0.1'] });
+        else config = { ...config, host: '127.0.0.1' }; // Test transport only; pinned original identity remains unchanged.
+        client = new Client({ ...config, connectionTimeoutMillis: 2000 });
         if (['dns', 'ip', 'neon'].includes(scenario)) { await client.connect(); assert.equal(client.connection.stream.authorized, true); assert.ok(server.events.includes('encrypted-startup')); }
         else { await assert.rejects(client.connect(), error => /certificate|SSL connections|verify/i.test(error.message)); assert.equal(server.events.includes('encrypted-startup'), false); }
-      } finally { await client.end().catch(() => {}); await server.close(); }
+      } finally { await client?.end().catch(() => {}); await server.close(); }
     }
   } finally { certificates.cleanup(); }
 });

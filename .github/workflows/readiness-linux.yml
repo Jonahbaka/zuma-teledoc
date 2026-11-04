@@ -13,11 +13,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  production-build:
+    if: github.repository == 'iamjonahbaka-create/Jonah-doctarx' && github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      MEDIAPIPE_SKIP_MODEL_DOWNLOAD: '1'
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run lint
+      - run: npx tsc --noEmit --allowJs --checkJs false --project jsconfig.json
+      - run: npm run build
+      - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
   linux-security-and-release:
     # Standard public-repository runner; no larger runner or cloud credentials.
     if: github.repository == 'iamjonahbaka-create/Jonah-doctarx' && github.event.repository.private == false
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:18
@@ -54,14 +74,14 @@ jobs:
         run: |
           npm run migrate
           npm run ng:migrate
-      - name: Verify migration safety
-        run: npm run migrations:verify
-      - name: Linux release and transport safeguards
-        if: success()
-        run: npm run test:deploy-guard
-      - name: Real Linux voice and authority tests
+      - name: Complete Linux functional, release and PostgreSQL gate
+        run: node scripts/verify-readiness.cjs
+      - name: Install Chromium for voice lifecycle tests
         if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.database.outcome == 'success' }}
-        run: node --test --test-concurrency=1 --test-timeout=120000 server/tests/voice/*.test.js
+        run: npx playwright install --with-deps chromium
+      - name: Desktop and mobile voice lifecycle and accessibility
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.database.outcome == 'success' }}
+        run: npx playwright test -c playwright.voice.config.cjs
       - name: Record verification boundary
         if: always()
         run: |

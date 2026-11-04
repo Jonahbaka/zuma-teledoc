@@ -306,7 +306,9 @@ test('a pending image decode retains the exact resource diagnostic and restores 
     setAttribute() { assert.fail('The harness must preserve lazy loading'); },
     decode() { decodeCalls++; return new Promise(() => {}); },
   })];
-  await assert.rejects(settle(page, { resourceTimeoutMs: 100 }), error => {
+  // Keep this a bounded stalled-decode test without making a loaded CI host's
+  // 100 ms scheduling delay substitute for the resource-specific timeout.
+  await assert.rejects(settle(page, { resourceTimeoutMs: 1000 }), error => {
     assert.ok(error.message.includes(currentSrc)); assert.match(error.message, /timed out/);
     assert.ok(error.cause.message.includes(currentSrc), 'Original resource diagnostics must remain available as the cause');
     return true;

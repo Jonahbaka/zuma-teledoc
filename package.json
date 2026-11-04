@@ -157,9 +157,9 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "ajv": "6.15.0",
     "@axe-core/playwright": "^4.10.2",
     "@playwright/test": "^1.55.1",
+    "ajv": "6.15.0",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.0",
     "eslint": "^8.57.1",
@@ -168,7 +168,8 @@
     "postcss": "8.5.26",
     "tailwindcss": "^3.4.14",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "webpack": "5.112.2"
   },
   "engines": {
     "node": ">=20.19.0"
