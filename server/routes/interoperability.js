@@ -21,16 +21,19 @@ const AnalyticsEngine = require('../services/analytics-engine');
 // Initialize services
 const fhirBridge = new FHIRBridge(db);
 const analytics = new AnalyticsEngine(db);
-const { patientFinancialAccess } = require('../middleware/financialRecordScope');
+const { assertClinicalPatientAccess } = require('../services/clinicalPatientAccessService');
 const { auditMiddleware } = require('../middleware/audit');
 
 function patientScope(resolvePatient) {
   return async (req, res, next) => {
     try {
       const patientId = await resolvePatient(req);
-      if (!await patientFinancialAccess(req.user, patientId)) return res.status(404).json({ resourceType: 'OperationOutcome', issue: [{ severity: 'error', code: 'not-found', diagnostics: 'Resource not found' }] });
+      await assertClinicalPatientAccess(db, patientId, req.user);
       next();
-    } catch (error) { next(error); }
+    } catch (error) {
+      if ([400, 403, 404].includes(error.statusCode)) return res.status(404).json({ resourceType: 'OperationOutcome', issue: [{ severity: 'error', code: 'not-found', diagnostics: 'Resource not found' }] });
+      next(error);
+    }
   };
 }
 
@@ -152,7 +155,7 @@ router.get('/fhir/Patient/:patientId/Observation', authenticate, patientScope((r
  * 
  * Create and dispatch a patient referral to an external hospital
  */
-router.post('/referrals', authenticate, requireRole('provider', 'admin'), patientScope((req) => req.body.patientId), auditMiddleware('export', 'fhir_referral', { phiAccessed: true }), async (req, res) => {
+router.post('/referrals', authenticate, requireRole('provider'), patientScope((req) => req.body.patientId), auditMiddleware('export', 'fhir_referral', { phiAccessed: true }), async (req, res) => {
   try {
     const {
       patientId,
@@ -168,7 +171,7 @@ router.post('/referrals', authenticate, requireRole('provider', 'admin'), patien
 
     // Get destination organization details
     const { rows: orgs } = await db.query(
-      'SELECT * FROM connected_organizations WHERE id = $1 AND status = $2',
+      'SELECT id,name,fhir_endpoint,status FROM connected_organizations WHERE id = $1 AND status = $2',
       [destinationOrganizationId, 'active']
     );
 
@@ -180,6 +183,7 @@ router.post('/referrals', authenticate, requireRole('provider', 'admin'), patien
     }
 
     const destinationOrg = orgs[0];
+    if (destinationOrg.fhir_endpoint) fhirBridge.assertReferralTransportReady();
 
     // Create the referral bundle
     const bundle = await fhirBridge.createReferralBundle(patientId, {
@@ -198,23 +202,9 @@ router.post('/referrals', authenticate, requireRole('provider', 'admin'), patien
       includeVitals
     });
 
-    // Dispatch if organization has FHIR endpoint
-    let dispatchResult = null;
-    if (destinationOrg.fhir_endpoint) {
-      dispatchResult = await fhirBridge.dispatchReferral(
-        patientId,
-        { ...req.body, destinationOrganization: destinationOrg },
-        {
-          url: destinationOrg.fhir_endpoint,
-          authType: 'smart',
-          credentials: {
-            tokenUrl: destinationOrg.token_endpoint,
-            clientId: destinationOrg.client_id_encrypted, // Would need decryption
-            clientSecret: destinationOrg.client_secret_encrypted
-          }
-        }
-      );
-    }
+    // External transport is quarantined above; never treat bundle creation as
+    // partner acceptance, delivery or a reason to load/decrypt credentials.
+    const dispatchResult = null;
 
     res.status(201).json({
       success: true,
@@ -224,6 +214,9 @@ router.post('/referrals', authenticate, requireRole('provider', 'admin'), patien
     });
 
   } catch (error) {
+    if (error.code === 'REFERRAL_TRANSPORT_UNAVAILABLE') {
+      return res.status(503).json({ success: false, error: 'External referral transport is unavailable pending approved integration validation.' });
+    }
     console.error('Referral error:', error);
     res.status(500).json({
       success: false,

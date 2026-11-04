@@ -4,6 +4,7 @@
  */
 
 const jwt = require('jsonwebtoken');
+const { assertCurrentSession } = require('../services/authSessionService');
 const crypto = require('crypto');
 const db = require('../db');
 const consumerMembership = require('../services/consumerMembershipService');
@@ -97,7 +98,7 @@ const authenticate = async (req, res, next) => {
     const { rows } = await db.query(
       `SELECT id, email, role, first_name, last_name, is_active, mfa_enabled, provider_status, access_level,
               must_change_password, testing_bypass_active, testing_bypass_expires_at, testing_bypass_tier,
-              market_scope, region, country
+              market_scope, region, country, credential_version
        FROM users WHERE id = $1`,
       [decoded.userId]
     );
@@ -119,6 +120,9 @@ const authenticate = async (req, res, next) => {
       });
     }
     
+    await assertCurrentSession(db, decoded, user);
+    req.authSessionId = decoded.sessionId || null;
+
     const isPasswordChangeAllowed = isPasswordChangeAllowedRequest(req);
 
     // Check provider status. Pending providers may still read their session and
@@ -163,6 +167,7 @@ const authenticate = async (req, res, next) => {
     
     next();
   } catch (error) {
+    if (error.statusCode === 401) return res.status(401).json({ success: false, error: 'Session is no longer valid' });
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
         success: false,
@@ -280,12 +285,13 @@ const optionalAuth = async (req, res, next) => {
     const decoded = jwt.verify(token, ACCESS_TOKEN_SECRET);
     
     const { rows } = await db.query(
-      `SELECT id, email, role, first_name, last_name, is_active
+      `SELECT id, email, role, first_name, last_name, is_active, credential_version
        FROM users WHERE id = $1 AND is_active = true`,
       [decoded.userId]
     );
     
     if (rows.length > 0) {
+      await assertCurrentSession(db, decoded, rows[0]);
       req.user = {
         id: rows[0].id,
         email: rows[0].email,

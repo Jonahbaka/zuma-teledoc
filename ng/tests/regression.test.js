@@ -42,13 +42,16 @@ function makeFakeDb({ failItemInsert = 0, existingCommissions = false } = {}) {
         log.push('INS_ITEM'); return { rows: [{ id: 'it-' + itemN }] };
       }
       if (/INSERT INTO ng_rx_events/i.test(text)) { log.push('INS_EVENT'); return { rows: [] }; }
-      if (/SELECT id FROM ng_providers WHERE user_id/i.test(text)) { return { rows: [{ id: 'prov-1' }] }; }
-      if (/SELECT id FROM ng_pharmacies WHERE owner_user_id/i.test(text)) { return { rows: [{ id: 'pharm-1' }] }; }
+      if (/SELECT id, role, is_active/.test(text)) return { rows: [{ id: 'u1', role: 'provider', is_active: true, market_scope: 'NG', provider_status: 'approved' }] };
+      if (/SELECT id, user_id, status FROM ng_providers/.test(text)) return { rows: [{ id: 'prov-1', user_id: 'u1', status: 'verified' }] };
+      if (/SELECT (?:p\.id|id) FROM ng_providers/i.test(text)) { return { rows: [{ id: 'prov-1' }] }; }
+      if (/SELECT id FROM ng_pharmacies\s+WHERE owner_user_id/i.test(text)) { return { rows: [{ id: 'pharm-1' }] }; }
       if (/SELECT \* FROM ng_digital_prescriptions/i.test(text)) {
         return {
           rows: [{
             id: 'rx-1',
-            lifecycle_status: 'drafted',
+            lifecycle_status: 'received',
+            signed_at: new Date('2026-11-02T00:00:00Z'),
             provider_id: 'prov-1',
             patient_user_id: 'patient-1',
             preferred_pharmacy_id: 'pharm-1',
@@ -59,7 +62,7 @@ function makeFakeDb({ failItemInsert = 0, existingCommissions = false } = {}) {
       }
       if (/SELECT \* FROM ng_rx_items/i.test(text)) { return { rows: [] }; }
       if (/SELECT 1 FROM drn_commissions/i.test(text)) { return { rows: existingCommissions ? [{ ok: 1 }] : [] }; }
-      if (/SELECT \* FROM drn_referrals[\s\S]*FOR UPDATE/i.test(text)) { return { rows: [{ id: 'ref-1', status: 'in_progress' }] }; }
+      if (/FROM drn_referrals r[\s\S]*FOR UPDATE/i.test(text)) { return { rows: [{ id: 'ref-1', status: 'in_progress', dispatched: true, destination_provider: 'prov-1' }] }; }
       if (/UPDATE drn_referrals/i.test(text)) { log.push('UPD_REFERRAL'); return { rows: [{ id: 'ref-1', status: 'completed', referring_agent_id: 'ag-1', completed_at: new Date() }] }; }
       if (/INSERT INTO drn_referral_events/i.test(text)) { log.push('INS_REF_EVENT'); return { rows: [] }; }
       if (/INSERT INTO drn_commissions/i.test(text)) { log.push('INS_COMMISSION'); return { rows: [{ id: 'c-1' }] }; }
@@ -139,7 +142,7 @@ test('P3 tx: createDraft rolls back on mid-loop failure (BEGIN>ROLLBACK, throws)
 });
 test('P3 tx: referral completion does UPDATE+commission inside one transaction', async () => {
   const { db, log } = makeFakeDb(); current = db;
-  await ref.transitionReferral('ref-1', 'completed', { user_id: 'u1', kind: 'system' });
+  await ref.transitionReferral('ref-1', 'completed', { user_id: 'u1', kind: 'provider' });
   const t = log.filter(x => ['BEGIN', 'UPD_REFERRAL', 'INS_COMMISSION', 'COMMIT'].includes(x));
   assert.strictEqual(t[0], 'BEGIN');
   assert.strictEqual(t[t.length - 1], 'COMMIT');
@@ -147,14 +150,14 @@ test('P3 tx: referral completion does UPDATE+commission inside one transaction',
 });
 test('P3 tx: commission accrual is idempotent (no double-accrue when commissions exist)', async () => {
   const { db, log } = makeFakeDb({ existingCommissions: true }); current = db;
-  await ref.transitionReferral('ref-1', 'completed', { user_id: 'u1', kind: 'system' });
+  await ref.transitionReferral('ref-1', 'completed', { user_id: 'u1', kind: 'provider' });
   assert.strictEqual(log.filter(x => x === 'INS_COMMISSION').length, 0);
 });
 test('P3 tx: illegal referral transition is rejected (no UPDATE/COMMIT)', async () => {
   // Locked row is in_progress; in_progress → draft is not a legal transition.
   const { db, log } = makeFakeDb(); current = db;
   let code = null;
-  try { await ref.transitionReferral('ref-1', 'draft', { user_id: 'u1', kind: 'system' }); }
+  try { await ref.transitionReferral('ref-1', 'draft', { user_id: 'u1', kind: 'provider' }); }
   catch (e) { code = e.code; }
   assert.strictEqual(code, 'INVALID_TRANSITION', 'must reject illegal transition');
   assert.ok(!log.includes('UPD_REFERRAL'), 'must not update the referral on a rejected transition');
@@ -162,7 +165,7 @@ test('P3 tx: illegal referral transition is rejected (no UPDATE/COMMIT)', async 
 });
 
 // ─── P1: Prescription RBAC ────────────────────────────────────────────────────
-test('P1 RBAC: patient is forbidden from dispense/sign; pharmacist/prescriber/admin pass', async () => {
+test('P1 RBAC: patient and admin cannot dispense/sign; pharmacist may dispense signed routed Rx', async () => {
   current = makeFakeDb().db; // allowed roles pass the guard then reach the service; keep it off real pg
   const express = require('express');
   const router = require('../routes/prescriptions');
@@ -183,7 +186,7 @@ test('P1 RBAC: patient is forbidden from dispense/sign; pharmacist/prescriber/ad
   assert.strictEqual(await hit('pharmacist', '/rx/x/sign'), 403, 'pharmacist must not sign');
   assert.notStrictEqual(await hit('pharmacist', '/rx/x/items/i/dispense'), 403, 'pharmacist may dispense');
   assert.notStrictEqual(await hit('doctor', '/rx/x/sign'), 403, 'prescriber may sign');
-  assert.notStrictEqual(await hit('admin', '/rx/x/items/i/dispense'), 403, 'admin override');
+  assert.strictEqual(await hit('admin', '/rx/x/items/i/dispense'), 403, 'admin has no pharmacist licence merely by role');
 });
 
 // ─── P6: Socket userSockets leak ──────────────────────────────────────────────

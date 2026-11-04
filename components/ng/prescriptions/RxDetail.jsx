@@ -52,8 +52,8 @@ export default function RxDetail({ id }) {
   const canSign     = s === 'drafted';
   const canSend     = s === 'signed';
   const canReceive  = s === 'sent_to_pharmacy';
-  const canDispense = s === 'received' || s === 'partially_dispensed';
-  const canComplete = s === 'fully_dispensed';
+  const canDispense = !data.quantity_review_required && (s === 'received' || s === 'partially_dispensed');
+  const canComplete = !data.quantity_review_required && s === 'fully_dispensed';
   const canCancel   = !['completed', 'cancelled', 'expired'].includes(s);
 
   return (
@@ -115,6 +115,7 @@ export default function RxDetail({ id }) {
       </header>
 
       <main className="mx-auto max-w-5xl space-y-5 px-6 py-6">
+        {data.quantity_review_required && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">Clinical review required: this prescription or its recorded handover quantities need reconciliation. Do not dispense an assumed remainder or mark it complete. Existing records are preserved.</p>}
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="mb-2 text-sm font-bold text-slate-800">Medications ({data.items.length})</h2>
           <ul className="space-y-2">
@@ -213,7 +214,7 @@ function RxItem({ prescriptionId, item, canDispense, busyKey, run }) {
 }
 
 function DispenseForm({ busy, maxQty, onCancel, onSubmit }) {
-  const [qty, setQty] = useState(maxQty || '');
+
   const [sub, setSub] = useState('');
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
@@ -223,7 +224,7 @@ function DispenseForm({ busy, maxQty, onCancel, onSubmit }) {
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit({
-          quantity: qty ? Number(qty) : null,
+          quantity: Number(maxQty),
           substitute_drug_id: sub || null,
           substitute_reason: reason || null,
           notes: notes || null,
@@ -232,8 +233,8 @@ function DispenseForm({ busy, maxQty, onCancel, onSubmit }) {
       className="flex flex-wrap items-end gap-2 rounded-md bg-blue-50/50 p-2"
     >
       <label className="text-[11px] text-slate-700">
-        Quantity
-        <input type="number" min="1" max={maxQty || undefined} value={qty} onChange={e => setQty(e.target.value)}
+        Full signed quantity (partial quantities are not supported)
+        <input type="number" value={maxQty || ''} readOnly
                className="ml-1 w-16 rounded-md border border-slate-300 px-1 py-0.5 text-xs" />
       </label>
       <label className="text-[11px] text-slate-700">
@@ -251,7 +252,7 @@ function DispenseForm({ busy, maxQty, onCancel, onSubmit }) {
         <input value={notes} onChange={e => setNotes(e.target.value)}
                className="ml-1 w-32 rounded-md border border-slate-300 px-1 py-0.5 text-xs" />
       </label>
-      <button type="submit" disabled={busy}
+      <button type="submit" disabled={busy || !Number.isSafeInteger(Number(maxQty)) || Number(maxQty) <= 0}
               className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
         <PackageCheck className="h-3 w-3" />{busy ? '…' : 'Confirm'}
       </button>

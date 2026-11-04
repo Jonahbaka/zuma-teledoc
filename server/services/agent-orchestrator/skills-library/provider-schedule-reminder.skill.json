@@ -1,12 +1,21 @@
 {
   "name": "provider.schedule.reminder",
   "displayName": "Provider Schedule Reminder",
-  "description": "Remind providers of their upcoming appointments and patient prep notes. Ensures providers are ready and patients feel cared for.",
+  "description": "Report upcoming appointment scheduling details without clinical narratives.",
   "version": "1.0.0",
   "category": "operations",
   "domain": "provider-care",
-  "tags": ["reminder", "provider", "schedule", "proactive", "preparation"],
-  "triggers": ["provider.schedule.updated", "system.scheduled.check"],
+  "tags": [
+    "reminder",
+    "provider",
+    "schedule",
+    "proactive",
+    "preparation"
+  ],
+  "triggers": [
+    "provider.schedule.updated",
+    "system.scheduled.check"
+  ],
   "schedule": "30min",
   "riskLevel": "low",
   "requiresApproval": false,
@@ -19,7 +28,7 @@
       "id": "fetch_provider_schedule",
       "name": "Fetch provider appointments for next 2 hours",
       "type": "query",
-      "query": "SELECT a.*, u.first_name as patient_first, u.last_name as patient_last, u.email as patient_email, p.first_name as provider_first, p.last_name as provider_last, p.email as provider_email FROM appointments a LEFT JOIN users u ON a.patient_id = u.id LEFT JOIN users p ON a.provider_id = p.id WHERE a.scheduled_at > NOW() AND a.scheduled_at < NOW() + INTERVAL '2 hours' AND a.status IN ('scheduled', 'confirmed')"
+      "query": "SELECT a.id, a.provider_id, a.scheduled_at, a.duration_minutes, a.status FROM appointments a WHERE a.scheduled_at > NOW() AND a.scheduled_at < NOW() + INTERVAL '2 hours' AND a.status IN ('scheduled', 'confirmed')"
     },
     {
       "id": "group_by_provider",
@@ -39,9 +48,15 @@
   "inputSchema": {},
   "outputSchema": {
     "properties": {
-      "providersNotified": { "type": "number" },
-      "totalAppointments": { "type": "number" }
+      "providersNotified": {
+        "type": "number"
+      },
+      "totalAppointments": {
+        "type": "number"
+      }
     }
   },
-  "sideEffects": ["sends_provider_notification"]
+  "sideEffects": [
+    "sends_provider_notification"
+  ]
 }

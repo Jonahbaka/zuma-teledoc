@@ -80,7 +80,8 @@ function scriptedPool(options = {}) {
         assert.ok(sql.includes('FOR SHARE'));
         return { rows: state.pharmacies.filter((row) => params[0].includes(row.id)) };
       }
-      if (sql.includes('INSERT INTO ng_digital_prescriptions')) return { rows: [{ id: prescriptionId, provider_id: params[0], patient_user_id: params[1], appointment_id: params[2], items: JSON.parse(params[4]), status: params[7], provider_user_id: params[12] }] };
+      if (sql.includes('INSERT INTO ng_digital_prescriptions')) return { rows: [{ id: prescriptionId, provider_id: params[0], patient_user_id: params[1], appointment_id: params[2], items: JSON.parse(params[4]), status: 'active', lifecycle_status: 'drafted', routed_pharmacy_id: null, provider_user_id: params[10] }] };
+      if (sql.includes('INSERT INTO ng_rx_items')) return { rows: [] };
       if (sql.includes('INSERT INTO audit_logs')) { if (state.failAudit) throw new Error('Audit unavailable'); return { rows: [] }; }
       throw new Error('Unexpected prescribing database operation');
     },
@@ -163,11 +164,12 @@ test('both pharmacy references must be approved/current and delivery must be ena
   }
 });
 
-test('approved pharmacy routing remains pending fulfillment and audit failure rolls creation back', async () => {
+test('selected pharmacy remains a preference until signing, and audit failure rolls draft back', async () => {
   await withRoute(scriptedPool(), provider, async (post) => {
     const response = await post(validInput({ preferredPharmacyId: pharmacyId, fulfillmentPreference: 'delivery' }));
     assert.equal(response.status, 201); const body = await response.json();
-    assert.equal(body.prescription.status, 'routed'); assert.equal(body.whatsappNotification.status, 'manual_fallback_pending');
+    assert.equal(body.prescription.status, 'active'); assert.equal(body.prescription.lifecycle_status, 'drafted'); assert.equal(body.whatsappNotification, null);
+    assert.equal(notifications.length, 0, 'An unsigned draft must not notify the pharmacy');
   });
   const pool = scriptedPool({ failAudit: true });
   const usageBefore = usageEvents.length; const notificationsBefore = notifications.length;

@@ -261,8 +261,8 @@ class PharmacyOnboardingService {
   /**
    * Step 4: Add inventory (drugs available)
    */
-  async addInventory(pharmacyId, ownerUserId, items) {
-    const pool = getPool();
+  async addInventory(pharmacyId, ownerUserId, items, queryable = getPool()) {
+    const pool = queryable;
 
     // Verify pharmacy is approved
     const pharmacy = await pool.query(
@@ -300,6 +300,10 @@ class PharmacyOnboardingService {
           quantity_available = ng_pharmacy_inventory.quantity_available + EXCLUDED.quantity_available,
           selling_price = EXCLUDED.selling_price,
           cost_price = EXCLUDED.cost_price,
+          availability_verification_status = 'unverified',
+          availability_verified_at = NULL,
+          availability_verified_by = NULL,
+          availability_source = 'pharmacy_addition_pending_admin_review',
           updated_at = NOW()
         RETURNING *`,
         [

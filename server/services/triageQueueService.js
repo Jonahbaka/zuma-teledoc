@@ -14,26 +14,32 @@ class TriageQueueService {
    * Create a new triage session and add to queue
    */
   async createTriageSession(patientId, triageData) {
+    const {
+      chiefComplaint,
+      symptoms,
+      symptomDuration,
+      symptomOnset,
+      symptomSeverity,
+      vitals,
+      appointmentId
+    } = triageData;
+
+    // Run AI triage analysis
+    const aiAnalysis = await aiTriageEngine.runTriage(
+      `${chiefComplaint}. ${symptoms}`,
+      vitals
+    );
+
+    if (aiAnalysis.assessmentStatus === 'unassessed') {
+      const error = new Error(aiAnalysis.reviewMessage);
+      error.status = 422;
+      error.code = 'TRIAGE_REQUIRES_CLINICAL_REVIEW';
+      error.analysis = aiAnalysis;
+      throw error;
+    }
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
-      
-      const {
-        chiefComplaint,
-        symptoms,
-        symptomDuration,
-        symptomOnset,
-        symptomSeverity,
-        vitals,
-        appointmentId
-      } = triageData;
-      
-      // Run AI triage analysis
-      const aiAnalysis = await aiTriageEngine.runTriage(
-        `${chiefComplaint}. ${symptoms}`,
-        vitals
-      );
-      
       // Insert triage session
       const { rows: sessionRows } = await client.query(`
         INSERT INTO triage_sessions (

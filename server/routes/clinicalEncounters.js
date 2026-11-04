@@ -77,6 +77,7 @@ const createEncounterSchema = z.object({
 });
 
 const createNoteSchema = z.object({
+  aiSuggestionId: z.string().uuid().optional(),
   noteType: z.enum(['soap', 'progress', 'procedure', 'consultation']).default('soap'),
   subjective: z.string().optional(),
   objective: z.string().optional(),
@@ -319,6 +320,33 @@ router.get('/patient/:patientId',
   }
 );
 
+// PHC-linked clinician Copilot. The canonical encounter ID is the only
+// locator accepted here; programme/facility and source are resolved server-side.
+const linkedDraftSchema = z.object({
+  suggestionType: z.enum(['intake_review','triage_review','consultation_brief','soap_draft','encounter_summary','missing_information','emr_reconciliation','prescription_review','referral_brief','follow_up_draft']),
+}).strict();
+const linkedReviewSchema = z.object({
+  decision: z.enum(['accepted', 'accepted_with_edits', 'rejected']),
+  editedOutput: z.object({ summary:z.string(), handoverDraft:z.string(), missingInformation:z.array(z.object({ field:z.string(),reason:z.string() })), assertions:z.array(z.object({ text:z.string(),sourceRefs:z.array(z.string()) })), uncertainties:z.array(z.string()), soapDraft:z.object({subjective:z.string(),objective:z.string(),assessment:z.string(),plan:z.string()}).optional(), followUpDrafts:z.array(z.object({title:z.string(),instructions:z.string(),sourceRefs:z.array(z.string())})).optional() }).strict().nullable().optional(),
+  rejectionReason: z.string().max(2000).nullable().optional(),
+}).strict();
+
+router.post('/:encounterId/ai-review-drafts', authenticate, requireRole('provider'), async (req, res) => {
+  try {
+    const data = validate(linkedDraftSchema, req.body);
+    const draft = await require('../services/linkedPhcAiService').createLinkedDraft(req, req.params.encounterId, req.user.id, data.suggestionType);
+    res.set('Cache-Control', 'private, no-store').status(201).json({ success: true, suggestion: draft });
+  } catch (error) { return clinicalFailure(res, error); }
+});
+
+router.post('/:encounterId/ai-review-drafts/:suggestionId/review', authenticate, requireRole('provider'), async (req, res) => {
+  try {
+    const data = validate(linkedReviewSchema, req.body);
+    const review = await require('../services/linkedPhcAiService').reviewLinkedDraft(req, req.params.encounterId, req.user.id, req.params.suggestionId, data);
+    res.set('Cache-Control', 'private, no-store').json({ success: true, review });
+  } catch (error) { return clinicalFailure(res, error); }
+});
+
 // ============================================================================
 // CLINICAL NOTES
 // ============================================================================
@@ -327,6 +355,13 @@ router.get('/patient/:patientId',
  * POST /api/clinical-encounters/:encounterId/notes
  * Create a clinical note (SOAP)
  */
+router.get('/:encounterId/ai-drafts/:suggestionId', authenticate, requireRole('provider'), async (req, res) => {
+  try {
+    const draft = await clinicalEncounterService.getReviewedAiDraft(req.params.encounterId, req.user.id, req.params.suggestionId);
+    res.set('Cache-Control', 'private, no-store').json({ success: true, ...draft });
+  } catch (error) { return clinicalFailure(res, error); }
+});
+
 router.post('/:encounterId/notes',
   authenticate,
   requireRole('provider'),
@@ -1153,8 +1188,7 @@ router.post('/consent',
           error: 'Patient ID is required'
         });
       }
-      const { patientFinancialAccess } = require('../middleware/financialRecordScope');
-      if (!await patientFinancialAccess(req.user, patientId)) return res.status(403).json({ success: false, error: 'Patient access denied' });
+      await require('../services/clinicalPatientAccessService').assertClinicalPatientAccess(db, patientId, req.user);
       
       const consent = await telehealthConsentService.captureConsent(patientId, data, req);
       
@@ -1179,6 +1213,8 @@ router.post('/consent',
  */
 router.get('/consent/check',
   authenticate,
+  (req, _res, next) => { if (!req.query.patientId && req.user.role === 'patient') req.query.patientId = req.user.id; next(); },
+  canAccessPatient,
   async (req, res) => {
     try {
       const { patientId, state } = req.query;
@@ -1239,6 +1275,8 @@ router.get('/patient/:patientId/consents',
  */
 router.post('/consent/:id/revoke',
   authenticate,
+  (req, _res, next) => { if (req.user.role === 'patient') req.body.patientId = req.user.id; next(); },
+  canAccessPatient,
   auditMiddleware('update', 'telehealth_consent', { description: 'Revoked' }),
   async (req, res) => {
     try {
@@ -1255,7 +1293,8 @@ router.post('/consent/:id/revoke',
       const consent = await telehealthConsentService.revokeConsent(
         req.params.id,
         patientId,
-        reason || 'Revoked by patient'
+        reason || 'Revoked by authorized patient or clinician',
+        req.user
       );
       
       res.json({
@@ -1264,7 +1303,7 @@ router.post('/consent/:id/revoke',
       });
     } catch (error) {
       logger.error('Revoke consent error:', error);
-      res.status(500).json({
+      res.status([400,403,404].includes(error.statusCode) ? error.statusCode : 503).json({
         success: false,
         error: error.message || 'Failed to revoke consent'
       });

@@ -13,6 +13,7 @@
  */
 
 const crypto = require('crypto');
+const { requiresQuantityReview, hasCompleteDispensingEvidence, canRecordFullDispense, isQuantityReviewHeld } = require('./dispenseQuantityPolicy');
 const { getPool, transaction } = require('../../../server/db');
 
 const TRANSITIONS = {
@@ -77,6 +78,41 @@ function generateRxNumber(now = new Date()) {
  *   items: [{ drug_id?, drug_name, generic_name?, brand_name?, dosage,
  *             frequency, duration_days?, quantity?, refills_authorized?, notes? }]
  */
+async function verifyClinicalAiRxProvenance(client, input) {
+  const suggestionId = input.clinical_ai_source_suggestion_id;
+  const encounterId = input.clinical_ai_source_encounter_id;
+  if (suggestionId == null && encounterId == null) return null;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuid.test(String(suggestionId)) || !uuid.test(String(encounterId))) {
+    const err = new Error('A valid AI draft and PHC encounter must be selected together.');
+    err.code = 'CLINICAL_AI_RX_SOURCE_INVALID'; err.statusCode = 400; throw err;
+  }
+  // Identity and programme scope are resolved from server-side clinician
+  // membership and the PHC encounter. Never trust user-supplied scope.
+  const row = (await client.query(
+    `SELECT e.id, e.programme_id, e.facility_id, e.patient_user_id, p.user_id AS clinician_user_id
+       FROM ng_clinical_encounters e
+       JOIN ng_providers p ON p.id=$1
+      WHERE e.id=$2 AND e.patient_user_id=$3 LIMIT 1`,
+    [input.provider_id, encounterId, input.patient_user_id]
+  )).rows[0];
+  if (!row) {
+    const err = new Error('Prescription context does not match the selected clinician and PHC patient.');
+    err.code = 'CLINICAL_AI_RX_CONTEXT_DENIED'; err.statusCode = 403; throw err;
+  }
+  const { assertProgrammeScope } = require('../phc/programmeScopeService');
+  const context = await assertProgrammeScope(client, { id: row.clinician_user_id }, {
+    programmeId: row.programme_id, facilityId: row.facility_id,
+    patientUserId: row.patient_user_id, requireEnrollment: true,
+    allowedRoles: ['remote_clinician'],
+  });
+  await require('../phc/clinicalAiService').assertAcceptedCareActionSource(client, context, {
+    suggestionId, stageType: 'prescription_review',
+    patientUserId: row.patient_user_id, encounterId: row.id,
+  });
+  return { suggestionId, encounterId };
+}
+
 async function createDraft(input, existing = null) {
   if (!input.provider_id)     throw new Error('provider_id required');
   if (!input.patient_user_id) throw new Error('patient_user_id required');
@@ -89,12 +125,13 @@ async function createDraft(input, existing = null) {
   // were separate autocommit writes, so a failure partway through the item loop
   // left an orphaned prescription header with partial items and no audit event.
   const run = async (client) => {
+    const verifiedAiSource = await verifyClinicalAiRxProvenance(client, input);
     const r = await client.query(
       `INSERT INTO ng_digital_prescriptions
          (provider_id, patient_user_id, appointment_id, prescription_number,
           items, preferred_pharmacy_id, diagnosis, notes, is_controlled,
-          lifecycle_status)
-       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,COALESCE($9,false),'drafted')
+          lifecycle_status, clinical_ai_source_suggestion_id, clinical_ai_source_encounter_id)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,COALESCE($9,false),'drafted',$10,$11)
        RETURNING *`,
       [
         input.provider_id, input.patient_user_id, input.appointment_id || null,
@@ -104,6 +141,7 @@ async function createDraft(input, existing = null) {
         input.diagnosis || null,
         input.notes || null,
         input.is_controlled || false,
+        verifiedAiSource?.suggestionId || null, verifiedAiSource?.encounterId || null,
       ]
     );
     const rx = r.rows[0];
@@ -141,7 +179,7 @@ async function getPrescription(id, pool = getPool(), lock = false) {
   const items = await pool.query(
     `SELECT * FROM ng_rx_items WHERE prescription_id = $1 ORDER BY position`, [id]
   );
-  return { ...r.rows[0], items: items.rows };
+  return { ...r.rows[0], items: items.rows, quantity_review_required: requiresQuantityReview(items.rows) || await isQuantityReviewHeld(pool, id) };
 }
 
 async function listPrescriptions({ provider_id, patient_user_id, pharmacy_id, status, since, limit = 50 } = {}, pool = getPool()) {
@@ -198,6 +236,9 @@ async function sendToPharmacy(id, pharmacyId, actor, pool = getPool()) {
   const r = await pool.query(
     `UPDATE ng_digital_prescriptions
         SET lifecycle_status = 'sent_to_pharmacy',
+            status = 'routed',
+            dispense_status = 'pending',
+            pharmacy_response_status = 'pending_pharmacy_confirmation',
             routed_pharmacy_id = $2, routed_at = NOW(),
             sent_at = NOW(), updated_at = NOW()
       WHERE id = $1 AND lifecycle_status = $3 RETURNING *`,
@@ -258,8 +299,8 @@ async function dispenseItem(prescriptionId, itemId, actor, opts = {}, pool = get
   }
 
   const qty = Number(opts.quantity ?? item.quantity ?? 0);
-  if (!Number.isSafeInteger(qty) || qty <= 0 || !Number.isSafeInteger(Number(item.quantity)) || qty > Number(item.quantity)) {
-    const e = new Error('Dispensed quantity must be a positive integer within the signed prescription quantity');
+  if (rx.quantity_review_required || !canRecordFullDispense(item, qty)) {
+    const e = new Error('Dispense the full signed item quantity only. Inconsistent prior quantities require clinical review; do not dispense an assumed remainder.');
     e.code = 'INVALID_STATE'; throw e;
   }
   const dispensed = await pool.query(
@@ -271,7 +312,7 @@ async function dispenseItem(prescriptionId, itemId, actor, opts = {}, pool = get
             pharmacy_id        = COALESCE($5, pharmacy_id),
             dispensed_at       = NOW(),
             updated_at         = NOW()
-      WHERE id = $1 AND prescription_id=$7 AND status NOT IN ('dispensed','cancelled') AND (fulfillment_order_id IS NULL OR fulfillment_order_id=$6)
+      WHERE id = $1 AND prescription_id=$7 AND status NOT IN ('dispensed','cancelled') AND COALESCE(dispensed_quantity,0)=0 AND quantity=$2 AND (fulfillment_order_id IS NULL OR fulfillment_order_id=$6)
       RETURNING id`,
     [itemId, qty, opts.substitute_drug_id || null, opts.substitute_reason || null, opts.pharmacy_id || null, opts.fulfillment_order_id || null, prescriptionId]
   );
@@ -305,7 +346,8 @@ async function recomputeDispenseStatus(prescriptionId, fromStatus, itemId, actor
     `SELECT
        COUNT(*)::int AS total,
        COUNT(*) FILTER (WHERE status = 'dispensed')::int AS dispensed,
-       COUNT(*) FILTER (WHERE status IN ('dispensed','cancelled','unavailable'))::int AS finalized
+       COUNT(*) FILTER (WHERE quantity > 0 AND ((status='dispensed' AND dispensed_quantity=quantity)
+         OR (status IN ('cancelled','unavailable') AND COALESCE(dispensed_quantity,0)=0)))::int AS finalized
      FROM ng_rx_items WHERE prescription_id = $1`, [prescriptionId]
   );
   const { total, dispensed, finalized } = after.rows[0];
@@ -333,13 +375,13 @@ async function markItemUnavailable(prescriptionId, itemId, actor, { notes } = {}
   if (!rx) throwNotFound();
   const item = rx.items.find(row => row.id === itemId);
   if (!item) { const e = new Error('Item not found on this prescription'); e.code = 'NOT_FOUND'; throw e; }
-  if (!['sent_to_pharmacy', 'received', 'partially_dispensed'].includes(rx.lifecycle_status) || ['dispensed', 'cancelled'].includes(item.status) || item.fulfillment_order_id) {
+  if (rx.quantity_review_required || !['sent_to_pharmacy', 'received', 'partially_dispensed'].includes(rx.lifecycle_status) || ['dispensed', 'cancelled'].includes(item.status) || item.fulfillment_order_id) {
     const e = new Error('This medicine is closed or reserved for its medication order; use the order workflow');
     e.code = 'INVALID_STATE'; throw e;
   }
   const changed = await pool.query(
     `UPDATE ng_rx_items SET status = 'unavailable', notes = COALESCE($2, notes), updated_at = NOW()
-      WHERE id = $1 AND prescription_id = $3 AND fulfillment_order_id IS NULL AND status NOT IN ('dispensed','cancelled') RETURNING id`,
+      WHERE id = $1 AND prescription_id = $3 AND fulfillment_order_id IS NULL AND COALESCE(dispensed_quantity,0)=0 AND status NOT IN ('dispensed','cancelled') RETURNING id`,
     [itemId, notes || null, prescriptionId]
   );
   requireChanged(changed);
@@ -375,6 +417,10 @@ async function complete(id, actor, pool = getPool()) {
   const rx = await getPrescription(id, pool, true);
   if (!rx) throwNotFound();
   assertTransition(rx.lifecycle_status, 'completed');
+  if (rx.quantity_review_required || !hasCompleteDispensingEvidence(rx.items)) {
+    const e = new Error('Recorded dispensing quantities require clinical review before this prescription can be completed.');
+    e.code = 'INVALID_STATE'; throw e;
+  }
   const r = await pool.query(
     `UPDATE ng_digital_prescriptions
         SET lifecycle_status = 'completed', completed_at = NOW(), updated_at = NOW()
@@ -493,6 +539,7 @@ module.exports = {
   nextDispenseStatus,
   generateRxNumber,
   createDraft,
+  verifyClinicalAiRxProvenance,
   getPrescription,
   listPrescriptions,
   sign,

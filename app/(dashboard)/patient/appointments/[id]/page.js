@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -16,111 +16,75 @@ import { toast } from '@/components/ui/use-toast';
 
 export default function AppointmentDetailPage() {
   const params = useParams();
-  const router = useRouter();
-  const { user } = useAuth();
-  const appointmentId = params.id;
+  const { user, loading } = useAuth();
+  const appointmentId = typeof params.id === 'string' ? params.id : null;
+  const accountKey = !loading && user?.id && user.role === 'patient' && appointmentId
+    ? JSON.stringify([user.id, user.role, user.marketScope || user.market_scope || '', appointmentId]) : null;
+  const session = useRef(accountKey);
+  // This render-time boundary invalidates old callbacks before effect cleanup.
+  session.current = accountKey;
+  if (!accountKey) return <p role="status">{loading ? 'Loading appointment access…' : 'Sign in as a patient to view this appointment.'}</p>;
+  return <AppointmentDetailWorkspace key={accountKey} session={session} accountKey={accountKey} appointmentId={appointmentId} user={user} />;
+}
 
+export function AppointmentDetailWorkspace({ session, accountKey, appointmentId, user }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [appointment, setAppointment] = useState(null);
   const [paymentStatus, setPaymentStatus] = useState(null);
-  const [processingPayment, setProcessingPayment] = useState(false);
+  const [processingCancel, setProcessingCancel] = useState(false);
+  const [paymentError, setPaymentError] = useState(false);
+  const mounted = useRef(true);
+  const readVersion = useRef(0);
+  const action = useRef(null);
+  const current = () => mounted.current && session.current === accountKey;
+
+  async function loadDetails() {
+    const version = ++readVersion.current;
+    const result = await Promise.allSettled([
+      api.get(`/appointments/${appointmentId}`),
+      paymentsAPI.getAppointmentPayment(appointmentId),
+    ]);
+    if (!current() || version !== readVersion.current) return;
+    const [details, payment] = result;
+    if (details.status === 'fulfilled' && details.value.data?.success && details.value.data.appointment?.id === appointmentId) {
+      setAppointment(details.value.data.appointment);
+    } else {
+      setAppointment(null);
+      toast({ title: 'Error', description: 'Failed to load appointment details', variant: 'destructive' });
+    }
+    if (payment.status === 'fulfilled' && payment.value.data?.success) {
+      setPaymentStatus(payment.value.data); setPaymentError(false);
+    } else { setPaymentStatus(null); setPaymentError(true); }
+    setLoading(false);
+  }
 
   useEffect(() => {
-    fetchAppointment();
-    fetchPaymentStatus();
-  }, [appointmentId]);
-
-  const fetchPaymentStatus = async () => {
-    try {
-      const response = await paymentsAPI.getAppointmentPayment(appointmentId);
-      if (response.data.success) {
-        setPaymentStatus(response.data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch payment status:', error);
-    }
-  };
-
-  const fetchAppointment = async () => {
-    try {
-      const response = await api.get(`/appointments/${appointmentId}`);
-      if (response.data.success) {
-        setAppointment(response.data.appointment);
-      }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to load appointment details',
-        variant: 'destructive'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePayment = async () => {
-    if (!user) {
-      toast({
-        title: 'Authentication Required',
-        description: 'Please log in to continue',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    // Check if user has paid access level
-    if (!['gold_monthly', 'gold_yearly', 'pay_per_visit', 'insurance'].includes(user.accessLevel)) {
-      toast({
-        title: 'Subscription Required',
-        description: 'Please subscribe or select pay-per-visit to book consultations',
-        variant: 'destructive'
-      });
-      router.push('/patient/subscription');
-      return;
-    }
-
-    setProcessingPayment(true);
-    try {
-      const response = await paymentsAPI.payPerVisit({ appointmentId });
-      if (response.data.success) {
-        toast({
-          title: 'Success',
-          description: 'Payment processed successfully!',
-          variant: 'success'
-        });
-        await fetchPaymentStatus();
-        await fetchAppointment();
-      }
-    } catch (error) {
-      toast({
-        title: 'Payment Failed',
-        description: error.response?.data?.error || 'Failed to process payment',
-        variant: 'destructive'
-      });
-    } finally {
-      setProcessingPayment(false);
-    }
-  };
+    mounted.current = true;
+    loadDetails();
+    return () => { mounted.current = false; readVersion.current += 1; };
+    // Workspace is keyed by account, role, market and appointment ID.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCancel = async () => {
-    if (!confirm('Are you sure you want to cancel this appointment?')) return;
-
+    if (!current() || action.current || !appointment || !['scheduled', 'confirmed'].includes(appointment.status)) return;
+    const operation = {}; action.current = operation;
+    if (!confirm('Are you sure you want to cancel this appointment?')) { action.current = null; return; }
+    if (!current()) { action.current = null; return; }
+    readVersion.current += 1; setProcessingCancel(true);
     try {
-      const response = await api.put(`/appointments/${appointmentId}`, {
-        status: 'cancelled',
-        cancellationReason: 'Cancelled by patient'
-      });
-
-      if (response.data.success) {
-        toast({ title: 'Appointment cancelled successfully' });
-        router.push('/patient/appointments');
-      }
+      const response = await api.put(`/appointments/${appointmentId}`, { status: 'cancelled', cancellationReason: 'Cancelled by patient' });
+      if (!current()) return;
+      if (!response.data?.success || response.data.appointment?.id !== appointmentId || response.data.appointment.status !== 'cancelled') throw new Error('Cancellation was not confirmed. Refresh the appointment before retrying.');
+      setAppointment(response.data.appointment);
+      toast({ title: 'Appointment cancelled successfully' });
+      router.push('/patient/appointments');
     } catch (error) {
-      toast({
-        title: 'Cancel Failed',
-        description: error.response?.data?.error || 'Failed to cancel appointment',
-        variant: 'destructive'
-      });
+      if (current()) toast({ title: 'Cancel Failed', description: error.response?.data?.error || error.message || 'Failed to cancel appointment', variant: 'destructive' });
+    } finally {
+      if (action.current === operation) action.current = null;
+      if (current()) setProcessingCancel(false);
     }
   };
 
@@ -258,7 +222,7 @@ export default function AppointmentDetailPage() {
                 <CardTitle className="text-base">Video Appointment</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {paymentStatus?.paymentCompleted ? (
+                {(paymentStatus?.paymentCompleted || paymentStatus?.coverageApproved) ? (
                   <Link href={`/patient/appointments/${appointmentId}/call`}>
                     <Button className="w-full bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900 text-white">
                       <Video className="w-4 h-4 mr-2" />
@@ -273,24 +237,24 @@ export default function AppointmentDetailPage() {
                         Complete payment to access your video appointment
                       </p>
                     </div>
-                    <Button
-                      className="w-full"
-                      onClick={handlePayment}
-                      disabled={processingPayment}
-                    >
-                      {processingPayment ? 'Processing...' : 'Pay $79 to Join'}
-                    </Button>
+                    <p role="status" className="text-sm text-slate-700">
+                      Direct payment collection is unavailable on this page. No payment is collected here. Contact support to confirm the approved payment route.
+                    </p>
                   </div>
                 ) : (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <p className="text-sm text-blue-800">
-                      Checking payment status...
+                      {paymentError ? 'Payment status unavailable. Refresh this page to check again.' : 'Checking payment status...'}
                     </p>
                   </div>
                 )}
-                {paymentStatus?.paymentCompleted && (
+                {(paymentStatus?.paymentCompleted || paymentStatus?.coverageApproved) && (
                   <p className="text-xs text-slate-500 text-center">
-                    Payment completed. You can now access your video appointment.
+                    {paymentStatus.testingBypassActive && paymentStatus.coverageApproved
+                      ? 'Authorized testing access. This is not a payment receipt.'
+                      : paymentStatus.paymentCompleted
+                        ? 'Payment completed. You can now access your video appointment.'
+                        : 'Coverage approved for this appointment. This does not mean a visit payment was collected.'}
                   </p>
                 )}
               </CardContent>
@@ -298,13 +262,14 @@ export default function AppointmentDetailPage() {
           )}
 
 
-          {appointment.status !== 'cancelled' && appointment.status !== 'completed' && (
+          {['scheduled', 'confirmed'].includes(appointment.status) && (
             <Card>
               <CardContent className="p-4">
                 <Button
                   variant="destructive"
                   className="w-full"
                   onClick={handleCancel}
+                  disabled={processingCancel}
                 >
                   <X className="w-4 h-4 mr-2" />
                   Cancel Appointment

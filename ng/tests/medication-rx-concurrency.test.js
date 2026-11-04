@@ -4,7 +4,7 @@ const test = require('node:test');
 const workflow = require('../services/rx-engine/prescriptionWorkflowService');
 
 function fixture({ status = 'received', itemStatus = 'pending', reservation = null, conflict = false } = {}) {
-  const state = { rx: { id: 'rx-1', lifecycle_status: status }, items: [{ id: 'item-1', drug_name: 'Isolated fixture medicine', quantity: 2, status: itemStatus, fulfillment_order_id: reservation }], events: [], calls: [], released: false };
+  const state = { rx: { id: 'rx-1', lifecycle_status: status }, items: [{ id: 'item-1', drug_name: 'Isolated fixture medicine', quantity: 2, dispensed_quantity: itemStatus === 'dispensed' ? 2 : 0, status: itemStatus, fulfillment_order_id: reservation }], events: [], calls: [], released: false };
   let saved;
   const client = {
     release() { state.released = true; },
@@ -13,13 +13,14 @@ function fixture({ status = 'received', itemStatus = 'pending', reservation = nu
       if (sql === 'BEGIN') { saved = structuredClone({ rx: state.rx, items: state.items, events: state.events }); return { rows: [] }; }
       if (sql === 'ROLLBACK') { Object.assign(state, saved); return { rows: [] }; }
       if (sql === 'COMMIT') return { rows: [] };
+    if (sql.startsWith('SELECT EXISTS(SELECT 1 FROM ng_medication_events')) return { rows: [{ required: !!state.reviewHeld }] };
       if (sql.includes('SELECT * FROM ng_digital_prescriptions')) return { rows: [{ ...state.rx }] };
       if (sql.includes('SELECT * FROM ng_rx_items')) return { rows: state.items.map(row => ({ ...row })) };
-      if (sql.includes('COUNT(*) FILTER')) return { rows: [{ total: state.items.length, dispensed: state.items.filter(row => row.status === 'dispensed').length, finalized: state.items.filter(row => ['dispensed', 'cancelled', 'unavailable'].includes(row.status)).length }] };
+      if (sql.includes('COUNT(*) FILTER')) return { rows: [{ total: state.items.length, dispensed: state.items.filter(row => row.status === 'dispensed').length, finalized: state.items.filter(row => row.quantity > 0 && (row.status === 'dispensed' ? row.dispensed_quantity === row.quantity : ['cancelled', 'unavailable'].includes(row.status) && !row.dispensed_quantity)).length }] };
       if (sql.includes('UPDATE ng_rx_items')) {
         const item = state.items.find(row => row.id === params[0]);
         if (!item) return { rows: [] };
-        item.status = sql.includes("status = 'dispensed'") ? 'dispensed' : 'unavailable'; return { rows: [{ id: item.id }] };
+        item.status = sql.includes("status = 'dispensed'") ? 'dispensed' : 'unavailable'; if (item.status === 'dispensed') item.dispensed_quantity = params[1]; return { rows: [{ id: item.id }] };
       }
       if (sql.includes('UPDATE ng_digital_prescriptions')) {
         assert.match(sql, /AND lifecycle_status\s*=\s*\$\d+/);
@@ -84,7 +85,7 @@ test('legacy dispenser cannot claim an order reservation, while the internal mat
 });
 
 test('invalid quantities and terminal states cannot be rewritten through legacy mutations', async () => {
-  for (const quantity of [0, -1, 1.5, 3, Infinity]) {
+  for (const quantity of [0, -1, 1, 1.5, 3, Infinity]) {
     const { state, pool } = fixture();
     await assert.rejects(workflow.dispenseItem('rx-1', 'item-1', {}, { quantity }, pool), { code: 'INVALID_STATE' });
     assert.equal(state.calls.some(call => call.sql.includes('UPDATE ng_rx_items')), false);
@@ -101,4 +102,51 @@ test('existing transaction clients are reused without nesting a new transaction'
   assert.equal(state.calls.some(call => call.sql === 'BEGIN'), false);
   assert.equal(state.rx.lifecycle_status, 'completed');
   assert.equal(state.released, false);
+});
+
+
+test('legacy short quantities require visible review, cannot be overwritten, and cannot complete', async () => {
+  for (const recorded of [1, 3, -1]) {
+    const f = fixture({ status: 'fully_dispensed', itemStatus: 'dispensed' }); f.state.items[0].dispensed_quantity = recorded;
+    assert.equal((await workflow.getPrescription('rx-1', f.client)).quantity_review_required, true);
+    await assert.rejects(workflow.complete('rx-1', {}, f.pool), { code: 'INVALID_STATE' });
+    assert.equal(f.state.items[0].dispensed_quantity, recorded); assert.equal(f.state.events.length, 0);
+    assert.equal(f.state.calls.some(call => call.sql.startsWith('UPDATE')), false);
+  }
+  for (const action of [f => workflow.dispenseItem('rx-1', 'item-1', {}, { quantity: 2 }, f.pool), f => workflow.markItemUnavailable('rx-1', 'item-1', {}, {}, f.pool)]) {
+    const f = fixture(); f.state.items[0].dispensed_quantity = 1;
+    await assert.rejects(action(f), { code: 'INVALID_STATE' }); assert.equal(f.state.items[0].dispensed_quantity, 1);
+    assert.equal(f.state.calls.some(call => call.sql.startsWith('UPDATE')), false);
+  }
+});
+
+test('default full signed quantity completes once; a repeated dispense never adds more medicine', async () => {
+  const f = fixture(); const result = await workflow.dispenseItem('rx-1', 'item-1', {}, {}, f.pool);
+  assert.equal(result.quantity_review_required, false); assert.equal(result.items[0].dispensed_quantity, 2);
+  assert.equal(result.lifecycle_status, 'fully_dispensed'); const events = f.state.events.length;
+  await assert.rejects(workflow.dispenseItem('rx-1', 'item-1', {}, { quantity: 2 }, f.pool), { code: 'INVALID_STATE' });
+  assert.equal(f.state.items[0].dispensed_quantity, 2); assert.equal(f.state.events.length, events);
+  await workflow.complete('rx-1', {}, f.pool); assert.equal(f.state.rx.lifecycle_status, 'completed');
+});
+
+test('quantity policy requires actual full quantities and preserves legitimate finalized unavailable items', () => {
+  const policy = require('../services/rx-engine/dispenseQuantityPolicy');
+  const full = { quantity: 2, dispensed_quantity: 2, status: 'dispensed' };
+  assert.equal(policy.hasCompleteDispensingEvidence([full, { quantity: 1, status: 'unavailable', dispensed_quantity: 0 }]), true);
+  for (const patch of [{ dispensed_quantity: 1 }, { dispensed_quantity: 0 }, { dispensed_quantity: 3 }, { quantity: 0 }, { status: 'available' }, { dispensed_quantity: 1.5 }]) {
+    assert.equal(policy.hasCompleteDispensingEvidence([{ ...full, ...patch }]), false);
+    assert.equal(policy.requiresQuantityReview([{ ...full, ...patch }]), true);
+  }
+  assert.equal(policy.hasCompleteDispensingEvidence([]), false);
+  assert.equal(policy.hasCompleteDispensingEvidence([{ quantity: 2, status: 'unavailable' }]), false);
+});
+
+
+test('an unresolved physical-handover review cannot be bypassed by editing quantities or dispensing an unclaimed sibling', async () => {
+  for (const itemStatus of ['pending','dispensed']) {
+    const f=fixture({status:itemStatus==='dispensed'?'fully_dispensed':'received',itemStatus});f.state.reviewHeld=true;
+    assert.equal((await workflow.getPrescription('rx-1',f.client)).quantity_review_required,true);
+    const action=itemStatus==='dispensed'?workflow.complete('rx-1',{},f.pool):workflow.dispenseItem('rx-1','item-1',{}, {},f.pool);
+    await assert.rejects(action,{code:'INVALID_STATE'});assert.equal(f.state.calls.some(({sql})=>sql.startsWith('UPDATE')),false);
+  }
 });

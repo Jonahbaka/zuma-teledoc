@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
+import { installSocketSessionRefresh } from '@/lib/socketSession';
 import {
   Activity,
   AlertTriangle,
@@ -177,6 +178,7 @@ export default function OpenClawOpsPortal() {
       withCredentials: true
     });
 
+    installSocketSessionRefresh(socket);
     socket.on('connect', () => {
       setSocketConnected(true);
       socket.emit('agent-ops:subscribe');

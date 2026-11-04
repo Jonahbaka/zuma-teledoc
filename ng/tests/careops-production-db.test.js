@@ -85,11 +85,23 @@ test('FHIR Patient and Encounter serialize from the migrated schema with correct
   const patient = await patientResponse.json();
   assert.equal(patient.resourceType, 'Patient'); assert.equal(patient.id, ids.patient); assert.equal(patient.active, true);
   assert.equal(patient.meta.profile, undefined);
+  // Financial appointment visibility is not current clinical verification.
+  const unverified = await fetch(`${baseUrl}/interop/fhir/Encounter/${ids.appointment}`, { headers: { authorization: bearer('provider') } });
+  assert.equal(unverified.status, 404);
+  await pool.query(`INSERT INTO ng_providers(user_id,full_name,email,phone,status)
+    VALUES ($1,'Synthetic verified clinician',$2,'+2340000000000','verified')`, [ids.provider, `${ids.provider}@example.test`]);
   const encounterResponse = await fetch(`${baseUrl}/interop/fhir/Encounter/${ids.appointment}`, { headers: { authorization: bearer('provider') } });
   assert.equal(encounterResponse.status, 200);
   const encounter = await encounterResponse.json();
   assert.equal(encounter.resourceType, 'Encounter'); assert.equal(encounter.subject.reference, `Patient/${ids.patient}`);
   assert.equal(encounter.status, 'planned');
+  await pool.query("UPDATE users SET provider_status='suspended' WHERE id=$1", [ids.provider]);
+  try {
+    const suspended = await fetch(`${baseUrl}/interop/fhir/Encounter/${ids.appointment}`, { headers: { authorization: bearer('provider') } });
+    // Authentication rejects globally suspended clinicians before resource scope.
+    assert.equal(suspended.status, 403);
+  } finally { await pool.query("UPDATE users SET provider_status='approved' WHERE id=$1", [ids.provider]); }
+
 });
 
 test('real claim routes deny unrelated providers and keep unavailable submissions draft', async () => {
@@ -293,6 +305,7 @@ test.after(async () => {
     }
     await pool.query('DELETE FROM ng_consultation_tariffs WHERE id=$1', [ids.tariff]);
     await pool.query('DELETE FROM appointments WHERE id=$1', [ids.appointment]);
+    await pool.query('DELETE FROM ng_providers WHERE user_id=$1', [ids.provider]);
     await pool.query('DELETE FROM audit_logs WHERE user_id=ANY($1::uuid[])', [[ids.patient, ids.otherPatient, ids.usPatient, ids.provider, ids.otherProvider, ids.reviewer]]);
     const fixtureUsers = [ids.patient, ids.otherPatient, ids.usPatient, ids.provider, ids.otherProvider, ids.reviewer];
     await pool.query('UPDATE users SET is_active=false WHERE id=ANY($1::uuid[])', [fixtureUsers]);

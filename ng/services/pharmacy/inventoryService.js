@@ -57,8 +57,8 @@ class InventoryService {
   /**
    * Update inventory item (quantity, price)
    */
-  async updateItem(pharmacyId, inventoryId, updates) {
-    const pool = getPool();
+  async updateItem(pharmacyId, inventoryId, updates, queryable = getPool()) {
+    const pool = queryable;
     const allowedFields = {
       quantity_available: updates.quantityAvailable,
       selling_price: updates.sellingPrice,
@@ -114,11 +114,14 @@ class InventoryService {
   /**
    * Bulk import inventory (CSV or array)
    */
-  async bulkImport(pharmacyId, items) {
-    const pool = getPool();
+  async bulkImport(pharmacyId, items, transactionClient = null) {
+    const pool = transactionClient || getPool();
     const results = { imported: 0, skipped: 0, errors: [] };
 
     for (const item of items) {
+      // The external mutation gateway holds authority and the mandatory audit
+      // transaction. Preserve per-row import failures without aborting it.
+      if (transactionClient) await pool.query('SAVEPOINT inventory_import_row');
       try {
         // A reviewed catalogue identity includes strength, form and pack. A
         // medicine name alone cannot safely select a dispensable product.
@@ -127,6 +130,7 @@ class InventoryService {
         if (!drugId) {
           results.errors.push({ item: item.drugName, error: 'A reviewed catalogue drugId is required; name-only product matching is not permitted' });
           results.skipped++;
+          if (transactionClient) await pool.query('RELEASE SAVEPOINT inventory_import_row');
           continue;
         }
 
@@ -153,9 +157,14 @@ class InventoryService {
             item.expiryDate || null, item.reorderLevel || 10,
           ]
         );
+        if (transactionClient) await pool.query('RELEASE SAVEPOINT inventory_import_row');
         results.imported++;
       } catch (err) {
-        results.errors.push({ item: item.drugName || item.drugId, error: err.message });
+        if (transactionClient) {
+          await pool.query('ROLLBACK TO SAVEPOINT inventory_import_row');
+          await pool.query('RELEASE SAVEPOINT inventory_import_row');
+        }
+        results.errors.push({ item: item.drugName || item.drugId, error: transactionClient ? 'This inventory row could not be imported.' : err.message });
         results.skipped++;
       }
     }

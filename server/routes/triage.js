@@ -57,7 +57,7 @@ router.post('/', authenticate, auditMiddleware('create', 'triage'), async (req, 
 // Get triage for appointment
 router.get('/appointment/:appointmentId', authenticate, async (req, res) => {
   try {
-    const triageData = await triageService.getTriageForAppointment(req.params.appointmentId);
+    const triageData = await triageService.getTriageForAppointment(req.params.appointmentId, req.user);
     
     if (!triageData) {
       return res.status(404).json({ success: false, error: 'Triage data not found' });

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { Send, Sparkles, AlertCircle, CheckCircle2, QrCode } from 'lucide-react';
 import { drn, fmtNaira, urgencyBadge } from '../drnApi';
 
@@ -28,63 +29,100 @@ export default function ComposeTab() {
   const [qr, setQr] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [createUncertain, setCreateUncertain] = useState(false);
+  const { user, loading } = useAuth();
+  const identity = !loading && user?.id && user?.role && (user.marketScope || user.market_scope) === 'NG' ? JSON.stringify([user.id, user.role, user.marketScope || user.market_scope]) : null;
+  const identityRef = useRef(identity); identityRef.current = identity;
+  const mounted = useRef(true);
+  const operation = useRef(null);
+  const matchVersion = useRef(0);
+  const savedDraft = useRef(null);
+  const selectedListing = useRef(null);
+  const uncertain = useRef(false);
+  const current = () => mounted.current && identity && identityRef.current === identity;
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; matchVersion.current += 1; }; }, []);
 
-  function patch(k, v) { setForm(f => ({ ...f, [k]: v })); }
+  function patch(k, v) {
+    if (savedDraft.current || uncertain.current || operation.current && operation.current !== 'match') return;
+    matchVersion.current += 1; selectedListing.current = null; setChosen(null); setMatches([]);
+    setForm(f => ({ ...f, [k]: v }));
+  }
 
   async function runMatch() {
-    setBusy(true); setErr(''); setChosen(null); setMatches([]);
+    if (!current() || operation.current || savedDraft.current || uncertain.current) return;
+    operation.current = 'match';
+    const version = ++matchVersion.current;
+    setBusy(true); setErr(''); selectedListing.current = null; setChosen(null); setMatches([]);
     try {
-      const r = await drn.match({
-        specialty: form.specialty,
-        urgency: form.urgency,
-        prefer_state: form.prefer_state,
-        prefer_lga: form.prefer_lga,
-        max_price: form.max_price ? Number(form.max_price) : undefined,
-        accepts_insurance: form.accepts_insurance,
-      });
-      setMatches(r.matches || []);
-      if (!r.matches?.length) setErr('No specialists matched. Try widening filters.');
-    } catch (e) { setErr(e.message); }
-    finally { setBusy(false); }
+      const response = await drn.match({ specialty: form.specialty, urgency: form.urgency,
+        prefer_state: form.prefer_state, prefer_lga: form.prefer_lga,
+        max_price: form.max_price ? Number(form.max_price) : undefined, accepts_insurance: form.accepts_insurance });
+      if (!current() || version !== matchVersion.current) return;
+      if (!response?.ok || !Array.isArray(response.matches)) throw new Error('Matches could not be confirmed.');
+      setMatches(response.matches);
+      if (!response.matches.length) setErr('No specialists matched. Try widening filters.');
+    } catch (error) { if (current() && version === matchVersion.current) setErr(error.message); }
+    finally { operation.current = null; if (current()) setBusy(false); }
+  }
+
+  async function sendSaved(draft, reconcile) {
+    if (reconcile) {
+      const response = await drn.getReferral(draft.id);
+      if (!current()) return;
+      if (!response?.ok || response.referral?.id !== draft.id) throw new Error('Saved referral status could not be confirmed. Check Outbox before retrying.');
+      draft = response.referral; savedDraft.current = draft; setCreated(draft);
+    }
+    if (draft.status !== 'draft') return; // Already advanced: never send again.
+    if (!draft.allowed_transitions?.includes('sent')) throw new Error('Sending this saved draft is not authorized. Check Outbox.');
+    const response = await drn.transition(draft.id, { to_status: 'sent', notes: 'explicit composer send' });
+    if (!current()) return;
+    if (!response?.ok || response.referral?.id !== draft.id || response.referral.status !== 'sent') throw new Error('Send was not confirmed. Check the saved referral status before retrying.');
+    savedDraft.current = response.referral; setCreated(response.referral);
   }
 
   async function submit() {
-    setBusy(true); setErr('');
+    if (!current() || operation.current || uncertain.current) return;
+    if (!savedDraft.current && (!chosen?.id || chosen.dispatch_ready !== true || selectedListing.current?.id !== chosen.id || !form.reason.trim() || !form.specialty.trim())) return;
+    operation.current = 'send'; setBusy(true); setErr('');
+    let creating = !savedDraft.current;
     try {
-      const created = await drn.createReferral({
-        specialty: form.specialty,
-        urgency: form.urgency,
-        reason: form.reason,
-        clinical_summary: form.clinical_summary,
-        patient_name: form.patient_name || undefined,
-        patient_phone: form.patient_phone || undefined,
-        patient_age: form.patient_age ? Number(form.patient_age) : undefined,
-        patient_sex: form.patient_sex || undefined,
-        destination_org: chosen?.organization_id,
-        destination_listing: chosen?.id,
-        match_score: chosen?.score,
-        match_reasoning_json: chosen ? { reasons: chosen.reasons, scored_at: new Date().toISOString() } : undefined,
-        service_fee_naira: chosen?.price_max_naira ?? chosen?.price_min_naira ?? undefined,
-      });
-      // Auto-advance draft → sent
-      await drn.transition(created.referral.id, { to_status: 'sent', notes: 'auto-sent on creation' });
-      setCreated(created.referral);
-    } catch (e) { setErr(e.message); }
-    finally { setBusy(false); }
+      if (creating) {
+        const response = await drn.createReferral({
+          specialty: form.specialty, urgency: form.urgency, reason: form.reason, clinical_summary: form.clinical_summary,
+          patient_name: form.patient_name || undefined, patient_phone: form.patient_phone || undefined,
+          patient_age: form.patient_age ? Number(form.patient_age) : undefined, patient_sex: form.patient_sex || undefined,
+          destination_listing: chosen.id,
+        });
+        if (!current()) return;
+        if (!response?.ok || !response.referral?.id || response.referral.status !== 'draft') throw new Error('Creation response could not be confirmed.');
+        savedDraft.current = response.referral; setCreated(response.referral);
+        creating = false;
+        await sendSaved(response.referral, false);
+      } else await sendSaved(savedDraft.current, true);
+    } catch (error) {
+      if (current()) {
+        if (creating && !(error.status >= 400 && error.status < 500 && error.status !== 408)) {
+          uncertain.current = true; setCreateUncertain(true);
+          setErr('Creation outcome is uncertain. Do not create another referral. Check Outbox for the saved draft before continuing.');
+        } else setErr(savedDraft.current ? `Draft saved (${savedDraft.current.ref_code || savedDraft.current.id}). Send not confirmed: ${error.message}` : error.message);
+      }
+    } finally { operation.current = null; if (current()) setBusy(false); }
   }
 
   async function mintQr() {
-    if (!created) return;
-    setBusy(true); setErr('');
+    if (!current() || operation.current || !savedDraft.current || savedDraft.current.status === 'draft' || ['cancelled', 'expired', 'declined'].includes(savedDraft.current.status)) return;
+    operation.current = 'qr'; setBusy(true); setErr('');
     try {
-      const r = await drn.mintQr(created.id, { scope: 'patient_slip', ttlDays: 30 });
-      setQr(r);
-    } catch (e) { setErr(e.message); }
-    finally { setBusy(false); }
+      const response = await drn.mintQr(savedDraft.current.id, { scope: 'patient_slip', ttlDays: 30 });
+      if (!response?.token) throw new Error('QR token was not confirmed.');
+      if (current()) setQr(response);
+    } catch (error) { if (current()) setErr(error.message); }
+    finally { operation.current = null; if (current()) setBusy(false); }
   }
 
   return (
     <div className="space-y-5">
+      <fieldset className="space-y-5" disabled={Boolean(created) || createUncertain || busy && operation.current !== 'match'}>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="mb-3 text-sm font-bold text-slate-900">Patient & clinical context</h3>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -134,13 +172,14 @@ export default function ComposeTab() {
 
         {matches.length > 0 && (
           <ul className="mt-4 space-y-2">
-            {matches.slice(0, 8).map(m => (
-              <li key={m.id} onClick={() => setChosen(m)}
-                className={`cursor-pointer rounded-xl border p-3 transition ${chosen?.id === m.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}>
+            {[...matches].sort((a, b) => Number(b.dispatch_ready === true) - Number(a.dispatch_ready === true)).slice(0, 8).map(m => (
+              <li key={m.id} onClick={() => { if (m.dispatch_ready === true && !operation.current && !savedDraft.current && !uncertain.current) { selectedListing.current = m; setChosen(m); } }}
+                className={`${m.dispatch_ready === true ? 'cursor-pointer' : 'opacity-70'} rounded-xl border p-3 transition ${chosen?.id === m.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}>
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-bold text-slate-900">{m.title} <span className="text-xs font-normal text-slate-500">· {m.org_name}</span></p>
-                    <p className="mt-1 text-xs text-slate-600">{m.reasons.join(' · ')}</p>
+                    <p className="mt-1 text-xs text-slate-600">{(m.reasons || []).join(' · ')}</p>
+                    {m.dispatch_ready !== true && <p className="mt-1 text-xs text-amber-800">Directory listing only. Sending is unavailable until a verified receiving clinician is connected.</p>}
                   </div>
                   <div className="text-right">
                     <p className="text-xl font-black text-blue-700">{m.score}</p>
@@ -158,11 +197,13 @@ export default function ComposeTab() {
         )}
       </section>
 
+      </fieldset>
+
       {err && <p className="flex items-center gap-2 text-sm text-rose-700"><AlertCircle className="h-4 w-4" />{err}</p>}
 
       {!created && (
         <div className="flex items-center justify-end">
-          <button onClick={submit} disabled={busy || !form.reason || !form.specialty}
+          <button onClick={submit} disabled={busy || createUncertain || !chosen?.id || chosen.dispatch_ready !== true || !form.reason.trim() || !form.specialty.trim()}
             className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
             <Send className="h-4 w-4" />
             {busy ? 'Sending…' : 'Send referral'}
@@ -174,12 +215,14 @@ export default function ComposeTab() {
         <section className="rounded-2xl border border-blue-300 bg-blue-50 p-5">
           <div className="flex items-center gap-2 text-blue-800">
             <CheckCircle2 className="h-5 w-5" />
-            <h3 className="text-sm font-bold">Referral sent — {created.ref_code}</h3>
+            <h3 className="text-sm font-bold">Referral {created.status === 'draft' ? 'draft saved' : created.status} — {created.ref_code}</h3>
           </div>
           <p className="mt-1 text-xs text-blue-700">
-            The receiving facility has been notified. You can mint a QR slip for the patient to present on arrival.
+            This is the last confirmed referral status. Sent means available in the receiving clinician’s DoctaRx inbox, not delivery to an external hospital system or confirmation that it was read or acted on.
           </p>
-          {!qr ? (
+          {created.status === 'draft' ? (
+            <button onClick={submit} disabled={busy} className="mt-3 rounded-lg bg-blue-700 px-3 py-1.5 text-sm text-white disabled:opacity-50">Check status and retry sending saved draft</button>
+          ) : ['cancelled', 'expired', 'declined'].includes(created.status) ? null : !qr ? (
             <button onClick={mintQr} disabled={busy}
               className="mt-3 flex items-center gap-2 rounded-lg bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
               <QrCode className="h-4 w-4" />Mint patient QR slip

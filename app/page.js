@@ -1,9 +1,9 @@
 import MarketHomepage from '@/components/marketing/MarketHomepage';
 
 export const metadata = {
-  title: 'DoctaRx | Connected Virtual Care',
+  title: 'DoctaRx | AI-First Telehealth & Language Voice',
   description:
-    'DoctaRx delivers a premium US telehealth experience with secure visits, messaging, e-prescribing, insurance-ready workflows, and connected pharmacy coordination.',
+    'AI-first telehealth with a human connection. Explore multilingual language voice, clinician-led care, health records and pharmacy coordination with DoctaRx.',
   alternates: {
     canonical: 'https://doctarx.com/',
     languages: {
@@ -12,9 +12,9 @@ export const metadata = {
     },
   },
   openGraph: {
-    title: 'DoctaRx United States',
+    title: 'DoctaRx | AI-First Telehealth · United States',
     description:
-      'Secure visits, messaging, e-prescribing, insurance-ready workflows, and pharmacy coordination for the US care experience.',
+      'AI-first telehealth. Human care. Discover language voice and connected virtual care with DoctaRx.',
     url: 'https://doctarx.com/',
     siteName: 'DoctaRx',
     locale: 'en_US',
@@ -24,9 +24,9 @@ export const metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DoctaRx United States',
+    title: 'DoctaRx | AI-First Telehealth · United States',
     description:
-      'Secure visits, messaging, e-prescribing, insurance-ready workflows, and pharmacy coordination for the US care experience.',
+      'AI-first telehealth. Human care. Discover language voice and connected virtual care with DoctaRx.',
     images: ['/opengraph-image'],
   },
 };

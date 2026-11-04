@@ -20,7 +20,7 @@ const db = { query(...args) {
 }, getPool: () => database.getPool() };
 const logger = require('../middleware/logger');
 const { encrypt } = require('../../lib/encryption');
-const { readClinicalField } = require('./clinicalContentService');
+const { readClinicalField, readClinicalNarrative } = require('./clinicalContentService');
 const { keysToCamel } = require('../../lib/utils');
 const clinicalError = (statusCode, code, message) => Object.assign(new Error(message), { statusCode, code });
 const uuid = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
@@ -92,6 +92,66 @@ class ClinicalEncounterService {
     await client.query(`INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,description,new_values,phi_accessed,success)
       VALUES ($1,$2,$3,$4,$5,'Current authorized encounter-bound clinical record operation',$6::jsonb,TRUE,TRUE)`,
     [providerId, action, type, row.id, row.patient_id, JSON.stringify(metadata)]);
+  }
+
+  async _reviewedAiDraft(client, encounterId, providerId, suggestionId) {
+    this._references(encounterId, providerId, suggestionId);
+    const ai = require('../../ng/services/phc/clinicalAiService');
+    const workflow = require('../../ng/services/phc/phcWorkflowService');
+    const { assertProgrammeScope } = require('../../ng/services/phc/programmeScopeService');
+    const suggestion = (await client.query(`SELECT s.*, r.decision, r.reviewer_user_id,
+        r.edited_output_encrypted, r.edited_output_iv, r.edited_output_tag
+      FROM ng_clinical_ai_suggestions s
+      JOIN ng_clinical_ai_reviews r ON r.suggestion_id=s.id
+      JOIN ng_clinical_record_links l ON l.source_table='ng_clinical_encounters' AND l.source_id=s.encounter_id
+        AND l.canonical_table='clinical_encounters' AND l.migration_status IN ('linked','verified')
+      JOIN clinical_encounters ce ON ce.id=l.canonical_id AND ce.patient_id=s.patient_user_id
+      WHERE s.id=$1 AND ce.id=$2 AND ce.provider_id=$3
+        AND s.status='accepted' AND r.decision IN ('accepted','accepted_with_edits')
+      FOR UPDATE OF s`, [suggestionId, encounterId, providerId])).rows[0];
+    if (!suggestion) throw clinicalError(403, 'CLINICAL_AI_IMPORT_DENIED', 'A reviewed draft matching this encounter is required.');
+    const context = await assertProgrammeScope(client, { id: providerId }, {
+      programmeId: suggestion.programme_id, facilityId: suggestion.facility_id,
+      patientUserId: suggestion.patient_user_id, requireEnrollment: true, allowedRoles: ['remote_clinician'],
+    });
+    const assignment = (await client.query(`SELECT assigned_provider_user_id FROM ng_phc_queue_entries
+      WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3 FOR UPDATE`,
+    [suggestion.encounter_id, suggestion.programme_id, suggestion.facility_id])).rows[0];
+    await ai.assertEncounterAiAccess(client, context, assignment || {});
+    await client.query(`SELECT id FROM ng_clinical_encounters WHERE id=$1 AND programme_id=$2 AND facility_id=$3 FOR UPDATE`,
+      [suggestion.encounter_id, suggestion.programme_id, suggestion.facility_id]);
+    await client.query(`SELECT id FROM ng_clinical_observations WHERE encounter_id=$1 AND programme_id=$2 AND facility_id=$3 FOR SHARE`,
+      [suggestion.encounter_id, suggestion.programme_id, suggestion.facility_id]);
+    const encounter = await workflow.getEncounter(client, context, suggestion.encounter_id);
+    const { observations } = await workflow.listObservations(client, context, suggestion.encounter_id);
+    ai.assertReviewFreshness(suggestion, encounter, observations, suggestion.encounter_id);
+    // An edited review is authoritative: never silently fall back to the original.
+    const edited = suggestion.decision === 'accepted_with_edits';
+    const output = ai.decryptJson({
+      encrypted: edited ? suggestion.edited_output_encrypted : suggestion.output_encrypted,
+      iv: edited ? suggestion.edited_output_iv : suggestion.output_iv,
+      tag: edited ? suggestion.edited_output_tag : suggestion.output_tag,
+    });
+    const soap = output.soapDraft;
+    if (!soap || !['subjective','objective','assessment','plan'].every(field => typeof soap[field] === 'string')
+      || !Object.values(soap).some(value => value.trim())) {
+      throw clinicalError(409, 'CLINICAL_AI_SOAP_REQUIRED', 'This reviewed draft has no structured SOAP content.');
+    }
+    return { aiSuggestionId: suggestionId, noteDraft: { noteType: 'soap', ...Object.fromEntries(['subjective','objective','assessment','plan'].map(field => [field, soap[field]])) } };
+  }
+
+  async getReviewedAiDraft(encounterId, providerId, suggestionId) {
+    this._references(encounterId, providerId, suggestionId);
+    const client = await db.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const draft = await this._reviewedAiDraft(client, encounterId, providerId, suggestionId);
+      const encounter = await this._lockEncounter(client, encounterId, providerId);
+      await this._audit(client, providerId, 'clinical_encounter', encounter, 'read', { operation: 'reviewed_ai_draft_import_preview', aiSuggestionId: suggestionId });
+      await client.query('COMMIT');
+      return draft;
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
   }
 
   _recordRead(rows, type) {
@@ -319,8 +379,22 @@ class ClinicalEncounterService {
     try {
       await client.query('BEGIN');
       
+      if (noteData.aiSuggestionId) await this._reviewedAiDraft(client, encounterId, providerId, noteData.aiSuggestionId);
       const encounter = await this._lockEncounter(client, encounterId, providerId);
-      
+      const importHash = noteData.aiSuggestionId ? crypto.createHash('sha256').update(JSON.stringify(Object.keys(noteData).sort().map(key => [key, noteData[key]]))).digest('hex') : null;
+      if (noteData.aiSuggestionId) {
+        const prior = (await client.query(`SELECT n.*, a.new_values AS import_metadata FROM audit_logs a
+          JOIN clinical_notes n ON n.id::text=a.resource_id::text
+          WHERE a.resource_type='clinical_note' AND a.action='create' AND a.success=TRUE
+            AND a.new_values->>'aiSuggestionId'=$1 AND n.encounter_id=$2 AND n.provider_id=$3 LIMIT 1`,
+        [noteData.aiSuggestionId, encounterId, providerId])).rows[0];
+        if (prior) {
+          if (prior.import_metadata?.importHash !== importHash) throw clinicalError(409, 'CLINICAL_AI_ALREADY_IMPORTED', 'This draft has already been imported. Edit the existing unsigned note instead.');
+          const result = this._formatNote(prior);
+          await client.query('COMMIT');
+          return result;
+        }
+      }
       // Encrypt SOAP fields
       const subjective = noteData.subjective ? encrypt(noteData.subjective) : { encrypted: null, iv: null, tag: null };
       const objective = noteData.objective ? encrypt(noteData.objective) : { encrypted: null, iv: null, tag: null };
@@ -328,6 +402,7 @@ class ClinicalEncounterService {
       const plan = noteData.plan ? encrypt(noteData.plan) : { encrypted: null, iv: null, tag: null };
       const vitals = noteData.vitals ? encrypt(JSON.stringify(noteData.vitals)) : { encrypted: null, iv: null, tag: null };
       const physicalExam = noteData.physicalExam ? encrypt(noteData.physicalExam) : { encrypted: null, iv: null, tag: null };
+      const followUpNotes = encrypt(noteData.followUpNotes);
       
       const { rows } = await client.query(
         `INSERT INTO clinical_notes (
@@ -339,8 +414,9 @@ class ClinicalEncounterService {
           vitals_encrypted, vitals_iv, vitals_tag,
           physical_exam_encrypted, physical_exam_iv, physical_exam_tag,
           icd_codes, cpt_codes,
-          follow_up_required, follow_up_interval, follow_up_notes
-        ) VALUES ($1, $2, $3, $4, 1, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+          follow_up_required, follow_up_interval,
+          follow_up_notes_encrypted, follow_up_notes_iv, follow_up_notes_tag
+        ) VALUES ($1, $2, $3, $4, 1, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
         RETURNING *`,
         [
           encounterId,
@@ -357,12 +433,13 @@ class ClinicalEncounterService {
           noteData.cptCodes || [],
           noteData.followUpRequired || false,
           noteData.followUpInterval || null,
-          noteData.followUpNotes || null
+          followUpNotes.encrypted, followUpNotes.iv, followUpNotes.tag
         ]
       );
       
       if (!rows[0]) throw clinicalError(503, 'CLINICAL_RECORDING_UNAVAILABLE', 'Note recording could not be confirmed.');
-      await this._audit(client, providerId, 'clinical_note', rows[0], 'create', { encounterId, version: rows[0].version, signed: false });
+      await this._audit(client, providerId, 'clinical_note', rows[0], 'create', { encounterId, version: rows[0].version, signed: false, ...(noteData.aiSuggestionId ? { aiSuggestionId: noteData.aiSuggestionId, importHash } : {}) });
+      const result = this._formatNote(rows[0]);
       await client.query('COMMIT');
 
       logger.info('Clinical note created', {
@@ -371,7 +448,7 @@ class ClinicalEncounterService {
         providerId
       });
       
-      return this._formatNote(rows[0]);
+      return result;
       
     } catch (error) {
       await client.query('ROLLBACK');
@@ -387,6 +464,7 @@ class ClinicalEncounterService {
    * Only allowed before signing
    */
   async updateNote(noteId, providerId, noteData) {
+    if (noteData.aiSuggestionId) throw clinicalError(409, 'CLINICAL_AI_NEW_NOTE_REQUIRED', 'Import into a new draft note; do not overwrite an existing note.');
     this._references(noteId, providerId);
     const client = await db.getPool().connect();
     try {
@@ -456,8 +534,9 @@ class ClinicalEncounterService {
     }
     
     if (noteData.followUpNotes !== undefined) {
-      updates.push(`follow_up_notes = $${paramIndex++}`);
-      values.push(noteData.followUpNotes);
+      const enc = encrypt(noteData.followUpNotes);
+      updates.push('follow_up_notes = NULL', `follow_up_notes_encrypted = $${paramIndex++}`, `follow_up_notes_iv = $${paramIndex++}`, `follow_up_notes_tag = $${paramIndex++}`);
+      values.push(enc.encrypted, enc.iv, enc.tag);
     }
     
     if (updates.length === 0) {
@@ -475,10 +554,11 @@ class ClinicalEncounterService {
     
     if (!rows[0]) throw clinicalError(409, 'CLINICAL_NOTE_IMMUTABLE', 'The note no longer accepts draft changes.');
     await this._audit(client, providerId, 'clinical_note', rows[0], 'update', { encounterId: existing.encounter_id, version: existing.version, signed: false, changedFields: Object.keys(noteData) });
+    const result = this._formatNote(rows[0]);
     await client.query('COMMIT');
     logger.info('Clinical note updated', { noteId, providerId });
     
-    return this._formatNote(rows[0]);
+    return result;
     } catch (error) { await client.query('ROLLBACK'); throw error; }
     finally { client.release(); }
   }
@@ -530,11 +610,12 @@ class ClinicalEncounterService {
       
       if (!rows[0]) throw clinicalError(409, 'CLINICAL_NOTE_IMMUTABLE', 'The note no longer accepts a signature.');
       await this._audit(client, providerId, 'clinical_note', rows[0], 'update', { encounterId: note.encounter_id, version: note.version, signed: true, signatureHash });
+      const result = this._formatNote(rows[0]);
       await client.query('COMMIT');
 
       logger.info('Clinical note signed', { noteId, providerId, signatureHash: signatureHash.substring(0, 16) + '...' });
       
-      return this._formatNote(rows[0]);
+      return result;
       
     } catch (error) {
       await client.query('ROLLBACK');
@@ -584,17 +665,19 @@ class ClinicalEncounterService {
       const objective = amendmentData.objective ? encrypt(amendmentData.objective) : { encrypted: null, iv: null, tag: null };
       const assessment = amendmentData.assessment ? encrypt(amendmentData.assessment) : { encrypted: null, iv: null, tag: null };
       const plan = amendmentData.plan ? encrypt(amendmentData.plan) : { encrypted: null, iv: null, tag: null };
+      const amendmentReason = encrypt(amendmentData.reason.trim());
       
       const { rows } = await client.query(
         `INSERT INTO clinical_notes (
           encounter_id, patient_id, provider_id, note_type,
-          version, parent_note_id, is_amendment, amendment_reason,
+          version, parent_note_id, is_amendment,
+          amendment_reason_encrypted, amendment_reason_iv, amendment_reason_tag,
           subjective_encrypted, subjective_iv, subjective_tag,
           objective_encrypted, objective_iv, objective_tag,
           assessment_encrypted, assessment_iv, assessment_tag,
           plan_encrypted, plan_iv, plan_tag,
           icd_codes, cpt_codes
-        ) VALUES ($1, $2, $3, 'amendment', $4, $5, true, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        ) VALUES ($1, $2, $3, 'amendment', $4, $5, true, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
         RETURNING *`,
         [
           original.encounter_id,
@@ -602,7 +685,7 @@ class ClinicalEncounterService {
           providerId,
           newVersion,
           rootId,
-          amendmentData.reason.trim(),
+          amendmentReason.encrypted, amendmentReason.iv, amendmentReason.tag,
           subjective.encrypted, subjective.iv, subjective.tag,
           objective.encrypted, objective.iv, objective.tag,
           assessment.encrypted, assessment.iv, assessment.tag,
@@ -614,6 +697,7 @@ class ClinicalEncounterService {
       
       if (!rows[0]) throw clinicalError(503, 'CLINICAL_RECORDING_UNAVAILABLE', 'Amendment recording could not be confirmed.');
       await this._audit(client, providerId, 'clinical_note', rows[0], 'create', { encounterId: original.encounter_id, rootNoteId: rootId, amendedNoteId: original.id, version: newVersion, reasonEncrypted: encrypt(amendmentData.reason.trim()) });
+      const result = this._formatNote(rows[0]);
       await client.query('COMMIT');
 
       logger.info('Amendment created', {
@@ -623,7 +707,7 @@ class ClinicalEncounterService {
         providerId
       });
       
-      return this._formatNote(rows[0]);
+      return result;
       
     } catch (error) {
       await client.query('ROLLBACK');
@@ -668,7 +752,7 @@ class ClinicalEncounterService {
     }
 
     const rows = await this._readNotes(userId, userRole, { encounterId: accessibleNote.encounterId, rootId: accessibleNote.parentNoteId || accessibleNote.id });
-    return rows.map(note => keysToCamel({ id: note.id, version: note.version, is_amendment: note.is_amendment, amendment_reason: note.amendment_reason,
+    return rows.map(note => keysToCamel({ id: note.id, version: note.version, is_amendment: note.is_amendment, amendment_reason: readClinicalNarrative(note, 'amendment_reason'),
       is_signed: note.is_signed, signed_at: note.signed_at, created_at: note.created_at, provider_first_name: note.provider_first_name, provider_last_name: note.provider_last_name, provider_credentials: note.provider_credentials }));
   }
   
@@ -748,7 +832,7 @@ class ClinicalEncounterService {
       version: note.version,
       parentNoteId: note.parent_note_id,
       isAmendment: note.is_amendment,
-      amendmentReason: note.amendment_reason,
+      amendmentReason: readClinicalNarrative(note, 'amendment_reason'),
       icdCodes: note.icd_codes,
       cptCodes: note.cpt_codes,
       isSigned: note.is_signed,
@@ -758,7 +842,7 @@ class ClinicalEncounterService {
       lockedAt: note.locked_at,
       followUpRequired: note.follow_up_required,
       followUpInterval: note.follow_up_interval,
-      followUpNotes: note.follow_up_notes,
+      followUpNotes: readClinicalNarrative(note, 'follow_up_notes'),
       createdAt: note.created_at,
       updatedAt: note.updated_at
     };

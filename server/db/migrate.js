@@ -7,6 +7,13 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+
+const MIGRATION_LOCK_KEY = 'doctarx_server_migrations_v1';
+
+function checksum(sql) {
+  return crypto.createHash('sha256').update(sql, 'utf8').digest('hex');
+}
 
 // Database configuration
 let connectionString = process.env.DATABASE_URL || '';
@@ -31,10 +38,9 @@ if (connectionString && connectionString.includes('sslmode=')) {
   ).replace(/\?$/, '');
 }
 
-const pool = new Pool({
-  connectionString,
-  ssl: sslConfig
-});
+function createMigrationPool() {
+  return new Pool({ connectionString, ssl: sslConfig });
+}
 
 const migrations = [
   // Migration 001: Create extensions
@@ -3015,6 +3021,10 @@ const migrations = [
 
 const SQL_FILE_MIGRATIONS = [
   {
+    name: '016_message_idempotency',
+    file: '016_message_idempotency.sql'
+  },
+  {
     name: '037_encrypted_manual_insurance',
     file: '037_encrypted_manual_insurance.sql'
   },
@@ -3029,6 +3039,22 @@ const SQL_FILE_MIGRATIONS = [
   {
     name: '040_clinical_encrypted_history',
     file: '040_clinical_encrypted_history.sql'
+  },
+  {
+    name: '041_atomic_auth_sessions',
+    file: '041_atomic_auth_sessions.sql'
+  },
+  {
+    name: '042_appointment_booking_intents',
+    file: '042_appointment_booking_intents.sql'
+  },
+  {
+    name: '043_appointment_protected_payload',
+    file: '043_appointment_protected_payload.sql'
+  },
+  {
+    name: '044_clinical_narrative_encryption',
+    file: '044_clinical_narrative_encryption.sql'
   },
   {
     name: '400_agent_orchestrator_schema',
@@ -3052,70 +3078,125 @@ function getMigrations() {
 
 async function runMigrations(options = {}) {
   const migrationList = options.migrations || getMigrations();
-  const client = await pool.connect();
-  
-  try {
-    console.log('🚀 Starting database migrations...\n');
-    
-    // Create migrations tracking table first
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS migrations (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL UNIQUE,
-        executed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    
-    // Get already executed migrations
-    const { rows: executedMigrations } = await client.query(
-      'SELECT name FROM migrations'
+  const names = new Set();
+  for (const migration of migrationList) {
+    if (!migration || typeof migration.name !== 'string' || !migration.name.trim()
+      || typeof migration.up !== 'string' || !migration.up.trim() || names.has(migration.name)) {
+      throw new Error('Invalid or duplicate server migration manifest entry');
+    }
+    names.add(migration.name);
+  }
+  const pool = options.pool || createMigrationPool();
+  let client;
+  let locked = false;
+  let discardConnection = false;
+  let previousLockTimeout;
+  let migrationsRun = 0;
+  let legacyBaselined = 0;
+
+  async function capTimeout(name, milliseconds, local) {
+    // Preserve any stricter role/session limit; zero means unlimited. pg_settings
+    // represents these timeout settings in milliseconds.
+    await client.query(
+      'SELECT set_config($1, LEAST(COALESCE(NULLIF(setting::bigint, 0), $2::bigint), $2::bigint)::text, $3) FROM pg_settings WHERE name = $1',
+      [name, milliseconds, local]
     );
-    const executedNames = new Set(executedMigrations.map(m => m.name));
-    
-    let migrationsRun = 0;
-    
-    for (const migration of migrationList) {
-      if (executedNames.has(migration.name)) {
-        console.log(`⏭️  Skipping ${migration.name} (already executed)`);
-        continue;
-      }
-      
-      console.log(`📦 Running migration: ${migration.name}`);
-      
-      await client.query('BEGIN');
-      
-      try {
-        await client.query(migration.up);
-        await client.query(
-          'INSERT INTO migrations (name) VALUES ($1)',
-          [migration.name]
+  }
+
+  async function transaction(work) {
+    await client.query('BEGIN');
+    try {
+      // A blocked DDL operation must fail rather than stall a release forever.
+      await capTimeout('lock_timeout', 30_000, true);
+      await capTimeout('statement_timeout', 900_000, true);
+      await work();
+      await client.query('COMMIT');
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch (_rollbackError) { discardConnection = true; }
+      throw error;
+    }
+  }
+
+  try {
+    client = await pool.connect();
+    previousLockTimeout = (await client.query('SHOW lock_timeout')).rows[0].lock_timeout;
+    await capTimeout('lock_timeout', 30_000, false);
+    await client.query('SELECT pg_advisory_lock(hashtext($1))', [MIGRATION_LOCK_KEY]);
+    locked = true;
+    await client.query("SELECT set_config('lock_timeout', $1, false)", [previousLockTimeout]);
+
+    await transaction(async () => {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS migrations (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL UNIQUE,
+          checksum CHAR(64),
+          executed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
-        await client.query('COMMIT');
-        console.log(`✅ Completed: ${migration.name}\n`);
-        migrationsRun++;
-      } catch (error) {
-        await client.query('ROLLBACK');
-        console.error(`❌ Failed: ${migration.name}`);
-        console.error(`   Error: ${error.message}\n`);
-        throw error;
+      `);
+      await client.query('ALTER TABLE migrations ADD COLUMN IF NOT EXISTS checksum CHAR(64)');
+    });
+
+    const { rows: executedMigrations } = await client.query('SELECT name, checksum FROM migrations');
+    const executed = new Map(executedMigrations.map(row => [row.name, row.checksum?.trim() || null]));
+
+    // Check the whole known history before any pending migration is applied.
+    // Legacy NULL entries cannot prove historical SQL; the first digest is only
+    // a baseline. Operators must compare the old release/schema separately.
+    for (const migration of migrationList) {
+      const recorded = executed.get(migration.name);
+      if (recorded && recorded !== checksum(migration.up)) {
+        throw new Error('Server migration checksum mismatch: ' + migration.name);
       }
     }
 
-    console.log('==========================================');
-    console.log(`✅ Migrations complete! (${migrationsRun} new migrations run)`);
-    console.log('==========================================\n');
-
-  } catch (error) {
-    console.error('Migration failed:', error);
-    process.exit(1);
+    for (const migration of migrationList) {
+      const digest = checksum(migration.up);
+      if (executed.has(migration.name)) {
+        if (!executed.get(migration.name)) {
+          // Warn before adoption: a later migration may fail after this baseline
+          // commits, and a retry will then see an already-recorded digest.
+          console.warn('[DB] Recording first checksum baseline for legacy migration ' + migration.name
+            + '; historical SQL is not verified.');
+          await transaction(() => client.query(
+            'UPDATE migrations SET checksum=$2 WHERE name=$1 AND checksum IS NULL',
+            [migration.name, digest]
+          ));
+          legacyBaselined += 1;
+        }
+        continue;
+      }
+      await transaction(async () => {
+        await client.query(migration.up);
+        await client.query('INSERT INTO migrations (name, checksum) VALUES ($1, $2)', [migration.name, digest]);
+      });
+      migrationsRun += 1;
+      console.log('[DB] Migrated: ' + migration.name);
+    }
+    console.log('[DB] Migration manifest verified; ' + migrationsRun + ' new, ' + migrationList.length + ' total.');
+    return { ran: migrationsRun, total: migrationList.length, legacyBaselined };
   } finally {
-    client.release();
-    await pool.end();
+    if (client) {
+      if (locked) {
+        try { await client.query('SELECT pg_advisory_unlock(hashtext($1))', [MIGRATION_LOCK_KEY]); }
+        catch (_error) { discardConnection = true; }
+      }
+      if (previousLockTimeout !== undefined) {
+        try { await client.query("SELECT set_config('lock_timeout', $1, false)", [previousLockTimeout]); }
+        catch (_error) { discardConnection = true; }
+      }
+      // Destroy a session with uncertain transaction/lock state, never reuse it.
+      client.release(discardConnection);
+    }
+    if (!options.pool) await pool.end();
   }
 }
 
 if (require.main === module) {
-  runMigrations();
+  runMigrations().catch(error => {
+    console.error('[DB] Migration failed:', error.code || error.message);
+    process.exitCode = 1;
+  });
 }
 
 module.exports = {
@@ -3124,5 +3205,6 @@ module.exports = {
   loadSqlFileMigrations,
   getMigrations,
   runMigrations,
+  MIGRATION_LOCK_KEY,
+  checksum,
 };
-

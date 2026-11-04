@@ -28,8 +28,16 @@ test('pharmacy inventory counts and order lists execute against the migrated sch
     assert.equal(empty.total, 0);
     assert.equal(empty.totalPages, 0);
     assert.deepEqual(empty.items, []);
-    const recordedOrders = await orders.listPharmacyOrders(pharmacy.id, { limit: 2 });
-    assert.ok(recordedOrders.every((order) => order.pharmacy_id === pharmacy.id));
-    assert.deepEqual(await orders.listPharmacyOrders(crypto.randomUUID()), []);
+    const authorized = (await pool.query(`SELECT p.id,p.owner_user_id FROM ng_pharmacies p JOIN users u ON u.id=p.owner_user_id
+      WHERE p.status='approved' AND p.account_status='active' AND p.verified_at IS NOT NULL AND p.pcn_license_expiry>=CURRENT_DATE
+        AND p.pcn_license_number IS NOT NULL AND p.superintendent_pcn_number IS NOT NULL
+        AND u.role='pharmacy' AND u.is_active=TRUE AND u.account_status='active' AND u.market_scope='NG' LIMIT 1`)).rows[0];
+    if (authorized) {
+      const actor = { id: authorized.owner_user_id, role: 'pharmacy' };
+      const recordedOrders = await orders.listPharmacyOrders(authorized.id, { limit: 2 }, actor);
+      assert.ok(recordedOrders.every((order) => order.pharmacy_id === authorized.id));
+      await assert.rejects(orders.listPharmacyOrders(crypto.randomUUID(), {}, actor), error => error.status === 403);
+    }
+    await assert.rejects(orders.listPharmacyOrders(pharmacy.id), error => error.status === 403);
   } finally { db.getPool = originalGetPool; await pool.end(); }
 });

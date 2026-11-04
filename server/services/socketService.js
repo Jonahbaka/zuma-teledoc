@@ -31,6 +31,32 @@ const getConferenceRoomKey = (roomId) => `conference:${roomId}`;
 
 let io = null;
 
+function revokeUserSessions(userId,sessionId=null) {
+  for(const namespace of [io,io?.of('/hive')]) {
+    for(const socket of namespace?.sockets?.sockets?.values?.() || namespace?.sockets?.values?.() || []) {
+      if(String(socket.userId)!==String(userId)||(sessionId&&socket.authSessionId!==sessionId))continue;
+      socket.emit('conference:revoked',{});
+      socket.disconnect(true);
+    }
+  }
+}
+
+
+function revokeConferenceAccess(roomId, userId = null) {
+  for (const [socketId, session] of conferenceSocketMeta) {
+    if (String(session.roomId) !== String(roomId) || (userId && String(session.participant.userId) !== String(userId))) continue;
+    const socket = io?.sockets?.sockets?.get(socketId);
+    if (socket) {
+      socket.emit('conference:revoked', { roomId });
+      removeConferenceMembership(socket, { emitLeft: true });
+    } else {
+      conferenceSocketMeta.delete(socketId);
+      conferenceRooms.get(roomId)?.delete(socketId);
+    }
+  }
+}
+
+
 const normalizeRole = (role) => String(role || '').trim().toLowerCase();
 const roleAliasMap = {
   administrator: 'admin',
@@ -274,9 +300,11 @@ const initializeSocket = (httpServer) => {
         process.env.JWT_SECRET ||
         global.__JWT_ACCESS_SECRET;
       const decoded = jwt.verify(token, accessSecret);
-      socket.userId = decoded.userId || decoded.id;
-      socket.userRole = canonicalRole(decoded.role);
-      socket.userName = decoded.name || `${decoded.firstName || ''} ${decoded.lastName || ''}`.trim();
+      const current = await require('./socketAuthSession').installSocketAuthorization(socket, { decoded, verify: value => jwt.verify(value, accessSecret), db, onRevoke: () => socket.emit('conference:revoked', {}) });
+      socket.userId = current.id;
+      socket.userRole = canonicalRole(current.role);
+      socket.userName = `${current.first_name || ''} ${current.last_name || ''}`.trim();
+
       
       next();
     } catch (error) {
@@ -688,7 +716,7 @@ const initializeSocket = (httpServer) => {
       }
     });
 
-    socket.on('conference:signal', (payload = {}, ack) => {
+    socket.on('conference:signal', async (payload = {}, ack) => {
       const session = conferenceSocketMeta.get(socket.id);
       if (!session) {
         return emitSocketAck(ack, { ok: false, error: 'Conference session not initialized' });
@@ -704,6 +732,25 @@ const initializeSocket = (httpServer) => {
 
       if (!['offer', 'answer', 'ice-candidate'].includes(signalType)) {
         return emitSocketAck(ack, { ok: false, error: 'Unsupported signal type' });
+      }
+
+      try {
+        const target = roomParticipants.get(targetSocketId);
+        const { rows } = await db.query(
+          `SELECT p.user_id FROM ng_conf_participants p JOIN ng_conf_rooms r ON r.id=p.room_id
+             JOIN users u ON u.id=p.user_id AND u.is_active=TRUE
+            WHERE p.room_id=$1 AND p.user_id=ANY($2::uuid[]) AND p.status='admitted'
+              AND r.status IN ('scheduled','live')`, [session.roomId, [socket.userId, target.userId]]
+        );
+        const authorized = new Set(rows.map(row => String(row.user_id)));
+        if (!authorized.has(String(socket.userId))) revokeConferenceAccess(session.roomId, socket.userId);
+        if (!authorized.has(String(target.userId))) revokeConferenceAccess(session.roomId, target.userId);
+        if (authorized.size !== new Set([String(socket.userId), String(target.userId)]).size ||
+            conferenceSocketMeta.get(socket.id) !== session || !conferenceRooms.get(session.roomId)?.has(targetSocketId)) {
+          return emitSocketAck(ack, { ok: false, error: 'Conference access is no longer active' });
+        }
+      } catch (_error) {
+        return emitSocketAck(ack, { ok: false, error: 'Current conference access could not be verified' });
       }
 
       io.to(targetSocketId).emit('conference:signal', {
@@ -784,9 +831,11 @@ const initializeSocket = (httpServer) => {
         process.env.JWT_SECRET ||
         global.__JWT_ACCESS_SECRET;
       const decoded = jwt.verify(token, accessSecret);
-      socket.userId = decoded.userId || decoded.id;
-      socket.userRole = canonicalRole(decoded.role);
-      socket.userName = decoded.name || `${decoded.firstName || ''} ${decoded.lastName || ''}`.trim();
+      const current = await require('./socketAuthSession').installSocketAuthorization(socket, { decoded, verify: value => jwt.verify(value, accessSecret), db, onRevoke: () => socket.emit('conference:revoked', {}) });
+      socket.userId = current.id;
+      socket.userRole = canonicalRole(current.role);
+      socket.userName = `${current.first_name || ''} ${current.last_name || ''}`.trim();
+
       socket.hiveRole = socket.userRole;
       next();
     } catch {
@@ -895,21 +944,11 @@ const getIO = () => {
 /**
  * Emit a new message to a conversation (called from message routes)
  */
-const emitNewMessage = (conversationId, recipientId, message) => {
+const emitNewMessage = async (conversationId, recipientId, message) => {
   if (!io) return;
-  
-  // Emit to conversation room
-  io.to(`conversation:${conversationId}`).emit('message:new', message);
-  
-  // Also emit to recipient's personal room
-  io.to(`user:${recipientId}`).emit('message:new', message);
-  
-  // Emit notification for unread count update
-  io.to(`user:${recipientId}`).emit('notification:message', {
-    conversationId,
-    messageId: message.id,
-    senderName: message.senderName,
-    preview: message.content?.substring(0, 50) || 'New message'
+  return require('./messageDelivery').deliverClinicalMessage({
+    sockets: io.sockets.sockets.values(), conversationId, recipientId, message,
+    authorize: (senderId, targetId) => assertMessagingRelationship(db, senderId, targetId)
   });
 };
 
@@ -948,6 +987,8 @@ const getUserLastSeen = (userId) => {
 
 module.exports = {
   initializeSocket,
+  revokeConferenceAccess,
+  revokeUserSessions,
   getIO,
   emitNewMessage,
   emitAgentOpsEvent,

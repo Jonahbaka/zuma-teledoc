@@ -4,6 +4,8 @@ const crypto = require('node:crypto');
 const { v5: uuidv5 } = require('uuid');
 const { encrypt, decrypt } = require('../../../lib/encryption');
 const compliance = require('../compliance/complianceService');
+const { assertClinicalPharmacyActive } = require('../pharmacy/clinicalPharmacyAuthorization');
+const { sqlDateEndUtc } = require('../shared/sqlDate');
 const negotiation = require('./phcFhirCapabilityService');
 const NS = '74b8ded0-8a4a-4bc2-829b-728c84a448b3';
 const BASE = '/api/ng/medication-fhir';
@@ -20,6 +22,8 @@ function concept(drug) {
   return result;
 }
 function medicationRequest(item,ctx) {
+  const expiry=ctx.rx?.expires_at;
+  if (expiry!=null && !Number.isFinite(sqlDateEndUtc(expiry))) throw fail(422,'The prescription expiry requires a valid recorded civil date.');
   const cancelled = ['cancelled','expired'].includes(ctx.rx?.lifecycle_status) || ['unavailable','cancelled'].includes(item.status) || ['cancelled','refunded'].includes(ctx.order.status);
   const resource = {
     resourceType:'MedicationRequest',id:item.id,intent:'order',
@@ -31,7 +35,7 @@ function medicationRequest(item,ctx) {
     ...(ctx.rx ? {} : {reportedBoolean:true}),
     ...(ctx.prescriber ? {requester:{reference:`Practitioner/${ctx.prescriber.id}`}} : {}),
     ...(item.dosage || item.frequency ? {dosageInstruction:[{text:[item.dosage,item.frequency,item.duration_days ? `${item.duration_days} days` : null].filter(Boolean).join('; ')}]} : {}),
-    dispenseRequest:{quantity:{value:item.quantity},...(ctx.rx?.expires_at ? {validityPeriod:{end:iso(ctx.rx.expires_at)}} : {})},
+    dispenseRequest:{quantity:{value:item.quantity},...(expiry!=null ? {validityPeriod:{end:expiry}} : {})},
   };
   if (ctx.rx?.signed_at && Number.isSafeInteger(item.refills_authorized) && item.refills_authorized >= 0) resource.dispenseRequest.numberOfRepeatsAllowed=item.refills_authorized;
   return resource;
@@ -51,8 +55,10 @@ async function context(client,orderId) {
   const order=(await client.query('SELECT * FROM ng_orders WHERE id=$1',[orderId])).rows[0];
   const f=(await client.query('SELECT * FROM ng_medication_fulfillments WHERE order_id=$1',[orderId])).rows[0];
   if (!order || !f) throw fail(404,'Medication record not found.');
-  const pharmacy=(await client.query('SELECT * FROM ng_pharmacies WHERE id=$1',[order.pharmacy_id])).rows[0];
-  const rx=f.digital_prescription_id ? (await client.query('SELECT * FROM ng_digital_prescriptions WHERE id=$1',[f.digital_prescription_id])).rows[0] : null;
+  const pharmacy=(await client.query("SELECT *,to_char(pcn_license_expiry,'YYYY-MM-DD') AS pcn_license_expiry FROM ng_pharmacies WHERE id=$1 FOR SHARE",[order.pharmacy_id])).rows[0];
+  // Preserve DATE precision. Keep non-FHIR values (infinity/BC/out-of-range)
+  // distinguishable from a missing expiry so the exporter rejects them.
+  const rx=f.digital_prescription_id ? (await client.query("SELECT *,CASE WHEN expires_at BETWEEN DATE '0001-01-01' AND DATE '9999-12-31' THEN to_char(expires_at,'YYYY-MM-DD') ELSE expires_at::text END AS expires_at FROM ng_digital_prescriptions WHERE id=$1",[f.digital_prescription_id])).rows[0] : null;
   const items=rx ? (await client.query('SELECT * FROM ng_rx_items WHERE prescription_id=$1 ORDER BY position',[rx.id])).rows : order.items.map(item=>({...item,id:stable(`reported:${order.prescription_id}:${item.drug_id}`),drug_name:item.drug_name || item.name}));
   const prescriber=rx?.provider_id ? (await client.query('SELECT u.id,u.first_name,u.last_name FROM ng_providers p JOIN users u ON u.id=p.user_id WHERE p.id=$1',[rx.provider_id])).rows[0] : null;
   return {order,f,pharmacy,rx,items,prescriber};
@@ -62,10 +68,11 @@ function verified(ctx) {
   if (!ctx.rx && !ctx.f.pharmacy_confirmed_at) throw fail(409,'An uploaded prescription needs pharmacist confirmation before FHIR exchange.');
 }
 async function authorize(client,ctx,actor) {
-  const user=(await client.query('SELECT id,role,is_active FROM users WHERE id=$1',[actor?.id])).rows[0];
-  if (!user?.is_active) throw fail(403,'An active authorized account is required.');
+  const user=(await client.query('SELECT id,role,is_active,market_scope,account_status FROM users WHERE id=$1 FOR SHARE',[actor?.id])).rows[0];
+  if (!user?.is_active || user.market_scope !== 'NG' || user.account_status !== 'active') throw fail(403,'An active authorized Nigeria account is required.');
   const patient=user.role==='patient' && user.id===ctx.order.patient_user_id;
   const pharmacy=user.role==='pharmacy' && user.id===ctx.pharmacy.owner_user_id;
+  if (pharmacy) assertClinicalPharmacyActive(ctx.pharmacy);
   const prescriber=user.role==='provider' && user.id===ctx.prescriber?.id;
   if (!patient && !pharmacy && !prescriber && !['admin','super_admin'].includes(user.role)) throw fail(404,'Medication record not found.');
   if (pharmacy && (!ctx.f.pharmacy_data_consent_at && !ctx.f.fulfillment_consent_at)) throw fail(403,'Patient-authorized pharmacy data sharing is required.');

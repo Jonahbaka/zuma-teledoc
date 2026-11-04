@@ -82,6 +82,9 @@ async function createPharmacyPrescriptionNotification({ prescriptionId, pharmacy
        JOIN users patient ON patient.id = rx.patient_user_id
        JOIN ng_providers provider ON provider.id = rx.provider_id
       WHERE rx.id = $1
+        AND rx.routed_pharmacy_id = $2
+        AND rx.signed_at IS NOT NULL
+        AND rx.lifecycle_status IN ('sent_to_pharmacy','received','partially_dispensed','fully_dispensed','completed')
       LIMIT 1`,
     [prescriptionId, pharmacyId]
   );

@@ -7,6 +7,20 @@ const db = require('../db');
 const logger = require('../middleware/logger');
 const { keysToCamel } = require('../../lib/utils');
 
+// The legacy appointment metadata contains patient-supplied triageResults,
+// not a signed clinician assessment. Older entries must be treated the same
+// way as new ones to avoid replaying unverified urgency/medication guidance.
+function normalizePatientReportedTriage(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const unsafe = ['severity', 'soapDraft', 'triageLevel', 'suggestedSpecialty', 'flags', 'suggestedMeds', 'diagnosis', 'recommendedTests'];
+  if (!unsafe.some(key => Object.hasOwn(input, key))) return input;
+  const clean = { ...input };
+  for (const key of unsafe) delete clean[key];
+  return { ...clean, severity: null, triageLevel: 'UNASSESSED',
+    assessmentStatus: 'unassessed', requiresClinicalReview: true,
+    soapDraft: '', suggestedSpecialty: null, flags: [], suggestedMeds: [] };
+}
+
 class TriageService {
   /**
    * Store patient triage results
@@ -61,15 +75,15 @@ class TriageService {
         RETURNING *
       `;
       
-      // SAFE SERIALIZATION: Ensure we never pass 'undefined' to JSON.stringify
-      const flagsJson = JSON.stringify(Array.isArray(triageResult.flags) ? triageResult.flags : []);
-      const medsJson = JSON.stringify(Array.isArray(triageResult.suggestedMeds) ? triageResult.suggestedMeds : []);
+      // Client-entered triage is intake only: no user-supplied clinical severity, medication, SOAP, or priority is authoritative.
+      const flagsJson = JSON.stringify([]);
+      const medsJson = JSON.stringify([]);
       
       const result = await client.query(updateQuery, [
-        triageResult.severity || 0,
-        triageResult.soapDraft || '',
-        triageResult.triageLevel || (triageResult.severity >= 4 ? 'URGENT' : 'ROUTINE'),
-        triageResult.suggestedSpecialty || 'Primary Care',
+        null,
+        '',
+        'UNASSESSED',
+        null,
         flagsJson, // $5 passed as string, cast to ::jsonb in SQL
         medsJson,  // $6 passed as string, cast to ::jsonb in SQL
         symptoms,
@@ -94,10 +108,12 @@ class TriageService {
   /**
    * Get triage data for appointment
    */
-  async getTriageForAppointment(appointmentId) {
+  async getTriageForAppointment(appointmentId, actor, queryable = db.pool) {
+    // Identity alone is not permission to read another patient's triage.
+    if (!actor?.id || !['patient', 'provider'].includes(actor.role)) return null;
     try {
       // Check if metadata column exists
-      const checkColumn = await db.pool.query(
+      const checkColumn = await queryable.query(
         `SELECT column_name FROM information_schema.columns 
          WHERE table_name = 'appointments' AND column_name = 'metadata'`
       );
@@ -106,18 +122,20 @@ class TriageService {
         return null;
       }
       
-      const result = await db.pool.query(
+      const result = await queryable.query(
         `SELECT metadata->'triage' as triage_data
          FROM appointments
-         WHERE id = $1`,
-        [appointmentId]
+         WHERE id = $1
+           AND (($3 = 'patient' AND patient_id = $2)
+             OR ($3 = 'provider' AND provider_id = $2))`,
+        [appointmentId, actor.id, actor.role]
       );
       
       if (result.rows.length === 0 || !result.rows[0].triage_data || result.rows[0].triage_data === null) {
         return null;
       }
       
-      return result.rows[0].triage_data;
+      return normalizePatientReportedTriage(result.rows[0].triage_data);
     } catch (error) {
       logger.error('Error fetching triage for appointment:', error);
       return null;
@@ -156,14 +174,17 @@ class TriageService {
         AND a.metadata IS NOT NULL
         AND a.metadata ? 'triage'
         AND jsonb_typeof(a.metadata->'triage') = 'object'
-        ORDER BY COALESCE((a.metadata->'triage'->>'severity')::int, 0) DESC, a.scheduled_at ASC
+        ORDER BY a.scheduled_at ASC
       `;
       const result = await db.pool.query(query, [providerId]);
       
       return result.rows.map(row => {
         const appointment = keysToCamel(row);
         // Ensure triageData is attached cleanly
-        appointment.triageData = row.triage_data; 
+        appointment.triageData = normalizePatientReportedTriage(row.triage_data);
+        if (appointment.metadata && typeof appointment.metadata === 'object') {
+          appointment.metadata = { ...appointment.metadata, triage: appointment.triageData };
+        } 
         return appointment;
       });
     } catch (error) {
@@ -173,5 +194,7 @@ class TriageService {
   }
 }
 
-module.exports = new TriageService();
+const instance = new TriageService();
+instance.normalizePatientReportedTriage = normalizePatientReportedTriage;
+module.exports = instance;
 

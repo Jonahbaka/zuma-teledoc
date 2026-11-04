@@ -125,3 +125,13 @@ test('payout controls require explicit activation, super administrator and compl
   assert.equal(helpers.canApproveMedicationSettlement({ ...order, cancellationPending: true }, 'super_admin', true), false);
   assert.equal(helpers.canApproveMedicationSettlement({ ...order, returns: { receivedAt: '2099-01-01' } }, 'super_admin', true), false);
 });
+
+test('suspended-pharmacy checkout preserves cancellation but rejects any contradictory fulfillment action', () => {
+  const value = checkout({ pharmacy: { id: 'approved-pharmacy', active: false } });
+  value.actions.canCancel = true;
+  assert.equal(helpers.readMedicationCheckout(value, value.orderId).actions.canCancel, true);
+  for (const name of ['canChoose', 'canApproveMedicines', 'canPayMedicines', 'canRequestQuote', 'canApproveQuote', 'canPayDelivery', 'canDispatch', 'canMarkCollected']) {
+    assert.throws(() => helpers.readMedicationCheckout({ ...value, actions: { ...value.actions, [name]: true } }, value.orderId));
+  }
+  assert.throws(() => helpers.readMedicationCheckout(checkout({ pharmacy: { id: 'approved-pharmacy', active: 'false' } }), value.orderId));
+});

@@ -85,15 +85,15 @@ function makePool() {
         state.participants.push(participant);
         return { rows: [participant] };
       }
-      if (/SELECT \* FROM ng_conf_participants WHERE room_id/i.test(text)) {
-        return { rows: state.participants.filter(p => p.room_id === params[0]) };
-      }
       if (/SELECT \* FROM ng_conf_participants WHERE id=\$1 AND room_id/i.test(text)) {
         return { rows: state.participants.filter(p => p.id === params[0] && p.room_id === params[1]) };
       }
       // actor lookup (host check)
       if (/SELECT \* FROM ng_conf_participants WHERE room_id=\$1 AND user_id=\$2/i.test(text)) {
         return { rows: state.participants.filter(p => p.room_id === params[0] && p.user_id === params[1]) };
+      }
+      if (/SELECT \* FROM ng_conf_participants WHERE room_id/i.test(text)) {
+        return { rows: state.participants.filter(p => p.room_id === params[0]) };
       }
       if (/SELECT COUNT\(\*\).*ng_conf_participants.*status='admitted'/i.test(text)) {
         const n = state.participants.filter(p => p.room_id === params[0] && p.status === 'admitted').length;
@@ -315,7 +315,7 @@ describe('Step 2 — Provider joins conference as valid ng_conf_role', () => {
 
   it('patient joins room with role "patient"', async () => {
     activePool = makePool();
-    room = await createRoom({ max_participants: 2, media_server: 'livekit' }, providerActor, activePool);
+    room = await createRoom({ patient_user_id: PATIENT_ID, max_participants: 2, media_server: 'livekit' }, providerActor, activePool);
     const participant = await joinRoom(
       room.id,
       patientActor,

@@ -7,6 +7,8 @@ const express = require('express');
 const router = express.Router();
 const pharmacyOnboardingService = require('../services/pharmacy/pharmacyOnboardingService');
 const complianceService = require('../services/compliance/complianceService');
+const medicationRequests = require('../services/pharmacy/medicationRequestService');
+const inventoryVerification = require('../services/pharmacy/inventoryVerificationService');
 const { getPool } = require('../../server/db');
 const { requireSuperAdmin } = require('../../server/middleware/auth');
 router.use('/medication-delivery', require('./medicationDeliveryAdmin'));
@@ -67,6 +69,10 @@ function getActorUserId(user = {}) {
 const MEDICINE_SOURCE_STATUSES = new Set(['approved', 'reference_only', 'needs_admin_review', 'unsupported', 'disabled']);
 
 // Medication availability requests created from /ng/medicines.
+router.use('/medication-requests', (_req, res, next) => {
+  res.set('Cache-Control', 'private, no-store');
+  next();
+});
 router.get('/medication-requests', async (req, res) => {
   try {
     const pool = getPool();
@@ -135,85 +141,9 @@ router.get('/medication-requests', async (req, res) => {
 
 router.patch('/medication-requests/:requestId', async (req, res) => {
   try {
-    const allowedStatuses = new Set([
-      'pending_pharmacy_confirmation',
-      'pharmacy_reviewing',
-      'available',
-      'unavailable',
-      'clarification_requested',
-      'fulfilled',
-      'completed',
-      'cancelled',
-    ]);
-    const nextStatus = req.body.status ? String(req.body.status).trim() : null;
-
-    if (nextStatus && !allowedStatuses.has(nextStatus)) {
-      return res.status(400).json({ error: 'Unsupported medication request status.' });
-    }
-
-    const pool = getPool();
-    const updates = [];
-    const values = [];
-
-    if (nextStatus) {
-      values.push(nextStatus);
-      updates.push(`status = $${values.length}`);
-    }
-
-    if (req.body.assignedPharmacyId !== undefined) {
-      values.push(req.body.assignedPharmacyId || null);
-      updates.push(`assigned_pharmacy_id = $${values.length}`);
-    }
-
-    if (req.body.adminNotes !== undefined) {
-      values.push(req.body.adminNotes || null);
-      updates.push(`admin_notes = $${values.length}`);
-    }
-
-    if (req.body.confirmedPriceNgn !== undefined) {
-      const confirmedPrice = req.body.confirmedPriceNgn === '' || req.body.confirmedPriceNgn === null
-        ? null
-        : Number(req.body.confirmedPriceNgn);
-      if (confirmedPrice !== null && !Number.isFinite(confirmedPrice)) {
-        return res.status(400).json({ error: 'Confirmed price must be a number.' });
-      }
-      values.push(confirmedPrice);
-      updates.push(`confirmed_price_ngn = $${values.length}`);
-    }
-
-    if (req.body.pharmacyNotes !== undefined) {
-      values.push(req.body.pharmacyNotes || null);
-      updates.push(`pharmacy_notes = $${values.length}`);
-    }
-
-    if (req.body.clarificationRequest !== undefined) {
-      values.push(req.body.clarificationRequest || null);
-      updates.push(`clarification_request = $${values.length}`);
-    }
-
-    if (!updates.length) {
-      return res.status(400).json({ error: 'No medication request updates supplied.' });
-    }
-
-    updates.push('updated_at = NOW()');
-    values.push(req.params.requestId);
-
-    const result = await pool.query(
-      `UPDATE ng_medication_requests
-          SET ${updates.join(', ')}
-        WHERE id = $${values.length}
-        RETURNING *`,
-      values
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Medication request not found.' });
-    }
-
-    res.json({ request: result.rows[0] });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+    const request = await medicationRequests.updateRequest(getPool(), req.user, req.params.requestId, req.body);
+    res.json({ request });
+  } catch (error) { medicationRequests.sendError(res, error); }
 });
 
 // Medication source audit and catalog quality controls.
@@ -494,59 +424,9 @@ router.get('/pharmacy-inventory', async (req, res) => {
 });
 
 router.patch('/pharmacy-inventory/:inventoryId/availability-verification', requireSuperAdmin, async (req, res) => {
-  try {
-    const pool = getPool();
-    const verified = req.body.verified === true;
-    const nextStatus = verified ? 'verified' : 'unverified';
-
-    const previous = await pool.query(
-      `SELECT availability_verification_status FROM ng_pharmacy_inventory WHERE id = $1`,
-      [req.params.inventoryId]
-    );
-
-    const result = await pool.query(
-      `UPDATE ng_pharmacy_inventory
-          SET availability_verification_status = $2,
-              availability_verified_at = CASE WHEN $2 = 'verified' THEN NOW() ELSE NULL END,
-              availability_verified_by = CASE WHEN $2 = 'verified' THEN $3 ELSE NULL END,
-              availability_source = $4,
-              availability_notes = $5,
-              updated_at = NOW()
-        WHERE id = $1
-        RETURNING *`,
-      [
-        req.params.inventoryId,
-        nextStatus,
-        getActorUserId(req.user),
-        req.body.availabilitySource || 'admin_confirmation',
-        req.body.availabilityNotes || null,
-      ]
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Pharmacy inventory record not found.' });
-    }
-
-    await pool.query(
-      `INSERT INTO ng_medication_source_audit_log (
-         inventory_id, actor_user_id, action, from_status, to_status, details
-       ) VALUES ($1, $2, 'pharmacy_availability_verification_updated', $3, $4, $5)`,
-      [
-        req.params.inventoryId,
-        getActorUserId(req.user),
-        previous.rows[0]?.availability_verification_status || null,
-        nextStatus,
-        {
-          availabilitySource: req.body.availabilitySource || 'admin_confirmation',
-          availabilityNotes: req.body.availabilityNotes || null,
-        },
-      ]
-    );
-
-    res.json({ inventory: result.rows[0] });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await inventoryVerification.update(getPool(), req.user, req.params.inventoryId, req.body)); }
+  catch (error) { inventoryVerification.sendError(res, error); }
 });
 
 // --- PHARMACY MANAGEMENT ---

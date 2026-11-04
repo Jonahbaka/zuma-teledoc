@@ -26,6 +26,8 @@ try {
   console.warn('Socket service not available:', err.message);
 }
 
+const { saveAuthorizedMessage, markReturnedMessagesRead } = require('../services/messageIntegrity');
+
 const router = express.Router();
 const messageSendLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -50,114 +52,29 @@ router.post('/',
       if (!content) {
         return res.status(400).json({ success: false, error: 'Message content is required' });
       }
-      const { conversationId, recipient } = await assertMessagingRelationship(
-        db,
-        req.user.id,
-        data.recipientId
-      );
-
-      // Idempotent send: a retry over a flaky connection must not create a second
-      // copy of the same clinical message. Return the original instead.
-      const clientMessageId = data.clientMessageId || null;
-      if (clientMessageId) {
-        const existing = await db.query(
-          `SELECT id, conversation_id, sender_id, recipient_id,
-                  is_urgent, has_attachment, status, created_at
-             FROM messages
-            WHERE sender_id = $1 AND client_message_id = $2
-            LIMIT 1`,
-          [req.user.id, clientMessageId]
-        );
-        if (existing.rows.length) {
-          return res.status(200).json({
-            success: true,
-            deduplicated: true,
-            message: { ...existing.rows[0] },
-          });
-        }
+      const saved = await saveAuthorizedMessage({ db, senderId: req.user.id, input: { ...data, content }, encrypt, decrypt });
+      const { conversationId, recipient, message } = saved;
+      if (saved.deduplicated) {
+        return res.status(200).json({ success: true, deduplicated: true, data: message, message,
+          dispatch: { status: 'not_repeated', note: 'Original message is saved; delivery is not confirmed by a retry.' } });
       }
-      
-      // Encrypt message content
-      let encrypted, iv, tag;
-      try {
-        const encryptionResult = encrypt(content);
-        encrypted = encryptionResult.encrypted;
-        iv = encryptionResult.iv;
-        tag = encryptionResult.tag;
-      } catch (encryptError) {
-        logger.error('Message encryption failed', { userId: req.user.id });
-        throw new Error('Message encryption failed');
-      }
-      
-      // Create message
-      let rows;
-      try {
-        const result = await db.query(
-          `INSERT INTO messages (
-            conversation_id, sender_id, recipient_id,
-            content_encrypted, content_iv, content_tag,
-            is_urgent, has_attachment, attachment_name, attachment_type,
-            client_message_id
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-          RETURNING id, conversation_id, sender_id, recipient_id,
-                    is_urgent, has_attachment, status, created_at`,
-          [
-            conversationId,
-            req.user.id,
-            data.recipientId,
-            encrypted,
-            iv,
-            tag,
-            data.isUrgent || false,
-            !!data.attachmentName,
-            data.attachmentName || null,
-            data.attachmentType || null,
-            clientMessageId
-          ]
-        );
-        rows = result.rows;
-      } catch (dbError) {
-        // A concurrent retry with the same client key won the race: return the
-        // stored message rather than failing the send or duplicating it.
-        if (dbError.code === '23505' && clientMessageId) {
-          const existing = await db.query(
-            `SELECT id, conversation_id, sender_id, recipient_id,
-                    is_urgent, has_attachment, status, created_at
-               FROM messages
-              WHERE sender_id = $1 AND client_message_id = $2
-              LIMIT 1`,
-            [req.user.id, clientMessageId]
-          );
-          if (existing.rows.length) {
-            return res.status(200).json({
-              success: true,
-              deduplicated: true,
-              message: { ...existing.rows[0] },
-            });
-          }
-        }
-        logger.error('Message persistence failed', {
-          userId: req.user.id,
-          errorCode: dbError.code
-        });
-        throw dbError;
-      }
-      
-      // Create notification for recipient using notification service
+      // Persistence has committed. Notification failures must never turn a
+      // durable message into an apparent failed send or trigger duplicate writes.
+      const dispatch = { notification: 'unavailable', email: data.isUrgent ? 'unavailable' : 'not_requested', realtime: 'unavailable' };
       const senderName = `${req.user.firstName || req.user.first_name || 'User'} ${req.user.lastName || req.user.last_name || ''}`.trim();
-      await notificationService.sendMessageNotification(
-        req.user.id,
-        senderName,
-        data.recipientId,
-        rows[0].id,
-        data.isUrgent
-      );
-      
+      try {
+        const notification = await notificationService.sendMessageNotification(req.user.id, senderName, recipient.id, message.id, data.isUrgent);
+        dispatch.notification = notification ? 'recorded' : 'failed';
+      } catch (_) {
+        dispatch.notification = 'failed';
+        logger.warn('Message saved but notification failed', { messageId: message.id });
+      }
+
       // Send email notification for urgent messages
       if (data.isUrgent) {
         try {
           const emailService = require('../services/email');
-          await emailService.sendNewMessageEmail(
+          const emailResult = await emailService.sendNewMessageEmail(
             {
               id: recipient.id,
               email: recipient.email,
@@ -167,24 +84,26 @@ router.post('/',
             senderName,
             true
           );
+          dispatch.email = emailResult?.success === false ? 'failed' : 'attempted';
         } catch (emailError) {
+          dispatch.email = 'failed';
           logger.warn('Failed to send urgent message email notification', {
-            recipientId: data.recipientId
+            recipientId: recipient.id
           });
         }
       }
       
       logger.info('Message sent', { 
-        messageId: rows[0].id, 
+        messageId: message.id,
         senderId: req.user.id, 
-        recipientId: data.recipientId 
+        recipientId: recipient.id
       });
       
       // Emit real-time message via Socket.io
       if (socketService) {
         try {
-          socketService.emitNewMessage(conversationId, data.recipientId, {
-            id: rows[0].id,
+          const realtime = socketService.emitNewMessage(conversationId, recipient.id, {
+            id: message.id,
             conversationId,
             senderId: req.user.id,
             senderName,
@@ -194,9 +113,15 @@ router.post('/',
             attachmentName: data.attachmentName,
             status: 'sent',
             sentByMe: false, // For recipient
-            createdAt: rows[0].created_at
+            createdAt: message.createdAt
           });
+          // Receiver reauthentication may wait; never delay the durable saved
+          // response until an idle recipient refreshes. This is best effort,
+          // not a durable delivery queue or proof of receipt.
+          Promise.resolve(realtime).catch(() => logger.warn('Saved message realtime delivery unavailable', { messageId: message.id }));
+          dispatch.realtime = 'scheduled';
         } catch (socketError) {
+          dispatch.realtime = 'failed';
           logger.warn('Failed to emit socket message', { error: socketError.message });
         }
       }
@@ -204,7 +129,8 @@ router.post('/',
       res.status(201).json({
         success: true,
         message: 'Message sent successfully',
-        data: keysToCamel(rows[0])
+        data: message,
+        dispatch
       });
     } catch (error) {
       if (error.status === 400) {
@@ -214,8 +140,8 @@ router.post('/',
           errors: error.errors
         });
       }
-      if (error.status === 403) {
-        return res.status(403).json({
+      if (error.status === 403 || error.status === 409) {
+        return res.status(error.status).json({
           success: false,
           error: error.message
         });
@@ -373,18 +299,13 @@ router.get('/conversation/:recipientId', authenticate, async (req, res) => {
       [conversationId, req.user.id, limit, offset]
     );
     
-    // Mark messages as read
-    await db.query(
-      `UPDATE messages SET status = 'read', read_at = NOW()
-       WHERE conversation_id = $1 AND recipient_id = $2 AND status != 'read'`,
-      [conversationId, req.user.id]
-    );
-    
     // Decrypt messages
+    const decodedIds = [];
     const messages = rows.map(row => {
       let content = null;
       try {
         content = decrypt(row.content_encrypted, row.content_iv, row.content_tag);
+        if (content !== null) decodedIds.push(row.id);
       } catch (decryptError) {
         logger.warn('Failed to decrypt message', { 
           messageId: row.id, 
@@ -412,6 +333,13 @@ router.get('/conversation/:recipientId', authenticate, async (req, res) => {
       };
     });
     
+    const readRows = await markReturnedMessagesRead(db, req.user.id, decodedIds);
+    const readById = new Map(readRows.map(row => [row.id, row]));
+    for (const message of messages) {
+      const marked = readById.get(message.id);
+      if (marked) { message.status = marked.status; message.readAt = marked.read_at; }
+    }
+
     res.json({
       success: true,
       conversationId,
@@ -464,7 +392,7 @@ router.put('/:id/read', authenticate, async (req, res) => {
     const { id } = req.params;
     
     const { rows } = await db.query(
-      `UPDATE messages SET status = 'read', read_at = NOW()
+      `UPDATE messages SET status = 'read', read_at = COALESCE(read_at, NOW())
        WHERE id = $1 AND recipient_id = $2
        RETURNING id, status, read_at`,
       [id, req.user.id]

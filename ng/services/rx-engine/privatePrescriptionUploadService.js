@@ -31,9 +31,11 @@ async function saveSubmission(pool, req, { image, text }) {
   if (!process.env.ENCRYPTION_KEY) throw fail(503, 'Prescription submission is temporarily unavailable.');
   const key = req.get?.('Idempotency-Key') || req.headers?.['idempotency-key'];
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key || '')) throw fail(400, 'A valid submission reference is required.');
-  const normalized = image ? await normalizeImage(image) : null;
+  let normalized;
+  try { normalized = image ? await normalizeImage(image) : null; }
+  catch (error) { if (error.status === 400) error.submissionNotStarted = true; throw error; }
   const content = typeof text === 'string' ? text.trim() : '';
-  if (!normalized && (!content || content.length > 10000)) throw fail(400, 'Enter prescription text up to 10,000 characters.');
+  if (!normalized && (!content || content.length > 10000)) throw Object.assign(fail(400, 'Enter prescription text up to 10,000 characters.'), { submissionNotStarted: true });
   const digest = crypto.createHash('sha256').update(normalized || content).update(normalized ? 'image/png' : 'text').digest('hex');
   const client = await pool.connect();
   try {
@@ -60,6 +62,23 @@ async function saveSubmission(pool, req, { image, text }) {
     };
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
+}
+
+// Read only: a missing receipt is not proof an earlier request failed.
+async function readSubmissionReceipt(pool, req, requestId) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId || '')) throw fail(400, 'Invalid submission reference.');
+  await requirePatient(pool, req.user?.id);
+  const { rows } = await pool.query(`
+    SELECT rx.id, rx.status FROM ng_prescriptions rx
+    JOIN users actor ON actor.id = rx.patient_user_id
+    WHERE rx.patient_user_id = $1 AND rx.submission_key = $2
+      AND actor.role = 'patient' AND actor.market_scope = 'NG' AND actor.is_active = true
+  `, [req.user.id, requestId]);
+  if (!rows.length) throw fail(404, 'No saved submission is visible for this reference yet.');
+  await pool.query(`INSERT INTO audit_logs (user_id,action,resource_type,resource_id,patient_id,phi_accessed,success,description)
+    VALUES ($1,'read','prescription_submission',$2,$1,true,true,'Patient reconciled prescription submission receipt')`, [req.user.id, rows[0].id]);
+  return { prescriptionId: rows[0].id, status: rows[0].status,
+    requiresVerification: ['uploaded', 'parsing', 'parsed'].includes(rows[0].status) };
 }
 
 async function readOwnedImage(pool, req, id) {
@@ -163,6 +182,7 @@ async function readProviderSubmission(pool, req, patientUserId, id) {
 }
 
 module.exports = {
+  readSubmissionReceipt,
   MAX_IMAGE_BYTES,
   normalizeImage,
   saveSubmission,

@@ -34,16 +34,15 @@ test('the client key is optional, so older clients keep working', () => {
   assert.equal(parsed.isUrgent, false);
 });
 
-test('the send path deduplicates on the client key instead of inserting twice', () => {
-  const source = read('server/routes/messages.js');
-  assert.match(source, /client_message_id/, 'the insert persists the client key');
-  assert.match(
-    source,
-    /SELECT id, conversation_id[\s\S]{0,400}client_message_id/,
-    'a retry looks the message up before inserting'
-  );
-  assert.match(source, /deduplicated:\s*true/, 'a deduplicated retry is reported, not silently accepted');
-  assert.match(source, /dbError\.code === '23505'/, 'a concurrent duplicate insert is recovered');
+test('the send route delegates protected transactional retry integrity and reports conflicts', () => {
+  const route = read('server/routes/messages.js');
+  const service = read('server/services/messageIntegrity.js');
+  assert.match(route, /saveAuthorizedMessage/);
+  assert.match(route, /error.status === 409/);
+  assert.match(service, /db.transaction/);
+  assert.match(service, /assertSameMessageIntent/);
+  assert.match(service, /error.code === '23505'/);
+  assert.match(service, /ROLLBACK TO SAVEPOINT message_insert/);
 });
 
 test('the database enforces one stored message per client key', () => {

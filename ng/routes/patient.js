@@ -67,13 +67,20 @@ router.get('/drugs/:drugId/availability/:pharmacyId', async (req, res) => {
 
 // --- PRESCRIPTIONS ---
 
+// Minimal actor-bound recovery receipt; never returns text, image or digest.
+router.get('/prescriptions/requests/:requestId', requireRole('patient'), async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  try { res.json(await privateUpload.readSubmissionReceipt(getPool(), req, req.params.requestId)); }
+  catch (err) { res.status(err.status || 503).json({ error: err.status ? err.message : 'Submission recovery is temporarily unavailable.' }); }
+});
+
 // Upload prescription image
-router.post('/prescriptions/upload', requireRole('patient'), (req, res, next) => upload(req, res, (error) => error ? res.status(400).json({ error: 'Choose one JPEG or PNG image up to 5 MB.' }) : next()), async (req, res) => {
+router.post('/prescriptions/upload', requireRole('patient'), (req, res, next) => upload(req, res, (error) => error ? res.status(400).json({ error: 'Choose one JPEG or PNG image up to 5 MB.', submissionNotStarted: true }) : next()), async (req, res) => {
   try {
     const result = await privateUpload.saveSubmission(getPool(), req, { image: req.file });
     res.status(201).json(result);
   } catch (err) {
-    res.status(err.status || (['42P01','42703'].includes(err.code) ? 503 : 500)).json({ error: err.status ? err.message : 'Prescription submission is temporarily unavailable.' });
+    res.status(err.status || (['42P01','42703'].includes(err.code) ? 503 : 500)).json({ error: err.status ? err.message : 'Prescription submission is temporarily unavailable.', ...(err.submissionNotStarted === true ? { submissionNotStarted: true } : {}) });
   }
 });
 
@@ -89,12 +96,12 @@ router.get('/prescriptions/:id/image', requireRole('patient'), async (req, res) 
 router.post('/prescriptions/text', requireRole('patient'), async (req, res) => {
   try {
     const { text } = req.body;
-    if (!text) return res.status(400).json({ error: 'Prescription text required' });
+    if (!text) return res.status(400).json({ error: 'Prescription text required', submissionNotStarted: true });
 
     const result = await privateUpload.saveSubmission(getPool(), req, { text });
     res.status(201).json(result);
   } catch (err) {
-    res.status(err.status || 503).json({ error: err.status ? err.message : 'Prescription submission is temporarily unavailable.' });
+    res.status(err.status || 503).json({ error: err.status ? err.message : 'Prescription submission is temporarily unavailable.', ...(err.submissionNotStarted === true ? { submissionNotStarted: true } : {}) });
   }
 });
 

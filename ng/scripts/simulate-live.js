@@ -4,7 +4,7 @@
  * ng/scripts/simulate-live.js
  *
  * End-to-end agent-driven simulation that exercises the live DoctaRx
- * Nigeria service layer against an explicitly isolated Neon database.
+ * Nigeria service layer against an explicit loopback PostgreSQL *_test database.
  *
  * Unlike `simulate.js` (hermetic, ~50ms, pure functions), this one:
  *   • Creates real rows in ng_conf_rooms / ng_conf_participants /
@@ -23,12 +23,15 @@
  *
  * Without --keep, the runner cleans up every row it created at the end.
  * Cleanup is best-effort, so this script intentionally refuses to run
- * unless the target is identified as local/test/staging/synthetic.
+ * unless fixtureTargetSafety verifies the actual loopback *_test pool.
  */
 
 require('dotenv').config();
 const crypto = require('crypto');
-const { getPool } = require('../../server/db');
+const { Pool } = require('pg');
+const { fixtureTargetSafety } = require('./fixtureTargetSafety');
+const fixtureSafety = fixtureTargetSafety({ env: process.env });
+if (fixtureSafety.skipped) { console.error(fixtureSafety.reason); process.exit(2); }
 
 if (!process.env.DATABASE_URL) {
   console.error('FATAL: DATABASE_URL not set');
@@ -71,13 +74,16 @@ const AGENTS = {
 const SIM_IDS = {
   provider_id: crypto.randomUUID(),
   pharmacy_id: crypto.randomUUID(),
+  receiver_provider_id: crypto.randomUUID(),
+  destination_org_id: crypto.randomUUID(),
+  destination_listing_id: crypto.randomUUID(),
 };
 
 async function seedAgents(pool) {
   for (const a of Object.values(AGENTS)) {
     await pool.query(
-      `INSERT INTO users (id, email, password_hash, role, first_name, last_name)
-       VALUES ($1, $2, 'simulation', $3::user_role, $4, $5)
+      `INSERT INTO users (id, email, password_hash, role, first_name, last_name, is_active, is_test_account, market_scope, provider_status)
+       VALUES ($1, $2, '!disabled-synthetic', $3::user_role, $4, $5, TRUE, TRUE, 'NG', 'approved')
        ON CONFLICT (id) DO NOTHING`,
       [a.user_id, a.email, a.user_table_role, 'Sim', a.name.split(' ').slice(-1)[0]]
     );
@@ -92,7 +98,17 @@ async function seedAgents(pool) {
     [SIM_IDS.provider_id, AGENTS.junior_doc.user_id, AGENTS.junior_doc.name,
      `sim.provider.${RUN_ID}@simulate.local`, '+2348012340099']
   );
-  cleanup.push({ table: '_providers', ids: [SIM_IDS.provider_id] });
+  cleanup.push({ table: '_providers', ids: [SIM_IDS.provider_id, SIM_IDS.receiver_provider_id] });
+  await pool.query(`INSERT INTO ng_providers(id,user_id,full_name,email,phone,status)
+    VALUES($1,$2,$3,$4,'synthetic-no-phone','verified')`,
+    [SIM_IDS.receiver_provider_id, AGENTS.consultant.user_id, `[SYNTHETIC] ${AGENTS.consultant.name}`, AGENTS.consultant.email]);
+  await pool.query(`INSERT INTO drn_organizations(id,org_type,name,slug,active)
+    VALUES($1,'specialist_practice',$2,$3,TRUE)`,
+    [SIM_IDS.destination_org_id, `[SYNTHETIC] ${RUN_ID}`, `synthetic-${RUN_ID}`]);
+  cleanup.push({ table: '_drn_orgs', ids: [SIM_IDS.destination_org_id] });
+  await pool.query(`INSERT INTO drn_marketplace_listings(id,organization_id,provider_id,specialty,service_kind,title,price_min_naira,price_max_naira,active,metadata_json)
+    VALUES($1,$2,$3,'cardiology','consultation','Synthetic cardiology',5000,5000,TRUE,$4::jsonb)`,
+    [SIM_IDS.destination_listing_id, SIM_IDS.destination_org_id, SIM_IDS.receiver_provider_id, JSON.stringify({ fixture: 'synthetic-drn', runId: RUN_ID })]);
 
   // ng_pharmacies row — needed for ng_digital_prescriptions.routed_pharmacy_id FK
   // Schema from 001_ng_core_tables.sql has owner_user_id (not user_id) +
@@ -348,10 +364,10 @@ async function scenarioReferral(pool) {
   console.log('\n━━━ SCENARIO 3: DRN REFERRAL — EMERGENCY CARDIOLOGY ━━━');
 
   // Reuse the seeded ng_provider (FK target for originating_provider).
-  // org IDs can be NULL — drn_referrals FK is optional for them.
+  // The destination is a separately owned synthetic catalogue and verified clinician.
   const originatingProviderId = SIM_IDS.provider_id;
   const originatingOrgId = null;
-  const destinationOrgId = null;
+  const destinationOrgId = SIM_IDS.destination_org_id;
 
   // Junior doctor creates an emergency referral
   const referral = await drn.createReferral({
@@ -363,8 +379,9 @@ async function scenarioReferral(pool) {
     originating_provider: originatingProviderId,
     originating_org:      originatingOrgId,
     destination_org:      destinationOrgId,
+    destination_listing: SIM_IDS.destination_listing_id,
     specialty: 'cardiology',
-    service_kind: 'specialist_consult',
+    service_kind: 'consultation',
     reason: 'Suspected STEMI',
     clinical_summary: `[${RUN_ID}] 47yo female, chest pain radiating to left arm. ECG: ST elevation V2-V4. BP 180/110. Needs urgent PCI evaluation.`,
   }, AGENTS.junior_doc, pool);
@@ -383,8 +400,8 @@ async function scenarioReferral(pool) {
   r = await drn.transitionReferral(referral.id, 'accepted', AGENTS.consultant, { accepted_at_note: 'Cath lab on call' }, pool);
   record('DRN', 'consultant', 'accepted', r.status === 'accepted');
 
-  r = await drn.transitionReferral(referral.id, 'scheduled', AGENTS.coordinator, { scheduled_for: new Date(Date.now()+3600000).toISOString() }, pool);
-  record('DRN', 'coordinator', 'scheduled', r.status === 'scheduled');
+  r = await drn.transitionReferral(referral.id, 'scheduled', AGENTS.consultant, { scheduled_at: new Date(Date.now()+3600000).toISOString() }, pool);
+  record('DRN', 'consultant', 'scheduled', r.status === 'scheduled');
 
   r = await drn.transitionReferral(referral.id, 'in_progress', AGENTS.consultant, {}, pool);
   record('DRN', 'consultant', 'in_progress', r.status === 'in_progress');
@@ -398,8 +415,8 @@ async function scenarioReferral(pool) {
     'INVALID_TRANSITION');
 
   // QR slip mint + verify
-  const qr = await drn.mintQrToken(referral.id, AGENTS.coordinator, { scope: 'patient_slip', ttlDays: 1 }, pool);
-  record('DRN', 'coordinator', 'mintQrToken',
+  const qr = await drn.mintQrToken(referral.id, AGENTS.consultant, { scope: 'patient_slip', ttlDays: 1 }, pool);
+  record('DRN', 'consultant', 'mintQrToken',
     !!qr.token && qr.token.length >= 20,
     `prefix=${qr.token.slice(0,8)}…`);
 
@@ -509,6 +526,10 @@ async function teardown(pool) {
     await pool.query('DELETE FROM drn_commissions WHERE referral_id=$1', [id]).catch(() => {});
     await pool.query('DELETE FROM drn_referrals WHERE id=$1', [id]);
   }
+  for (const id of (cleanup.find(c => c.table === '_drn_orgs') || {}).ids || []) {
+    await pool.query('DELETE FROM drn_marketplace_listings WHERE organization_id=$1', [id]);
+    await pool.query('DELETE FROM drn_organizations WHERE id=$1', [id]);
+  }
   // ng_pharmacies + ng_providers seeded rows (must come before users due to FK to users.id)
   const pharmIds = (cleanup.find(c => c.table === '_pharmacies') || {}).ids || [];
   for (const pid of pharmIds) await pool.query('DELETE FROM ng_pharmacies WHERE id=$1', [pid]).catch(() => {});
@@ -536,7 +557,9 @@ async function teardown(pool) {
   const t0 = Date.now();
   let pool;
   try {
-    pool = await getPool();
+    pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const safety = fixtureTargetSafety({ pool, env: process.env });
+    if (safety.skipped) throw new Error(safety.reason);
     await seedAgents(pool);
     record('SETUP', 'system', 'seedAgents', true, `${Object.keys(AGENTS).length} users inserted into users table`);
     await scenarioConferencing(pool);

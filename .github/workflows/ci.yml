@@ -32,6 +32,16 @@ jobs:
       - name: Functional, regression, and portal tests
         run: npm test
 
+      - name: Clinical AI production-disabled and migration safety gates
+        env:
+          NODE_ENV: production
+          CLINICAL_AI_KILL_SWITCH: 'true'
+          CLINICAL_AI_ALLOW_EXTERNAL_PHI: 'false'
+          CLINICAL_AI_ALLOW_DEMO_GROQ: 'false'
+        run: |
+          npm run migrations:verify
+          npm run clinical-ai:release-preflight
+
       - name: Deployment and secret guards
         run: npm run test:deploy-guard
 
@@ -110,6 +120,9 @@ jobs:
           npm run migrate
           npm run ng:migrate
 
+      - name: Verify migration transactions, drift refusal and release locks
+        run: SIMULATION_DATABASE_URL="$DATABASE_URL" npm run test:release-safety
+
       - name: Run government PostgreSQL workflow tests
         run: npm run test:ng:government-data:db
 
@@ -127,7 +140,7 @@ jobs:
       - name: Restore to a separate database
         run: |
           createdb --host=localhost --username=postgres doctarx_restore_test
-          pg_restore --host=localhost --username=postgres --dbname=doctarx_restore_test --no-owner --no-acl artifacts/database/10-post-tests.dump
+          pg_restore --host=localhost --username=postgres --dbname=doctarx_restore_test --no-owner --no-acl --exit-on-error --single-transaction artifacts/database/10-post-tests.dump
 
       - name: Reconcile source and restored database
         run: |
@@ -225,6 +238,9 @@ jobs:
 
       - name: Run desktop and mobile authenticated role matrix
         run: npm run e2e:government:roles
+
+      - name: Clinical Copilot reviewed documentation and follow-up browser regression
+        run: node scripts/e2e-clinical-copilot.cjs
 
       - name: Upload browser screenshots, traces, logs, and accessibility evidence
         if: always()

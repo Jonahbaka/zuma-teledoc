@@ -13,6 +13,7 @@ const workflow = require('../services/phc/phcWorkflowService');
 const offlineSync = require('../services/phc/offlineSyncService');
 const reporting = require('../services/phc/programmeReportingService');
 const clinicalAi = require('../services/phc/clinicalAiService');
+const clinicalAiStages = require('../../shared/clinicalAiStages.json');
 const devices = require('../services/phc/deviceGatewayService');
 
 const router = express.Router();
@@ -428,6 +429,8 @@ router.patch(
 );
 
 const followUpSchema = z.object({
+  sourceSuggestionId: uuid.optional(),
+  sourceDraftIndex: z.number().int().min(0).max(9).optional(),
   patientUserId: uuid,
   encounterId: uuid.nullable().optional(),
   referralId: uuid.nullable().optional(),
@@ -470,6 +473,27 @@ router.get(
   })
 );
 
+const followUpTransitionSchema = z.object({
+  toStatus: z.enum(['in_progress', 'completed', 'cancelled']),
+  expectedVersion: z.number().int().min(1),
+  outcome: z.string().trim().max(5000).nullable().optional(),
+}).strict();
+
+router.patch(
+  '/follow-ups/:id/status',
+  scoped(followUpRoles),
+  validate(followUpTransitionSchema),
+  asyncHandler(async (req, res) => {
+    if (!uuid.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Invalid task identifier.', code: 'VALIDATION_ERROR' });
+    }
+    const task = await workflow.transitionFollowUp(
+      getPool(), req, req.programmeContext, { taskId: req.params.id, ...req.validatedBody }
+    );
+    res.json({ ok: true, task });
+  })
+);
+
 const referralSchema = z.object({
   patientUserId: uuid,
   encounterId: uuid,
@@ -481,6 +505,7 @@ const referralSchema = z.object({
   priority: z.enum(['routine', 'urgent', 'emergency']).optional(),
   reason: z.string().trim().min(1).max(5000),
   clinicalNotes: z.string().trim().max(10000).nullable().optional(),
+  sourceSuggestionId: uuid.nullable().optional(),
   dueAt: z.string().datetime().nullable().optional(),
   idempotencyKey,
 });
@@ -598,9 +623,7 @@ router.post(
 
 const aiSuggestionSchema = z.object({
   encounterId: uuid,
-  suggestionType: z.enum([
-    'encounter_summary', 'soap_draft', 'missing_information', 'follow_up_draft',
-  ]),
+  suggestionType: z.enum(Object.keys(clinicalAiStages)),
 });
 
 router.post(
@@ -646,6 +669,7 @@ router.get(
 );
 
 const aiReviewSchema = z.object({
+  expectedEncounterId: uuid,
   decision: z.enum(['accepted', 'accepted_with_edits', 'rejected']),
   editedOutput: clinicalAi.suggestionOutputSchema.nullable().optional(),
   rejectionReason: z.string().trim().max(2000).nullable().optional(),

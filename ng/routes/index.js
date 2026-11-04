@@ -187,12 +187,9 @@ const referralNetworkAuth = (req, res, next) => {
 };
 router.use('/referral-network', referralNetworkAuth, referralNetworkRoutes);
 
-// Conference: /public/redeem-invite is unauthenticated, everything else
-// requires auth. Same selective-auth pattern as referral-network.
-const conferenceAuth = (req, res, next) => {
-  if (req.path.startsWith('/public/')) return next();
-  return authenticate(req, res, next);
-};
+// Invite links are bearer credentials for a room, not substitutes for an
+// authenticated account. Keep the legacy URL but authenticate every operation.
+const conferenceAuth = (req, res, next) => authenticate(req, res, next);
 router.use('/conference', conferenceAuth, conferenceRoutes);
 
 // Auth middleware (reuse existing)
@@ -264,7 +261,7 @@ router.get('/features', async (req, res) => {
     const result = await pool.query(
       'SELECT feature_key, display_name, status, required_plan, required_role FROM ng_feature_flags ORDER BY feature_key'
     );
-    res.json({ flags: result.rows });
+    res.json({ flags: result.rows.map(require('../services/hospitalIntegrationReadService').featureMetadata) });
   } catch (err) {
     res.json({ flags: [], error: 'Feature flags unavailable' });
   }

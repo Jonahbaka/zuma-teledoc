@@ -6,7 +6,7 @@ const { version } = require('../../../package.json');
 // Describes only the active /api/ng/interop/fhir read interface.
 // HL7 R4: https://hl7.org/fhir/R4/capabilitystatement.html
 // GET metadata: https://hl7.org/fhir/R4/http.html#capabilities
-const RESOURCE_PATHS = Object.freeze({ Patient: '/Patient/:id', Encounter: '/Encounter/:id', Observation: '/Observation', AllergyIntolerance:'/AllergyIntolerance', Condition:'/Condition', DiagnosticReport:'/DiagnosticReport' });
+const RESOURCE_PATHS = Object.freeze({ Patient: '/Patient/:id', Encounter: '/Encounter/:id', Observation: '/Observation', AllergyIntolerance:'/AllergyIntolerance', Condition:'/Condition', DiagnosticReport:'/DiagnosticReport', ServiceRequest:'/ServiceRequest' });
 const JSON_FORMATS = new Set(['json', 'application/json', 'application/fhir+json']);
 
 function supportsMetadataJson(format, accept) {
@@ -61,6 +61,10 @@ function getCapabilityStatement() {
           documentation: 'Pagination uses integer parsing for _count (default 50, maximum 200) and the local _offset control (default 0, negative values become 0). Follow the returned next link with the same authorization and scope. Other clinical search filters are not implemented.',
         },
         ...['AllergyIntolerance','Condition','DiagnosticReport'].map(type=>({type,interaction:[{code:'search-type'}],searchParam:[{name:'encounter',type:'reference',documentation:'Required authorized PHC encounter UUID. Current patient enrollment and consent are verified. Allergies and conditions return the enrolled patient longitudinal list; laboratory reports belong to the selected encounter.'}],documentation:'JSON searchset with _count (maximum 200) and local _offset pagination. No unscoped patient-wide or individual read is declared. No absence of records is interpreted as absence of clinical risk.'})),
+        { type: 'ServiceRequest', interaction: [{ code: 'search-type' }],
+          searchParam: [{ name: 'encounter', type: 'reference', definition: 'http://hl7.org/fhir/SearchParameter/clinical-encounter', documentation: 'Required bare authorized PHC encounter UUID.' }],
+          documentation: 'Internal referral metadata only; remote_clinician role required (no new referral access for other FHIR roles). No partner transport or external disclosure authorization. No narratives, contacts, clinical service codes or scheduled occurrence are supplied. Unsupported referral states, including receiver-declined, fail the page with 503 rather than inventing order status. Strict decimal _count 1..200 (default 50), _offset 0..1000000 (default 0); next link when available; total omitted. No individual read, patient-wide search or write.',
+        },
       ],
     }],
   };

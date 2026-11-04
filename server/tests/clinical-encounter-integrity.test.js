@@ -101,9 +101,14 @@ test('PostgreSQL encounters and notes retain current market, exact care lineage,
     await client.query("INSERT INTO provider_patient_relationships(provider_id,patient_id,relationship_type,is_active) VALUES($1,$2,'treating',TRUE)", [otherProvider, patient]);
     assert.equal((await service.getEncounterById(encounter.id, otherProvider, 'provider')).id, encounter.id, 'An authorized active care relationship preserves clinical reads');
     await assert.rejects(service.createNote(encounter.id, otherProvider, { subjective: 'Foreign author' }), { code: 'CLINICAL_CONTEXT_DENIED' });
-    const note = await service.createNote(encounter.id, provider, { noteType: 'soap', subjective: 'Original protected note', objective: 'Recorded objective finding', assessment: 'Clinical assessment', plan: 'Clinical plan', physicalExam: 'Recorded physical finding', vitals: { heartRate: 76 } });
+    const note = await service.createNote(encounter.id, provider, { noteType: 'soap', subjective: 'Original protected note', objective: 'Recorded objective finding', assessment: 'Clinical assessment', plan: 'Clinical plan', physicalExam: 'Recorded physical finding', vitals: { heartRate: 76 }, followUpNotes: 'Protected follow-up narrative' });
     assert.equal((await service.getNoteById(note.id, provider, 'provider')).subjective, 'Original protected note');
     assert.deepEqual((await service.getNoteById(note.id, provider, 'provider')).vitals, { heartRate: 76 });
+    assert.equal((await service.getNoteById(note.id, provider, 'provider')).followUpNotes, 'Protected follow-up narrative');
+    const storedNarrative = (await client.query('SELECT follow_up_notes,follow_up_notes_encrypted,follow_up_notes_iv,follow_up_notes_tag FROM clinical_notes WHERE id=$1', [note.id])).rows[0];
+    assert.equal(storedNarrative.follow_up_notes, null);
+    assert.ok(!JSON.stringify(storedNarrative).includes('Protected follow-up narrative'));
+    assert.ok(storedNarrative.follow_up_notes_encrypted && storedNarrative.follow_up_notes_iv && storedNarrative.follow_up_notes_tag);
     assert.equal((await service.getEncounterNotes(encounter.id, otherProvider, 'provider')).length, 1);
     const reads = [() => service.getEncounterById(encounter.id, provider, 'provider'),
       () => service.getPatientEncounters(patient, { userId: provider, userRole: 'provider' }), () => service.getNoteById(note.id, provider, 'provider'),
@@ -115,7 +120,7 @@ test('PostgreSQL encounters and notes retain current market, exact care lineage,
     failAudit = false; assert.equal(await auditCount(), beforeFailedReads);
     for (const [table, id, field, read] of [
       ['clinical_encounters', encounter.id, 'chief_complaint', reads[0]],
-      ...['subjective', 'objective', 'assessment', 'plan', 'physical_exam', 'vitals'].map(field => ['clinical_notes', note.id, field, reads[2]]),
+      ...['subjective', 'objective', 'assessment', 'plan', 'physical_exam', 'vitals', 'follow_up_notes'].map(field => ['clinical_notes', note.id, field, reads[2]]),
     ]) {
       const tag = (await client.query('SELECT ' + field + '_tag AS tag FROM ' + table + ' WHERE id=$1', [id])).rows[0].tag;
       const beforeTamper = await auditCount();
@@ -170,7 +175,17 @@ test('PostgreSQL encounters and notes retain current market, exact care lineage,
     assert.deepEqual(await noteSnapshot(), immutable);
     const amendment = await service.createAmendment(note.id, provider, { reason: 'Documented clinical correction', plan: 'Corrected plan' });
     assert.equal(amendment.parentNoteId, note.id); assert.equal(amendment.version, 2); assert.deepEqual(await noteSnapshot(), immutable);
-    assert.equal((await service.getNoteVersionHistory(note.id, provider, 'provider')).length, 2);
+    const history = await service.getNoteVersionHistory(note.id, provider, 'provider');
+    assert.equal(history.length, 2);
+    assert.equal(history[1].amendmentReason, 'Documented clinical correction');
+    const storedAmendment = (await client.query('SELECT amendment_reason,amendment_reason_encrypted,amendment_reason_iv,amendment_reason_tag FROM clinical_notes WHERE id=$1', [amendment.id])).rows[0];
+    assert.equal(storedAmendment.amendment_reason, null);
+    assert.ok(!JSON.stringify(storedAmendment).includes('Documented clinical correction'));
+    await client.query("UPDATE clinical_notes SET amendment_reason='Stale plaintext must not escape',amendment_reason_tag=$1 WHERE id=$2", ['0'.repeat(32), amendment.id]);
+    const beforeNarrativeFailure = await auditCount();
+    await assert.rejects(service.getNoteVersionHistory(note.id, provider, 'provider'), { code: 'CLINICAL_DECRYPTION_UNAVAILABLE' });
+    assert.equal(await auditCount(), beforeNarrativeFailure);
+    await client.query('UPDATE clinical_notes SET amendment_reason=NULL,amendment_reason_tag=$1 WHERE id=$2', [storedAmendment.amendment_reason_tag, amendment.id]);
     assert.equal((await service.completeEncounter(encounter.id, provider)).status, 'completed');
     await service.updateNote(amendment.id, provider, { plan: 'Completed encounter amendment' });
     assert.equal((await service.signNote(amendment.id, provider)).isSigned, true, 'A genuine appended amendment remains signable after encounter completion');
