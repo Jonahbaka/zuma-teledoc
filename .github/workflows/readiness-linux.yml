@@ -74,6 +74,7 @@ jobs:
         run: |
           npm run migrate
           npm run ng:migrate
+          node scripts/prepare-readiness-database.cjs
       - name: Complete Linux functional, release and PostgreSQL gate
         run: node scripts/verify-readiness.cjs
       - name: Install Chromium for voice lifecycle tests
