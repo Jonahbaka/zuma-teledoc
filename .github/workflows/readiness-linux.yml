@@ -1,0 +1,69 @@
+name: Production readiness validation (no deployment)
+
+on:
+  push:
+    branches: [codex/latest-work-readiness-20261104]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: readiness-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-security-and-release:
+    # Standard public-repository runner; no larger runner or cloud credentials.
+    if: github.repository == 'iamjonahbaka-create/Jonah-doctarx' && github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: doctarx_test
+          POSTGRES_PASSWORD: fictional-local-test-password
+          POSTGRES_DB: doctarx_readiness_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U doctarx_test -d doctarx_readiness_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://doctarx_test:fictional-local-test-password@127.0.0.1:5432/doctarx_readiness_test
+      SIMULATION_DATABASE_URL: postgresql://doctarx_test:fictional-local-test-password@127.0.0.1:5432/doctarx_readiness_test
+      DOCTARX_VOICE_DB_TEST: 'true'
+      ENCRYPTION_KEY: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      JWT_ACCESS_SECRET: fictional-readiness-access-secret-at-least-32-characters
+      JWT_REFRESH_SECRET: fictional-readiness-refresh-secret-at-least-32-characters
+      NEXT_TELEMETRY_DISABLED: '1'
+      MEDIAPIPE_SKIP_MODEL_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - name: Install exact dependencies
+        id: install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Migrate disposable PostgreSQL
+        id: database
+        run: |
+          npm run migrate
+          npm run ng:migrate
+      - name: Verify migration safety
+        run: npm run migrations:verify
+      - name: Linux release and transport safeguards
+        if: success()
+        run: npm run test:deploy-guard
+      - name: Real Linux voice and authority tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.database.outcome == 'success' }}
+        run: node --test --test-concurrency=1 --test-timeout=120000 server/tests/voice/*.test.js
+      - name: Record verification boundary
+        if: always()
+        run: |
+          printf 'Commit: `%s`\n\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'Disposable Linux/PostgreSQL fixtures only. No production secrets, deployment, patient audio, or clinical activation.' >> "$GITHUB_STEP_SUMMARY"
