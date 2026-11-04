@@ -2,18 +2,7 @@ name: Deploy Nestora and Nursing Education
 run-name: Release Nestora and Nursing at ${{ github.sha }}
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/deploy-aux-platforms.yml
-      - .github/scripts/deploy_aux_platforms.sh
-      - .github/scripts/install_nursing_nginx.py
-      - .github/deploy/nursing-pilot-recipient.pub
-      - .github/deploy/nestora-demo-recipient.pub
-      - server/routes/deploy-aux-platforms.js
-      - server/tests/deploy-aux-platforms.test.js
-      - scripts/doctarx-blue-green-switch.sh
+  # Source updates must never implicitly deploy this or another product.
   workflow_dispatch:
 
 permissions:

@@ -39,6 +39,8 @@ const evidence = {
   counts: COUNTS,
   scenarios: [],
   finalResult: 'pending',
+  sourceSha: process.env.GITHUB_SHA || null,
+  boundary: 'Real browser and SFU transport with fictional generated media. No physical-device or restrictive-network certification.',
 };
 
 function ensureArtifactDir() {
@@ -279,11 +281,17 @@ function startStaticServer() {
     }
     async function collectStats() {
       const pairs = [];
+      const inbound = [];
       for (const pc of window.__lkPeerConnections) {
         const stats = await pc.getStats();
         const byId = {};
         stats.forEach((report) => { byId[report.id] = report; });
         stats.forEach((report) => {
+          if (report.type === 'inbound-rtp' && !report.isRemote) {
+            inbound.push({ id: report.id, kind: report.kind || report.mediaType,
+              bytesReceived: report.bytesReceived || 0, packetsReceived: report.packetsReceived || 0,
+              framesDecoded: report.framesDecoded || 0 });
+          }
           if (report.type === 'candidate-pair' && (report.selected || (report.nominated && report.state === 'succeeded'))) {
             const local = byId[report.localCandidateId] || {};
             const remote = byId[report.remoteCandidateId] || {};
@@ -298,6 +306,7 @@ function startStaticServer() {
         });
       }
       state.candidatePairs = pairs;
+      state.inbound = inbound;
       state.turnRelayObserved = pairs.some((pair) => pair.localCandidateType === 'relay' || pair.remoteCandidateType === 'relay');
       return state;
     }
@@ -349,7 +358,7 @@ function startStaticServer() {
   });
 
   return new Promise((resolve) => {
-    const server = app.listen(PORT, () => resolve(server));
+    const server = app.listen(PORT, '127.0.0.1', () => resolve(server));
   });
 }
 
@@ -454,9 +463,7 @@ class CdpClient {
 async function launchAgent({ label, debugPort, url }) {
   const chromePath = findChromePath();
   const media = ensureFakeMediaFiles();
-  const userDataDir = path.join(os.tmpdir(), 'doctarx-livekit-e2e', `${path.basename(ARTIFACT_DIR)}-${label}`);
-  fs.rmSync(userDataDir, { recursive: true, force: true });
-  fs.mkdirSync(userDataDir, { recursive: true });
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctarx-livekit-e2e-'));
 
   const proc = spawn(chromePath, [
     '--headless=new',
@@ -475,7 +482,7 @@ async function launchAgent({ label, debugPort, url }) {
     '--allow-insecure-localhost',
     `--unsafely-treat-insecure-origin-as-secure=http://localhost:${PORT}`,
     'about:blank',
-  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  ], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
 
   const logFile = path.join(ARTIFACT_DIR, `${label}-chrome.log`);
   proc.stdout.on('data', (chunk) => fs.appendFileSync(logFile, chunk));
@@ -546,8 +553,11 @@ async function runScenario(count) {
     completedAt: null,
     localMedia: [],
     remoteMedia: [],
-    weakBandwidth: null,
-    reconnect: null,
+    signalingThrottle: null,
+    pageReloadRejoin: null,
+    mediaProgress: [],
+    controls: null,
+    cleanLeave: null,
     turnRelayObserved: false,
     candidatePairs: [],
     screenshots: [],
@@ -562,11 +572,17 @@ async function runScenario(count) {
       const identity = `doctarx-e2e-${count}-${index}`;
       const displayName = `DoctaRx E2E ${index + 1}`;
       const url = roomUrl({ roomName, identity, displayName });
-      agents.push(await launchAgent({
+      const agent = await launchAgent({
         label: `${count}p-${index + 1}`,
         debugPort: 9400 + count * 20 + index,
         url,
-      }));
+      });
+      agents.push(agent);
+      await agent.client.waitForValue('window.__lkE2E || null', localMediaReady, 90000);
+      // Settle each participant's publications before starting another join.
+      // A join-storm load test is separate from this functional media gate.
+      if (index > 0) await Promise.all(agents.map(member =>
+        member.client.waitForValue('window.__lkE2E || null', remoteMediaReady(index), 120000)));
     }
 
     scenario.localMedia = await Promise.all(agents.map((agent) => (
@@ -578,10 +594,30 @@ async function runScenario(count) {
     )));
 
     const stats = await Promise.all(agents.map((agent) => (
-      agent.client.evaluate('window.__lkCollectStats && window.__lkCollectStats()')
+      agent.client.waitForValue('window.__lkCollectStats && window.__lkCollectStats()', snapshot =>
+        ['audio', 'video'].every(kind => (snapshot?.inbound || []).filter(report =>
+          report.kind === kind && report.bytesReceived > 0 && (kind !== 'video' || report.framesDecoded > 0)).length >= count - 1), 45000)
     )));
     scenario.turnRelayObserved = stats.some((snapshot) => snapshot?.turnRelayObserved);
     scenario.candidatePairs = stats.flatMap((snapshot) => snapshot?.candidatePairs || []);
+
+    // Publication metadata alone does not prove that audio/video were received.
+    scenario.mediaProgress = await Promise.all(agents.map((agent, index) =>
+      agent.client.waitForValue('window.__lkCollectStats()', snapshot => {
+        const previous = new Map((stats[index]?.inbound || []).map(report => [report.id, report]));
+        const flowing = (snapshot?.inbound || []).filter(report => {
+          const before = previous.get(report.id);
+          return before && report.bytesReceived > before.bytesReceived && report.packetsReceived > before.packetsReceived
+            && (report.kind !== 'video' || report.framesDecoded > before.framesDecoded);
+        });
+        return ['audio', 'video'].every(kind => flowing.filter(report => report.kind === kind).length >= count - 1);
+      }, 45000)));
+
+    await agents[0].client.evaluate('(async () => { await window.__lkRoom.localParticipant.setMicrophoneEnabled(false); await window.__lkRoom.localParticipant.setCameraEnabled(false); })()');
+    const muted = await agents[1].client.waitForValue('window.__lkE2E', snapshot => snapshot?.remote?.audio === count - 2 && snapshot?.remote?.video === count - 2, 30000);
+    await agents[0].client.evaluate('(async () => { await window.__lkRoom.localParticipant.setMicrophoneEnabled(true); await window.__lkRoom.localParticipant.setCameraEnabled(true); })()');
+    const restored = await agents[1].client.waitForValue('window.__lkE2E', remoteMediaReady(count - 1), 30000);
+    scenario.controls = { muted: muted.remote, restored: restored.remote };
 
     scenario.screenshots.push(await agents[0].client.screenshot(`${count}p-agent-1`));
     if (agents[count - 1]) {
@@ -596,7 +632,8 @@ async function runScenario(count) {
         uploadThroughput: 35 * 1024,
       });
       await wait(8000);
-      scenario.weakBandwidth = await agents[0].client.waitForValue(
+      // CDP throttles HTTP/signaling, not WebRTC UDP media. Label it accurately.
+      scenario.signalingThrottle = await agents[0].client.waitForValue(
         'window.__lkE2E || null',
         (snapshot) => snapshot?.connected && snapshot.remote?.video >= count - 1,
         30000
@@ -609,7 +646,7 @@ async function runScenario(count) {
       });
 
       await agents[1].client.navigate(agents[1].url);
-      scenario.reconnect = await agents[1].client.waitForValue(
+      scenario.pageReloadRejoin = await agents[1].client.waitForValue(
         'window.__lkE2E || null',
         remoteMediaReady(count - 1),
         90000
@@ -619,6 +656,13 @@ async function runScenario(count) {
     if (REQUIRE_TURN_RELAY && !scenario.turnRelayObserved) {
       throw new Error('TURN relay was required but no selected relay candidate pair was observed');
     }
+
+    const departed = agents[count - 1];
+    await departed.client.evaluate('window.__lkRoom.disconnect(true)');
+    const remaining = await agents[0].client.waitForValue('window.__lkE2E', snapshot => snapshot?.remote?.participants === count - 2, 30000);
+    const captureStopped = await departed.client.evaluate('window.__lkPeerConnections.every(pc => pc.connectionState === "closed")');
+    if (!captureStopped) throw new Error('Leaving the room retained an open peer connection');
+    scenario.cleanLeave = { remainingParticipants: remaining.remote.participants, peerConnectionsClosed: captureStopped };
 
     scenario.status = 'passed';
   } catch (error) {

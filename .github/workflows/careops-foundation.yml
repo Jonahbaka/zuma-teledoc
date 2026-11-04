@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24.22.1'
           cache: npm
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
@@ -47,6 +47,7 @@ jobs:
         run: |
           npm run migrate
           npm run ng:migrate
+          node scripts/prepare-readiness-database.cjs
       - name: CareOps integrity and PostgreSQL workflows
         run: |
           node --test ng/tests/careops-production.test.js

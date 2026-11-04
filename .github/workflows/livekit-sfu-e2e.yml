@@ -1,8 +1,7 @@
 name: LiveKit SFU E2E (NG)
 
 on:
-  push:
-    branches: [main]
+  # This workflow uses an externally configured media service. Run explicitly.
   workflow_dispatch:
 
 permissions:
@@ -64,12 +63,12 @@ jobs:
                   and snap.get("remote", {}).get("video", 0) >= scenario.get("count", 0) - 1
                   for snap in scenario.get("remoteMedia", [])
               )
-              print("[%s] %s remoteMedia=%s weakBandwidth=%s reconnect=%s turnRelayObserved=%s" % (
+              print("[%s] %s remoteMedia=%s signalingThrottle=%s pageReloadRejoin=%s turnRelayObserved=%s" % (
                   str(scenario.get("status", "")).upper(),
                   scenario.get("name"),
                   remote_ok,
-                  bool(scenario.get("weakBandwidth")),
-                  bool(scenario.get("reconnect")),
+                  bool(scenario.get("signalingThrottle")),
+                  bool(scenario.get("pageReloadRejoin")),
                   bool(scenario.get("turnRelayObserved")),
               ))
           PY

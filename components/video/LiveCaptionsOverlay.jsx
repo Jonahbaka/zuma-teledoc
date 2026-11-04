@@ -21,9 +21,12 @@ const COMMON_LANGS = [
   { id: 'hi-IN', label: 'Hindi' }
 ];
 
-async function translateText({ text, targetLang, sourceLang }) {
+async function translateText({ text, targetLang, sourceLang, signal }) {
   // Note: only called when user enables translation (phiConsent: true).
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) return null;
+  signal?.addEventListener('abort', abort, { once: true });
   const t = setTimeout(() => controller.abort(), 9000);
   try {
     const res = await api.post(
@@ -33,9 +36,10 @@ async function translateText({ text, targetLang, sourceLang }) {
     );
     return res?.data?.translatedText || text;
   } catch {
-    return text;
+    return null;
   } finally {
     clearTimeout(t);
+    signal?.removeEventListener('abort', abort);
   }
 }
 
@@ -58,8 +62,6 @@ export default function LiveCaptionsOverlay({
   const [targetLang, setTargetLang] = useState(defaultTargetLang);
 
   const recognitionRef = useRef(null);
-  const stopRequestedRef = useRef(false);
-  const translateQueueRef = useRef(Promise.resolve());
 
   // Keep only last N lines so we don't grow memory during long calls.
   const pushLine = (line) => {
@@ -79,7 +81,12 @@ export default function LiveCaptionsOverlay({
     if (!enabled) return;
     if (!supported) return;
 
-    stopRequestedRef.current = false;
+    let disposed = false;
+    let terminalError = false;
+    let restartTimer;
+    let translationQueue = Promise.resolve();
+    let queuedTranslations = 0;
+    const translationAbort = new AbortController();
     setError(null);
 
     const SR = getSpeechRecognition();
@@ -90,24 +97,28 @@ export default function LiveCaptionsOverlay({
     recognition.interimResults = true;
     recognition.lang = resolvedSpeechLang;
 
-    recognition.onstart = () => setListening(true);
+    recognition.onstart = () => { if (!disposed) setListening(true); };
     recognition.onerror = (e) => {
+      if (disposed) return;
       // Some browsers throw "not-allowed" if mic permission is blocked.
+      terminalError = ['not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported', 'bad-grammar'].includes(e?.error);
       setError(e?.error || 'speech_error');
     };
     recognition.onend = () => {
+      if (disposed) return;
       setListening(false);
       setInterim('');
-      if (!stopRequestedRef.current && enabled) {
+      if (!terminalError && enabled) {
         // Auto-restart for robustness (Chrome stops occasionally).
-        try {
-          recognition.start();
-        } catch {
-          // Ignore.
-        }
+        clearTimeout(restartTimer);
+        restartTimer = setTimeout(() => {
+          if (disposed || terminalError) return;
+          try { recognition.start(); } catch { setError('speech_restart_failed'); }
+        }, 1000);
       }
     };
     recognition.onresult = (event) => {
+      if (disposed) return;
       let interimText = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
@@ -126,17 +137,17 @@ export default function LiveCaptionsOverlay({
           pushLine(line);
 
           if (translateOn) {
-            // Serialize translations to avoid bursts.
-            translateQueueRef.current = translateQueueRef.current.then(async () => {
-              const translatedText = await translateText({
-                text: raw,
-                targetLang,
-                sourceLang: resolvedSpeechLang
-              });
-              setLines((prev) =>
-                prev.map((l) => (l.id === line.id ? { ...l, translatedText } : l))
-              );
-            });
+            // Bound retained text and discard work from an ended session.
+            if (queuedTranslations >= 6) { setError('translation_busy'); continue; }
+            queuedTranslations++;
+            translationQueue = translationQueue.then(async () => {
+              if (disposed) return;
+              const translatedText = await translateText({ text: raw, targetLang,
+                sourceLang: resolvedSpeechLang, signal: translationAbort.signal });
+              if (!disposed && translatedText) setLines(prev => prev.map(l => l.id === line.id ? { ...l, translatedText } : l));
+              else if (!disposed) setError('translation_unavailable');
+            }).catch(() => { if (!disposed) setError('translation_unavailable'); })
+              .finally(() => { queuedTranslations--; });
           }
         } else {
           interimText += text;
@@ -152,13 +163,15 @@ export default function LiveCaptionsOverlay({
     }
 
     return () => {
-      stopRequestedRef.current = true;
+      disposed = true;
+      clearTimeout(restartTimer);
+      translationAbort.abort();
       try {
         recognition.onresult = null;
         recognition.onerror = null;
         recognition.onend = null;
         recognition.onstart = null;
-        recognition.stop();
+        recognition.abort();
       } catch {
         // Ignore.
       }
