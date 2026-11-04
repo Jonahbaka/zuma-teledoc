@@ -1,0 +1,1026 @@
+/**
+ * DoctaRx Express Server
+ * Cloud Run compatible - binds to PORT immediately
+ */
+
+// Load environment variables first so PORT and all secrets are available immediately
+require('dotenv').config();
+// Preserve existing cookie defaults; reject an unknown explicit deployment mode
+// before listening instead of failing individual authentication requests.
+require('./utils/authCookiePolicy').authCookieDomain();
+if (require('../lib/deploymentProfile.cjs').resolveDeploymentProfile().careops) throw new Error('CareOps is a frontend-only profile. Use careops:start and the existing shared backend.');
+
+// STEP 1: Minimal imports that cannot crash
+const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const { execSync } = require('child_process');
+const packageJson = require('../package.json');
+const app = express();
+const PORT = parseInt(process.env.PORT, 10) || 8080;
+const HOST = '0.0.0.0';
+const NEXT_READY_TIMEOUT_MS = parseInt(process.env.NEXT_READY_TIMEOUT_MS, 10) || 180000;
+const NEXT_WARMUP_GRACE_MS = parseInt(process.env.NEXT_WARMUP_GRACE_MS, 10) || 45000;
+const serverStartedAt = new Date();
+
+// Track startup status
+let nextReady = false;
+let handle = null;
+let initialized = false;
+let nextInitStatus = 'pending';
+let nextInitError = null;
+let nextInitStartedAt = null;
+let processManagerReadySent = false;
+
+function notifyProcessManagerReady(reason) {
+  if (processManagerReadySent) return;
+  processManagerReadySent = true;
+
+  if (typeof process.send === 'function') {
+    try {
+      process.send('ready');
+      console.log(`[BOOT] Process manager ready signal sent (${reason})`);
+    } catch (err) {
+      console.warn('[BOOT] Process manager ready signal failed:', err.message);
+    }
+  }
+}
+
+function getNextDistDir() {
+  return process.env.NEXT_DIST_DIR || '.next';
+}
+
+function readNextBuildId() {
+  try {
+    const buildIdPath = path.join(process.cwd(), getNextDistDir(), 'BUILD_ID');
+    if (!fs.existsSync(buildIdPath)) return null;
+    const buildId = fs.readFileSync(buildIdPath, 'utf8').trim();
+    return buildId || null;
+  } catch {
+    return null;
+  }
+}
+
+function readGitCommitId() {
+  try {
+    return execSync('git rev-parse --short=12 HEAD', {
+      cwd: process.cwd(),
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString().trim();
+  } catch {
+    return null;
+  }
+}
+
+function resolveBuildId() {
+  // Order matters: report the id of the frontend bundles that are ACTUALLY being
+  // served. That is .next/BUILD_ID. The chunked-upload deploy path uploads a
+  // prebuilt .next without moving git HEAD, so preferring git SHA here made
+  // /api/health advertise a stale buildId while serving new bundles. An explicit
+  // APP_BUILD_ID override still wins for environments that set it.
+  const candidates = [
+    process.env.APP_BUILD_ID,
+    readNextBuildId(),
+    process.env.GITHUB_SHA ? process.env.GITHUB_SHA.slice(0, 12) : null,
+    readGitCommitId(),
+    packageJson.version ? `app-${packageJson.version}` : null,
+  ];
+
+  return candidates.find((value) => typeof value === 'string' && value.trim()) || 'unknown';
+}
+
+function getFrontendState() {
+  if (nextReady) return 'ready';
+  if (!initialized) return 'initializing';
+  if (nextInitStatus === 'failed' || nextInitStatus === 'timeout') return 'degraded';
+  if (Date.now() - serverStartedAt.getTime() <= NEXT_WARMUP_GRACE_MS) return 'warming_up';
+  // Past the warmup grace window and Next is still not ready: escalate to
+  // degraded so health gates stop treating a stuck frontend as acceptable.
+  // (Previously this returned 'warming_up' forever — a hung Next never failed health.)
+  return 'degraded';
+}
+
+// STEP 2: BIND PORT IMMEDIATELY - This MUST happen first for Cloud Run
+const server = app.listen(PORT, HOST, () => {
+  console.log(`\n========================================`);
+  console.log(`🚀 SERVER LISTENING ON ${HOST}:${PORT}`);
+  console.log(`🕒 ${new Date().toISOString()}`);
+  console.log(`========================================\n`);
+
+  // PM2 runs with wait_ready=true. Signal after the HTTP server is bound so the
+  // process manager does not kill the app while Next.js warms asynchronously.
+  // /api/health and /readyz remain the application readiness sources.
+  notifyProcessManagerReady('http-listening');
+  
+  // STEP 3: Initialize everything else AFTER port is bound
+  initializeApp().catch(err => {
+    console.error('❌ Initialization error (non-fatal):', err.message);
+  });
+});
+
+// Initialize Socket.io for real-time chat
+let socketService = null;
+try {
+  socketService = require('./services/socketService');
+  socketService.initializeSocket(server);
+  console.log('🔌 Real-time chat enabled');
+} catch (err) {
+  console.error('⚠️ Socket.io initialization failed:', err.message);
+}
+
+// Initialize OpenClaw WebSocket adapter (bridges OpenClaw protocol → Hive)
+try {
+  const { initOpenClawAdapter } = require('./routes/openclawAdapter');
+  initOpenClawAdapter(server);
+} catch (err) {
+  console.error('⚠️ OpenClaw adapter failed:', err.message);
+}
+
+// Minimal health check - available immediately
+app.get('/health', (req, res) => {
+  let nemoClawStatus = 'not_loaded';
+  try {
+    const nc = require('./services/nemoclaw');
+    nemoClawStatus = nc.getOperationalStatus?.().state || (nc.initialized ? 'online' : 'initializing');
+  } catch {}
+  res.status(200).json({ status: 'listening', port: PORT, initialized, nextReady, nemoClaw: nemoClawStatus });
+});
+
+function setNoCacheHeaders(res) {
+  // Prevent CDNs/edges/browsers from caching the warmup loader HTML.
+  // If this ever gets cached, users can see "Connecting..." even when the app is ready.
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  // Common reverse-proxy / CDN hints
+  res.setHeader('Surrogate-Control', 'no-store');
+  res.setHeader('CDN-Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+}
+
+function renderWarmupLoaderHtml() {
+  // Keep this self-contained (no external CSS/JS) so it is fast and reliable even during cold start.
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DoctaRx | Connecting...</title>
+  <meta http-equiv="refresh" content="2">
+  <meta name="robots" content="noindex">
+  <style>
+    :root {
+      --docta-blue: #0f172a;
+      --docta-primary: #3b82f6;
+      --docta-accent: #22d3ee;
+    }
+    body {
+      background-color: #020617;
+      margin: 0;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    .loader-wrapper {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at center, #0b1220 0%, #020617 70%);
+      z-index: 9999;
+    }
+    .logo-container {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .logo-d {
+      width: 100%;
+      height: 100%;
+      fill: none;
+      stroke: var(--docta-primary);
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.3));
+      animation: drawD 3s ease-in-out infinite alternate;
+    }
+    @keyframes drawD {
+      0% { stroke-dasharray: 0, 400; opacity: 0.5; transform: scale(0.95); }
+      50% { stroke-dasharray: 200, 400; opacity: 1; transform: scale(1); }
+      100% { stroke-dasharray: 400, 400; opacity: 0.8; transform: scale(0.98); }
+    }
+    .pulse-ring {
+      position: absolute;
+      border: 2px solid var(--docta-accent);
+      border-radius: 50%;
+      opacity: 0;
+      animation: ripple 3s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+    }
+    .pulse-ring:nth-child(2) { animation-delay: 1s; }
+    .pulse-ring:nth-child(3) { animation-delay: 2s; }
+    @keyframes ripple {
+      0% { width: 60px; height: 60px; opacity: 0.6; }
+      100% { width: 250px; height: 250px; opacity: 0; }
+    }
+    .ekg-container {
+      margin-top: 40px;
+      width: 200px;
+      height: 40px;
+      overflow: hidden;
+      position: relative;
+    }
+    .ekg-svg {
+      width: 400px;
+      height: 100%;
+      fill: none;
+      stroke: var(--docta-accent);
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      animation: moveEkg 2s linear infinite;
+    }
+    @keyframes moveEkg {
+      from { transform: translateX(0); }
+      to { transform: translateX(-200px); }
+    }
+    .loading-text {
+      margin-top: 24px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      display: flex;
+      gap: 4px;
+      align-items: baseline;
+    }
+    .dot { animation: dotFlashing 1.5s infinite linear; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes dotFlashing {
+      0%, 100% { opacity: 0.2; }
+      50% { opacity: 1; }
+    }
+    .fineprint {
+      margin-top: 14px;
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 300;
+    }
+    .blob {
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(34, 211, 238, 0.10) 0%, transparent 70%);
+      border-radius: 50%;
+      filter: blur(60px);
+      z-index: -1;
+      animation: float 10s ease-in-out infinite;
+    }
+    .blob-1 { top: -100px; left: -100px; }
+    .blob-2 { bottom: -100px; right: -100px; animation-delay: -5s; }
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(40px, 30px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .logo-d, .pulse-ring, .ekg-svg, .blob { animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  <div class="loader-wrapper">
+    <div class="pulse-ring"></div>
+    <div class="pulse-ring"></div>
+    <div class="pulse-ring"></div>
+
+    <div class="logo-container" style="width: 340px; height: 86px;">
+      <div style="background:#020617; border:1px solid #1f2937; border-radius:16px; padding:14px 16px; box-shadow: 0 0 20px rgba(34,211,238,0.18);">
+        <svg viewBox="0 0 400 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="DoctaRx" role="img" style="width: 100%; height: 100%;">
+          <defs>
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          <g transform="translate(10, 10)">
+            <path d="M20 5 H45 C70 5 70 75 45 75 H20 V5 Z" stroke="#3B82F6" stroke-width="8" stroke-linecap="round"/>
+            <path d="M20 40 L35 40 L40 25 L48 55 L55 40 L70 40" stroke="#22D3EE" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+          </g>
+          <text x="100" y="65" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="52" fill="#FFFFFF" letter-spacing="-1" filter="url(#glow)">
+            Docta<tspan fill="#22D3EE">Rx</tspan>
+          </text>
+        </svg>
+      </div>
+    </div>
+
+    <div class="ekg-container" aria-hidden="true">
+      <svg class="ekg-svg" viewBox="0 0 400 40">
+        <path d="M0 20 L40 20 L45 10 L50 30 L55 20 L100 20 L140 20 L145 10 L150 30 L155 20 L200 20 L240 20 L245 10 L250 30 L255 20 L300 20 L340 20 L345 10 L350 30 L355 20 L400 20" />
+      </svg>
+    </div>
+
+    <div class="loading-text">
+      <span>Connecting to DoctaRx</span>
+      <span class="dot">.</span>
+      <span class="dot">.</span>
+      <span class="dot">.</span>
+    </div>
+    <div class="fineprint">Secure &amp; HIPAA Compliant Session</div>
+  </div>
+</body>
+</html>
+  `.trim();
+}
+
+// Readiness: only "ready" when API middleware + Next handler are attached.
+// Useful for monitoring and for debugging split traffic between revisions.
+app.get('/readyz', (req, res) => {
+  if (initialized && nextReady) {
+    return res.status(200).json({ ready: true, buildId: resolveBuildId() });
+  }
+  return res.status(503).json({
+    ready: false,
+    initialized,
+    nextReady,
+    nextInitStatus,
+    nextInitError,
+    buildId: resolveBuildId()
+  });
+});
+
+app.get('/api/health', (req, res) => {
+  const frontendState = getFrontendState();
+  const buildId = resolveBuildId();
+  let nemoClaw = { state: 'not_loaded' };
+  try {
+    const nc = require('./services/nemoclaw');
+    nemoClaw = nc.getOperationalStatus?.() || { state: nc.initialized ? 'online' : 'initializing' };
+  } catch {}
+  const health = {
+    status: frontendState === 'ready' ? 'healthy' : frontendState,
+    uptime: Math.round(process.uptime()),
+    startedAt: serverStartedAt.toISOString(),
+    timestamp: new Date().toISOString(),
+    memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+    initialized,
+    nextReady,
+    nextInitStatus,
+    nextInitError,
+    frontendState,
+    version: buildId,
+    buildId,                                 // id of the served frontend bundles (.next/BUILD_ID)
+    gitCommit: readGitCommitId() || null,    // git HEAD — may differ from buildId after a chunked-upload deploy
+    nemoClaw,
+    // Cloud Run metadata (helps diagnose load balancer / revision split)
+    service: process.env.K_SERVICE,
+    revision: process.env.K_REVISION,
+    configuration: process.env.K_CONFIGURATION
+  };
+
+  // Diagnostic: check if .next directory exists (hidden unless nextReady=false)
+  if (!nextReady) {
+    const fs = require('fs');
+    const path = require('path');
+    const nextPath = path.join(process.cwd(), getNextDistDir());
+    try {
+      health.debug = {
+        nextDirExists: fs.existsSync(nextPath),
+        cwd: process.cwd(),
+        nextPath: nextPath,
+        nodeVersion: process.version,
+        nextInitStartedAt
+      };
+    } catch (e) {
+      health.debug = { error: e.message };
+    }
+  }
+
+  try {
+    const orchestrator = require('./services/agent-orchestrator');
+    health.agents = orchestrator.agents?.size || 0;
+    health.heartbeat = orchestrator.getHeartbeatStatus?.() || {};
+    health.operatingMode = orchestrator.operatingMode;
+  } catch (e) { /* not ready yet */ }
+
+  // Async database health (Neon primary + AWS backup) — fire-and-forget into the response
+  const dual = require('./db/dual');
+  const finish = (dbHealth, dbReachable) => {
+    health.database = dbHealth;
+    // Unhealthy when the frontend is degraded OR the primary DB is unreachable.
+    // Previously a dead primary DB still returned 200 (status code keyed only off
+    // frontendState), so a load balancer would route traffic to an instance that
+    // cannot serve a single query.
+    const dbDown = dbReachable === false || dbHealth?.primary?.healthy === false;
+    if (dbDown && health.status === 'healthy') health.status = 'degraded';
+    res.status(frontendState === 'degraded' || dbDown ? 503 : 200).json(health);
+  };
+  dual.healthCheck()
+    .then(dbHealth => finish(dbHealth, true))
+    .catch(() => finish(
+      { primary: { engine: 'neon', healthy: false }, backup: { engine: 'aws-rds', available: false } },
+      false
+    ));
+});
+
+// Early warmup guard:
+// Cloud Run starts routing traffic as soon as the port is listening.
+// We intentionally bind PORT before heavy init to avoid startup timeouts,
+// but that means requests can arrive before routes / Next handler are registered.
+// Without this guard, Express returns its default 404 during that window.
+app.use((req, res, next) => {
+  // Always allow health/readiness immediately.
+  if (req.path === '/health' || req.path === '/api/health' || req.path === '/readyz') return next();
+
+  // Once initialized, let real routes handle it.
+  // For API routes: they can be ready before Next.
+  if (initialized && (req.path.startsWith('/api') || (nextReady && handle))) return next();
+
+  // During warmup: never return 404 for "/" (or any app path).
+  // For API calls, 503 is clearer than a misleading 404.
+  if (req.path.startsWith('/api')) {
+    res.setHeader('Retry-After', '3');
+    setNoCacheHeaders(res);
+    return res.status(503).json({
+      success: false,
+      error: 'Service warming up',
+      initialized,
+      nextReady
+    });
+  }
+
+  setNoCacheHeaders(res);
+  res.setHeader('Retry-After', '3');
+  return res.status(200).send(renderWarmupLoaderHtml());
+});
+
+/**
+ * Initialize all services AFTER port is already bound
+ */
+async function initializeApp() {
+  console.log('📦 Loading dependencies...');
+  
+  // Now safe to load heavy modules (dotenv already loaded at startup)
+  const helmet = require('helmet');
+  const cors = require('cors');
+  const compression = require('compression');
+  const cookieParser = require('cookie-parser');
+  const rateLimit = require('express-rate-limit');
+  const { v4: uuidv4 } = require('uuid');
+  const path = require('path');
+  
+  // Database (with error handling)
+  let db;
+  try {
+    db = require('./db');
+    const dbHealth = await db.healthCheck();
+    console.log(`🗄️ Database: ${dbHealth.healthy ? 'OK' : 'FAILED - ' + dbHealth.error}`);
+  } catch (err) {
+    console.error('🗄️ Database: FAILED to load -', err.message);
+  }
+  
+  // Logger (console only)
+  const logger = require('./middleware/logger');
+  const { initSentry, sentryErrorHandler } = require('./middleware/sentry');
+  
+  console.log('⚙️ Configuring middleware...');
+  
+  // Trust proxy
+  app.set('trust proxy', 1);
+  
+  // Sentry
+  const sentryState = initSentry(app);
+  if (sentryState.enabled) {
+    console.log('🔍 Sentry: Enabled');
+  }
+  
+  // Request ID
+  app.use((req, res, next) => {
+    req.id = uuidv4();
+    res.setHeader('X-Request-ID', req.id);
+    next();
+  });
+  
+  // CORS
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com';
+  const corsOptions = {
+    origin: function (origin, callback) {
+      const allowedOrigins = [
+        appUrl,
+        appUrl.replace('https://', 'https://www.'),
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'https://doctarx.com',
+        'https://www.doctarx.com'
+      ].filter(Boolean);
+      if (!origin || allowedOrigins.some(allowed => origin === allowed || origin.endsWith(allowed.replace('https://', '')))) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Request-ID'],
+    optionsSuccessStatus: 204
+  };
+  app.use(cors(corsOptions));
+
+  // Response compression (major speed win for HTML/JSON).
+  // Keep it after CORS but before heavy routes.
+  app.use(compression({ level: 6 }));
+  
+  // Security - FIXED CSP for Next.js compatibility
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://doctarx.com/api';
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        // Next.js requires 'unsafe-inline' and 'unsafe-eval' + wasm-unsafe-eval for MediaPipe WASM
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-eval'", "https://www.googletagmanager.com", "https://www.google-analytics.com"],
+        scriptSrcElem: ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://static.cloudflareinsights.com"],
+        // Allow inline styles and Google Fonts
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
+        connectSrc: [
+          "'self'", 
+          appUrl, 
+          apiUrl, 
+          'https://doctarx.com', 
+          'https://www.doctarx.com', 
+          'http://localhost:3000', 
+          'http://localhost:3001', 
+          'ws://localhost:8080',
+          'ws://localhost:3000',
+          'wss://doctarx.com',
+          'wss://www.doctarx.com',
+          'https://*.sentry.io',
+          'https://www.googletagmanager.com',
+          'https://www.google-analytics.com',
+          'https://analytics.google.com',
+          'https://fonts.googleapis.com',
+          'https://fonts.gstatic.com',
+          'https://images.unsplash.com'
+        ],
+        // Allow Google Fonts
+        fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://fonts.googleapis.com', 'data:'],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'", 'blob:', 'mediastream:'],
+        frameSrc: ["'self'", 'https://js.stripe.com', 'https://hooks.stripe.com'],
+        workerSrc: ["'self'", 'blob:'],
+        upgradeInsecureRequests: []   // Upgrade all subresources to HTTPS
+      }
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    // HTTPS is live — all security headers enabled
+    hsts: {
+      maxAge: 31536000,        // 1 year
+      includeSubDomains: true  // covers www.doctarx.com
+    },
+    crossOriginOpenerPolicy: { policy: "same-origin" },
+    originAgentCluster: true
+  }));
+  
+  // Stripe webhook (raw body)
+  app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
+  
+  // Body parsing
+  app.use(express.json({
+    limit: '10mb',
+    verify: (req, _res, buffer) => {
+      if (['/api/ng/webhooks/paystack', '/api/ng/webhooks/livekit', '/api/ng/webhooks/delivery/uber_direct'].includes(req.originalUrl.split('?')[0])) req.rawBody = Buffer.from(buffer);
+    },
+  }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  app.use(cookieParser(process.env.SESSION_SECRET));
+  
+  const limiter = rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000,
+    message: { success: false, error: 'Too many requests' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: { trustProxy: false, xForwardedForHeader: false },
+  });
+  app.use('/api', limiter);
+
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 50,
+    message: { success: false, error: 'Too many auth attempts' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use('/api/auth/login', authLimiter);
+  app.use('/api/auth/register', authLimiter);
+  
+  // Request logging
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      if (process.env.NODE_ENV !== 'production' || res.statusCode >= 400) {
+        console.log(`${req.method} ${req.originalUrl.split('?')[0]} ${res.statusCode} ${duration}ms`);
+      }
+    });
+    next();
+  });
+  
+  // Serve uploads
+  app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+  
+  // Ensure agent/CRM/credential DB tables exist before loading routes
+  try {
+    const ensureAgentTables = require('./db/ensureAgentTables');
+    await ensureAgentTables();
+  } catch (err) {
+    console.error('⚠️ Agent tables check skipped:', err.message);
+  }
+
+  console.log('📚 Loading API routes...');
+  
+  // Helper to safely load routes
+  const loadRoute = (path, routeModule) => {
+    try {
+      app.use(path, require(routeModule));
+      return true;
+    } catch (err) {
+      console.error(`❌ Failed to load ${path}:`, err.message);
+      return false;
+    }
+  };
+  
+  // Load routes individually to identify failures
+  loadRoute('/api/auth', './routes/auth');
+  loadRoute('/api/users', './routes/users');
+  loadRoute('/api/appointments', './routes/appointments');
+  loadRoute('/api/medical-records', './routes/medicalRecords');
+  loadRoute('/api/messages', './routes/messages');
+  loadRoute('/api/notifications', './routes/notifications');
+  loadRoute('/api/admin/testing-links', './routes/testingLinks');
+  loadRoute('/api/admin', './routes/admin');
+  loadRoute('/api/providers', './routes/providers');
+  loadRoute('/api/visits', './routes/visits');
+  loadRoute('/api/ai-assist', './routes/aiAssist');
+  loadRoute('/api/subscriptions', './routes/subscriptions');
+  loadRoute('/api/payments', './routes/payments');
+  loadRoute('/api/prior-auth', './routes/priorAuth');
+  loadRoute('/api/claims', './routes/claims');
+  loadRoute('/api/insurance', './routes/insurance');
+  loadRoute('/api/rtbc', './routes/rtbc');
+  loadRoute('/api/triage', './routes/triage');
+  loadRoute('/api/prescriptions', './routes/prescriptions');
+  loadRoute('/api/pharmacy', './routes/pharmacy');
+  loadRoute('/api/directory', './routes/publicDirectory');
+  loadRoute('/api/triage-queue', './routes/triageQueue');
+  loadRoute('/api/invitations', './routes/invitations');
+  loadRoute('/api/stripe', './routes/stripe');
+  loadRoute('/api/membership', './routes/membership');
+  loadRoute('/api/credentialing', './routes/credentialing');
+  loadRoute('/api/contact', './routes/contact');
+  loadRoute('/api/clinical-encounters', './routes/clinicalEncounters');
+  loadRoute('/api/testing-links', './routes/testingLinks');
+  loadRoute('/api/interop', './routes/interoperability');
+  loadRoute('/api/predictive', './routes/predictive');
+  loadRoute('/api/enterprise', './routes/enterprise');
+  loadRoute('/api/agent-ops', './routes/agentOps');
+  loadRoute('/api/agent-chat', './routes/agentChat');
+  loadRoute('/api/inbox', './routes/inbox');
+  loadRoute('/api/crm', './routes/crm');
+  loadRoute('/api/financial', './routes/financial');
+  loadRoute('/api/agent-ide', './routes/agentIde');
+  loadRoute('/api/agent-social', './routes/agentSocial');
+  loadRoute('/api/realtime-analytics', './routes/realtimeAnalytics');
+  loadRoute('/api/auth/zoho/recruit', './routes/zohoRecruitAuth');
+  loadRoute('/api/hive', './routes/hive');
+  loadRoute('/api/deploy', './routes/deploy');
+  loadRoute('/api/force-rebuild', './routes/force-rebuild');
+  loadRoute('/api/upload-build', './routes/upload-build');
+  loadRoute('/api/upload-build-binary', './routes/upload-build-binary');
+  loadRoute('/api/deploy-aux-platforms', './routes/deploy-aux-platforms');
+  loadRoute('/api/upload-build-chunked', './routes/upload-build-chunked');
+  loadRoute('/api/restart', './routes/restart');
+  loadRoute('/api/diagnose', './routes/diagnose');
+  loadRoute('/api/creator', './routes/creator');
+  loadRoute('/api/social', './routes/social');
+  loadRoute('/pitch-deck', './routes/pitch-deck');
+  loadRoute('/api/openclaw', './routes/openclawApi');
+  // --- NIGERIA REGION ROUTES (separate layer, does NOT modify US routes) ---
+  try {
+    const ngRouter = require('../ng/routes');
+    app.use('/api/ng', ngRouter);
+    console.log('🇳🇬 Nigeria region routes loaded at /api/ng/*');
+  } catch (err) {
+    console.error('🇳🇬 Nigeria routes FAILED to load:', err.message);
+    console.error('🇳🇬 Stack:', err.stack?.split('\n').slice(0, 5).join('\n'));
+  }
+
+  // Run Nigeria migrations (non-blocking)
+  try {
+    const { runNgMigrations } = require('../ng/migrations/migrate');
+    const pool = require('./db').getPool();
+    runNgMigrations(pool).then(result => {
+      console.log(`🇳🇬 Nigeria DB migrations: ${result.ran} new, ${result.total} total`);
+    }).catch(err => {
+      console.error('🇳🇬 Nigeria migrations warning:', err.message);
+    });
+  } catch (err) {
+    console.error('🇳🇬 Nigeria migrations skipped:', err.message);
+  }
+
+  console.log('✅ API routes loading complete (+ Hive Gateway + OpenClaw REST API)');
+  
+  // Initialize Predictive Intelligence Engine (non-blocking)
+  try {
+    const predictiveEngine = require('./services/predictive-engine');
+    predictiveEngine.initialize().then(() => {
+      console.log('🧠 Predictive Intelligence Engine: Online');
+    }).catch(err => {
+      console.error('🧠 Predictive Engine: Init warning -', err.message);
+    });
+  } catch (err) {
+    console.error('🧠 Predictive Engine: Not available -', err.message);
+  }
+
+  // Initialize AI Agent Orchestrator (non-blocking)
+  try {
+    const agentOrchestrator = require('./services/agent-orchestrator');
+    agentOrchestrator.initialize().then(() => {
+      console.log('🤖 AI Agent Orchestrator: Online');
+
+      // Stream real-time Agent Ops events to admin consoles.
+      try {
+        if (socketService?.emitAgentOpsEvent) {
+          const claudeConfigured = Boolean(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY);
+          const geminiConfigured = Boolean(process.env.GEMINI_API_KEY);
+
+          // Initial heartbeat when orchestrator comes online.
+          socketService.emitAgentOpsEvent({
+            type: 'agent-ops.system.online',
+            severity: 'info',
+            source: 'orchestrator',
+            payload: {
+              status: 'online',
+              mode: agentOrchestrator.operatingMode || 'observation',
+              llm: {
+                primary: 'claude',
+                fallback: 'gemini',
+                claudeConfigured,
+                geminiConfigured
+              }
+            },
+            createdAt: new Date().toISOString()
+          });
+
+          // Bridge event bus -> websocket stream.
+          if (agentOrchestrator.eventBus?.subscribe) {
+            agentOrchestrator.eventBus.subscribe('*', async (event) => {
+              socketService.emitAgentOpsEvent({
+                type: event.type,
+                severity: event.severity || 'info',
+                source: event.source || 'event-bus',
+                payload: event.payload || {},
+                createdAt: event.timestamp ? new Date(event.timestamp).toISOString() : new Date().toISOString()
+              });
+            });
+          }
+        }
+      } catch (streamErr) {
+        console.error('⚠️ Agent Ops stream bridge warning:', streamErr.message);
+      }
+    }).catch(err => {
+      console.error('🤖 Agent Orchestrator: Init warning -', err.message);
+    });
+  } catch (err) {
+    console.error('🤖 Agent Orchestrator: Not available -', err.message);
+  }
+
+  // Operational Agent Runtime: DB-backed task queue with safe tool calls and approvals.
+  try {
+    const operationalAgentRuntime = require('./services/agent-runtime/runtime');
+    const state = operationalAgentRuntime.startAgentWorker();
+    console.log(`Operational Agent Runtime: ${state.running ? 'ONLINE' : 'OFFLINE'} (${state.intervalMs || 'disabled'}ms poll)`);
+  } catch (err) {
+    console.error('Operational Agent Runtime: Not available -', err.message);
+  }
+
+  // ═══ APP NERVE BRIDGE — Connect real app actions to agent nervous system ═══
+  try {
+    const nerveBridge = require('./services/agent-orchestrator/app-nerve-bridge');
+    app.use(nerveBridge.middleware());
+    console.log('🧬 App Nerve Bridge: CONNECTED — Agents can sense real app activity');
+  } catch (err) {
+    console.error('🧬 App Nerve Bridge: Not available -', err.message);
+  }
+
+  // ═══ FINANCIAL SERVICE — Corporate Treasury & Accounting ═══
+  try {
+    const financialService = require('./services/financialService');
+    financialService.initialize().then(() => {
+      console.log('💰 Financial Service: ONLINE — Corporate Treasury active');
+    }).catch(err => {
+      console.error('💰 Financial Service: Init warning -', err.message);
+    });
+  } catch (err) {
+    console.error('💰 Financial Service: Not available -', err.message);
+  }
+
+  // ═══ AGENT SOCIAL — The Agora ═══
+  try {
+    const agentSocialService = require('./services/agentSocialService');
+    agentSocialService.initialize().then(() => {
+      console.log('🏛️ Agent Social (The Agora): ONLINE — Agent society active');
+    }).catch(err => {
+      console.error('🏛️ Agent Social: Init warning -', err.message);
+    });
+  } catch (err) {
+    console.error('🏛️ Agent Social: Not available -', err.message);
+  }
+
+  // ═══ NEMOCLAW — OpenShell Secure Sandbox for Medical Agents ═══
+  try {
+    const nemoClawService = require('./services/nemoclaw');
+    const agentOrchestrator = (() => { try { return require('./services/agent-orchestrator'); } catch { return null; } })();
+    nemoClawService.initialize({
+      orchestrator: agentOrchestrator,
+      db,
+      app
+    }).then(() => {
+      const status = nemoClawService.getOperationalStatus?.();
+      if (status?.state === 'online') {
+        console.log('🛡️ NemoClaw: ONLINE - dedicated sandbox runtime active');
+      } else {
+        console.warn(`🛡️ NemoClaw: DEGRADED - ${status?.reason || 'compatibility mode active'}`);
+      }
+    }).catch(err => {
+      console.error('🛡️ NemoClaw: Init warning -', err.message);
+    });
+  } catch (err) {
+    console.error('🛡️ NemoClaw: Not available -', err.message);
+  }
+
+  // ═══ CRM SERVICE — AI Agent Customer Relationship Management ═══
+  try {
+    const crmService = require('./services/crmService');
+    crmService.initialize().then(() => {
+      console.log('📇 CRM Service: ONLINE — Agent outreach system ready');
+    }).catch(err => {
+      console.error('📇 CRM: Init warning -', err.message);
+    });
+  } catch (err) {
+    console.error('📇 CRM: Not available -', err.message);
+  }
+  
+  // 404 for API
+  app.use('/api/*', (req, res) => {
+    res.status(404).json({ success: false, error: 'Endpoint not found' });
+  });
+  
+  // Global error handler — feeds The Debugger
+  app.use((err, req, res, next) => {
+    console.error('Error:', err.message);
+    
+    // Feed error to The Debugger for analysis
+    try {
+      const orchestrator = require('./services/agent-orchestrator');
+      orchestrator.captureError(err, `${req.method} ${req.originalUrl.split('?')[0]}`);
+    } catch (e) { /* orchestrator not ready yet */ }
+
+    const statusCode = err.status || err.statusCode || 500;
+    res.status(statusCode).json({
+      success: false,
+      error: process.env.NODE_ENV === 'production' && statusCode === 500 ? 'Internal server error' : err.message
+    });
+  });
+  
+  // Sentry error handler
+  sentryErrorHandler(app);
+  
+  // Graceful shutdown
+  const gracefulShutdown = async (signal) => {
+    console.log(`${signal} received. Shutting down...`);
+    try {
+      try { const nc = require('./services/nemoclaw'); await nc.shutdown(); } catch {}
+      if (db) await db.close();
+      process.exit(0);
+    } catch (error) {
+      process.exit(1);
+    }
+  };
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+  // Capture uncaught exceptions → feed The Debugger
+  process.on('uncaughtException', (err) => {
+    console.error('💥 Uncaught Exception:', err.message);
+    try {
+      const orchestrator = require('./services/agent-orchestrator');
+      orchestrator.captureError(err, 'uncaughtException');
+    } catch (e) { /* orchestrator not ready */ }
+  });
+  process.on('unhandledRejection', (reason) => {
+    console.error('💥 Unhandled Rejection:', reason);
+    try {
+      const orchestrator = require('./services/agent-orchestrator');
+      orchestrator.captureError(new Error(String(reason)), 'unhandledRejection');
+    } catch (e) { /* orchestrator not ready */ }
+  });
+  
+  initialized = true;
+  console.log('✅ Express API ready');
+
+  // Start Social Media Scheduler
+  try {
+    const socialScheduler = require('./services/socialSchedulerService');
+    socialScheduler.start();
+    console.log('✅ Social Media Scheduler started');
+  } catch (err) {
+    console.error('⚠️  Social Scheduler failed to start:', err.message);
+  }
+  
+  // Next.js deferred initialization (skip on startup, load async only if the active dist exists)
+  console.log('⏳ Deferring Next.js initialization...');
+  
+  // Check if the configured Next dist directory exists
+  const nextDirExists = fs.existsSync(path.join(process.cwd(), getNextDistDir()));
+  
+  if (nextDirExists) {
+    try {
+      const next = require('next');
+      const dev = process.env.NODE_ENV !== 'production';
+      const nextApp = next({ dev });
+      nextInitStatus = 'preparing';
+      nextInitStartedAt = new Date().toISOString();
+      const nextReadyTimeout = setTimeout(() => {
+        if (nextReady) return;
+
+        nextInitStatus = 'timeout';
+        nextInitError = `Next.js did not become ready within ${NEXT_READY_TIMEOUT_MS}ms`;
+        console.error(`[BOOT] ${nextInitError}`);
+
+        if (!dev) {
+          console.error('[BOOT] Exiting so the process manager can restart the app.');
+          process.exit(1);
+        }
+      }, NEXT_READY_TIMEOUT_MS);
+      
+      // Load in background, don't block startup
+      nextApp.prepare()
+        .then(() => {
+          handle = nextApp.getRequestHandler();
+          clearTimeout(nextReadyTimeout);
+          nextReady = true;
+          nextInitStatus = 'ready';
+          nextInitError = null;
+          console.log('✅ Next.js ready');
+        })
+        .catch(err => {
+          clearTimeout(nextReadyTimeout);
+          nextInitStatus = 'failed';
+          nextInitError = err.message;
+          if (!dev) {
+            setTimeout(() => process.exit(1), 1000);
+          }
+          console.error('❌ Next.js failed:', err.message);
+        });
+    } catch (err) {
+      nextInitStatus = 'failed';
+      nextInitError = err.message;
+      console.error('⚠️  Next.js skipped:', err.message);
+    }
+  } else {
+    nextInitStatus = 'missing_build';
+    nextInitError = 'Next build output (.next) was not found';
+    console.warn('⚠️  .next directory not found — API mode only');
+  }
+  
+  // Catch-all for Next.js (must be last)
+  app.all('*', (req, res) => {
+    if (!nextReady || !handle) {
+      setNoCacheHeaders(res);
+      res.setHeader('Retry-After', '3');
+      res.setHeader('Refresh', '5');  // Auto-refresh every 5 seconds
+      return res.status(200).send(renderWarmupLoaderHtml());
+    }
+    return handle(req, res);
+  });
+  
+  console.log('\n========================================');
+  console.log('🎉 APPLICATION FULLY INITIALIZED');
+  console.log('========================================\n');
+}
+
+module.exports = app;

@@ -1,0 +1,46 @@
+{
+  "name": "telehealth.appointment.monitor",
+  "displayName": "Telehealth Appointment Monitor",
+  "description": "Monitor upcoming telehealth appointments, detect no-show risks, and send proactive reminders",
+  "version": "1.0.0",
+  "category": "operations",
+  "domain": "telehealth",
+  "tags": ["appointments", "monitoring", "proactive", "patient-care"],
+  "triggers": ["patient.appointment.booked", "system.state.changed"],
+  "schedule": "30min",
+  "riskLevel": "low",
+  "requiresApproval": false,
+  "involvesPhi": false,
+  "involvesFinancial": false,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "fetch_upcoming",
+      "name": "Fetch upcoming appointments (next 2 hours)",
+      "type": "query",
+      "query": "SELECT vs.*, u.first_name, u.last_name FROM video_sessions vs LEFT JOIN users u ON vs.patient_id = u.id WHERE vs.scheduled_at > NOW() AND vs.scheduled_at < NOW() + INTERVAL '2 hours' AND vs.status = 'scheduled'"
+    },
+    {
+      "id": "check_reminders",
+      "name": "Filter unreminded patients",
+      "type": "transform",
+      "input": "$fetch_upcoming",
+      "filter": { "reminder_sent": false }
+    },
+    {
+      "id": "notify_team",
+      "name": "Notify operations team",
+      "type": "notify",
+      "input": "$check_reminders"
+    }
+  ],
+  "inputSchema": {},
+  "outputSchema": {
+    "properties": {
+      "upcomingCount": { "type": "number" },
+      "needsReminder": { "type": "number" }
+    }
+  },
+  "sideEffects": ["sends_reminder_notification"]
+}

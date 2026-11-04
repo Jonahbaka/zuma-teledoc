@@ -1,0 +1,250 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Capture pre-deploy production build
+        id: predeploy
+        run: |
+          H="$(curl -s --max-time 20 https://doctarx.com/api/health 2>/dev/null || true)"
+          BUILD_ID="$(printf '%s' "$H" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print(d.get("buildId") or d.get("version") or "")' 2>/dev/null || true)"
+          GIT_COMMIT="$(printf '%s' "$H" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print(d.get("gitCommit") or "")' 2>/dev/null || true)"
+          echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+          echo "git_commit=$GIT_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "Pre-deploy production buildId=${BUILD_ID:-missing} gitCommit=${GIT_COMMIT:-missing}"
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run deploy gate
+        run: npm run test:deploy-gate
+
+      - name: Build production frontend in CI
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npm run build
+
+      - name: Package verified frontend artifact
+        run: |
+          test -s .next/BUILD_ID
+          test -d .next/static
+          rm -f /tmp/doctarx-next-artifact.tar.gz
+          tar --exclude='.next/cache' -czf /tmp/doctarx-next-artifact.tar.gz .next public/robots.txt public/sitemap.xml public/ng-presentation
+          ls -lh /tmp/doctarx-next-artifact.tar.gz
+          echo "Artifact BUILD_ID=$(cat .next/BUILD_ID)"
+
+      - name: Upload artifact and start EC2 deploy
+        env:
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+          NG_LIVEKIT_URL: ${{ secrets.NG_LIVEKIT_URL }}
+          NG_LIVEKIT_API_KEY: ${{ secrets.NG_LIVEKIT_API_KEY }}
+          NG_LIVEKIT_API_SECRET: ${{ secrets.NG_LIVEKIT_API_SECRET }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          PAYSTACK_SECRET_KEY: ${{ secrets.PAYSTACK_SECRET_KEY }}
+          PAYSTACK_PUBLIC_KEY: ${{ secrets.PAYSTACK_PUBLIC_KEY }}
+          FLUTTERWAVE_SECRET_KEY: ${{ secrets.FLUTTERWAVE_SECRET_KEY }}
+          FLUTTERWAVE_PUBLIC_KEY: ${{ secrets.FLUTTERWAVE_PUBLIC_KEY }}
+          TERMII_API_KEY: ${{ secrets.TERMII_API_KEY }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          RTC_TURN_URLS: ${{ secrets.RTC_TURN_URLS }}
+          TURN_STATIC_AUTH_SECRET: ${{ secrets.TURN_STATIC_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          auth_header=()
+
+          if [ -n "$DEPLOY_SECRET" ]; then
+            auth_header=(-H "x-deploy-token: $DEPLOY_SECRET")
+          else
+            oidc_response=$(curl -sS \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doctarx-deploy")
+            oidc_token=$(printf '%s' "$oidc_response" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("value",""))')
+            if [ -z "$oidc_token" ]; then
+              echo "::error::Unable to obtain GitHub OIDC deploy token."
+              exit 1
+            fi
+            auth_header=(-H "Authorization: Bearer $oidc_token")
+          fi
+
+          env_json=$(python3 - <<'PY'
+          import json, os
+          keys = [
+              "NG_LIVEKIT_URL","NG_LIVEKIT_API_KEY","NG_LIVEKIT_API_SECRET",
+              "JWT_ACCESS_SECRET","JWT_REFRESH_SECRET",
+              "ENCRYPTION_KEY","SESSION_SECRET","ANTHROPIC_API_KEY",
+              "GEMINI_API_KEY","CLAUDE_API_KEY","STRIPE_SECRET_KEY",
+              "STRIPE_PUBLISHABLE_KEY","STRIPE_WEBHOOK_SECRET",
+              "PAYSTACK_SECRET_KEY","PAYSTACK_PUBLIC_KEY",
+              "FLUTTERWAVE_SECRET_KEY","FLUTTERWAVE_PUBLIC_KEY",
+              "TERMII_API_KEY","SMTP_HOST","SMTP_USER","SMTP_PASSWORD",
+              "SMTP_FROM","RTC_TURN_URLS","TURN_STATIC_AUTH_SECRET"
+          ]
+          print(json.dumps({k: os.environ[k] for k in keys if os.environ.get(k)}))
+          PY
+          )
+
+          set +e
+          response=$(curl -sS -o /tmp/artifact_deploy_response.json -w "%{http_code}" \
+            -X POST https://doctarx.com/api/upload-build-binary \
+            "${auth_header[@]}" \
+            -F "tarball=@/tmp/doctarx-next-artifact.tar.gz;type=application/gzip" \
+            -F "gitSha=${GITHUB_SHA}" \
+            -F "branch=${GITHUB_REF_NAME}" \
+            --form-string "envJson=${env_json}" \
+            --max-time 180)
+          curl_rc=$?
+          set -e
+          echo "artifact-upload: curl_rc=$curl_rc http_code=$response"
+          python3 - /tmp/artifact_deploy_response.json <<'PY'
+          import json, sys
+          path = sys.argv[1]
+          try:
+              data = json.load(open(path))
+          except Exception:
+              print(open(path, errors="replace").read()[:1000])
+              raise SystemExit(0)
+          redacted = {k: data.get(k) for k in ("success", "message", "deployId", "pid", "fileSize", "auth", "gitSha", "branch", "envKeys")}
+          print(json.dumps(redacted, indent=2))
+          PY
+          if [ "$curl_rc" != "0" ] || [ "$response" != "200" ]; then
+            echo "::error::Artifact deploy upload failed."
+            exit 1
+          fi
+
+      - name: Wait for artifact deploy and verify production
+        env:
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+          PRE_DEPLOY_BUILD_ID: ${{ steps.predeploy.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          DEADLINE=$(( $(date +%s) + 900 ))
+          OUTCOME=timeout
+          LAST_VERIFY=""
+
+          get_oidc_header() {
+            if [ -n "${DEPLOY_SECRET:-}" ]; then
+              printf 'x-deploy-token: %s' "$DEPLOY_SECRET"
+              return
+            fi
+            oidc_resp=$(curl -sS --max-time 10 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doctarx-deploy" 2>/dev/null || echo '{}')
+            oidc_tok=$(printf '%s' "$oidc_resp" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read() or "{}").get("value",""))' 2>/dev/null || echo '')
+            printf 'Authorization: Bearer %s' "$oidc_tok"
+          }
+
+          fetch_status() {
+            header="$(get_oidc_header)"
+            curl -s --max-time 20 -H "$header" "https://doctarx.com/api/deploy/log?lines=400" 2>/dev/null || true
+          }
+
+          run_production_verify() {
+            EXPECT_COMMIT="$GITHUB_SHA" VERIFY_BASE="https://doctarx.com" \
+              PRE_DEPLOY_BUILD_ID="$PRE_DEPLOY_BUILD_ID" REQUIRE_BUILD_ID_CHANGE=1 \
+              python3 .github/scripts/verify_production.py
+          }
+
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            RESP="$(fetch_status || true)"
+            PARSED="$(printf '%s' "$RESP" | python3 .github/scripts/deploy_status.py || true)"
+            KV="$(printf '%s\n' "$PARSED" | sed '/^---VERIFY---$/,$d')"
+            LAST_VERIFY="$(printf '%s\n' "$PARSED" | sed -n '/^---VERIFY---$/,$p' | tail -n +2)"
+
+            RESULT=""; STATUS=""; VERIFIED=""; DEPLOYID=""; PID=""; EXITCODE=""; COMMIT=""
+            CHECK_BUILD=""; CHECK_PM2=""; CHECK_HEALTH=""; CHECK_NGHEALTH=""
+            eval "$KV"
+
+            if [ "$RESULT" = "contract_error" ]; then
+              echo "::error::DEPLOY_STATUS_CONTRACT_ERROR — /api/deploy/log did not honor the status contract."
+              printf '%s' "$RESP" | head -c 2000
+              echo ""
+              OUTCOME=contract_error
+              break
+            fi
+
+            if [ "$RESULT" = "transient" ] || [ "$RESULT" = "route_missing" ]; then
+              echo "$(date -u +%H:%M:%S) deploy status unavailable ($RESULT), retrying..."
+              sleep 10
+              continue
+            fi
+
+            echo "$(date -u +%H:%M:%S) status=$STATUS verified=$VERIFIED build=$CHECK_BUILD pm2=$CHECK_PM2 health=$CHECK_HEALTH ngHealth=$CHECK_NGHEALTH deployId=$DEPLOYID pid=$PID"
+            if [ "$STATUS" = "running" ] || [ "$STATUS" = "idle" ] || [ "$STATUS" = "unknown" ]; then
+              if run_production_verify; then
+                echo "Public production verification passed while deploy log status=$STATUS; accepting production evidence."
+                OUTCOME=success
+                break
+              fi
+            fi
+
+            if [ "$STATUS" = "unknown" ] && [ -z "$DEPLOYID$PID" ] && [ "$CHECK_BUILD$CHECK_PM2$CHECK_HEALTH$CHECK_NGHEALTH" = "pendingpendingpendingpending" ]; then
+              echo "$(date -u +%H:%M:%S) deploy log has not received the detached process markers yet, retrying..."
+              sleep 10
+              continue
+            fi
+
+            case "$STATUS" in
+              success)
+                printf '%s\n' "$LAST_VERIFY"
+                if [ "$VERIFIED" != "true" ]; then
+                  OUTCOME=failed
+                  echo "::error::EC2 reported success without verified=true."
+                  break
+                fi
+                if run_production_verify; then OUTCOME=success; else OUTCOME=verify_failed; fi
+                break ;;
+              failed|timeout|unknown)
+                OUTCOME="$STATUS"
+                printf '%s\n' "$LAST_VERIFY"
+                break ;;
+              running|idle)
+                sleep 10 ;;
+              *)
+                OUTCOME=contract_error
+                echo "::error::Unexpected deploy status '$STATUS'."
+                break ;;
+            esac
+          done
+
+          if [ "$OUTCOME" = "success" ]; then
+            echo "Deployment SUCCESSFUL — CI-built artifact installed and full production verification passed."
+            exit 0
+          fi
+
+          echo "::error::Deployment did NOT succeed (outcome=$OUTCOME). Last deploy log evidence:"
+          printf '%s\n' "$LAST_VERIFY"
+          exit 1

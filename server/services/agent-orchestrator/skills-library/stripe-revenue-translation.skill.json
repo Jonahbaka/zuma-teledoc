@@ -1,0 +1,34 @@
+{
+  "name": "finance.stripe.translate",
+  "description": "Translate simulated bank account values to real Stripe revenue. Monitors enrollments (patient subscriptions, provider subscriptions, consultations) and ensures every real Stripe payment flows into the financial ledger.",
+  "trigger": "event",
+  "events": ["payment.received", "subscription.created"],
+  "agent": "accounting",
+  "clerk": "ar",
+  "steps": [
+    {
+      "name": "Check recent Stripe payments not yet in ledger",
+      "type": "query",
+      "query": "SELECT COUNT(*) as unsynced FROM fin_stripe_bridge WHERE status = 'pending'",
+      "id": "pending_sync"
+    },
+    {
+      "name": "Get total Stripe revenue vs simulated bank",
+      "type": "query",
+      "query": "SELECT (SELECT COALESCE(SUM(real_amount), 0) FROM fin_stripe_bridge WHERE status = 'completed') as total_real_revenue, (SELECT current_balance FROM fin_bank_accounts WHERE account_number = 'DCTA-STR-001') as stripe_account_balance, (SELECT COALESCE(SUM(current_balance), 0) FROM fin_bank_accounts WHERE is_active = true) as total_simulated_cash",
+      "id": "revenue_snapshot"
+    },
+    {
+      "name": "Analyze translation gap",
+      "type": "llm_generate",
+      "model": "flash",
+      "prompt_template": "Revenue Translation Report:\n\nPending Syncs: {{pending_sync}}\nRevenue Snapshot: {{revenue_snapshot}}\n\nAnalyze: (1) Is Stripe ↔ Ledger in sync? (2) Any pending translations? (3) Revenue translation rate?",
+      "id": "translation_analysis"
+    },
+    {
+      "name": "Report translation status",
+      "type": "notify",
+      "input": "$translation_analysis"
+    }
+  ]
+}

@@ -1,0 +1,403 @@
+# ═══════════════════════════════════════════════════════════════
+#  NemoClaw OpenShell Sandbox Configuration
+#  DoctaRx — Project Genesis Agent Isolation
+# ═══════════════════════════════════════════════════════════════
+#
+#  Enforces strict isolation for all OpenClaw medical agents
+#  running inside the NVIDIA NemoClaw OpenShell runtime.
+#
+#  Security Model:
+#    - Patient data directories: READ-ONLY
+#    - External API egress: DENY ALL except allowlisted
+#    - PII never leaves the sandbox without scrubbing
+#    - HIPAA audit trail for every sandbox action
+# ═══════════════════════════════════════════════════════════════
+
+apiVersion: nemoclaw/v1
+kind: SandboxProfile
+metadata:
+  name: doctarx-openclaw-sandbox
+  namespace: doctarx-production
+  labels:
+    app: doctarx
+    component: agent-orchestrator
+    compliance: hipaa
+    environment: production
+
+spec:
+  # ── Runtime Configuration ──────────────────────────────────
+  runtime:
+    engine: openshell
+    version: ">=1.2.0"
+    isolation: strict          # full process + network isolation
+    maxConcurrentAgents: 18    # matches Project Genesis agent count
+    timeoutSeconds: 300        # hard kill after 5 minutes per task
+    memoryLimitMb: 2048        # per-agent memory ceiling
+    cpuShares: 512             # fair-share CPU scheduling
+
+  # ── Agent Definitions ──────────────────────────────────────
+  # Each agent inherits base restrictions, with role-specific overrides.
+  agents:
+    # ── Healthcare Specialists (highest restriction tier) ────
+    - name: asclepius
+      displayName: "Asclepius — Clinical Decision Support"
+      skillModules:
+        - openclaw-medical-skills
+        - clinical-report-analyzer
+      securityTier: critical
+      patientDataAccess: read-only
+      canPrescribe: false
+      allowedIntentCategories:
+        - clinical_observation
+        - differential_diagnosis
+        - documentation
+
+    - name: triage_nurse
+      displayName: "Triage Nurse — Patient Assessment"
+      skillModules:
+        - openclaw-medical-skills
+      securityTier: high
+      patientDataAccess: read-only
+      canPrescribe: false
+      allowedIntentCategories:
+        - symptom_assessment
+        - urgency_scoring
+        - emergency_escalation
+
+    - name: pharmacist
+      displayName: "Pharmacist — Medication Management"
+      skillModules:
+        - openclaw-medical-skills
+      securityTier: critical
+      patientDataAccess: read-only
+      canPrescribe: false
+      allowedIntentCategories:
+        - drug_interaction_check
+        - medication_review
+        - formulary_lookup
+
+    # ── Operational Agents ───────────────────────────────────
+    - name: operations
+      displayName: "The Weaver — Operations"
+      securityTier: medium
+      patientDataAccess: none
+      allowedIntentCategories:
+        - scheduling
+        - logistics
+        - bottleneck_detection
+
+    - name: compliance
+      displayName: "The Guardian — HIPAA Compliance"
+      securityTier: critical
+      patientDataAccess: read-only   # needs read for audit
+      allowedIntentCategories:
+        - audit
+        - policy_enforcement
+        - breach_detection
+        - veto
+
+    - name: governance
+      displayName: "The Sage — Governance"
+      securityTier: high
+      patientDataAccess: none
+      allowedIntentCategories:
+        - proposal_scoring
+        - covenant_alignment
+        - vortex_evaluation
+
+    - name: revenue
+      displayName: "The Alchemist — Revenue"
+      securityTier: medium
+      patientDataAccess: none
+      allowedIntentCategories:
+        - pricing
+        - ltv_analysis
+        - financial_reporting
+
+    - name: growth
+      displayName: "The Scout — Growth"
+      securityTier: low
+      patientDataAccess: none
+      allowedIntentCategories:
+        - market_analysis
+        - social_media
+        - outreach
+
+    - name: corporate_skills
+      displayName: "The Builder — Corporate Skills"
+      securityTier: low
+      patientDataAccess: none
+      allowedIntentCategories:
+        - licensing
+        - vendor_compliance
+        - credentialing
+
+    - name: researcher
+      displayName: "The Oracle — Research"
+      securityTier: medium
+      patientDataAccess: none
+      allowedIntentCategories:
+        - literature_search
+        - evidence_synthesis
+        - citation_verification
+
+    - name: ceo
+      displayName: "The Conductor — CEO"
+      securityTier: high
+      patientDataAccess: none
+      allowedIntentCategories:
+        - executive_brief
+        - strategy_synthesis
+        - decision_recommendation
+
+    - name: devops
+      displayName: "The Debugger — DevOps"
+      securityTier: medium
+      patientDataAccess: none
+      allowedIntentCategories:
+        - monitoring
+        - self_healing
+        - deployment
+
+    - name: engineering
+      displayName: "The Engineer — Engineering"
+      securityTier: medium
+      patientDataAccess: none
+      allowedIntentCategories:
+        - code_generation
+        - code_review
+        - ide_operations
+
+    - name: accounting
+      displayName: "The Accountant — CFO"
+      securityTier: high
+      patientDataAccess: none
+      allowedIntentCategories:
+        - revenue_tracking
+        - bank_reconciliation
+        - financial_projection
+
+    - name: economics
+      displayName: "The Economist — Economics"
+      securityTier: low
+      patientDataAccess: none
+      allowedIntentCategories:
+        - game_theory
+        - price_elasticity
+        - incentive_design
+
+    - name: physicist
+      displayName: "The Architect — Physics"
+      securityTier: low
+      patientDataAccess: none
+      allowedIntentCategories:
+        - flow_dynamics
+        - network_theory
+        - optimization
+
+    - name: mathematician
+      displayName: "The Calculator — Mathematics"
+      securityTier: low
+      patientDataAccess: none
+      allowedIntentCategories:
+        - bayesian_inference
+        - monte_carlo
+        - queueing_theory
+
+    - name: vortex_math
+      displayName: "The Tesseract — Vortex Mathematics"
+      securityTier: low
+      patientDataAccess: none
+      allowedIntentCategories:
+        - sacred_geometry
+        - pattern_recognition
+        - vortex_scoring
+
+  # ── Filesystem Permissions ─────────────────────────────────
+  filesystem:
+    # Patient data: strictly read-only, no copies outside sandbox
+    - path: /data/patients
+      permission: read-only
+      auditAccess: true
+      encryption: aes-256-gcm
+      allowedAgents:
+        - asclepius
+        - triage_nurse
+        - pharmacist
+        - compliance
+
+    - path: /data/medical-records
+      permission: read-only
+      auditAccess: true
+      encryption: aes-256-gcm
+      allowedAgents:
+        - asclepius
+        - pharmacist
+        - compliance
+
+    - path: /data/prescriptions
+      permission: read-only
+      auditAccess: true
+      encryption: aes-256-gcm
+      allowedAgents:
+        - pharmacist
+        - compliance
+
+    # Agent workspace: read-write within sandbox only
+    - path: /sandbox/workspace
+      permission: read-write
+      auditAccess: false
+      allowedAgents: ["*"]
+
+    # Shared knowledge base: read-write for persistent memory
+    - path: /sandbox/knowledge
+      permission: read-write
+      auditAccess: true
+      allowedAgents: ["*"]
+
+    # Logs directory: append-only
+    - path: /sandbox/logs
+      permission: append-only
+      auditAccess: false
+      allowedAgents: ["*"]
+
+    # Model artifacts: read-only
+    - path: /models
+      permission: read-only
+      auditAccess: false
+      allowedAgents: ["*"]
+
+    # Deny everything else
+    - path: /
+      permission: deny
+      allowedAgents: []
+
+  # ── Network Egress Policy (No-Egress by default) ───────────
+  network:
+    defaultPolicy: deny          # block all outbound by default
+
+    allowlist:
+      # DoctaRx internal services only
+      - destination: "127.0.0.1"
+        ports: [3001, 8080]
+        protocol: tcp
+        description: "DoctaRx backend (local)"
+
+      - destination: "host.docker.internal"
+        ports: [3001, 8080]
+        protocol: tcp
+        description: "DoctaRx backend (Docker bridge)"
+
+      # NemoClaw Gateway
+      - destination: "127.0.0.1"
+        ports: [18789]
+        protocol: tcp
+        description: "NemoClaw Gateway"
+
+      # PostgreSQL (AWS RDS — required for agent DB access)
+      - destination: "${DATABASE_HOST}"
+        ports: [5432]
+        protocol: tcp
+        description: "PostgreSQL database"
+
+      # Local Ollama inference
+      - destination: "127.0.0.1"
+        ports: [11434]
+        protocol: tcp
+        description: "Ollama local LLM inference"
+
+      # Approved cloud LLM providers (routed through Privacy Router)
+      - destination: "api.anthropic.com"
+        ports: [443]
+        protocol: https
+        description: "Anthropic Claude API (PII-scrubbed only)"
+        requiresPrivacyRouter: true
+
+      - destination: "generativelanguage.googleapis.com"
+        ports: [443]
+        protocol: https
+        description: "Google Gemini API (PII-scrubbed only)"
+        requiresPrivacyRouter: true
+
+    # Explicitly blocked destinations
+    denylist:
+      - destination: "0.0.0.0/0"
+        description: "Block all other egress"
+      - destination: "metadata.google.internal"
+        description: "Block cloud metadata endpoint"
+      - destination: "169.254.169.254"
+        description: "Block AWS IMDS"
+
+  # ── PII Protection Policy ──────────────────────────────────
+  piiProtection:
+    enabled: true
+    scrubBeforeEgress: true
+    scrubPatterns:
+      - type: ssn
+        pattern: '\b\d{3}-?\d{2}-?\d{4}\b'
+        replacement: "[SSN-REDACTED]"
+      - type: phone
+        pattern: '\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b'
+        replacement: "[PHONE-REDACTED]"
+      - type: email
+        pattern: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        replacement: "[EMAIL-REDACTED]"
+      - type: mrn
+        pattern: '\bMRN[-:\s]?\d{6,12}\b'
+        replacement: "[MRN-REDACTED]"
+      - type: dob
+        pattern: '\b(?:DOB|Date of Birth)[-:\s]?\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b'
+        replacement: "[DOB-REDACTED]"
+      - type: address
+        pattern: '\b\d{1,5}\s[\w\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Court|Ct)\b'
+        replacement: "[ADDRESS-REDACTED]"
+      - type: npi
+        pattern: '\bNPI[-:\s]?\d{10}\b'
+        replacement: "[NPI-REDACTED]"
+
+  # ── Audit & Compliance ─────────────────────────────────────
+  audit:
+    enabled: true
+    logDestination: /sandbox/logs/nemoclaw-audit.jsonl
+    logFormat: jsonl
+    retentionDays: 2555        # 7 years (HIPAA minimum)
+    events:
+      - agentStart
+      - agentStop
+      - patientDataAccess
+      - egressAttempt
+      - egressBlocked
+      - piiDetected
+      - piiScrubbed
+      - intentDeclared
+      - intentApproved
+      - intentDenied
+      - sandboxViolation
+      - emergencyShutdown
+
+  # ── Emergency Controls ─────────────────────────────────────
+  emergency:
+    harmonicLock: true         # matches Project Genesis emergency shutdown
+    killSwitch:
+      enabled: true
+      mechanism: sigterm       # graceful shutdown
+      fallbackMechanism: sigkill
+      fallbackTimeoutSeconds: 10
+    notifyOnViolation:
+      - channel: audit_log
+      - channel: operator_dashboard
+      - channel: compliance_agent  # The Guardian gets notified
+
+  # ── Resource Limits ────────────────────────────────────────
+  resources:
+    perAgent:
+      memoryMb: 512
+      cpuMillicores: 250
+      diskMb: 100
+      networkBandwidthKbps: 1024
+      maxOpenFiles: 256
+      maxProcesses: 16
+    total:
+      memoryMb: 4096
+      cpuMillicores: 4000
+      diskMb: 2048

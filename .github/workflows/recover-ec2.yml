@@ -1,0 +1,62 @@
+name: Recover EC2 (out-of-band)
+
+# Existing recovery workflow, adapted to the verified Cloudflare Tunnel host.
+# GitHub OIDC + SSM require no inbound SSH or long-lived AWS credentials.
+# Normal deployment remains .github/workflows/deploy.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Diagnose the configured production host or restart its existing application
+        type: choice
+        default: diagnose-only
+        options:
+          - diagnose-only
+          - restart-services
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+  EC2_APP_DIR: ${{ vars.EC2_APP_DIR }}
+  EC2_APP_USER: ${{ vars.EC2_APP_USER }}
+  EC2_PM2_APP: ${{ vars.EC2_PM2_APP }}
+  EC2_HEALTH_PORT: ${{ vars.EC2_HEALTH_PORT }}
+  EC2_RECOVERY_TRANSPORT: ${{ vars.EC2_RECOVERY_TRANSPORT }}
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require configured SSM transport
+        run: |
+          set -euo pipefail
+          test "$EC2_RECOVERY_TRANSPORT" = ssm
+          for key in AWS_REGION EC2_INSTANCE_ID EC2_APP_DIR EC2_APP_USER EC2_PM2_APP EC2_HEALTH_PORT; do
+            test -n "${!key}" || { echo "::error::Missing repository variable $key"; exit 1; }
+          done
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: doctarx-recovery-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Diagnose or recover the existing application through SSM
+        env:
+          RECOVERY_ACTION: ${{ inputs.action }}
+        run: python3 .github/scripts/recover_ec2_ssm.py
+      - name: Verify public application health
+        if: ${{ inputs.action == 'restart-services' }}
+        run: |
+          set -euo pipefail
+          curl --fail --retry 5 --retry-delay 5 --max-time 20 https://doctarx.com/api/health > /tmp/doctarx-health.json
+          python3 -c 'import json; h=json.load(open("/tmp/doctarx-health.json")); assert h.get("status")=="healthy" and h.get("nextReady") is True; print("Public application health verified.")'

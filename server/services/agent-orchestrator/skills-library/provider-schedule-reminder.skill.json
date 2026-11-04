@@ -1,0 +1,47 @@
+{
+  "name": "provider.schedule.reminder",
+  "displayName": "Provider Schedule Reminder",
+  "description": "Remind providers of their upcoming appointments and patient prep notes. Ensures providers are ready and patients feel cared for.",
+  "version": "1.0.0",
+  "category": "operations",
+  "domain": "provider-care",
+  "tags": ["reminder", "provider", "schedule", "proactive", "preparation"],
+  "triggers": ["provider.schedule.updated", "system.scheduled.check"],
+  "schedule": "30min",
+  "riskLevel": "low",
+  "requiresApproval": false,
+  "involvesPhi": false,
+  "involvesFinancial": false,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "fetch_provider_schedule",
+      "name": "Fetch provider appointments for next 2 hours",
+      "type": "query",
+      "query": "SELECT a.*, u.first_name as patient_first, u.last_name as patient_last, u.email as patient_email, p.first_name as provider_first, p.last_name as provider_last, p.email as provider_email FROM appointments a LEFT JOIN users u ON a.patient_id = u.id LEFT JOIN users p ON a.provider_id = p.id WHERE a.scheduled_at > NOW() AND a.scheduled_at < NOW() + INTERVAL '2 hours' AND a.status IN ('scheduled', 'confirmed')"
+    },
+    {
+      "id": "group_by_provider",
+      "name": "Group appointments by provider",
+      "type": "transform",
+      "input": "$fetch_provider_schedule",
+      "groupBy": "provider_id"
+    },
+    {
+      "id": "notify_providers",
+      "name": "Send schedule summary to each provider",
+      "type": "notify",
+      "input": "$group_by_provider",
+      "template": "provider_schedule_summary"
+    }
+  ],
+  "inputSchema": {},
+  "outputSchema": {
+    "properties": {
+      "providersNotified": { "type": "number" },
+      "totalAppointments": { "type": "number" }
+    }
+  },
+  "sideEffects": ["sends_provider_notification"]
+}

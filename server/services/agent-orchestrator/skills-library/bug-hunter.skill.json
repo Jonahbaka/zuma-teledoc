@@ -1,0 +1,101 @@
+{
+  "id": "bug-hunter",
+  "name": "Autonomous Bug Hunter & Fixer",
+  "description": "Continuously monitors the platform for errors, exceptions, and anomalies. Automatically diagnoses root causes and applies fixes with AI-generated patches.",
+  "version": "1.0.0",
+  "category": "engineering",
+  "agent": "engineering-agent",
+  "trigger": {
+    "type": "event",
+    "events": ["system.error", "api.error.500", "client.error"],
+    "schedule": "0 */2 * * *"
+  },
+  "capabilities": [
+    "read_file",
+    "write_file",
+    "execute_code",
+    "search_codebase",
+    "ai_generate",
+    "analyze_stack_trace"
+  ],
+  "steps": [
+    {
+      "id": "collect_errors",
+      "action": "query_system",
+      "description": "Gather recent errors from application logs and Sentry",
+      "sources": ["server_logs", "sentry_events", "client_errors", "api_response_errors"]
+    },
+    {
+      "id": "triage",
+      "action": "ai_analyze",
+      "description": "Use AI to categorize errors by severity and root cause",
+      "model": "gemini-2.0-flash",
+      "prompt_template": "Analyze these errors from DoctaRx telehealth platform. Categorize by: CRITICAL (data loss/security), HIGH (user-facing broken), MEDIUM (degraded experience), LOW (cosmetic/log noise). For each, identify root cause and affected files:\n\n{{errors}}"
+    },
+    {
+      "id": "diagnose",
+      "action": "code_intelligence",
+      "description": "Trace error through codebase to find exact fix location",
+      "operations": [
+        "parse_stack_trace",
+        "trace_call_chain",
+        "check_recent_changes",
+        "identify_regression"
+      ]
+    },
+    {
+      "id": "generate_fix",
+      "action": "ai_generate",
+      "description": "Generate a targeted fix for the identified bug",
+      "model": "gemini-2.0-flash",
+      "prompt_template": "Fix this bug in {{file}}:\n\nError: {{error}}\nRoot Cause: {{diagnosis}}\nStack Trace: {{stack_trace}}\n\nGenerate the minimum viable fix. Do not refactor unrelated code. Ensure backward compatibility."
+    },
+    {
+      "id": "test_fix",
+      "action": "execute_code",
+      "description": "Validate the fix doesn't break existing functionality",
+      "sandbox": true,
+      "rollback_on_failure": true
+    },
+    {
+      "id": "apply_fix",
+      "action": "write_file",
+      "description": "Apply the validated fix with backup",
+      "require_backup": true,
+      "require_review": false
+    },
+    {
+      "id": "report",
+      "action": "notify",
+      "description": "Report fix to admin dashboard",
+      "channels": ["admin_dashboard", "agent_log"]
+    }
+  ],
+  "error_patterns": {
+    "null_reference": {
+      "pattern": "Cannot read property .* of (null|undefined)",
+      "fix_strategy": "Add null checks and optional chaining",
+      "severity": "MEDIUM"
+    },
+    "unhandled_promise": {
+      "pattern": "UnhandledPromiseRejection",
+      "fix_strategy": "Add try/catch wrapper and error propagation",
+      "severity": "HIGH"
+    },
+    "db_connection": {
+      "pattern": "ECONNREFUSED|connection refused|pool exhausted",
+      "fix_strategy": "Add connection retry logic with exponential backoff",
+      "severity": "CRITICAL"
+    },
+    "auth_bypass": {
+      "pattern": "unauthorized|authentication failed|token expired",
+      "fix_strategy": "Verify auth middleware chain and token refresh",
+      "severity": "CRITICAL"
+    },
+    "memory_leak": {
+      "pattern": "heap out of memory|ENOMEM",
+      "fix_strategy": "Identify unbounded growth patterns, add cleanup handlers",
+      "severity": "HIGH"
+    }
+  }
+}

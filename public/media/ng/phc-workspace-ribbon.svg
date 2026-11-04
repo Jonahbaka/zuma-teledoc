@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420" viewBox="0 0 1600 420" role="img">
+  <defs>
+    <linearGradient id="band1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#5EEAD4" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#4F46E5" stop-opacity="0.8"/>
+    </linearGradient>
+    <linearGradient id="band2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#5EEAD4" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#0E7490" stop-opacity="0.45"/>
+    </linearGradient>
+    <filter id="blurBand" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="34"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="420" fill="#0B1220"/>
+  <g filter="url(#blurBand)" opacity="0.55">
+    <path d="M -40 300 C 320 180, 620 380, 940 250 C 1220 136, 1420 250, 1640 160 L 1640 460 L -40 460 Z"
+          fill="url(#band2)"/>
+  </g>
+  <path d="M -40 300 C 320 180, 620 380, 940 250 C 1220 136, 1420 250, 1640 160"
+        fill="none" stroke="url(#band1)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M -40 352 C 340 250, 640 420, 960 300 C 1240 198, 1440 300, 1640 220"
+        fill="none" stroke="#10B981" stroke-opacity="0.4" stroke-width="3"
+        stroke-linecap="round" stroke-dasharray="18 16"/>
+  <circle cx="220" cy="268" r="15" fill="#0B1220" stroke="#10B981" stroke-width="4"/><circle cx="560" cy="322" r="11" fill="#0B1220" stroke="#5EEAD4" stroke-width="4"/><circle cx="900" cy="272" r="15" fill="#0B1220" stroke="#10B981" stroke-width="4"/><circle cx="1240" cy="246" r="11" fill="#0B1220" stroke="#5EEAD4" stroke-width="4"/><circle cx="1520" cy="196" r="15" fill="#0B1220" stroke="#10B981" stroke-width="4"/>
+</svg>

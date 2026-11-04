@@ -1,0 +1,58 @@
+{
+  "name": "provider.permission.gate",
+  "displayName": "Provider Permission Gate",
+  "description": "Before agents take any action on behalf of a provider (prescriptions, schedule changes, patient communications), this skill ensures explicit provider approval is obtained.",
+  "version": "1.0.0",
+  "category": "compliance",
+  "domain": "provider-governance",
+  "tags": ["permission", "provider", "safety", "approval-gate", "human-in-loop"],
+  "triggers": ["agent.action.requires_provider_approval"],
+  "schedule": null,
+  "riskLevel": "medium",
+  "requiresApproval": true,
+  "involvesPhi": false,
+  "involvesFinancial": false,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "prepare_request",
+      "name": "Prepare provider approval request",
+      "type": "action",
+      "action": "format_approval_request",
+      "input": "$trigger_context"
+    },
+    {
+      "id": "send_approval",
+      "name": "Send approval request to provider",
+      "type": "approval",
+      "approver": "provider",
+      "timeout": "24h",
+      "escalation": "admin"
+    },
+    {
+      "id": "execute_or_abort",
+      "name": "Execute approved action or abort",
+      "type": "action",
+      "condition": "$send_approval.approved === true",
+      "action": "execute_pending_action"
+    }
+  ],
+  "inputSchema": {
+    "properties": {
+      "providerId": { "type": "string" },
+      "actionType": { "type": "string" },
+      "actionDescription": { "type": "string" },
+      "urgency": { "type": "string", "enum": ["low", "medium", "high", "critical"] }
+    },
+    "required": ["providerId", "actionType"]
+  },
+  "outputSchema": {
+    "properties": {
+      "approved": { "type": "boolean" },
+      "approvedBy": { "type": "string" },
+      "approvedAt": { "type": "string" }
+    }
+  },
+  "sideEffects": ["sends_provider_notification", "creates_audit_log"]
+}

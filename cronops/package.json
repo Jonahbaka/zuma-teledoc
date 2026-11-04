@@ -1,0 +1,31 @@
+{
+  "name": "doctarx-cronops",
+  "version": "1.0.0",
+  "description": "DoctaRx CronOps — Scheduled operational task runner",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "ts-node --project tsconfig.json index.ts",
+    "start:prod": "ts-node --project tsconfig.json --transpile-only index.ts",
+    "dev": "CRONOPS_DRY_RUN=true ts-node --project tsconfig.json index.ts",
+    "typecheck": "tsc --noEmit",
+    "run-task": "ts-node --project tsconfig.json scripts/run-task.ts"
+  },
+  "dependencies": {
+    "@google-analytics/data": "^4.5.0",
+    "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3",
+    "pg": "^8.11.5",
+    "stripe": "^15.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.11.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

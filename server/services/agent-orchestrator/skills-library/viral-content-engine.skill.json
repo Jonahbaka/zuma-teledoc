@@ -1,0 +1,62 @@
+{
+  "name": "growth.viral.content.engine",
+  "displayName": "Viral Content Engine",
+  "description": "Invent novel ways to create viral content that attracts providers and patients. Uses pattern analysis of what goes viral in healthcare, generates content strategies, and measures conversion.",
+  "version": "1.0.0",
+  "category": "growth",
+  "domain": "marketing",
+  "tags": ["viral", "content", "growth", "acquisition", "provider-enrollment", "patient-acquisition"],
+  "triggers": ["system.scheduled.check", "growth.content.needed"],
+  "schedule": "6h",
+  "riskLevel": "low",
+  "requiresApproval": true,
+  "involvesPhi": false,
+  "involvesFinancial": false,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "analyze_trends",
+      "name": "Analyze current healthcare content trends",
+      "type": "action",
+      "action": "analyze_viral_patterns",
+      "parameters": {
+        "domains": ["healthcare", "telehealth", "digital health", "wellness"],
+        "platforms": ["twitter", "linkedin", "tiktok", "instagram", "youtube"],
+        "lookback_days": 7
+      }
+    },
+    {
+      "id": "generate_hooks",
+      "name": "Generate viral content hooks using Gemini",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "Based on trending healthcare topics, generate 5 viral content hooks for DoctaRx (a telehealth platform). Each hook should: 1) Stop the scroll 2) Educate about telehealth benefits 3) Drive provider or patient signups. Format: Hook + Platform + Expected engagement. Think like a YCombinator growth hacker meets healthcare advocate.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "create_content_plan",
+      "name": "Create weekly content plan",
+      "type": "transform",
+      "input": "$generate_hooks",
+      "format": "content_calendar"
+    },
+    {
+      "id": "submit_for_approval",
+      "name": "Submit content plan for Operator approval",
+      "type": "approval",
+      "approver": "operator",
+      "input": "$create_content_plan"
+    }
+  ],
+  "inputSchema": {},
+  "outputSchema": {
+    "properties": {
+      "contentPiecesGenerated": { "type": "number" },
+      "platformsCovered": { "type": "array" },
+      "estimatedReach": { "type": "number" },
+      "conversionEstimate": { "type": "number" }
+    }
+  },
+  "sideEffects": ["creates_content_draft", "requires_operator_approval"]
+}

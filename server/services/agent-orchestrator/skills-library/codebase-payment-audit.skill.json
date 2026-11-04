@@ -1,0 +1,40 @@
+{
+  "name": "finance.codebase.payment_audit",
+  "description": "Agent understands the full DoctaRx codebase payment architecture. Audits that all payment flows (patient subscriptions, provider subscriptions, consultations, credentialing) are properly wired from frontend through Stripe to the financial ledger.",
+  "trigger": "scheduled",
+  "schedule": "weekly",
+  "agent": "accounting",
+  "steps": [
+    {
+      "name": "Get codebase payment knowledge",
+      "type": "api_call",
+      "endpoint": "/api/financial/stripe/codebase-knowledge",
+      "method": "GET",
+      "id": "codebase_knowledge"
+    },
+    {
+      "name": "Check Stripe bridge reconciliation",
+      "type": "query",
+      "query": "SELECT enrollment_type, COUNT(*) as transactions, SUM(real_amount) as total_real, SUM(net_amount) as total_net, SUM(fee_amount) as total_fees, COUNT(*) FILTER (WHERE reconciled = false) as unreconciled FROM fin_stripe_bridge GROUP BY enrollment_type",
+      "id": "bridge_status"
+    },
+    {
+      "name": "Check revenue accounts match Stripe",
+      "type": "query",
+      "query": "SELECT coa.account_number, coa.account_name, COALESCE(SUM(CASE WHEN coa.normal_balance = 'credit' THEN jl.credit - jl.debit ELSE jl.debit - jl.credit END), 0) as balance FROM fin_chart_of_accounts coa LEFT JOIN fin_journal_lines jl ON coa.account_number = jl.account_number LEFT JOIN fin_journal_entries je ON jl.journal_entry_id = je.id AND je.is_posted = true WHERE coa.account_number IN ('4010', '4020', '4030', '4040', '4900', '1050') GROUP BY coa.account_number, coa.account_name, coa.normal_balance ORDER BY coa.account_number",
+      "id": "revenue_accounts"
+    },
+    {
+      "name": "Audit payment architecture",
+      "type": "llm_generate",
+      "model": "pro",
+      "prompt_template": "You are The Treasurer performing a weekly payment architecture audit for DoctaRx.\n\nCodebase Knowledge:\n{{codebase_knowledge}}\n\nStripe Bridge Status:\n{{bridge_status}}\n\nRevenue Accounts:\n{{revenue_accounts}}\n\nAudit:\n1. Are all payment flows properly implemented? (patient subs, provider subs, consultations, credentialing)\n2. Do revenue accounts match expected Stripe revenue?\n3. Are there unreconciled transactions?\n4. Is the Stripe fee tracking accurate (2.9% + $0.30)?\n5. Any gaps in the payment-to-ledger pipeline?\n6. Risk assessment: what could break?",
+      "id": "audit_report"
+    },
+    {
+      "name": "Report audit findings",
+      "type": "notify",
+      "input": "$audit_report"
+    }
+  ]
+}

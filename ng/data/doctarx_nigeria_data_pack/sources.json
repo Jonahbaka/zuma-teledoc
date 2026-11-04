@@ -1,0 +1,58 @@
+{
+  "sources": [
+    {
+      "source_id": "nhia_hmo",
+      "name": "NHIA Accredited HMOs",
+      "kind": "official_html_directory",
+      "url": "https://www.nhia.gov.ng/hmo/",
+      "recommended_table": "payer_networks",
+      "status": "seed_extracted",
+      "notes": "Official NHIA directory with HMO name, HMO ID, website, address, email, call center numbers."
+    },
+    {
+      "source_id": "nhia_sshia",
+      "name": "NHIA SSHIA directory",
+      "kind": "official_html_directory",
+      "url": "https://www.nhia.gov.ng/sshias/",
+      "recommended_table": "state_insurance_agencies",
+      "status": "seed_extracted",
+      "notes": "Official state insurance agency directory."
+    },
+    {
+      "source_id": "nhia_hcp",
+      "name": "NHIA participating health care providers",
+      "kind": "official_html_page",
+      "url": "https://www.nhia.gov.ng/hcps/",
+      "recommended_table": "providers",
+      "status": "manual_or_browser_extraction_needed",
+      "notes": "Official page exists but the provider rows are not exposed as a clean text table in this environment."
+    },
+    {
+      "source_id": "nhia_drugs",
+      "name": "NHIA Drug List and Prices",
+      "kind": "official_html_catalog",
+      "url": "https://www.nhia.gov.ng/nhia-drug-list-and-prices/",
+      "recommended_table": "med_catalog",
+      "status": "starter_seed_extracted",
+      "notes": "Large catalog. Use starter seed here, then extend."
+    },
+    {
+      "source_id": "nhia_ffs",
+      "name": "NHIA Professional Fee For Service Price List",
+      "kind": "official_html_catalog",
+      "url": "https://www.nhia.gov.ng/professional-ffs-price-list/",
+      "recommended_table": "service_price_catalog",
+      "status": "use_as_reference",
+      "notes": "Useful for telehealth pricing intelligence, referrals, and procedure cost display."
+    },
+    {
+      "source_id": "reliance_providers",
+      "name": "Reliance Nigeria provider directory",
+      "kind": "commercial_provider_directory",
+      "url": "https://getreliancehealth.com/nigeria/providers/",
+      "recommended_table": "providers",
+      "status": "seed_extracted",
+      "notes": "State pages expose provider names and addresses. Good for enrichment and commercial network visibility."
+    }
+  ]
+}

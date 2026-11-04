@@ -1,0 +1,99 @@
+name: CareOps foundation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  careops-postgres-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: doctarx_careops_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d doctarx_careops_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/doctarx_careops_test
+      SIMULATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/doctarx_careops_test
+      JWT_ACCESS_SECRET: synthetic-careops-ci-access-secret-at-least-32-characters
+      JWT_REFRESH_SECRET: synthetic-careops-ci-refresh-secret-at-least-32-characters
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      NODE_ENV: test
+      NG_AUTO_SEED_DISCOVERY: 'false'
+      DISABLE_SCHEDULERS: 'true'
+      CAREOPS_UI_OUTPUT_DIR: artifacts/careops
+      CAREOPS_E2E_PASSWORD: Demo12345678!
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Migrate isolated database
+        run: |
+          npm run migrate
+          npm run ng:migrate
+      - name: CareOps integrity and PostgreSQL workflows
+        run: |
+          node --test ng/tests/careops-production.test.js
+          npm run test:careops:db
+          npm run test:ng:government-data:db
+          npm run test:ng:phc:db
+          node --test ng/tests/private-prescription-upload.test.js
+          node --test ng/tests/prescription-submission-navigation.test.js
+          npm run test:platform:db
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: CareOps sign-in, role and accessibility checks
+        run: npm run e2e:careops
+      - name: Main DoctaRx sign-in, patient and provider workflows
+        run: npm run e2e:main-platform
+        env:
+          MAIN_PLATFORM_UI_OUTPUT_DIR: artifacts/careops/main-platform
+      - name: DoctaRx administrative workflows
+        run: npm run e2e:admin-platform
+        env:
+          ADMIN_PLATFORM_UI_OUTPUT_DIR: artifacts/careops/admin-platform
+      - name: DoctaRx public homepage and location-based pharmacy discovery
+        run: npm run e2e:public-platform
+        env:
+          PUBLIC_PLATFORM_UI_OUTPUT_DIR: artifacts/careops/public-platform
+      - name: DoctaRx receipt-backed membership and billing states
+        run: npm run e2e:membership-platform
+        env:
+          MEMBERSHIP_PLATFORM_UI_OUTPUT_DIR: artifacts/careops/membership-platform
+      - name: Build standalone CareOps release profile
+        run: npm run careops:build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          NEXT_PUBLIC_APP_URL: http://127.0.0.1:3002
+          NEXT_PUBLIC_API_URL: /api
+          DOCTARX_API_PROXY_TARGET: http://127.0.0.1:18080/api
+          AUTH_COOKIE_DOMAIN_MODE: host-only
+      - name: Standalone CareOps production profile and account isolation
+        run: npm run e2e:careops-profile
+        env:
+          CAREOPS_PROFILE_PRODUCTION_E2E: 'true'
+          CAREOPS_UI_OUTPUT_DIR: artifacts/careops/standalone-profile
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: careops-browser-${{ github.run_id }}
+          path: artifacts/careops/
+          if-no-files-found: warn
+          retention-days: 14

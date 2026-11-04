@@ -1,0 +1,58 @@
+{
+  "name": "growth.referral.viral.loop",
+  "displayName": "Referral Viral Loop Builder",
+  "description": "Design and optimize a patient-to-patient and provider-to-provider referral program that creates exponential growth. Every satisfied patient becomes a broadcaster.",
+  "version": "1.0.0",
+  "category": "growth",
+  "domain": "viral-growth",
+  "tags": ["referral", "viral", "loop", "growth", "word-of-mouth", "exponential"],
+  "triggers": ["patient.appointment.completed", "system.scheduled.check"],
+  "schedule": "24h",
+  "riskLevel": "low",
+  "requiresApproval": true,
+  "involvesPhi": false,
+  "involvesFinancial": true,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "identify_advocates",
+      "name": "Identify potential advocates (completed 2+ visits)",
+      "type": "query",
+      "query": "SELECT patient_id, COUNT(*) as visit_count FROM appointments WHERE status = 'completed' GROUP BY patient_id HAVING COUNT(*) >= 2"
+    },
+    {
+      "id": "design_incentives",
+      "name": "Design referral incentive structure",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "Design a referral program for DoctaRx telehealth platform. Create 3 tiers: 1) Patient refers patient, 2) Provider refers provider, 3) Patient refers provider. For each: incentive (must be legal for healthcare), messaging, viral mechanics, expected K-factor. Make it irresistible but HIPAA-compliant.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "create_assets",
+      "name": "Create referral messaging and landing page copy",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "Write referral program copy: 1 email template, 1 SMS message, 1 social media post, and 1 landing page headline+subhead for DoctaRx referral program. Tone: warm, trustworthy, exciting. CTA: clear and urgent.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "submit_program",
+      "name": "Submit referral program for Operator approval",
+      "type": "approval",
+      "approver": "operator",
+      "input": ["$design_incentives", "$create_assets"]
+    }
+  ],
+  "inputSchema": {},
+  "outputSchema": {
+    "properties": {
+      "advocatesIdentified": { "type": "number" },
+      "referralTiersDesigned": { "type": "number" },
+      "estimatedKFactor": { "type": "number" },
+      "estimatedMonthlyReferrals": { "type": "number" }
+    }
+  },
+  "sideEffects": ["creates_referral_program_draft", "requires_operator_approval"]
+}

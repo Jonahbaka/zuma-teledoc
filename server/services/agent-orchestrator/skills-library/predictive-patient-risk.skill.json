@@ -1,0 +1,56 @@
+{
+  "name": "predictive.patient.risk",
+  "displayName": "Predictive Patient Risk Stratification",
+  "description": "Proactively analyze patient data to predict no-shows, deterioration risk, and engagement drop-off. Agents run this on schedule to keep the predictive model fresh.",
+  "version": "1.0.0",
+  "category": "analytics",
+  "domain": "predictive-intelligence",
+  "tags": ["predictive", "risk", "patient", "no-show", "engagement", "proactive"],
+  "triggers": ["patient.appointment.booked", "patient.appointment.completed", "system.scheduled.check"],
+  "schedule": "1h",
+  "riskLevel": "low",
+  "requiresApproval": false,
+  "involvesPhi": true,
+  "involvesFinancial": false,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "gather_appointment_data",
+      "name": "Gather recent appointment patterns",
+      "type": "query",
+      "query": "SELECT patient_id, COUNT(*) as total_appointments, COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed, COUNT(CASE WHEN status = 'no_show' THEN 1 END) as no_shows, COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled FROM appointments WHERE created_at > NOW() - INTERVAL '90 days' GROUP BY patient_id"
+    },
+    {
+      "id": "calculate_risk_scores",
+      "name": "Calculate risk scores using pattern analysis",
+      "type": "transform",
+      "input": "$gather_appointment_data",
+      "algorithm": "risk_stratification",
+      "thresholds": {
+        "high_risk_no_show_rate": 0.3,
+        "medium_risk_no_show_rate": 0.15,
+        "low_engagement_threshold": 1
+      }
+    },
+    {
+      "id": "flag_high_risk",
+      "name": "Flag high-risk patients for intervention",
+      "type": "notify",
+      "input": "$calculate_risk_scores",
+      "filter": { "risk_level": "high" },
+      "template": "high_risk_patient_alert"
+    }
+  ],
+  "inputSchema": {},
+  "outputSchema": {
+    "properties": {
+      "totalPatientsAnalyzed": { "type": "number" },
+      "highRiskCount": { "type": "number" },
+      "mediumRiskCount": { "type": "number" },
+      "lowRiskCount": { "type": "number" },
+      "interventionsTriggered": { "type": "number" }
+    }
+  },
+  "sideEffects": ["creates_risk_flags", "sends_provider_notification"]
+}

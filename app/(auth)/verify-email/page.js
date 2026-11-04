@@ -1,0 +1,227 @@
+'use client';
+
+import { useState, useEffect, Suspense, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { CheckCircle, XCircle, Loader2, Mail, Sparkles } from 'lucide-react';
+import api from '@/lib/api';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/use-toast';
+import { getProviderLoginPath, toProviderPortalPath } from '@/lib/providerPortal';
+
+function VerifyEmailContent() {
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+  const { user }     = useAuth();
+  const [status, setStatus]   = useState('verifying'); // verifying | success | error
+  const [message, setMessage] = useState('Verifying your email address…');
+  const [resending, setResending] = useState(false);
+  const token = searchParams.get('token');
+  const roleHint = searchParams.get('role');
+  const marketHint = searchParams.get('market');
+  const providerRouteOptions = {
+    user,
+    market: marketHint || undefined,
+    pathname: marketHint === 'NG' ? '/ng/provider' : marketHint === 'US' ? '/provider' : '',
+  };
+  const providerDashboardPath = toProviderPortalPath('/dashboard', providerRouteOptions);
+  const providerLoginPath = getProviderLoginPath(providerRouteOptions);
+
+  const verifyEmail = useCallback(async (verificationToken) => {
+    try {
+      const response = await api.post('/auth/verify-email', { token: verificationToken });
+      if (response.data.success) {
+        setStatus('success');
+        setMessage("Your email is verified — you're all set!");
+        toast({ title: 'Email verified ✓', description: 'Welcome aboard!', variant: 'success' });
+      }
+    } catch (error) {
+      setStatus('error');
+      setMessage(
+        error.response?.data?.error ||
+        'This link may have expired. Request a new one below.'
+      );
+      toast({
+        title: 'Verification failed',
+        description: error.response?.data?.error || 'The link is invalid or expired.',
+        variant: 'destructive'
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (token) {
+      verifyEmail(token);
+    } else {
+      setStatus('error');
+      setMessage('No verification token found in this link. Try clicking the button in your email again.');
+    }
+  }, [token, verifyEmail]);
+
+  useEffect(() => {
+    if (status !== 'success') {
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      const role = user?.role || roleHint;
+      if (role === 'provider') {
+        router.push(user ? providerDashboardPath : providerLoginPath);
+      } else if (role === 'admin' || role === 'super_admin') {
+        router.push('/admin/dashboard');
+      } else {
+        router.push('/patient/dashboard');
+      }
+    }, 2500);
+
+    return () => clearTimeout(timeoutId);
+  }, [providerDashboardPath, providerLoginPath, roleHint, router, status, user]);
+
+  const resendVerification = async () => {
+    setResending(true);
+    try {
+      await api.post('/auth/resend-verification');
+      toast({
+        title: 'Email sent!',
+        description: 'Check your inbox for a fresh verification link.',
+        variant: 'success'
+      });
+    } catch (error) {
+      toast({
+        title: 'Could not resend',
+        description: error.response?.data?.error || 'Please try again in a moment.',
+        variant: 'destructive'
+      });
+    } finally {
+      setResending(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950/30 to-slate-900 p-4">
+      {/* Background glow */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-600/10 rounded-full blur-[120px]" />
+      </div>
+
+      <div className="relative w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+        {/* Header bar */}
+        <div className={`h-1.5 w-full ${status === 'success' ? 'bg-blue-500' : status === 'error' ? 'bg-red-500' : 'bg-gradient-to-r from-blue-500 to-blue-500 animate-pulse'}`} />
+
+        <div className="p-8 text-center space-y-6">
+          {/* Icon */}
+          <div className="flex justify-center">
+            {status === 'verifying' && (
+              <div className="w-20 h-20 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
+              </div>
+            )}
+            {status === 'success' && (
+              <div className="w-20 h-20 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                <CheckCircle className="w-10 h-10 text-blue-400" />
+              </div>
+            )}
+            {status === 'error' && (
+              <div className="w-20 h-20 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                <XCircle className="w-10 h-10 text-red-400" />
+              </div>
+            )}
+          </div>
+
+          {/* Title */}
+          <div>
+            <h1 className="text-2xl font-bold text-white">
+              {status === 'verifying' && 'Verifying your email…'}
+              {status === 'success'   && 'Email verified!'}
+              {status === 'error'     && 'Verification failed'}
+            </h1>
+            <p className="mt-2 text-slate-400 leading-relaxed">{message}</p>
+          </div>
+
+          {/* Success state */}
+          {status === 'success' && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 justify-center text-blue-400 text-sm font-medium">
+                <Sparkles className="w-4 h-4" />
+                Redirecting you to your dashboard…
+              </div>
+              <Button
+                onClick={() => {
+                  const role = user?.role || roleHint;
+                  if (role === 'provider') {
+                    router.push(user ? providerDashboardPath : providerLoginPath);
+                  } else if (role === 'admin' || role === 'super_admin') {
+                    router.push('/admin/dashboard');
+                  } else {
+                    router.push('/patient/dashboard');
+                  }
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl"
+              >
+                Go to Dashboard
+              </Button>
+            </div>
+          )}
+
+          {/* Error state */}
+          {status === 'error' && (
+            <div className="space-y-3">
+              <Button
+                onClick={resendVerification}
+                disabled={resending}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl"
+              >
+                {resending ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending…</>
+                ) : (
+                  <><Mail className="w-4 h-4 mr-2" /> Send a new verification email</>
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  const role = user?.role || roleHint;
+                  if (role === 'provider') {
+                    router.push(providerLoginPath);
+                    return;
+                  }
+
+                  router.push('/patient/login');
+                }}
+                className="w-full text-slate-400 hover:text-white hover:bg-white/5 rounded-xl"
+              >
+                Back to login
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Nova footer */}
+        <div className="px-8 pb-6 text-center">
+          <p className="text-xs text-slate-500">
+            🤖 Need help? Nova, your DoctaRx AI concierge, is always available in your dashboard.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VerifyEmailFallback() {
+  return (
+    <div className="min-h-screen contrast-dark flex items-center justify-center bg-slate-900">
+      <div className="flex items-center gap-3">
+        <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
+        <span className="text-slate-400">Verifying…</span>
+      </div>
+    </div>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<VerifyEmailFallback />}>
+      <VerifyEmailContent />
+    </Suspense>
+  );
+}

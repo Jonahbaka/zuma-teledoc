@@ -1,0 +1,77 @@
+serial_no,pharmacy_name,state,lga,address,phone,email,latitude,longitude,verification_status,source_url,extracted_at
+1,Carnamed Pharmacy,Lagos,,"Ogudu Mall First Floor,",09062445689,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+2,Drug- It Solutions,Lagos,,"Skyrace Plaza, 1 Ileshomi Street, Shogunle, Lagos",0809 470 7461,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+3,Exc Pharmacy - Ikorodu,Lagos,,"250 Ikorodu Rd, Beside Awoof Lagos State.",09159477957,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+4,Exc Pharmacy-Lekki,Lagos,,"6B Francis Ojei Close Chevron Alternative, Lekki, Lagos",09156082750,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+5,Mpharma,Lagos,,"27, Acme Road Press House, Opposite I-Fitness Gym, Agidingbi Lagos","09022439644, 09087792946",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+6,Onehealth Pharmacy,Lagos,,"Block 6, Suite 3, Elegushi Modern Plaza, Phase 2, Lekki-Epe, Expressway Lekki, Lagos","09070677609, 08188762448",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+7,Pharmarun Pharmaceuticals Limited,Lagos,,"12 Josemaria Escriva Street, Ikate, Lagos State",+2348095000043,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+8,Pure Life Pharmacy,Lagos,,"15B Admiralty Way, Lekki Phase 1, Lagos",07077521309,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+9,Reliance Family Clinics Pharmacy - Gbagada,Lagos,,"12, Ayodeji Otegbola Street, Gbagada Phase 2, Gbagada, Lagos",08139379962,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+10,Reliance Family Clinics Pharmacy - Lekki,Lagos,,"113 Hakeem Dickson Street, Lekki Phase 1",Physiotherapy clinics,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+11,Abson Pharmacy And Stores Ltd,Lagos,,"Wing A, Ground Floor, Labour House, Central Business District",+2348037867716,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+12,Alpha Pharmacy- Abuja,FCT,,"Suite A01 And A11 Efab Shopping Mall, Ahmadu Bello Way Area 11, Garki, Abuja.","012704374, 08109274047",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+13,Cmargs Pharmacy & Wellmart,Lagos,,Suite 1 First Avenue Efab Estate Lokogoma,+234 809 552 2900,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+14,Mpharma - Abuja,FCT,,"Sbbc Worldwide Complex Adjacent Kado Fish Market, Ground Floor. Abuja",09087792946 - 09022439644 -,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+15,One Health Limited- Abuja,Lagos,,"Block 6, Suite 3, Elegushi Modern Plaza, Phase 2, Lekki-Epe, Expressway Lekki, Lagos","09070677609, 08188762448",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+16,Pharmachain,FCT,,"1473 Inner Block Street, Ambassador Albert Osakwe House, Opposite World Trade Centre. Central Business District, Abuja.","09167968545, 09168224197",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+17,Reliance Family Clinics Pharmacy - Abuja,FCT,,"48 Yaounde Street, Wuse Zone 6, Abuja",Salva Praise Pharmacy,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+18,Shushan Pharmacy,Lagos,,"No 693 Koko Abubakar Way, Life Camp",08035003446,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+19,Tonia Pharmacy - Garki Area 11,Lagos,,"Nipost, Tswanya Center , Suite 8, Plot 1517/1518.","+23497803588, 09099478000",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+20,Tonia Pharmacy - Grandsquare Abuja,FCT,,"Grandsquare Mall - Plot 270 Mohammadu Buhari Way, Central Area, Abuja",+2349097486558,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+21,Tonia Pharmacy - Mabushi,FCT,,"Suite: 2, Mall, The Capital Hub, Ahmadu Bello Way, Kado 900108, Abuja","09099595221, 09099595227",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+22,Tonia Pharmacy - Maitama (Head Office),FCT,,"Landmark Plaza Ibb Way, Maitama, Abuja",+2349099478008,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+23,Tonia Pharmacy - Mambolo Mall,FCT,,"Zone 3, Mambolo Mall, No 2 Mambolo St, Wuse 900281, Abuja",+2349099478007,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+24,Walbee Pharmacy Ltd,Lagos,,Suite F2 Vatan Plaza Lokogoma Expressway,Physiotherapy clinics,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+25,Caremart Pharmacy,Lagos,,"2A Trans Amadi Road, Oginigba, Opp Pabod Breweries, Rivers State.",08063689386,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+26,Haradac Pharmacy,Lagos,,"No. 16 Rumuadaolu Town Rumuola Road, Port Harcourt Rivers State","08063949791, 09049771956",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+27,Keluscare Pharmaceutical Ltd,Lagos,,"81 Eliokpokwodu Aluu Road Rukpokwu ,Port Harcourt",08069215934,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+28,Midline Pharmacy,Lagos,,"330, Ikwerre Road, Wimpey Junction, Remuepirikom, Port Harcourt.",08033384930,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+29,Mpharma - Portharcourt,Lagos,,"Hon, Gideon Ekeuwei Street, Park Land Estate, Trans Amadi, Peter Odili Rd, Ph",One Health Limited- Port Harcourt (Rivers),,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+30,Reliance Family Clinics Pharmacy - Port Harcourt,Lagos,,"No 3 Rumuola Link Road, Port Harcourt",09168345995,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+31,Ubane Forte Pharmacy,Lagos,,"81 Eneka Road, Rukpokwu, Port Harcourt",08035227220,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+32,Amela Pharmacy - Head Office,Akwa Ibom,,12 Nwaniba Road Uyo,8023323903,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+33,Amela Pharmacy - Oron Road,Akwa Ibom,,117 Oron Road Uyo,07089020257,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+34,Amela Pharmacy - Retail,Akwa Ibom,,"101 Uyo/Ikot Ekpene Highway Road, Uyo",08082167781,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+35,Amela Pharmacy- Airport,Akwa Ibom,,"Terminal Building , Victor Attah International Airport ,Uyo",09020667477,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+36,Amela Pharmacy- Eket,Akwa Ibom,,"157 Eket Oron Road, Eket",07089567207,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+37,Amela Pharmacy- Tropicana Mall,Akwa Ibom,,"G4 Tropicana Mall, Uyo",07017148040,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+38,Andy Pharmacy,Akwa Ibom,,I Atiku Abubakar Way Uyo,08068013543,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+39,Beemas Pharmacy,Akwa Ibom,,"75 Aka Road , Uyo, Akwa Ibom","08033849002, 08024298755",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+40,Golden Drugs Pharmacy,Akwa Ibom,,51 Nwaniba Road Uyo,07068612972,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+41,Ladosen Pharmacy,Akwa Ibom,,"464, Oron Road Uyo",08133662097,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+42,Zeedarls Pharmacy,Akwa Ibom,,"No 31 Udouting Ubo Street, Uyo Akwa Ibom",08054555198,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+43,Alpha Pharmacy - Gra Onitsha,Anambra,,"4 Park Road, Onitsha Mall G.R.A Former Abs Junction, Onitsha, Anambra","012704374, 09062440943",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+44,Alpha Pharmacy - Old Market Road,Anambra,,"56, Old Market Road, Onitsha, Anambra","012704374, 09062440948",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+45,Alpha Pharmacy- Awka,Anambra,,"No 1 Golphine Close (Beside Nourisha Fast Food), Unizik Temporary Site, Awka, Anambra.",CALL CENTRE: 01-2704374 TEL 08028251780,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+46,Ekowo Pharmacy,Benue,,"50, Ahmadu Bello Way, Otukpo, Benue State",08030762266,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+47,Uptown Pharmacy And Stores Limited,Benue,,No 15 Katsina Ala Street High Level,08061597555,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+48,Touchstone Pharmacy,Borno,,"4 Lafiya Road, Opposite High Courts, Gidan Madara","08135194883,08085706798",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+49,Zaimah Pharmacy,Borno,,"Suite 4, Bolori Shopping Complex Lagos Street",08034568958,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+50,Onehealth Pharmacy - Calabar,Cross River,,"Block 6, Suite 3, Elegushi Modern Plaza, Phase 2, Lekki-Epe, Expressway Lekki, Lagos","09070677609, 08188762448",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+51,Symeed Pharmacy,Cross River,,"147 Old Odukpani Road, Ikot Ansa, Calabar, Cross River State","08069843007, 08109255215",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+52,Wessa Pharmacy And Stores Ltd - 8 Miles,Cross River,,215 Murtala Mohammed Highway 8Miles Calabar,"08033367472, 08092219611",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+53,Wessa Pharmacy And Stores Ltd -Ikot Ansa,Cross River,,101 Murtala Mohamed Highway Ikot Ansa Calabar,"08033367472, 08092219611",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+54,Exc Pharmacy-Asaba,Delta,,"3, Dan Okehi Street Behind Mc Dons, Off Okpanam Road, Asaba.",07033668442,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+55,Onehealth Pharmacy - Delta,Delta,,"Block 6, Suite 3, Elegushi Modern Plaza, Phase 2, Lekki-Epe, Expressway Lekki, Lagos","09070677609, 08188762448",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+56,Safari Pharmacy 1- Legacy House Branch,Delta,,"Legacy House, Airport Road Opposite St. Anthony Catholic Church Westend Junction Warri Delta State",09050454194 08077372398,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+57,Safari Pharmacy 2 - Ogunu Branch,Delta,,No 46 Ogunu Road After Lakeland School Warri Delta State,"08074208379 , 08074198679",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+58,Safari Pharmacy 4 - Dsc Branch,Delta,,B&M Plaza Orhuwhorun Road Opposite Fantasia Fast Food Dsc Warri,"08074017682 , 08077372213",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+59,Safari Pharmacy 6 - Ajamimogha Branch,Delta,,112 Ajamimogha Opposite Word Of Life Bible Church Warri Delta State,"09050454616 , 09050454625",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+60,Wessa Pharmacy And Stores Ltd - Abakaliki,Ebonyi,,85 Nkaliki Road Abakaliki,"09029491031, 09039309228",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+61,Onehealth Pharmacy - Edo,Edo,,"Block 6, Suite 3, Elegushi Modern Plaza, Phase 2, Lekki-Epe, Expressway Lekki, Lagos","09070677609, 08188762448",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+62,Alpha Pharmacy - Agbani Enugu,Enugu,,"105 Agbani Road, Achara Enugu.","012704374, 09062440949",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+63,Alpha Pharmacyu - Ogui Road Enugu,Enugu,,"32 Edinburgh Road (By College Road), Ogui New Layout, Enugu.","CALL CENTRE: 01-2704374 TEL.: 08098346916, 09062440942",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+64,Onehealth Pharmacy - Enugu,Enugu,,"Block 6, Suite 3, Elegushi Modern Plaza, Phase 2, Lekki-Epe, Expressway Lekki, Lagos","09070677609, 08188762448",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+65,Sarash Pharmacy - Gombe,Gombe,,"Federal Low Cost Gombe, Adjacent Old Nimc Office Gombe",08036637634;,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+66,Right Care Pharmacy-World Bank,Imo,,"13 Sam Mbakwe Avenue, World Bank Road, Owerri",08034003849,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+67,Lifecare Pharmacy,Kogi,,"Shop 19A, Opposite Federal Medical Centre",08035362580,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+68,Salva Praise Pharmacy,Kogi,,"No. 003, Ganaja Junction, Ganaja-Ajaokuta Road",+234 8065523755,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+69,Mountplus Pharmacy,Kwara,,"Opposite Cac Alabukun, Beside Conoil Petrol Station, After Offa Garage, Ilorin-Ajaise Ipo Road","08138439861,09070687143",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+70,Pagiel Pharmacy,Niger,,"Suite 7 Nnaiye Memorial Plaza, Dutsen Kura Gwari","08033047179, 08037590874",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+71,Exc Pharmacy-Ogun State,Ogun,,"7 Channels Tv Opic Estate Isheri Oke, Ogun State",0917660495,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+72,Onehealth Pharmacy - Ogun,Lagos,,"Block 6, Suite 3, Elegushi Modern Plaza, Phase 2, Lekki-Epe, Expressway Lekki, Lagos","09070677609, 08188762448",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+73,Onehealth Pharmacy - Oyo,Lagos,,"Block 6, Suite 3, Elegushi Modern Plaza, Phase 2, Lekki-Epe, Expressway Lekki, Lagos","09070677609, 08188762448",,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+74,Elyon Pharmacy,Plateau,,"12 Cbn Road, Opposite Plateau State House Of Assembly",08035951168,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+75,Last Mile Pharmacy,Sokoto,,Eastern Bye Pass After Naf Base,08036185885,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z
+76,Sir Qasim Pharmacy,Kaduna,,No 19 Kaduna Road Opposite State House Of Assembly,08036316081,,,,seed,https://getreliancehealth.com/alafia/providers/,2026-04-23T08:51:41.746Z

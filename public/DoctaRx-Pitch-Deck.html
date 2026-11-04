@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DoctaRx — AI-Powered Telehealth Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .slide-container {
+            max-width: 960px;
+            margin: 0 auto;
+        }
+        .slide {
+            background: white;
+            width: 100%;
+            aspect-ratio: 16/9;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 60px 80px;
+            text-align: center;
+            page-break-after: always;
+            position: relative;
+            overflow: hidden;
+        }
+        .slide::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #3B82F6, #22D3EE);
+        }
+        .slide-number {
+            position: absolute;
+            bottom: 20px;
+            right: 30px;
+            color: #999;
+            font-size: 14px;
+        }
+        h1 {
+            font-size: 56px;
+            color: #0f172a;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        }
+        h2 {
+            font-size: 48px;
+            color: #0f172a;
+            margin-bottom: 30px;
+            line-height: 1.3;
+        }
+        .subtitle {
+            font-size: 28px;
+            color: #3B82F6;
+            font-weight: 600;
+            margin-bottom: 40px;
+        }
+        p, li {
+            font-size: 22px;
+            color: #475569;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        ul {
+            text-align: left;
+            display: inline-block;
+            list-style: none;
+        }
+        li {
+            margin-bottom: 25px;
+            padding-left: 40px;
+            position: relative;
+        }
+        li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #22D3EE;
+            font-weight: bold;
+            font-size: 24px;
+        }
+        .logo {
+            font-size: 32px;
+            font-weight: 800;
+            color: #3B82F6;
+            margin-bottom: 10px;
+        }
+        .logo span {
+            color: #22D3EE;
+        }
+        .highlight {
+            color: #3B82F6;
+            font-weight: 600;
+        }
+        .accent {
+            color: #22D3EE;
+            font-weight: 600;
+        }
+        .slide-1 {
+            background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
+            color: white;
+        }
+        .slide-1 h1 {
+            color: white;
+            font-size: 64px;
+        }
+        .slide-1 .subtitle {
+            color: #22D3EE;
+            font-size: 32px;
+        }
+        .slide-1 p {
+            color: #e2e8f0;
+            font-size: 24px;
+        }
+        .tagline {
+            font-size: 24px;
+            color: #94a3b8;
+            margin-top: 30px;
+        }
+        .stat-box {
+            background: #f0f9ff;
+            padding: 20px 30px;
+            border-radius: 8px;
+            border-left: 4px solid #3B82F6;
+            margin: 15px 0;
+            text-align: left;
+            display: inline-block;
+        }
+        .stat-number {
+            font-size: 32px;
+            color: #3B82F6;
+            font-weight: 700;
+        }
+        .stat-label {
+            font-size: 16px;
+            color: #475569;
+        }
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .slide {
+                margin-bottom: 0;
+                border-radius: 0;
+                box-shadow: none;
+                page-break-after: always;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <!-- SLIDE 1: Title -->
+        <div class="slide slide-1">
+            <div class="logo">Docta<span>Rx</span></div>
+            <h1>AI-Powered Telehealth Platform</h1>
+            <p class="tagline">Automating 80% of healthcare operations so doctors can focus on healing</p>
+            <div style="margin-top: 60px; font-size: 20px; color: #94a3b8;">
+                Jonah Baka — CEO & Founder<br>
+                February 2026
+            </div>
+            <div class="slide-number">1</div>
+        </div>
+
+        <!-- SLIDE 2: Problem -->
+        <div class="slide">
+            <h2>The Problem</h2>
+            <ul>
+                <li>Healthcare providers spend <span class="highlight">2 hours on paperwork</span> for every 1 hour with patients</li>
+                <li><span class="highlight">62% of physicians report burnout</span> — mainly from administrative burden</li>
+                <li><span class="highlight">30% of Americans delay care</span> due to access friction and cost</li>
+                <li>Doctors are trapped in a <span class="highlight">6-tool SaaS nightmare</span>: scheduling, billing, compliance, triage, notes, messaging</li>
+            </ul>
+            <div class="slide-number">2</div>
+        </div>
+
+        <!-- SLIDE 3: Solution -->
+        <div class="slide">
+            <h2>The Solution</h2>
+            <p style="margin-bottom: 40px;">One platform. 18 AI agents. Everything automated.</p>
+            <ul>
+                <li><span class="accent">HIPAA-compliant video</span> telehealth at $79/visit</li>
+                <li><span class="accent">AI triage</span> — screens patients, gathers history, prioritizes urgency</li>
+                <li><span class="accent">Automated scheduling</span> — no-show predictions, waitlist management</li>
+                <li><span class="accent">Billing automation</span> — insurance verification, claims, prior auth, denial appeals</li>
+                <li><span class="accent">Clinical AI</span> — differential diagnosis, drug interaction checks, SOAP notes</li>
+                <li><span class="accent">Compliance</span> — credentialing, consent, audit logs, breach detection</li>
+            </ul>
+            <div class="slide-number">3</div>
+        </div>
+
+        <!-- SLIDE 4: Traction -->
+        <div class="slide">
+            <h2>Current Traction</h2>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 40px;">
+                <div class="stat-box">
+                    <div class="stat-number">649</div>
+                    <div class="stat-label">Provider leads in CRM</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">18</div>
+                    <div class="stat-label">AI agents operational</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">112</div>
+                    <div class="stat-label">Database tables (fully built)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">✓</div>
+                    <div class="stat-label">HIPAA + Stripe + Video</div>
+                </div>
+            </div>
+            <p style="margin-top: 40px; font-size: 18px; color: #94a3b8;">Platform live at <span class="highlight">doctarx.com</span> — actively onboarding first provider cohort</p>
+            <div class="slide-number">4</div>
+        </div>
+
+        <!-- SLIDE 5: Business Model & Ask -->
+        <div class="slide">
+            <h2>Business Model & Ask</h2>
+            <div style="text-align: left; max-width: 700px; margin: 40px auto;">
+                <p style="font-size: 20px; margin-bottom: 30px;"><span class="highlight">Revenue Model:</span></p>
+                <ul style="margin-bottom: 40px;">
+                    <li>$79/visit → 70% to provider, 30% to DoctaRx ($23.70 take-rate)</li>
+                    <li>$49/month subscription (unlimited messaging + 1 visit)</li>
+                    <li>Future: GLP-1 weight loss program ($199/month), insurance billing partnerships</li>
+                </ul>
+                <p style="font-size: 20px; margin-bottom: 30px; margin-top: 40px;"><span class="accent">Seeking:</span></p>
+                <ul>
+                    <li>$100K+ seed funding (or grants/accelerator programs)</li>
+                    <li>Go-to-market mentorship for provider recruitment</li>
+                    <li>Healthcare investor network + partnership opportunities</li>
+                    <li>EU expansion strategy (via Tenity partnership)</li>
+                </ul>
+            </div>
+            <div class="slide-number">5</div>
+        </div>
+    </div>
+</body>
+</html>

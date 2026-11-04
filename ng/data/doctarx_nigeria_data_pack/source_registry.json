@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-04-23T08:51:41.746Z",
+  "sources": {
+    "nhia_hmo": "https://www.nhia.gov.ng/hmo/",
+    "nhia_sshia": "https://www.nhia.gov.ng/sshias/",
+    "nhia_hcp": "https://www.nhia.gov.ng/hcps/",
+    "integrated_nhia_provider_directory": "https://integratedhealthcareltd.com/provider-directory-nhia/",
+    "nhia_drugs": "https://www.nhia.gov.ng/nhia-drug-list-and-prices/",
+    "nhia_ffs": "https://www.nhia.gov.ng/professional-ffs-price-list/",
+    "reliance_providers": "https://getreliancehealth.com/nigeria/providers/",
+    "reliance_alafia_providers": "https://getreliancehealth.com/alafia/providers/",
+    "osm_nominatim_policy": "https://operations.osmfoundation.org/policies/nominatim/",
+    "facility_registry_standard": "https://facilityregistry.org/"
+  }
+}

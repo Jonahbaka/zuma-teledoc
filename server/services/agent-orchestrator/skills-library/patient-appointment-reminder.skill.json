@@ -1,0 +1,48 @@
+{
+  "name": "patient.appointment.reminder",
+  "displayName": "Patient Appointment Reminder",
+  "description": "Send proactive reminders to patients before their upcoming appointments. Reduces no-shows and improves patient outcomes.",
+  "version": "1.0.0",
+  "category": "operations",
+  "domain": "patient-care",
+  "tags": ["reminder", "patient", "appointment", "proactive", "no-show-prevention"],
+  "triggers": ["patient.appointment.booked", "system.scheduled.check"],
+  "schedule": "15min",
+  "riskLevel": "low",
+  "requiresApproval": false,
+  "involvesPhi": false,
+  "involvesFinancial": false,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "fetch_upcoming_24h",
+      "name": "Fetch appointments in next 24 hours",
+      "type": "query",
+      "query": "SELECT a.*, u.first_name, u.last_name, u.email, p.first_name as provider_first, p.last_name as provider_last FROM appointments a LEFT JOIN users u ON a.patient_id = u.id LEFT JOIN users p ON a.provider_id = p.id WHERE a.scheduled_at > NOW() AND a.scheduled_at < NOW() + INTERVAL '24 hours' AND a.status = 'scheduled'"
+    },
+    {
+      "id": "filter_unreminded",
+      "name": "Filter patients who haven't been reminded",
+      "type": "transform",
+      "input": "$fetch_upcoming_24h",
+      "filter": { "reminder_24h_sent": false }
+    },
+    {
+      "id": "send_reminders",
+      "name": "Send patient reminder notifications",
+      "type": "notify",
+      "input": "$filter_unreminded",
+      "template": "appointment_reminder_24h"
+    }
+  ],
+  "inputSchema": {},
+  "outputSchema": {
+    "properties": {
+      "totalUpcoming": { "type": "number" },
+      "remindersSent": { "type": "number" },
+      "noShowRiskCount": { "type": "number" }
+    }
+  },
+  "sideEffects": ["sends_patient_notification", "sends_email"]
+}

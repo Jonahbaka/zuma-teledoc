@@ -1,0 +1,39 @@
+{
+  "name": "finance.revenue.forecast",
+  "description": "Generate revenue forecasts using historical enrollment data, subscription MRR, and growth projections. Feeds the pitch deck financial projections.",
+  "trigger": "scheduled",
+  "schedule": "weekly",
+  "agent": "accounting",
+  "steps": [
+    {
+      "name": "Get current MRR from subscriptions",
+      "type": "query",
+      "query": "SELECT COALESCE(SUM(jl.credit), 0) as mtd_revenue FROM fin_journal_lines jl JOIN fin_journal_entries je ON jl.journal_entry_id = je.id AND je.is_posted = true WHERE jl.account_number IN ('4010', '4020', '4030') AND je.entry_date >= DATE_TRUNC('month', CURRENT_DATE)",
+      "id": "current_mrr"
+    },
+    {
+      "name": "Get enrollment counts",
+      "type": "query",
+      "query": "SELECT (SELECT COUNT(*) FROM users WHERE role = 'patient' AND status = 'active') as active_patients, (SELECT COUNT(*) FROM users WHERE role = 'provider' AND status = 'active') as active_providers, (SELECT COUNT(*) FROM users WHERE created_at >= CURRENT_DATE - INTERVAL '30 days') as new_signups_30d",
+      "id": "enrollment_data"
+    },
+    {
+      "name": "Get burn rate",
+      "type": "query",
+      "query": "SELECT COALESCE(SUM(jl.debit), 0) as monthly_expenses FROM fin_journal_lines jl JOIN fin_journal_entries je ON jl.journal_entry_id = je.id AND je.is_posted = true WHERE (jl.account_number LIKE '5%' OR jl.account_number LIKE '6%') AND je.entry_date >= DATE_TRUNC('month', CURRENT_DATE)",
+      "id": "burn_rate"
+    },
+    {
+      "name": "Generate financial forecast",
+      "type": "llm_generate",
+      "model": "pro",
+      "prompt_template": "You are a startup CFO. Generate a 12-month revenue forecast for DoctaRx (telehealth platform).\n\nCurrent Data:\n- MTD Revenue: {{current_mrr}}\n- Enrollments: {{enrollment_data}}\n- Monthly Burn: {{burn_rate}}\n\nPricing: Patient Basic $19.99/mo, Gold $39.99/mo, Platinum $79.99/mo. Provider Starter $99/mo, Pro $199/mo, Enterprise $499/mo. Consultations $49-$129 each.\n\nOutput: JSON with monthly projections (revenue, expenses, net, cumulative), key assumptions, and break-even month estimate.",
+      "id": "forecast"
+    },
+    {
+      "name": "Store forecast snapshot",
+      "type": "notify",
+      "input": "$forecast"
+    }
+  ]
+}

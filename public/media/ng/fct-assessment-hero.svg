@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F2A33"/>
+      <stop offset="52%" stop-color="#123A4A"/>
+      <stop offset="100%" stop-color="#1B1F4B"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#4F46E5" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#4F46E5" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="linkStroke" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#5EEAD4"/>
+      <stop offset="50%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#5EEAD4"/>
+    </linearGradient>
+    <linearGradient id="nodeFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1B3A4B"/>
+      <stop offset="100%" stop-color="#0B1A26"/>
+    </linearGradient>
+    <linearGradient id="nodeStroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5EEAD4" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0.5"/>
+    </linearGradient>
+    <linearGradient id="nodeSheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="dotGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.6" fill="#FFFFFF" fill-opacity="0.07"/>
+    </pattern>
+    <filter id="blurBig" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="70"/>
+    </filter>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#020617" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect width="1600" height="900" fill="url(#dotGrid)"/>
+  <circle cx="380" cy="220" r="380" fill="url(#glowA)" filter="url(#blurBig)"/>
+  <circle cx="1240" cy="700" r="420" fill="url(#glowB)" filter="url(#blurBig)"/>
+  <path d="M 0 760 C 400 690, 760 830, 1180 740 C 1380 690, 1520 720, 1600 700 L 1600 900 L 0 900 Z"
+        fill="#071722" fill-opacity="0.75"/>
+  
+    <path d="M 324 300 C 620 210, 980 210, 1276 300" fill="none" stroke="url(#linkStroke)"
+          stroke-width="4" stroke-linecap="round"
+          stroke-dasharray="14 12"
+          opacity="0.9"/>
+    <path d="M 324 640 C 620 730, 980 730, 1276 640" fill="none" stroke="url(#linkStroke)"
+          stroke-width="4" stroke-linecap="round"
+          stroke-dasharray="14 12"
+          opacity="0.9"/>
+    <path d="M 324 300 C 520 400, 700 470, 800 470" fill="none" stroke="url(#linkStroke)"
+          stroke-width="2.5" stroke-linecap="round"
+          stroke-dasharray="6 14"
+          opacity="0.55"/>
+    <path d="M 1276 300 C 1080 400, 900 470, 800 470" fill="none" stroke="url(#linkStroke)"
+          stroke-width="2.5" stroke-linecap="round"
+          stroke-dasharray="6 14"
+          opacity="0.55"/>
+  
+    <g filter="url(#softShadow)">
+      <rect x="176" y="226" width="148" height="148" rx="42"
+            fill="url(#nodeFill)" stroke="url(#nodeStroke)" stroke-width="2"/>
+      <rect x="176" y="226" width="148" height="60" rx="42"
+            fill="url(#nodeSheen)" opacity="0.5"/>
+      <circle cx="250" cy="300" r="30" fill="none"
+              stroke="#10B981" stroke-width="3" opacity="0.85"/>
+      <path d="M 236 300 h 12 l 7 -18 l 9 36 l 7 -18 h 12"
+            fill="none" stroke="#ECFDF5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g filter="url(#softShadow)">
+      <rect x="176" y="566" width="148" height="148" rx="42"
+            fill="url(#nodeFill)" stroke="url(#nodeStroke)" stroke-width="2"/>
+      <rect x="176" y="566" width="148" height="60" rx="42"
+            fill="url(#nodeSheen)" opacity="0.5"/>
+      <circle cx="250" cy="640" r="30" fill="none"
+              stroke="#5EEAD4" stroke-width="3" opacity="0.85"/>
+      <path d="M 236 640 h 12 l 7 -18 l 9 36 l 7 -18 h 12"
+            fill="none" stroke="#ECFDF5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g filter="url(#softShadow)">
+      <rect x="1276" y="226" width="148" height="148" rx="42"
+            fill="url(#nodeFill)" stroke="url(#nodeStroke)" stroke-width="2"/>
+      <rect x="1276" y="226" width="148" height="60" rx="42"
+            fill="url(#nodeSheen)" opacity="0.5"/>
+      <circle cx="1350" cy="300" r="30" fill="none"
+              stroke="#10B981" stroke-width="3" opacity="0.85"/>
+      <path d="M 1336 300 h 12 l 7 -18 l 9 36 l 7 -18 h 12"
+            fill="none" stroke="#ECFDF5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g filter="url(#softShadow)">
+      <rect x="1276" y="566" width="148" height="148" rx="42"
+            fill="url(#nodeFill)" stroke="url(#nodeStroke)" stroke-width="2"/>
+      <rect x="1276" y="566" width="148" height="60" rx="42"
+            fill="url(#nodeSheen)" opacity="0.5"/>
+      <circle cx="1350" cy="640" r="30" fill="none"
+              stroke="#5EEAD4" stroke-width="3" opacity="0.85"/>
+      <path d="M 1336 640 h 12 l 7 -18 l 9 36 l 7 -18 h 12"
+            fill="none" stroke="#ECFDF5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  <g filter="url(#softShadow)">
+    <rect x="632" y="386" width="336" height="168" rx="56" fill="url(#nodeFill)"
+          stroke="url(#nodeStroke)" stroke-width="2"/>
+    <rect x="632" y="386" width="336" height="70" rx="56" fill="url(#nodeSheen)" opacity="0.45"/>
+    <path d="M 690 470 h 44 l 20 -56 l 30 112 l 22 -56 h 44"
+          fill="none" stroke="#A7F3D0" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <circle cx="800" cy="470" r="150" fill="none" stroke="#10B981" stroke-opacity="0.18" stroke-width="2"/>
+  <circle cx="800" cy="470" r="210" fill="none" stroke="#10B981" stroke-opacity="0.10" stroke-width="2"/>
+</svg>

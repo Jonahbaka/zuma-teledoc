@@ -1,0 +1,83 @@
+name: LiveKit SFU E2E (NG)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  livekit-sfu-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Ensure Chrome is available
+        id: chrome
+        run: |
+          P=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || command -v chromium || true)
+          if [ -z "$P" ]; then
+            sudo apt-get update
+            sudo apt-get install -y google-chrome-stable || sudo apt-get install -y chromium-browser || true
+            P=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || command -v chromium || true)
+          fi
+          if [ -z "$P" ]; then echo "::error::No Chrome/Chromium found on runner"; exit 1; fi
+          echo "path=$P" >> "$GITHUB_OUTPUT"
+          "$P" --version || true
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run LiveKit SFU browser E2E
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.path }}
+          REQUIRE_LIVEKIT_E2E: "true"
+          LIVEKIT_E2E_COUNTS: "3,5,10"
+          NG_LIVEKIT_URL: ${{ secrets.NG_LIVEKIT_URL }}
+          NG_LIVEKIT_API_KEY: ${{ secrets.NG_LIVEKIT_API_KEY }}
+          NG_LIVEKIT_API_SECRET: ${{ secrets.NG_LIVEKIT_API_SECRET }}
+        run: npm run e2e:livekit:sfu
+
+      - name: Summarize LiveKit SFU evidence
+        if: always()
+        run: |
+          f=$(ls -dt artifacts/livekit-sfu-e2e/*/result.json 2>/dev/null | head -1 || true)
+          if [ -z "$f" ]; then echo "::warning::no result.json was produced"; exit 0; fi
+          python3 - <<'PY' "$f"
+          import json, sys
+          path = sys.argv[1]
+          data = json.load(open(path, encoding="utf-8"))
+          print("LIVEKIT_SFU_E2E=%s" % str(data.get("finalResult", "")).upper())
+          print("livekitHost=%s" % data.get("livekitHost"))
+          for scenario in data.get("scenarios", []):
+              remote_ok = all(
+                  snap.get("remote", {}).get("participants", 0) >= scenario.get("count", 0) - 1
+                  and snap.get("remote", {}).get("audio", 0) >= scenario.get("count", 0) - 1
+                  and snap.get("remote", {}).get("video", 0) >= scenario.get("count", 0) - 1
+                  for snap in scenario.get("remoteMedia", [])
+              )
+              print("[%s] %s remoteMedia=%s weakBandwidth=%s reconnect=%s turnRelayObserved=%s" % (
+                  str(scenario.get("status", "")).upper(),
+                  scenario.get("name"),
+                  remote_ok,
+                  bool(scenario.get("weakBandwidth")),
+                  bool(scenario.get("reconnect")),
+                  bool(scenario.get("turnRelayObserved")),
+              ))
+          PY
+
+      - name: Upload LiveKit SFU evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: livekit-sfu-e2e-evidence
+          path: artifacts/livekit-sfu-e2e/**
+          if-no-files-found: warn

@@ -1,0 +1,60 @@
+{
+  "name": "growth.market.arbitrage",
+  "displayName": "Market Arbitrage Scanner (The Matrix Protocol)",
+  "description": "Scan the healthcare market for glitches, arbitrages, and under-priced attention. Identify where competitors are slow, where advertising is cheap, and where value disconnects exist.",
+  "version": "1.0.0",
+  "category": "growth",
+  "domain": "market-intelligence",
+  "tags": ["arbitrage", "market", "glitch", "matrix-protocol", "competitor", "attention", "growth-hacking"],
+  "triggers": ["system.scheduled.check"],
+  "schedule": "24h",
+  "riskLevel": "low",
+  "requiresApproval": false,
+  "involvesPhi": false,
+  "involvesFinancial": false,
+  "author": "DoctaRx Genesis",
+  "source": "internal",
+  "steps": [
+    {
+      "id": "scan_glitches",
+      "name": "Scan for market glitches (competitor bottlenecks)",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "As a healthcare market analyst, identify 5 'glitches' (inefficiencies) in the current telehealth market where DoctaRx can dominate. For each: describe the bottleneck, why competitors are slow, how DoctaRx bypasses it, and estimated advantage in time/cost. Think: credentialing speed, insurance processing, patient matching.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "scan_arbitrages",
+      "name": "Scan for value arbitrages (buy cheap, sell valuable)",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "Identify 5 'arbitrage' opportunities in healthcare/telehealth. Where can DoctaRx acquire resources (talent, advertising, technology) cheaply and apply them where they're highly valued? Consider: global talent pools, underpriced ad keywords, emerging platforms. For each: input cost, output value, margin estimate.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "scan_attention",
+      "name": "Scan for under-priced attention (cheap high-converting channels)",
+      "type": "action",
+      "action": "llm_generate",
+      "prompt": "Find 5 under-priced attention sources for a telehealth startup. Think: new social platforms, niche communities, podcast sponsorships, healthcare forums. For each: platform/channel, estimated CPM, audience quality score (1-10), conversion potential. Focus on where the attention is cheap NOW but valuable.",
+      "model": "gemini-3-flash-preview"
+    },
+    {
+      "id": "compile_matrix_report",
+      "name": "Compile Matrix Protocol Intelligence Report",
+      "type": "transform",
+      "input": ["$scan_glitches", "$scan_arbitrages", "$scan_attention"],
+      "format": "matrix_intelligence_report"
+    }
+  ],
+  "inputSchema": {},
+  "outputSchema": {
+    "properties": {
+      "glitchesFound": { "type": "number" },
+      "arbitragesFound": { "type": "number" },
+      "attentionSourcesFound": { "type": "number" },
+      "totalEstimatedValue": { "type": "number" }
+    }
+  },
+  "sideEffects": ["creates_intelligence_report"]
+}
