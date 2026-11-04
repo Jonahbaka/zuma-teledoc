@@ -162,6 +162,8 @@ test('dead pid and stale timeout release artifact deploy lock', () => {
 
 test('production deploy workflow keeps artifact flow and queues deployments', () => {
   const deployYaml = fs.readFileSync(path.join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
+  assert.match(deployYaml, /^  workflow_dispatch:/m);
+  assert.doesNotMatch(deployYaml, /^  (?:push|pull_request|workflow_run):/m);
 
   assert.match(deployYaml, /concurrency:\s*\n\s*group:\s*production-deploy\s*\n\s*cancel-in-progress:\s*false/);
   assert.match(deployYaml, /id-token:\s*write/);

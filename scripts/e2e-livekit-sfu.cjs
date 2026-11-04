@@ -2,13 +2,11 @@
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const WebSocket = require('ws');
+const { chromium } = require('@playwright/test');
 
 const ROOT = path.resolve(__dirname, '..');
 const PORT = Number(process.env.LIVEKIT_E2E_PORT || 3137);
@@ -69,28 +67,6 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function requestJson(url, method = 'GET') {
-  return new Promise((resolve, reject) => {
-    const req = http.request(url, { method }, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          reject(new Error(`${url} returned ${res.statusCode}`));
-          return;
-        }
-        try {
-          resolve(JSON.parse(data));
-        } catch (error) {
-          reject(error);
-        }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(10000, () => req.destroy(new Error(`${url} timed out`)));
-    req.end();
-  });
-}
 
 function generateToken(roomName, identity, name) {
   const now = Math.floor(Date.now() / 1000);
@@ -363,51 +339,14 @@ function startStaticServer() {
 }
 
 class CdpClient {
-  constructor(wsUrl, label) {
-    this.wsUrl = wsUrl;
+  constructor(session, label, page, context) {
+    this.session = session;
     this.label = label;
-    this.nextId = 1;
-    this.pending = new Map();
-    this.console = [];
-    this.ws = new WebSocket(wsUrl);
-    this.ready = new Promise((resolve, reject) => {
-      this.ws.once('open', resolve);
-      this.ws.once('error', reject);
-    });
-    this.ws.on('message', (raw) => {
-      let message = null;
-      try { message = JSON.parse(raw.toString()); } catch { return; }
-      if (message.id && this.pending.has(message.id)) {
-        const { resolve, reject } = this.pending.get(message.id);
-        this.pending.delete(message.id);
-        if (message.error) reject(new Error(message.error.message || JSON.stringify(message.error)));
-        else resolve(message.result || {});
-      } else if (message.method === 'Runtime.consoleAPICalled') {
-        this.console.push(message.params);
-      }
-    });
+    this.page = page;
+    this.context = context;
   }
-
   async send(method, params = {}) {
-    await this.ready;
-    const id = this.nextId;
-    this.nextId += 1;
-    const payload = JSON.stringify({ id, method, params });
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.ws.send(payload, (error) => {
-        if (error) {
-          this.pending.delete(id);
-          reject(error);
-        }
-      });
-      setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id);
-          reject(new Error(`${this.label} CDP ${method} timed out`));
-        }
-      }, 30000).unref();
-    });
+    return this.session.send(method, params);
   }
 
   async enable() {
@@ -417,8 +356,7 @@ class CdpClient {
   }
 
   async navigate(url) {
-    await this.send('Page.navigate', { url });
-    await this.waitForValue('document.readyState', (value) => value === 'complete' || value === 'interactive', 30000);
+    await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
   }
 
   async evaluate(expression) {
@@ -456,63 +394,23 @@ class CdpClient {
   }
 
   async close() {
-    try { await this.send('Browser.close'); } catch {}
+    await this.context.close();
   }
 }
 
-async function launchAgent({ label, debugPort, url }) {
-  const chromePath = findChromePath();
-  const media = ensureFakeMediaFiles();
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctarx-livekit-e2e-'));
-
-  const proc = spawn(chromePath, [
-    '--headless=new',
-    `--remote-debugging-port=${debugPort}`,
-    `--user-data-dir=${userDataDir}`,
-    '--window-size=1280,860',
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--disable-background-timer-throttling',
-    '--disable-extensions',
-    '--use-fake-ui-for-media-stream',
-    '--use-fake-device-for-media-stream',
-    `--use-file-for-fake-video-capture=${media.videoPath}`,
-    `--use-file-for-fake-audio-capture=${media.audioPath}`,
-    '--autoplay-policy=no-user-gesture-required',
-    '--allow-insecure-localhost',
-    `--unsafely-treat-insecure-origin-as-secure=http://localhost:${PORT}`,
-    'about:blank',
-  ], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
-
-  const logFile = path.join(ARTIFACT_DIR, `${label}-chrome.log`);
-  proc.stdout.on('data', (chunk) => fs.appendFileSync(logFile, chunk));
-  proc.stderr.on('data', (chunk) => fs.appendFileSync(logFile, chunk));
-
-  let version = null;
-  const versionUrl = `http://127.0.0.1:${debugPort}/json/version`;
-  const started = Date.now();
-  while (Date.now() - started < 30000) {
-    try {
-      version = await requestJson(versionUrl);
-      if (version?.webSocketDebuggerUrl) break;
-    } catch {}
-    await wait(500);
-  }
-  if (!version?.webSocketDebuggerUrl) throw new Error(`${label} Chrome did not expose CDP`);
-
-  let target = null;
+async function launchAgent({ label, url, browser }) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 860 } });
   try {
-    target = await requestJson(`http://127.0.0.1:${debugPort}/json/new?about:blank`, 'PUT');
-  } catch {
-    const targets = await requestJson(`http://127.0.0.1:${debugPort}/json/list`);
-    target = targets.find((item) => item.type === 'page');
+    const page = await context.newPage();
+    const session = await context.newCDPSession(page);
+    const client = new CdpClient(session, label, page, context);
+    await client.enable();
+    await client.navigate(url);
+    return { label, client, url };
+  } catch (error) {
+    await context.close();
+    throw error;
   }
-  if (!target?.webSocketDebuggerUrl) throw new Error(`${label} Chrome page target missing`);
-
-  const client = new CdpClient(target.webSocketDebuggerUrl, label);
-  await client.enable();
-  await client.navigate(url);
-  return { label, proc, client, url };
 }
 
 function roomUrl({ roomName, identity, displayName }) {
@@ -567,14 +465,21 @@ async function runScenario(count) {
   writeEvidence();
 
   const agents = [];
+  let browser;
   try {
+    const media = ensureFakeMediaFiles();
+    browser = await chromium.launch({ executablePath: findChromePath(), headless: true,
+      args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
+        `--use-file-for-fake-video-capture=${media.videoPath}`, `--use-file-for-fake-audio-capture=${media.audioPath}`,
+        '--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
     for (let index = 0; index < count; index += 1) {
       const identity = `doctarx-e2e-${count}-${index}`;
       const displayName = `DoctaRx E2E ${index + 1}`;
       const url = roomUrl({ roomName, identity, displayName });
       const agent = await launchAgent({
         label: `${count}p-${index + 1}`,
-        debugPort: 9400 + count * 20 + index,
+        browser,
         url,
       });
       agents.push(agent);
@@ -674,8 +579,8 @@ async function runScenario(count) {
     writeEvidence();
     await Promise.all(agents.map(async (agent) => {
       try { await agent.client.close(); } catch {}
-      try { agent.proc.kill(); } catch {}
     }));
+    await browser?.close();
   }
 }
 

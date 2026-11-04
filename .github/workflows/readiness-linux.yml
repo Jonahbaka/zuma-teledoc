@@ -13,6 +13,70 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  local-sfu-media:
+    if: github.repository == 'iamjonahbaka-create/Jonah-doctarx' && github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      MEDIAPIPE_SKIP_MODEL_DOWNLOAD: '1'
+      LIVEKIT_URL: ws://127.0.0.1:7880
+      LIVEKIT_API_KEY: fictional-local-key
+      LIVEKIT_API_SECRET: fictional-local-test-secret-longer-than-32-characters
+      REQUIRE_LIVEKIT_E2E: 'true'
+      LIVEKIT_E2E_COUNTS: '3,5,10'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Real local SFU media, controls and leave with fictional input
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture_dir="$(mktemp -d)"
+          curl --fail --location --retry 3 --max-time 120 https://github.com/livekit/livekit/releases/download/v1.13.11/livekit_1.13.11_linux_amd64.tar.gz -o "$fixture_dir/livekit.tar.gz"
+          echo "1e9ee90ca301e1842b2887fc77cb122759756a9c8aeb4334ee91de3325ec43fb  $fixture_dir/livekit.tar.gz" | sha256sum --check
+          tar -xzf "$fixture_dir/livekit.tar.gz" -C "$fixture_dir"
+          cat > "$fixture_dir/local.yaml" <<'YAML'
+          port: 7880
+          bind_addresses: [127.0.0.1]
+          rtc:
+            tcp_port: 7881
+            udp_port: 7882
+            node_ip: 127.0.0.1
+            enable_loopback_candidate: true
+          keys:
+            fictional-local-key: fictional-local-test-secret-longer-than-32-characters
+          logging:
+            level: error
+          YAML
+          "$fixture_dir/livekit-server" --config "$fixture_dir/local.yaml" > "$fixture_dir/server.log" 2>&1 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..120}; do
+            if curl -fsS http://127.0.0.1:7880 >/dev/null; then break; fi
+            sleep 0.25
+          done
+          curl -fsS http://127.0.0.1:7880 >/dev/null
+          export CHROME_PATH="$(command -v google-chrome)"
+          node scripts/e2e-livekit-sfu.cjs
+      - name: Record media evidence
+        if: always()
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs');
+          const root = 'artifacts/livekit-sfu-e2e';
+          if (!fs.existsSync(root)) process.exit(0);
+          for (const name of fs.readdirSync(root)) {
+            const result = JSON.parse(fs.readFileSync(root + '/' + name + '/result.json'));
+            console.log(JSON.stringify({ sourceSha: result.sourceSha, result: result.finalResult, boundary: result.boundary,
+              scenarios: result.scenarios.map(s => ({ count: s.count, status: s.status, receivingParticipants: s.mediaProgress.length,
+                controls: s.controls, cleanLeave: s.cleanLeave, turnRelayObserved: s.turnRelayObserved, error: s.error })) }));
+          }
+          JS
   production-build:
     if: github.repository == 'iamjonahbaka-create/Jonah-doctarx' && github.event.repository.private == false
     runs-on: ubuntu-24.04
