@@ -7,11 +7,11 @@ const speakeasy = require('speakeasy');
 const PASSWORD = process.env.E2E_ROLE_PASSWORD || 'Fictional-Role-Browser-2099!';
 const MFA_SECRET = process.env.E2E_MFA_SECRET || 'JBSWY3DPEHPK3PXP';
 const ACTORS = [
-  { name: 'patient', email: 'e2e-patient@example.test', role: 'patient', path: '/ng/patient/appointments', text: /appointments/i },
-  { name: 'provider', email: 'e2e-provider@example.test', role: 'provider', path: '/ng/provider/dashboard', text: /provider|clinical|dashboard/i },
-  { name: 'pharmacy', email: 'e2e-pharmacy@example.test', role: 'pharmacy', path: '/ng/pharmacy/dashboard', text: /pharmacy|prescription|dashboard/i },
-  { name: 'government', email: 'e2e-government@example.test', role: 'patient', mfa: true, path: '/ng/government-data', text: /public health data/i },
-  { name: 'executive', email: 'e2e-executive@example.test', role: 'patient', mfa: true, path: '/ng/executive-view', text: /executive command center/i },
+  { name: 'patient', email: 'patient@demo.doctarx.com', role: 'patient', path: '/ng/patient/appointments', text: /appointments/i },
+  { name: 'provider', email: 'doctor@demo.doctarx.com', role: 'provider', path: '/ng/provider/dashboard', text: /provider|clinical|dashboard/i },
+  { name: 'pharmacy', email: 'pharmacy@demo.doctarx.com', role: 'pharmacy', path: '/ng/pharmacy/dashboard', text: /pharmacy|prescription|dashboard/i },
+  { name: 'government', email: 'government@demo.doctarx.com', role: 'patient', mfa: true, path: '/ng/government-data', text: /public health data/i },
+  { name: 'executive', email: 'executive@demo.doctarx.com', role: 'patient', mfa: true, path: '/ng/executive-view', text: /executive command center/i },
 ];
 
 for (const actor of ACTORS) {

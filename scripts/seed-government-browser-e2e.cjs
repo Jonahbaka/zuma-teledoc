@@ -11,31 +11,32 @@ const service = require('../ng/services/public-health/governmentDataService');
 const PASSWORD = process.env.E2E_ROLE_PASSWORD || 'Fictional-Role-Browser-2099!';
 const MFA_SECRET = process.env.E2E_MFA_SECRET || 'JBSWY3DPEHPK3PXP';
 const USERS = [
-  ['e2e-patient@example.test', 'patient', null, false],
-  ['e2e-provider@example.test', 'provider', 'approved', false],
-  ['e2e-pharmacy@example.test', 'pharmacy', null, false],
-  ['e2e-government@example.test', 'patient', null, true],
-  ['e2e-checker@example.test', 'patient', null, true],
-  ['e2e-executive@example.test', 'patient', null, true],
+  ['patient@demo.doctarx.com', 'patient', null, false],
+  ['doctor@demo.doctarx.com', 'provider', 'approved', false],
+  ['pharmacy@demo.doctarx.com', 'pharmacy', null, false],
+  ['government@demo.doctarx.com', 'patient', null, true],
+  ['checker@demo.doctarx.com', 'patient', null, true],
+  ['executive@demo.doctarx.com', 'patient', null, true],
 ];
 
 async function main() {
   const pool = getPool();
-  const actual = fixtureTargetSafety({ pool });
-  if (actual.skipped) throw new Error(actual.reason);
+  // getPool may still be a lazy facade; verify a resolved native connection.
+  const connection = await pool.connect();
+  try {
+    const actual = fixtureTargetSafety({ pool: connection });
+    if (actual.skipped) throw new Error(actual.reason);
+  } finally { connection.release(); }
   const passwordHash = await bcrypt.hash(PASSWORD, 4);
   const created = {};
   for (const [email, role, providerStatus, mfa] of USERS) {
     const result = await pool.query(
-      `INSERT INTO users
-         (email,password_hash,role,first_name,last_name,is_active,is_verified,provider_status,mfa_enabled,mfa_secret)
-       VALUES ($1,$2,$3,'Fictional','Browser',TRUE,TRUE,$4,$5,$6)
-       ON CONFLICT (email,role) DO UPDATE SET password_hash=EXCLUDED.password_hash,
-         first_name=EXCLUDED.first_name,last_name=EXCLUDED.last_name,is_active=TRUE,is_verified=TRUE,
-         provider_status=EXCLUDED.provider_status,mfa_enabled=EXCLUDED.mfa_enabled,mfa_secret=EXCLUDED.mfa_secret
+      `UPDATE users SET password_hash=$2,provider_status=$4,mfa_enabled=$5,mfa_secret=$6
+       WHERE email=$1 AND role=$3 AND is_test_account=TRUE AND market_scope='NG' AND is_active=TRUE
        RETURNING id,email,role`,
       [email, passwordHash, role, providerStatus, mfa, mfa ? MFA_SECRET : null]
     );
+    if (!result.rows[0]) throw new Error('Provision the isolated NG demo accounts and profiles before browser verification');
     created[email] = result.rows[0];
   }
   const amac = (await pool.query(`SELECT id FROM ng_jurisdictions WHERE code='AMAC'`)).rows[0];
@@ -44,9 +45,9 @@ async function main() {
     `INSERT INTO public_health_facilities (name,facility_type,ownership_type,lga,state,active)
      VALUES ('Fictional Browser PHC','primary_health_centre','public','AMAC','FCT',TRUE) RETURNING id`
   )).rows[0];
-  const maker = created['e2e-government@example.test'];
-  const checker = created['e2e-checker@example.test'];
-  const executive = created['e2e-executive@example.test'];
+  const maker = created['government@demo.doctarx.com'];
+  const checker = created['checker@demo.doctarx.com'];
+  const executive = created['executive@demo.doctarx.com'];
   await pool.query(
     `INSERT INTO ng_user_jurisdiction_roles
        (user_id,jurisdiction_id,role,facility_id,programme_area,can_export,can_approve,can_view_aggregate,data_class_level)
