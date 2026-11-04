@@ -1,5 +1,8 @@
 'use strict';
 
+const { fixtureTargetSafety } = require('../ng/scripts/fixtureTargetSafety');
+const safety = fixtureTargetSafety();
+if (safety.skipped) throw new Error(safety.reason);
 process.env.NODE_ENV = 'test';
 const bcrypt = require('bcryptjs');
 const { getPool, close } = require('../server/db');
@@ -18,6 +21,8 @@ const USERS = [
 
 async function main() {
   const pool = getPool();
+  const actual = fixtureTargetSafety({ pool });
+  if (actual.skipped) throw new Error(actual.reason);
   const passwordHash = await bcrypt.hash(PASSWORD, 4);
   const created = {};
   for (const [email, role, providerStatus, mfa] of USERS) {

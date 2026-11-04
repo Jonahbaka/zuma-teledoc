@@ -101,7 +101,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24.22.1'
           cache: npm
 
       - name: Install dependencies
@@ -205,6 +205,7 @@ jobs:
       ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       E2E_ROLE_PASSWORD: Fictional-Role-Browser-2099!
       E2E_MFA_SECRET: JBSWY3DPEHPK3PXP
+      NODE_ENV: test
       NG_AUTO_SEED_DISCOVERY: 'false'
       DISABLE_SCHEDULERS: 'true'
     steps:
@@ -212,7 +213,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24.22.1'
           cache: npm
 
       - name: Install dependencies
@@ -231,16 +232,31 @@ jobs:
           npm run ng:seed-demo
           npm run seed:e2e:government
 
+      - name: Configure verified TLS for the disposable production-profile database
+        run: bash scripts/configure-ci-postgres-tls.sh '${{ job.services.postgres.id }}'
+
       - name: Build production application
         env:
+          NODE_ENV: production
           NODE_OPTIONS: --max-old-space-size=4096
+          PGSSLROOTCERT: ${{ env.DOCTARX_TEST_PG_CA }}
+          PGSSLMODE: verify-full
+          NODE_EXTRA_CA_CERTS: ${{ env.DOCTARX_TEST_PG_CA }}
         run: npm run build
 
       - name: Run desktop and mobile authenticated role matrix
         run: npm run e2e:government:roles
+        env:
+          PGSSLROOTCERT: ${{ env.DOCTARX_TEST_PG_CA }}
+          PGSSLMODE: verify-full
+          NODE_EXTRA_CA_CERTS: ${{ env.DOCTARX_TEST_PG_CA }}
 
       - name: Clinical Copilot reviewed documentation and follow-up browser regression
         run: node scripts/e2e-clinical-copilot.cjs
+        env:
+          PGSSLROOTCERT: ${{ env.DOCTARX_TEST_PG_CA }}
+          PGSSLMODE: verify-full
+          NODE_EXTRA_CA_CERTS: ${{ env.DOCTARX_TEST_PG_CA }}
 
       - name: Upload browser screenshots, traces, logs, and accessibility evidence
         if: always()

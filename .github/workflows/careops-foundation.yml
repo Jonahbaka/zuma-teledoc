@@ -80,6 +80,8 @@ jobs:
         run: npm run e2e:membership-platform
         env:
           MEMBERSHIP_PLATFORM_UI_OUTPUT_DIR: artifacts/careops/membership-platform
+      - name: Configure verified TLS for the disposable production-profile database
+        run: bash scripts/configure-ci-postgres-tls.sh '${{ job.services.postgres.id }}'
       - name: Build standalone CareOps release profile
         run: npm run careops:build
         env:
@@ -93,6 +95,9 @@ jobs:
         env:
           CAREOPS_PROFILE_PRODUCTION_E2E: 'true'
           CAREOPS_UI_OUTPUT_DIR: artifacts/careops/standalone-profile
+          PGSSLROOTCERT: ${{ env.DOCTARX_TEST_PG_CA }}
+          PGSSLMODE: verify-full
+          NODE_EXTRA_CA_CERTS: ${{ env.DOCTARX_TEST_PG_CA }}
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4

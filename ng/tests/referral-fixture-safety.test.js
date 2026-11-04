@@ -5,6 +5,22 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const { createRequire } = require('node:module');
+const { spawnSync } = require('node:child_process');
+
+test('government browser seed refuses unsafe targets before relabeling the environment or opening a pool', () => {
+  const filename = path.resolve(__dirname, '../../scripts/seed-government-browser-e2e.cjs');
+  for (const [environment, url] of [
+    ['production', 'postgresql://fictional@127.0.0.1/doctarx_test'],
+    ['test', 'postgresql://fictional@remote.invalid/doctarx_test'],
+    ['test', 'postgresql://fictional@127.0.0.1/clinical'],
+  ]) {
+    const result = spawnSync(process.execPath, [filename], { encoding: 'utf8', timeout: 5000, windowsHide: true,
+      env: { ...process.env, NODE_ENV: environment, DATABASE_URL: url, SIMULATION_DATABASE_URL: '' } });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Fixture writes/);
+    assert.doesNotMatch(result.stdout, /connected to PostgreSQL|GOVERNMENT_BROWSER_SEED=PASS/);
+  }
+});
 function loadDemo(env) {
   const filename = path.resolve(__dirname, '../scripts/seed-demo-mode.js');
   const actual = createRequire(filename); const mod = { exports: {} };
