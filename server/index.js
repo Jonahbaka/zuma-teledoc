@@ -810,6 +810,10 @@ async function initializeApp() {
     try {
       const agentOrchestrator = require('./services/agent-orchestrator');
       agentOrchestrator.initialize().then(() => {
+        if (!agentOrchestrator.initialized) {
+          console.log('AI Agent Orchestrator: not started');
+          return;
+        }
         console.log('🤖 AI Agent Orchestrator: Online');
 
         // Stream real-time Agent Ops events to admin consoles.

@@ -30,6 +30,7 @@
 
 const crypto = require('crypto');
 const db = require('../../db');
+const { backgroundWorkAllowed } = require('../../utils/backgroundWorkPolicy');
 const persistentMemory = require('./persistent-memory');
 const { PROVIDER_SCHEDULE_QUERY, isProviderScheduleWorkflow, scheduleNotificationRows } = require('../appointmentOperationalData');
 
@@ -567,6 +568,7 @@ class RunLoop {
     this.workflows = new Map(); // Registered workflow definitions
     this.activeWorkflows = new Map(); // Currently running workflows
     this.timer = null;
+    this.generation = 0;
     this.stats = {
       startedAt: null,
       totalTicks: 0,
@@ -588,8 +590,10 @@ class RunLoop {
    * START — Begin the continuous consciousness
    */
   start(intervalMs = 120000) {  // 2 min base — conserve DB connections & API calls (bootstrapping)
+    if (!backgroundWorkAllowed()) return;
     if (this.isRunning) return;
     this.isRunning = true;
+    const generation = ++this.generation;
     this.stats.startedAt = new Date();
 
     console.log('  🧠 Run Loop: ALIVE');
@@ -599,7 +603,7 @@ class RunLoop {
 
     // The tick function — the "heartbeat" of consciousness
     const tick = async () => {
-      if (!this.isRunning) return;
+      if (!this.isRunning || generation !== this.generation || !backgroundWorkAllowed()) return;
 
       try {
         await this.tick();
@@ -613,7 +617,7 @@ class RunLoop {
         intervalMs * 10 // Max 10x the base interval
       );
 
-      this.timer = setTimeout(tick, adaptiveInterval);
+      if (this.isRunning && generation === this.generation && backgroundWorkAllowed()) this.timer = setTimeout(tick, adaptiveInterval);
     };
 
     // First tick after a short delay
@@ -625,6 +629,7 @@ class RunLoop {
    */
   stop() {
     this.isRunning = false;
+    this.generation += 1;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;

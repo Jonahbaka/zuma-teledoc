@@ -31,6 +31,7 @@
  */
 
 const IntentSystem = require('./intent-system');
+const { backgroundWorkAllowed } = require('../../utils/backgroundWorkPolicy');
 const GovernanceEngine = require('./governance-engine');
 const ComplianceEngine = require('./compliance-engine');
 const SkillRegistry = require('./skill-registry');
@@ -117,6 +118,7 @@ class AgentOrchestrator {
   // =========================================================================
 
   async initialize() {
+    if (!backgroundWorkAllowed()) return;
     if (this.initialized) return;
     this.startTime = Date.now();
 

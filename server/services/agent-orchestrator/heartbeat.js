@@ -14,6 +14,7 @@
  */
 
 const db = require('../../db');
+const { backgroundWorkAllowed } = require('../../utils/backgroundWorkPolicy');
 let webEngine = null;
 try { webEngine = require('./web-action-engine'); } catch (e) { /* optional */ }
 
@@ -56,6 +57,7 @@ class HeartbeatSystem {
     this.llm = llm;
     this.timers = [];
     this.isRunning = false;
+    this.generation = 0;
     this.lastHealthCheck = null;
     this.lastAgentCycle = null;
     this.lastBriefing = null;
@@ -66,8 +68,10 @@ class HeartbeatSystem {
   }
 
   start() {
+    if (!backgroundWorkAllowed()) return;
     if (this.isRunning) return;
     this.isRunning = true;
+    const generation = ++this.generation;
     this.startedAt = new Date();
 
     console.log('  Heartbeat System: ACTIVE');
@@ -75,21 +79,24 @@ class HeartbeatSystem {
     // Best-effort cleanup so the Operator inbox doesn't fill with automated noise.
     this.cleanupInbox().catch(() => {});
 
-    this.timers.push(setInterval(() => this.errorCheck(), 2 * 60 * 1000));
-    this.timers.push(setInterval(() => this.healthCheck(), 10 * 60 * 1000));
-    this.timers.push(setInterval(() => this.proactiveScan(), 2 * 60 * 60 * 1000));
-    this.timers.push(setInterval(() => this.runWebMissions(), 6 * 60 * 60 * 1000));
-    this.timers.push(setInterval(() => this.agentCycle(), 4 * 60 * 60 * 1000));
-    this.timers.push(setInterval(() => this.executiveBriefing(), 8 * 60 * 60 * 1000));
+    const active = action => () => {
+      if (this.isRunning && generation === this.generation && backgroundWorkAllowed()) return action();
+    };
+    this.timers.push(setInterval(active(() => this.errorCheck()), 2 * 60 * 1000));
+    this.timers.push(setInterval(active(() => this.healthCheck()), 10 * 60 * 1000));
+    this.timers.push(setInterval(active(() => this.proactiveScan()), 2 * 60 * 60 * 1000));
+    this.timers.push(setInterval(active(() => this.runWebMissions()), 6 * 60 * 60 * 1000));
+    this.timers.push(setInterval(active(() => this.agentCycle()), 4 * 60 * 60 * 1000));
+    this.timers.push(setInterval(active(() => this.executiveBriefing()), 8 * 60 * 60 * 1000));
 
     // Startup: one briefing after boot, first web mission after 5 min
-    setTimeout(() => this.healthCheck(), 15 * 1000);
-    setTimeout(() => this.startupBriefing(), 30 * 1000);
-    setTimeout(() => this.runWebMissions(), 5 * 60 * 1000);
+    this.timers.push(setTimeout(active(() => this.healthCheck()), 15 * 1000));
+    this.timers.push(setTimeout(active(() => this.startupBriefing()), 30 * 1000));
+    this.timers.push(setTimeout(active(() => this.runWebMissions()), 5 * 60 * 1000));
 
-    this.timers.push(setInterval(() => {
+    this.timers.push(setInterval(active(() => {
       console.log(`Heartbeat alive — cycle #${this.cycleCount}, uptime: ${Math.round((Date.now() - this.startedAt.getTime()) / 1000)}s`);
-    }, 10 * 60 * 1000));
+    }), 10 * 60 * 1000));
   }
 
   shouldPost(key, cooldownMs) {
@@ -132,7 +139,8 @@ class HeartbeatSystem {
 
   stop() {
     this.isRunning = false;
-    this.timers.forEach(t => clearInterval(t));
+    this.generation += 1;
+    this.timers.forEach(t => { clearInterval(t); clearTimeout(t); });
     this.timers = [];
     console.log('  Heartbeat System: STOPPED');
   }

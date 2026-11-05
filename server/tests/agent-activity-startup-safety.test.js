@@ -283,6 +283,88 @@ async function socialRouteFixture() {
   } };
 }
 
+function schedulerFixture(name, env = {}) {
+  const filename = path.resolve(__dirname, '../services/agent-orchestrator', name + '.js');
+  const actual = require('node:module').createRequire(filename);
+  const sourceModule = { exports: {} }, timers = new Map(), cleared = new Set();
+  let nextId = 0;
+  const schedule = callback => { const id = ++nextId; timers.set(id, callback); return id; };
+  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
+    module: sourceModule, exports: sourceModule.exports, __dirname: path.dirname(filename),
+    process: { env }, console: { log() {}, error() {}, warn() {} },
+    setTimeout: schedule, setInterval: schedule,
+    clearTimeout: id => cleared.add(id), clearInterval: id => cleared.add(id),
+    require(dependency) {
+      if (dependency === '../../utils/backgroundWorkPolicy') return { backgroundWorkAllowed: () => backgroundWorkAllowed(env) };
+      if (dependency === '../../db') return { query: async () => assert.fail('unexpected scheduler database access') };
+      if (['./persistent-memory', './web-action-engine'].includes(dependency)) return {};
+      return actual(dependency);
+    },
+  }, { filename });
+  return { api: sourceModule.exports, timers, cleared };
+}
+
+test('disabled and candidate processes cannot start orchestrator schedules or file watchers', async () => {
+  for (const env of [{ DISABLE_SCHEDULERS: 'true' }, { DOCTARX_DEPLOY_CHECK: 'true' }]) {
+    for (const name of ['run-loop', 'heartbeat', 'dynamic-skills']) {
+      const fixture = schedulerFixture(name, env);
+      if (name === 'run-loop') {
+        const loop = new fixture.api.RunLoop({}, {}); loop.start(); assert.equal(loop.isRunning, false);
+      } else if (name === 'heartbeat') {
+        const heartbeat = new fixture.api({}, {}); heartbeat.start(); assert.equal(heartbeat.isRunning, false);
+      } else {
+        const loader = new fixture.api.DynamicSkillLoader({}); loader.startWatching(); assert.equal(loader.watchTimer, null);
+      }
+      assert.equal(fixture.timers.size, 0, name);
+    }
+  }
+});
+
+test('stopping a run loop during an awaited tick cannot resurrect its timer', async () => {
+  const fixture = schedulerFixture('run-loop');
+  const loop = new fixture.api.RunLoop({}, {});
+  let releaseTick;
+  loop.tick = () => new Promise(resolve => { releaseTick = resolve; });
+  loop.start();
+  const pending = fixture.timers.values().next().value();
+  assert.equal(typeof releaseTick, 'function');
+  loop.stop(); releaseTick(); await pending;
+  assert.equal(loop.isRunning, false);
+  assert.equal(fixture.timers.size, 1, 'no new timer after the pending tick resolves');
+});
+
+test('a restarted run loop fences callbacks from its previous start', async () => {
+  const fixture = schedulerFixture('run-loop');
+  const loop = new fixture.api.RunLoop({}, {});
+  let releaseTick;
+  loop.tick = () => new Promise(resolve => { releaseTick = resolve; });
+  loop.start();
+  const oldCallback = fixture.timers.values().next().value;
+  const pending = oldCallback();
+  loop.stop(); loop.start();
+  releaseTick(); await pending; await oldCallback();
+  assert.equal(fixture.timers.size, 2, 'only the original and deliberate new start may have timers');
+  loop.stop();
+});
+
+test('heartbeat shutdown cancels startup timeouts and prevents queued callbacks from starting work', async () => {
+  const fixture = schedulerFixture('heartbeat');
+  const heartbeat = new fixture.api({}, {});
+  heartbeat.cleanupInbox = async () => {};
+  for (const name of ['healthCheck', 'errorCheck', 'proactiveScan', 'runWebMissions', 'agentCycle', 'executiveBriefing', 'startupBriefing']) {
+    heartbeat[name] = () => assert.fail('stopped heartbeat must not admit new work');
+  }
+  heartbeat.start();
+  assert.equal(fixture.timers.size, 10);
+  heartbeat.stop();
+  assert.equal(fixture.cleared.size, fixture.timers.size);
+  for (const callback of fixture.timers.values()) await callback();
+  const oldCallbacks = [...fixture.timers.values()];
+  heartbeat.start();
+  for (const callback of oldCallbacks) await callback();
+  heartbeat.stop();
+});
+
 for (const route of ['/post/:id/publish-now', '/post/:id/schedule', '/post/:id/retry']) {
   test(`unavailable social action ${route} refuses before account/target access or record changes`, async () => {
     const fixture = await socialRouteFixture();

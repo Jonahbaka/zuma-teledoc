@@ -407,6 +407,7 @@ class DynamicSkillLoader {
    */
   startWatching(intervalMs = 30000) {
     if (immutableRuntime()) return;
+    if (!require('../../utils/backgroundWorkPolicy').backgroundWorkAllowed()) return;
     if (this.watchTimer) return;
     this.watchTimer = setInterval(() => this.scanForChanges(), intervalMs);
   }
