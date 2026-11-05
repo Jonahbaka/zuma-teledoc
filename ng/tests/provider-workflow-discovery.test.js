@@ -45,7 +45,14 @@ describe('Provider dashboard exposes the operating workspace (discoverable)', ()
   it('exposes Appointments and Visits/Encounters', () => {
     assert.match(dashboard, /Appointments/);
     assert.match(dashboard, /Open encounter/);
-    assert.match(dashboard, /'\/visits'/);
+    for (const market of ['us', 'ng']) {
+      const base = market === 'us' ? '/provider' : '/ng/provider';
+      const rendered = renderDashboard('provider', {
+        appointments: { rows: [] }, notes: { rows: [] }, patients: { rows: [] },
+      }, { market });
+      assert.ok(rendered.links.includes(`${base}/visits`), 'clinical notes remain discoverable');
+      assert.ok(rendered.links.includes(`${base}/appointments`), 'appointments remain discoverable');
+    }
   });
 
   it('renders video actions retaining shared and legacy appointment context in both markets', () => {

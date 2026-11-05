@@ -17,11 +17,13 @@ function renderDashboard(kind, sections, { market = kind === 'patient' ? 'US' : 
     const loaded = { exports: {} };
     vm.runInNewContext(output, { module: loaded, exports: loaded.exports, console, require(name) {
       if (name === 'react/jsx-runtime') return jsx;
-      if (name === 'react') return { useState: () => [states[hook++], () => {}], useEffect() {} };
+      if (name === 'react') return { useState: initial => [hook < states.length ? states[hook++] : initial, () => {}], useEffect() {} };
       if (name === 'next/link') return { __esModule: true, default: 'a' };
       if (name === 'lucide-react') return new Proxy({}, { get: () => 'svg' });
       if (name === '@/components/providers/AuthProvider') return { useAuth: () => ({ user: { id: 'fictional-user', firstName: 'Fictional' } }) };
-      if (name === '@/components/dashboard/WorkspaceElements') return compile('components/dashboard/WorkspaceElements.jsx');
+      if (name === '@/components/dashboard/WorkspaceElements' || name === './WorkspaceElements') return compile('components/dashboard/WorkspaceElements.jsx');
+      if (name === '@/components/dashboard/WorkspaceCharts') return compile('components/dashboard/WorkspaceCharts.jsx');
+      if (name === '@/lib/workspace-charts.cjs') return require('../../lib/workspace-charts.cjs');
       if (name === '@/lib/dashboard-workspace.cjs') return helpers;
       if (name === '@/lib/utils') return { formatDateTime: value => String(value) };
       if (name === '@/components/ui/button') return { Button: 'button' };

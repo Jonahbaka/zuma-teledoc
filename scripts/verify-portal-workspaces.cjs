@@ -18,9 +18,9 @@ function fixture(role, market) {
   const appointment = (id, minutes, status, type = 'video') => ({ id, scheduledAt: new Date(Date.now() + minutes * 60000).toISOString(), status, type, patientFirstName: 'Jordan', patientLastName: 'Example', providerFirstName: 'Avery', providerLastName: 'Example' });
   return {
     user,
-    appointments: [appointment('fictional-arrival', -15, 'confirmed'), appointment('fictional-next', 90, 'scheduled'), appointment('fictional-followup', 1440, 'confirmed', 'phone')],
-    patients: [{ id: 'fictional-patient', firstName: 'Jordan', lastName: 'Example', lastVisit: new Date(Date.now() + 90 * 60000).toISOString() }],
-    notes: [{ id: 'fictional-note-draft', appointmentId: 'fictional-draft', patientFirstName: 'Jordan', patientLastName: 'Example', isSigned: false, createdAt: new Date().toISOString() }, { id: 'fictional-note-signed', appointmentId: 'fictional-signed', patientFirstName: 'Morgan', patientLastName: 'Example', isSigned: true, createdAt: new Date(Date.now() - 86400000).toISOString() }],
+    appointments: [appointment('fictional-arrival', -15, 'confirmed'), appointment('fictional-next', 90, 'scheduled'), appointment('fictional-followup', 1440, 'confirmed', 'phone'), ...(role === 'provider' ? [appointment('fictional-day-two-a', 2880, 'confirmed'), appointment('fictional-day-two-b', 2940, 'scheduled'), appointment('fictional-day-three', 4320, 'confirmed'), appointment('fictional-day-five', 7200, 'scheduled', 'phone')] : []), appointment('fictional-later', 14400, 'scheduled')],
+    patients: Array.from({ length: 12 }, (_, i) => ({ id: 'fictional-patient-' + i, firstName: ['Jordan', 'Morgan', 'Alex', 'Taylor'][i % 4], lastName: 'Example', lastVisit: new Date(Date.now() + 90 * 60000).toISOString() })),
+    notes: Array.from({ length: 12 }, (_, i) => ({ id: 'fictional-note-' + i, appointmentId: 'fictional-note-visit-' + i, patientFirstName: ['Jordan', 'Morgan', 'Alex', 'Taylor'][i % 4], patientLastName: 'Example', isSigned: i > 2, createdAt: new Date(Date.now() - i * 86400000).toISOString() })),
   };
 }
 
@@ -74,6 +74,7 @@ async function capture(page, name, report) {
   fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify(report, null, 2));
   assert.deepEqual(violations, [], name + ' accessibility');
   await page.screenshot({ path: path.join(output, name + '.png'), fullPage: true });
+  if (name === 'US-provider-desktop') await page.screenshot({ path: path.join(output, name + '-viewport.png'), fullPage: false });
   report.screenshots.push(name + '.png');
 }
 
@@ -98,6 +99,16 @@ async function capture(page, name, report) {
           const links = await main.locator('a').evaluateAll(nodes => nodes.map(node => node.getAttribute('href')));
           assert.ok(links.every(href => href.startsWith(prefix + '/')), 'every care link retains role and market');
           if (role === 'provider') { await expect(main).toContainText('Unsigned'); await expect(main).toContainText('Signed'); await expect(main).toContainText('Latest appointment:'); }
+          const scheduledChart = main.getByRole('region', { name: 'Scheduled visits chart', exact: true });
+          await expect(scheduledChart.locator('.workspace-bar-column')).toHaveCount(7);
+          const weekCount = Number(await scheduledChart.locator('.workspace-chart-total strong').innerText());
+          await main.getByLabel('Chart date range', { exact: true }).selectOption('14');
+          await expect(scheduledChart.locator('.workspace-bar-column')).toHaveCount(14);
+          assert.equal(Number(await scheduledChart.locator('.workspace-chart-total strong').innerText()), weekCount + 1, 'range selection recomputes the actual aggregate');
+          await main.getByLabel('Chart date range', { exact: true }).selectOption('7');
+          const typography = await main.evaluate(el => ({ heading: parseFloat(getComputedStyle(el.querySelector('h1')).fontSize), body: parseFloat(getComputedStyle(el.querySelector('.workspace-intro')).fontSize), palette: [...new Set(Array.from(el.querySelectorAll('.workspace-metric')).map(card => getComputedStyle(card).backgroundColor))] }));
+          assert.ok(typography.heading >= 32 && typography.body >= 18, 'large readable heading and body typography');
+          assert.equal(typography.palette.length, role === 'provider' ? 4 : 3, 'metrics use distinct category colors');
           await capture(page, `${market}-${role}-${size}`, report);
           report.scenarios.push(`${market}-${role}-${size}: dashboard, late arrival, market links`);
           if (size === 'mobile') {
@@ -110,6 +121,7 @@ async function capture(page, name, report) {
           await main.getByRole('button', { name: 'Refresh', exact: true }).click();
           await expect(main.getByRole('alert').first()).toContainText('could not be loaded');
           await expect(main.locator(`a[href="${prefix}/appointments/fictional-arrival/call"]`)).toHaveCount(0);
+          await expect(scheduledChart.locator('.workspace-bar-column')).toHaveCount(0);
           await capture(page, `${market}-${role}-${size}-unavailable`, report);
           mode.unavailable = false;
           await main.getByRole('button', { name: 'Try again', exact: true }).first().click();
@@ -120,6 +132,7 @@ async function capture(page, name, report) {
             await expect(main.getByRole('heading', { level: 1 })).toHaveText('Practice activity');
             await expect(main).toContainText('Last checked');
             await expect(main).toContainText('loaded subsets');
+            await expect(main.getByRole('region', { name: 'Scheduling status', exact: true })).toBeVisible();
             await capture(page, `${market}-analytics-${size}`, report);
             report.scenarios.push(`${market}-analytics-${size}: operational loaded subsets`);
             if (market === 'NG') {
