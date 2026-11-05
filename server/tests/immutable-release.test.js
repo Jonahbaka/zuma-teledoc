@@ -114,6 +114,38 @@ function tuple(version) { return { backend: version, frontend: version + '-build
 
 function releaseDirectory(f, version) { return path.join(f.store, 'releases', master[version].releaseId); }
 
+test('serving activation requires intact selected content, external state and exact configuration', () => {
+  const f = fixture();
+  try {
+    const policy = require('../utils/runtimeStatePolicy');
+    const state = path.join(f.directory, 'state'); fs.mkdirSync(state);
+    const options = { releaseRoot: f.plan.from.directory, env: {
+      DOCTARX_EXPECTED_RELEASE_DIGEST: f.plan.from.digest, DOCTARX_RELEASE_STORE_ROOT: f.store,
+      DOCTARX_CONFIG_VERSION: f.plan.from.configuration.version, DOCTARX_CONFIG_DIGEST: f.plan.from.configuration.digest,
+      DOCTARX_STATE_ROOT: state, DOCTARX_RELEASE_HEALTH_TOKEN: 'a'.repeat(64),
+    } };
+    assert.deepEqual(policy.assertServingModeSupported(options), expectedIdentity(f.plan.from));
+    assert.throws(() => policy.assertServingModeSupported({ ...options, env: { ...options.env, DOCTARX_CONFIG_DIGEST: 'b'.repeat(64) } }), { code: 'IMMUTABLE_SELECTION_MISMATCH' });
+    assert.throws(() => policy.assertServingModeSupported({ ...options, env: { ...options.env, DOCTARX_STATE_ROOT: f.store } }), { code: 'RUNTIME_STATE_OVERLAP' });
+    fs.appendFileSync(path.join(f.plan.from.directory, 'server/index.js'), '\n// changed');
+    assert.throws(() => policy.assertServingModeSupported(options), { code: 'BUNDLE_MISMATCH' });
+  } finally { f.cleanup(); }
+});
+
+test('generated public WASM assets must match the installed locked dependency', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'doctarx-generated-assets-'));
+  try {
+    const bundle = path.join(directory, 'bundle');
+    fs.cpSync(master.old.options.bundleDirectory, bundle, { recursive: true, verbatimSymlinks: true });
+    write(path.join(bundle, 'node_modules/@mediapipe/tasks-vision/wasm/vision.wasm'), 'fictional dependency bytes');
+    const asset = path.join(bundle, 'public/mediapipe-wasm/vision.wasm');
+    write(asset, 'fictional dependency bytes');
+    assert.ok(createManifest({ ...master.old.options, bundleDirectory: bundle }).digest);
+    fs.writeFileSync(asset, 'tampered');
+    assert.throws(() => createManifest({ ...master.old.options, bundleDirectory: bundle }), { code: 'GENERATED_ASSET_MISMATCH' });
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
 test('preparation preserves complete source, frontend, dependency, runtime/config and migration identity', async () => {
   for (const version of ['old', 'new']) {
     const prepared = master[version];

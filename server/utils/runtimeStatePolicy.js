@@ -18,7 +18,27 @@ function assertCodeMutationAllowed(operation, options = {}) {
   }
 }
 function assertServingModeSupported(options = {}) {
-  if (immutableRuntime(options)) throw policyError('IMMUTABLE_SERVING_UNVERIFIED', 'Immutable serving remains blocked until schema, state and worker isolation are verified.');
+  if (!immutableRuntime(options)) return null;
+  const env = options.env || process.env;
+  const releaseRoot = path.resolve(options.releaseRoot || DEFAULT_RELEASE_ROOT);
+  if (!env.DOCTARX_EXPECTED_RELEASE_DIGEST || !env.DOCTARX_RELEASE_STORE_ROOT ||
+      !env.DOCTARX_CONFIG_VERSION || !env.DOCTARX_CONFIG_DIGEST ||
+      !/^[a-f0-9]{64}$/.test(env.DOCTARX_RELEASE_HEALTH_TOKEN || '')) {
+    throw policyError('IMMUTABLE_SERVING_UNVERIFIED', 'A verified release selection, external configuration and health credential are required.');
+  }
+  const { verifyBundle } = require('../../scripts/release/manifest.cjs');
+  const manifest = verifyBundle(releaseRoot, env.DOCTARX_EXPECTED_RELEASE_DIGEST, { matchRuntime: true });
+  const store = realDirectory(env.DOCTARX_RELEASE_STORE_ROOT);
+  if (fs.realpathSync(path.join(store, 'current')) !== releaseRoot ||
+      releaseRoot !== path.join(store, 'releases', manifest.releaseId) ||
+      manifest.configuration.version !== env.DOCTARX_CONFIG_VERSION ||
+      manifest.configuration.digest !== env.DOCTARX_CONFIG_DIGEST) {
+    throw policyError('IMMUTABLE_SELECTION_MISMATCH', 'Executing release or configuration differs from the selected release.');
+  }
+  for (const kind of ['publicUploads', 'agentChat', 'credentialDocuments']) runtimePath(kind, { env, releaseRoot });
+  return { releaseId: manifest.releaseId, digest: manifest.digest, sourceSha: manifest.source.sha,
+    buildId: manifest.buildId, runtime: manifest.runtime, migrationDigest: manifest.migrationDigest,
+    configuration: manifest.configuration };
 }
 function inside(parent, child) {
   const relative = path.relative(parent, child);
