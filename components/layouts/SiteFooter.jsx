@@ -11,8 +11,8 @@ export default function SiteFooter() {
   const patient=nigeria?'/ng/patient':'/patient', provider=nigeria?'/ng/provider':'/provider', pharmacy=nigeria?'/ng/pharmacy':'/pharmacy';
   const columns=[
     ['Your care',[['Find care',nigeria?'/ng/find-care':patient+'/appointments/book'],['Patient sign in',patient+'/login'],['Find pharmacies',nigeria?'/ng/pharmacies':'/pharmacies'],['Frequently asked questions','/faq']]],
-    ['Professionals',[['Provider sign in',provider+'/login'],['Join as a provider',provider+'/register'],['Pharmacy sign in',pharmacy+'/login'],['DoctaRx CareOps','/careops/login']]],
-    ['About DoctaRx',[['International & languages','/international'],['Virtual care guides','/blog'],['Contact us','/contact'],['Privacy policy','/privacy'],['Terms of use','/terms'],['Accessibility','/accessibility']]],
+    ['Professionals',[['For providers','/for-providers'],['Partner with us','/partners'],['Provider sign in',provider+'/login'],['Join as a provider',provider+'/register'],['Pharmacy sign in',pharmacy+'/login'],['DoctaRx CareOps','/careops/login']]],
+    ['About DoctaRx',[['Company','/company'],['Press & launch kit','/press'],['International & languages','/international'],['Virtual care guides','/blog'],['Contact us','/contact'],['Privacy policy','/privacy'],['Terms of use','/terms'],['Accessibility','/accessibility']]],
   ];
   return (
     <footer className={styles.footer}>

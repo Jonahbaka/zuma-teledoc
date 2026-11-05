@@ -28,6 +28,8 @@ test('private, encoded, token and unreviewed routes cannot enter search indexing
   assert.equal(shouldNoIndex('/international?utm_source=search'), false);
   assert.equal(shouldNoIndex('/_next/static/chunks/test.js'), false);
   assert.equal(shouldNoIndex('/opengraph-image'), false);
+  for (const route of ['/company/opengraph-image', '/press/opengraph-image', '/press/doctarx-fact-sheet.txt', '/press/doctarx-homepage.png', '/launch-kit/social-launch-pack.md']) assert.equal(shouldNoIndex(route), false);
+  for (const route of ['/press/private.pdf', '/launch-kit/prospects.csv', '/company?token=fictional', '/partners?email=fictional']) assert.equal(shouldNoIndex(route), true);
 });
 test('Express responses carry private noindex without altering access or response content', async () => {
   const app = express();
