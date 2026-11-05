@@ -1,4 +1,5 @@
 import './globals.css';
+import './portal-workspace.css';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/components/providers/AuthProvider';
 import { I18nProvider } from '@/components/providers/I18nProvider';

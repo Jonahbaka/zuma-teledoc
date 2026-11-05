@@ -107,7 +107,7 @@ export default function DashboardLayout({ children, navigation = [], navigationG
     <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" /><span>{item.name}</span>
   </Link>;
 
-  return <div className="doctarx-portal clinical-readable min-h-[100dvh] bg-[#f3f6fa] text-slate-950">
+  return <div className={cn('doctarx-portal clinical-readable min-h-[100dvh] bg-[#f3f6fa] text-slate-950', carePortal && 'premium-portal')}>
     <a href="#portal-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-white focus:p-4">Skip to main content</a>
     {!immersive && <>
       {sidebarOpen && <div className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden" onClick={() => setSidebarOpen(false)} aria-hidden="true" />}
@@ -117,11 +117,11 @@ export default function DashboardLayout({ children, navigation = [], navigationG
           <Link href={home} aria-label="DoctaRx home"><DoctaRxLogo glow={false} className="h-9 w-auto" /></Link>
           <button className="rounded-lg p-2 text-white lg:hidden" aria-label={'Close ' + portalName.toLowerCase() + ' navigation'} onClick={() => setSidebarOpen(false)}><X className="h-6 w-6" /></button>
         </div>
-        {carePortal && <div className="mx-4 mt-5 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"><Globe2 className="h-5 w-5 shrink-0 text-teal-700" aria-hidden="true" /><div><p className="font-semibold text-slate-900">{marketLabel}</p><p className="text-sm text-slate-600">{portalName === 'Provider' ? 'Clinical workspace' : 'Personal care workspace'}</p></div></div>}
+        {carePortal && <div className="portal-market-card mx-4 mt-5 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"><Globe2 className="h-5 w-5 shrink-0 text-indigo-700" aria-hidden="true" /><div><p className="font-semibold text-slate-900">{marketLabel}</p><p className="text-sm text-slate-600">{portalName === 'Provider' ? 'Clinical workspace' : 'Personal care workspace'}</p></div></div>}
         <nav className="flex-1 overflow-y-auto p-4" aria-label={portalName + ' main navigation'}>
           {groups || providerSections ? <>{groups && <div className="mb-5 space-y-1">{topLevel.map(renderLink)}</div>}{(groups || providerSections).map((group) => <section key={group.name} className="mb-5"><p className="mb-2 px-4 font-semibold text-slate-500">{group.name}</p><div className="space-y-1">{group.items.map(renderLink)}</div></section>)}</> : <div className="space-y-1">{items.map(renderLink)}</div>}
         </nav>
-        <div className="space-y-3 border-t border-slate-200 p-5">
+        <div className="portal-account-block space-y-3 border-t border-slate-200 p-5">
           <div className="flex items-center gap-3"><span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-900 font-semibold text-white">{initials || <User className="h-5 w-5" />}</span><div className="min-w-0"><p className="break-words font-semibold text-slate-900">{user?.firstName} {user?.lastName}</p><p className="text-sm text-slate-600">{portalName} account</p></div></div>
           <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-slate-600 hover:bg-slate-50" onClick={() => logout()}><LogOut className="h-5 w-5" aria-hidden="true" />Sign out</button>
         </div>
