@@ -117,7 +117,9 @@ A killed coordinator leaves a hard lock. It is never cleared from PID absence, a
 an environment flag. `planInterruptedRecovery` is read-only, reconciles the actual
 selected/process identity against the journal and verifies prior release evidence,
 then explicitly requires exclusive fencing. It does not execute recovery or unlock
-anything. A missing/terminal journal with a surviving lock still requires operator
+anything. A newly supplied schema or evidence digest must match the proof recorded
+before interruption; a different proof requires independent review and cannot silently
+authorize the existing recovery plan. A missing/terminal journal with a surviving lock still requires operator
 investigation and cannot be treated as permission to deploy.
 
 The actual production adapter must cover **all writers**, including CronOps and other

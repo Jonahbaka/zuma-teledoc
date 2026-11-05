@@ -7,11 +7,23 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
 const { createManifest, verifyBundle, digest, canonical, MANIFEST_FILE } = require('../../scripts/release/manifest.cjs');
-const { prepareRelease, planPromotion, promoteRelease, planInterruptedRecovery, inspectStore, expectedIdentity } = require('../../scripts/release/store.cjs');
+const { prepareRelease, planPromotion, promoteRelease, planInterruptedRecovery, inspectStore, expectedIdentity, assertCompatibilityUnchanged } = require('../../scripts/release/store.cjs');
 const { createFixtureAdapter } = require('./fixtures/immutable-release/adapter.cjs');
 const { main: cli } = require('../../scripts/immutable-release.cjs');
 
 const root = path.resolve(__dirname, '../..');
+test('reviewed compatibility evidence cannot silently change during recovery', () => {
+  const oldRelease = { digest: '1'.repeat(64), migrationDigest: '2'.repeat(64) };
+  const newRelease = { digest: '3'.repeat(64), migrationDigest: '4'.repeat(64) };
+  const proof = { compatible: true, previousDigest: oldRelease.digest, candidateDigest: newRelease.digest,
+    previousMigrationDigest: oldRelease.migrationDigest, candidateMigrationDigest: newRelease.migrationDigest,
+    schemaDigest: '5'.repeat(64), evidenceDigest: '6'.repeat(64) };
+  assert.deepEqual(assertCompatibilityUnchanged({ ...proof }, proof, oldRelease, newRelease), proof);
+  for (const field of ['schemaDigest', 'evidenceDigest']) {
+    assert.throws(() => assertCompatibilityUnchanged({ ...proof, [field]: '7'.repeat(64) }, proof, oldRelease, newRelease), { code: 'COMPATIBILITY_CHANGED' });
+  }
+  assert.throws(() => assertCompatibilityUnchanged({ ...proof, candidateDigest: '7'.repeat(64) }, proof, oldRelease, newRelease), { code: 'COMPATIBILITY_UNPROVEN' });
+});
 function registerLinuxTests() {
 const appSource = version => `// SYNTHETIC_IMMUTABLE_RELEASE_FIXTURE\n'use strict';
 setTimeout(() => {
@@ -229,6 +241,22 @@ test('unproven quiescence and failed rollback health require recovery and block 
       assert.deepEqual(await adapter.inspect(), expectedIdentity(f.plan.from));
     } finally { await adapter.cleanup(); f.cleanup(); }
   }
+});
+
+test('interrupted recovery refuses changed compatibility evidence without touching the writer', async () => {
+  const f = fixture(); const adapter = await startOld(f, { failStop: true });
+  try {
+    await assert.rejects(promoteRelease({ ...f.options, adapter }), { code: 'RECOVERY_REQUIRED' });
+    const original = adapter.assertCompatibility;
+    const before = inspectStore(f.store);
+    assert.equal((await planInterruptedRecovery({ storeRoot: f.store, adapter })).requiresExclusiveFence, true);
+    for (const field of ['schemaDigest', 'evidenceDigest']) {
+      adapter.assertCompatibility = async args => ({ ...await original(args), [field]: '7'.repeat(64) });
+      await assert.rejects(planInterruptedRecovery({ storeRoot: f.store, adapter }), { code: 'COMPATIBILITY_CHANGED' });
+      assert.deepEqual(inspectStore(f.store), before);
+      assert.deepEqual(await adapter.inspect(), expectedIdentity(f.plan.from));
+    }
+  } finally { await adapter.cleanup(); f.cleanup(); }
 });
 
 test('rollback refuses modified previous content instead of starting a mixed release', async () => {

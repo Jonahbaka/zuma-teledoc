@@ -64,6 +64,12 @@ function checkedCompatibility(value, from, to) {
     previousMigrationDigest: value.previousMigrationDigest, candidateMigrationDigest: value.candidateMigrationDigest,
     schemaDigest: value.schemaDigest, evidenceDigest: value.evidenceDigest };
 }
+function assertCompatibilityUnchanged(value, expected, from, to) {
+  const current = checkedCompatibility(value, from, to);
+  const reviewed = checkedCompatibility(expected, from, to);
+  if (canonical(current) !== canonical(reviewed)) fail('COMPATIBILITY_CHANGED', 'Schema/compatibility evidence changed during the release');
+  return current;
+}
 function archiveTerminalJournal(root, journal) {
   if (!journal) return;
   if (!TERMINAL.has(journal.phase)) fail('RECOVERY_REQUIRED', 'Unfinished release evidence cannot be archived as complete');
@@ -232,8 +238,7 @@ async function promoteRelease(options) {
     await assertConfiguration(adapter, to);
     const compatibility = checkedCompatibility(await adapter.assertCompatibility({ from, to }), from, to);
     async function recheckCompatibility() {
-      const current = checkedCompatibility(await adapter.assertCompatibility({ from, to }), from, to);
-      if (canonical(current) !== canonical(compatibility)) fail('COMPATIBILITY_CHANGED', 'Schema/compatibility evidence changed during the release');
+      assertCompatibilityUnchanged(await adapter.assertCompatibility({ from, to }), compatibility, from, to);
     }
     // Preflight must not change the selected or running release.
     if (readCurrent(root) !== from.releaseId) fail('CURRENT_CHANGED', 'Serving target changed during preflight');
@@ -312,10 +317,12 @@ async function planInterruptedRecovery({ storeRoot, adapter }) {
   const observed = await adapter.inspect();
   if (observed !== null && ![from, to].some(release => canonical(observed) === canonical(expectedIdentity(release)))) fail('FOREIGN_PROCESS', 'Unknown managed process must not be changed');
   await assertConfiguration(adapter, from);
-  checkedCompatibility(await adapter.assertCompatibility({ from, to }), from, to);
+  // A fresh but different proof cannot silently replace the evidence recorded
+  // before interruption. Changed schema/evidence requires independent review.
+  assertCompatibilityUnchanged(await adapter.assertCompatibility({ from, to }), journal.compatibility, from, to);
   return { version: 1, operationId: journal.operationId, selectedReleaseId: current,
     observedReleaseId: observed?.releaseId || null, restore: from, requiresExclusiveFence: true,
     actions: ['establish-exclusive-operation-fence', 'confirm-all-managed-writers-and-pending-starts-stopped', 'reverify-previous-release-config-and-compatibility', 'select-complete-previous-release', 'start-and-independently-verify-previous-release'] };
 }
 
-module.exports = { prepareRelease, planPromotion, promoteRelease, planInterruptedRecovery, inspectStore, expectedIdentity, readCurrent, readJournal };
+module.exports = { prepareRelease, planPromotion, promoteRelease, planInterruptedRecovery, inspectStore, expectedIdentity, readCurrent, readJournal, assertCompatibilityUnchanged };

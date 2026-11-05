@@ -2,7 +2,7 @@ name: Production readiness validation (no deployment)
 
 on:
   push:
-    branches: [codex/latest-work-readiness-20261104]
+    branches: [codex/latest-work-readiness-20261104, codex/doctarx-copy-20261105]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   local-sfu-media:
-    if: github.repository == 'iamjonahbaka-create/Jonah-doctarx' && github.event.repository.private == false
+    if: contains(fromJSON('["iamjonahbaka-create/Jonah-doctarx","Jonahbaka/zuma-teledoc"]'), github.repository) && github.event.repository.private == false
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -78,7 +78,7 @@ jobs:
           }
           JS
   production-build:
-    if: github.repository == 'iamjonahbaka-create/Jonah-doctarx' && github.event.repository.private == false
+    if: contains(fromJSON('["iamjonahbaka-create/Jonah-doctarx","Jonahbaka/zuma-teledoc"]'), github.repository) && github.event.repository.private == false
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -99,7 +99,7 @@ jobs:
       - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
   linux-security-and-release:
     # Standard public-repository runner; no larger runner or cloud credentials.
-    if: github.repository == 'iamjonahbaka-create/Jonah-doctarx' && github.event.repository.private == false
+    if: contains(fromJSON('["iamjonahbaka-create/Jonah-doctarx","Jonahbaka/zuma-teledoc"]'), github.repository) && github.event.repository.private == false
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
