@@ -46,7 +46,8 @@ test('serving verifies migration history before importing routes or starting wor
     const calls = [];
     const failure = Object.assign(new Error('fictional migration mismatch'), { code: 'MIGRATION_HISTORY_DRIFT' });
     const pool = {};
-    const context = { nextInitStatus: 'pending', nextInitError: null, console: { log() {}, error() {} }, require(name) {
+    const context = { nextInitStatus: 'pending', nextInitError: null, console: { log() {}, error() {} },
+      initializeRealtime() { calls.push('realtime'); }, require(name) {
       calls.push(name);
       if (name === './db') return { getPool: () => pool };
       if (name === './db/verifyMigrationHistory') return { async verifyMigrationHistory(actual) {
@@ -61,7 +62,7 @@ test('serving verifies migration history before importing routes or starting wor
       await assert.rejects(initialized, error => error === failure);
       assert.equal(context.nextInitStatus, 'failed');
     } else assert.equal(await initialized, true);
-    assert.deepEqual(calls, ['./db/verifyMigrationHistory', './db', 'verified']);
+    assert.deepEqual(calls, ['./db/verifyMigrationHistory', './db', 'verified', ...(fails ? [] : ['realtime'])]);
   }
 });
 

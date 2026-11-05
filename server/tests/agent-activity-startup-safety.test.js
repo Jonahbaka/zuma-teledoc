@@ -124,7 +124,7 @@ test('candidate startup does not expose Engine.IO or attach OpenClaw or voice PC
       res.end(JSON.stringify({ error: 'Deployment readiness check only' }));
     });
     let io, socketInitializations = 0, adapterInitializations = 0, voiceInitializations = 0;
-    vm.runInNewContext(source.slice(start, end), {
+    const realtimeContext = {
       server, process: { env: { DOCTARX_DEPLOY_CHECK: String(candidate) } },
       console: { log() {}, error() {} },
       require(name) {
@@ -145,7 +145,11 @@ test('candidate startup does not expose Engine.IO or attach OpenClaw or voice PC
         } };
         assert.fail('Unexpected realtime startup dependency: ' + name);
       },
-    });
+    };
+    vm.runInNewContext(source.slice(start, end), realtimeContext);
+    assert.equal(socketInitializations + adapterInitializations + voiceInitializations, 0,
+      'defining realtime startup must not attach handlers before migration verification');
+    vm.runInNewContext('initializeRealtime()', realtimeContext);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     try {
       const response = await fetch(`http://127.0.0.1:${server.address().port}/socket.io/?EIO=4&transport=polling`);

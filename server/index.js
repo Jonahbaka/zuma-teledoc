@@ -135,6 +135,7 @@ const server = app.listen(PORT, HOST, () => {
 let socketService = null;
 let voicePcmRuntime = null;
 let operationalAgentRuntime = null;
+function initializeRealtime() {
 if (process.env.DOCTARX_DEPLOY_CHECK !== 'true') {
   try {
     socketService = require('./services/socketService');
@@ -161,6 +162,7 @@ if (process.env.DOCTARX_DEPLOY_CHECK !== 'true') {
       expectedOrigin: process.env.NEXT_PUBLIC_APP_URL || 'https://doctarx.com', env: process.env
     });
   } catch { console.error('Voice PCM evaluation is unavailable.'); }
+}
 }
 
 // Minimal health check - available immediately
@@ -524,6 +526,7 @@ async function initializeApp() {
     console.error('[BOOT] Migration history blocked readiness:', error.code || 'SCHEMA_CHECK_UNAVAILABLE');
     throw error;
   }
+  initializeRealtime();
   console.log('📦 Loading dependencies...');
   
   // Now safe to load heavy modules (dotenv already loaded at startup)
