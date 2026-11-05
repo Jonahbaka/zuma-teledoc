@@ -59,6 +59,7 @@
     "test:readiness": "node --test server/tests/credential-document-privacy.test.js server/tests/clinical-lab-workflow-db.test.js server/tests/voice/postgres-voice-session-reader.test.js server/tests/voice/postgres-voice-session-reader-db.test.js server/tests/voice/live-voice-transport.test.js",
     "posttest": "npm run test:readiness",
     "lint": "eslint .",
+    "test:growth": "node --test server/tests/public-seo.test.js server/tests/growth-public-sharing.test.js server/tests/contact-delivery-safety.test.js",
     "postinstall": "node -e \"try{require('./scripts/copy-mediapipe')}catch(e){}\"",
     "validate:db": "node scripts/validate-db.js",
     "migrations:verify": "node scripts/verify-migration-safety.cjs",

@@ -1,197 +1,84 @@
-/**
- * Contact Form API Routes
- * Handles contact form submissions and sends emails to admin
- */
-
+/** Public, nonclinical business enquiries. Never log submitted content. */
 const express = require('express');
-const router = express.Router();
 const nodemailer = require('nodemailer');
 const logger = require('../middleware/logger');
 const { z } = require('zod');
-
-// Contact form validation schema
-const contactSchema = z.object({
-  name: z.string().min(2).max(100),
-  email: z.string().email(),
-  subject: z.string().min(5).max(200),
-  message: z.string().min(10).max(5000),
-  type: z.enum(['general', 'support', 'enterprise', 'partnership', 'billing']).default('general')
-});
-
-// Admin email for receiving contact form submissions
+const router = express.Router();
 const ADMIN_EMAIL = 'evolvedu@outlook.com';
+const PUBLIC_EMAIL = 'info@doctarx.com';
+const contactSchema = z.object({
+  name: z.string().trim().min(2).max(100).regex(/^[^\r\n]+$/),
+  email: z.string().trim().max(254).email().regex(/^[^\r\n]+$/),
+  subject: z.string().trim().min(5).max(200).regex(/^[^\r\n]+$/),
+  message: z.string().trim().min(10).max(5000),
+  type: z.enum(['general', 'support', 'enterprise', 'partnership', 'billing']).default('general'),
+});
+const typeLabels = { general: 'General Inquiry', support: 'Technical Support', enterprise: 'Enterprise Solutions', partnership: 'Partnership Opportunity', billing: 'Billing Question' };
+const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 
-// Create email transporter
-const createTransporter = () => {
-  if (process.env.SMTP_HOST && process.env.SMTP_PORT) {
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD
-      }
-    });
-  }
-  
-  // Development mode - log instead of sending
-  return {
-    sendMail: async (options) => {
-      logger.info('Contact form email (dev mode)', {
-        to: options.to,
-        subject: options.subject,
-        from: options.replyTo
-      });
-      return { messageId: 'dev-' + Date.now() };
-    }
-  };
-};
+function createTransporter() {
+  const port = Number(process.env.SMTP_PORT);
+  if (!process.env.SMTP_HOST || !Number.isInteger(port) || port < 1 || port > 65535) return null;
+  if (Boolean(process.env.SMTP_USER) !== Boolean(process.env.SMTP_PASSWORD)) return null;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST, port, secure: process.env.SMTP_SECURE === 'true',
+    ...(process.env.SMTP_USER ? { auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } } : {}),
+    connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000,
+  });
+}
 
-const transporter = createTransporter();
+// A resolved SMTP call or message ID alone is not proof of recipient acceptance.
+function acceptedRecipient(result, recipient) {
+  const addresses = list => Array.isArray(list) ? list.map(item => typeof item === 'string' ? item.toLowerCase() : typeof item?.address === 'string' ? item.address.toLowerCase() : '') : [];
+  const expected = recipient.toLowerCase();
+  return addresses(result?.accepted).includes(expected) && !addresses(result?.rejected).includes(expected) && !addresses(result?.pending).includes(expected);
+}
 
-/**
- * POST /api/contact
- * Submit contact form
- */
 router.post('/', async (req, res) => {
-  try {
-    // Validate input
-    const data = contactSchema.parse(req.body);
-    
-    // Get type label
-    const typeLabels = {
-      general: 'General Inquiry',
-      support: 'Technical Support',
-      enterprise: 'Enterprise Solutions',
-      partnership: 'Partnership Opportunity',
-      billing: 'Billing Question'
-    };
-    
-    const typeLabel = typeLabels[data.type] || 'General Inquiry';
-    
-    // Build email HTML
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <title>New Contact Form Submission</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0;">New Contact Form Submission</h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0;">${typeLabel}</p>
-          </div>
-          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb; border-top: none;">
-            <table style="width: 100%; border-collapse: collapse;">
-              <tr>
-                <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;"><strong>From:</strong></td>
-                <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;">${data.name}</td>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;"><strong>Email:</strong></td>
-                <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;"><a href="mailto:${data.email}">${data.email}</a></td>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;"><strong>Type:</strong></td>
-                <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;">${typeLabel}</td>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;"><strong>Subject:</strong></td>
-                <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;">${data.subject}</td>
-              </tr>
-            </table>
-            
-            <div style="margin-top: 20px;">
-              <strong>Message:</strong>
-              <div style="background: white; padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid #e5e7eb; white-space: pre-wrap;">${data.message}</div>
-            </div>
-            
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
-              <a href="mailto:${data.email}?subject=Re: ${encodeURIComponent(data.subject)}" 
-                 style="background: #7c3aed; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                Reply to ${data.name}
-              </a>
-            </div>
-          </div>
-          <p style="text-align: center; color: #6b7280; font-size: 12px; margin-top: 20px;">
-            This email was sent from the DoctaRx contact form at ${new Date().toLocaleString()}
-          </p>
-        </body>
-      </html>
-    `;
-    
-    // Send email to admin
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || 'noreply@doctarx.com',
-      to: ADMIN_EMAIL,
-      replyTo: data.email,
-      subject: `[DoctaRx ${typeLabel}] ${data.subject}`,
-      html
-    });
-    
-    // Also send auto-reply to user
-    const autoReplyHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <title>Thank you for contacting DoctaRx</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0;">Thank You!</h1>
-          </div>
-          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb; border-top: none;">
-            <p>Dear ${data.name},</p>
-            <p>Thank you for reaching out to DoctaRx. We have received your message and will get back to you within 24 hours.</p>
-            <p><strong>Your inquiry:</strong></p>
-            <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0; border: 1px solid #e5e7eb;">
-              <p><strong>Subject:</strong> ${data.subject}</p>
-              <p style="white-space: pre-wrap;">${data.message}</p>
-            </div>
-            <p>If you have any urgent concerns, please don't hesitate to reach out directly at <a href="mailto:evolvedu@outlook.com">evolvedu@outlook.com</a>.</p>
-            <p>Best regards,<br>The DoctaRx Team</p>
-          </div>
-        </body>
-      </html>
-    `;
-    
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || 'noreply@doctarx.com',
-      to: data.email,
-      subject: 'Thank you for contacting DoctaRx',
-      html: autoReplyHtml
-    });
-    
-    logger.info('Contact form submitted', { 
-      from: data.email, 
-      type: data.type, 
-      subject: data.subject 
-    });
-    
-    res.status(200).json({
-      success: true,
-      message: 'Message sent successfully'
-    });
-    
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid form data',
-        details: error.errors
-      });
-    }
-    
-    logger.error('Contact form error', { error: error.message });
-    res.status(500).json({
-      success: false,
-      error: 'Failed to send message. Please try again.'
-    });
+  res.set('Cache-Control', 'no-store');
+  const parsed = contactSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, code: 'CONTACT_INVALID', error: 'Check your name, email, subject and message, then submit again.' });
+  const data = parsed.data;
+  let transporter;
+  try { transporter = createTransporter(); } catch { /* Configuration errors must not expose SMTP settings. */ }
+  if (!transporter) {
+    logger.warn('Contact form delivery unavailable', { stage: 'configuration' });
+    return res.status(503).json({ success: false, code: 'CONTACT_UNAVAILABLE', error: 'The contact form is unavailable. Your message was not sent. You can email info@doctarx.com for nonclinical enquiries.', contactEmail: PUBLIC_EMAIL });
   }
+
+  const label = typeLabels[data.type];
+  let result;
+  try {
+    result = await transporter.sendMail({
+      from: process.env.SMTP_FROM || 'noreply@doctarx.com', to: ADMIN_EMAIL, replyTo: data.email,
+      subject: `[DoctaRx ${label}] ${data.subject}`,
+      text: `Nonclinical contact enquiry\nType: ${label}\nName: ${data.name}\nEmail: ${data.email}\nSubject: ${data.subject}\n\n${data.message}`,
+      html: `<!doctype html><html><body><h1>Nonclinical contact enquiry</h1><p><strong>Type:</strong> ${escapeHtml(label)}</p><p><strong>Name:</strong> ${escapeHtml(data.name)}</p><p><strong>Email:</strong> ${escapeHtml(data.email)}</p><p><strong>Subject:</strong> ${escapeHtml(data.subject)}</p><div style="white-space:pre-wrap">${escapeHtml(data.message)}</div></body></html>`,
+    });
+  } catch {
+    logger.warn('Contact form delivery unconfirmed', { stage: 'primary' });
+    return res.status(503).json({ success: false, code: 'CONTACT_UNCONFIRMED', error: 'We could not confirm delivery. Keep a copy of your message. You can contact info@doctarx.com and mention this attempt to avoid duplicates.', contactEmail: PUBLIC_EMAIL });
+  }
+  if (!acceptedRecipient(result, ADMIN_EMAIL)) {
+    logger.warn('Contact form recipient acceptance unconfirmed', { stage: 'primary' });
+    return res.status(503).json({ success: false, code: 'CONTACT_UNCONFIRMED', error: 'We could not confirm delivery. Keep a copy of your message. You can contact info@doctarx.com and mention this attempt to avoid duplicates.', contactEmail: PUBLIC_EMAIL });
+  }
+
+  // Primary acceptance is the submission boundary. A failed acknowledgement
+  // must not turn a received enquiry into an error that encourages duplicate sends.
+  let acknowledgementSent = false;
+  try {
+    const acknowledgement = await transporter.sendMail({
+      from: process.env.SMTP_FROM || 'noreply@doctarx.com', to: data.email,
+      subject: 'Thank you for contacting DoctaRx',
+      text: 'Your nonclinical enquiry has been accepted by our mail service for the DoctaRx team. No need to submit it again. This inbox is not for medical advice or emergencies. Please do not send health records or credential documents.',
+      html: `<!doctype html><html><body><p>Dear ${escapeHtml(data.name)},</p><p>Your nonclinical enquiry has been accepted by our mail service for the DoctaRx team. No need to submit it again.</p><p>This inbox is not for medical advice or emergencies. Please do not send health records or credential documents.</p><p>The DoctaRx team</p></body></html>`,
+    });
+    acknowledgementSent = acceptedRecipient(acknowledgement, data.email);
+  } catch { /* Primary email is already accepted; do not leak transport errors. */ }
+  if (!acknowledgementSent) logger.warn('Contact acknowledgement unavailable after primary acceptance', { stage: 'acknowledgement' });
+  logger.info('Contact enquiry accepted by mail service', { acknowledgementSent });
+  return res.status(200).json({ success: true, message: 'Message accepted by our mail service for the DoctaRx team.', acknowledgementSent });
 });
 
 module.exports = router;
-

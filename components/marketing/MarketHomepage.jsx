@@ -10,7 +10,7 @@ import useCareLocation from '@/lib/useCareLocation';
 import VoiceLanguageCoverage from './VoiceLanguageCoverage';
 import styles from './MarketHomepage.module.css';
 
-const sections=[['Language voice','#language-voice'],['Care','#features'],['How it works','#workflow'],['Pharmacies','#network']];
+const sections=[['Language voice','#language-voice'],['Care','#features'],['How it works','#workflow'],['For providers','/for-providers']];
 
 export default function MarketHomepage({ market = 'US' }) {
   const nigeria=market==='NG', home=nigeria?'/ng':'/', patient=nigeria?'/ng/patient':'/patient';

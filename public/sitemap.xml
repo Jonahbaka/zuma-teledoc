@@ -46,6 +46,18 @@
     <loc>https://doctarx.com/accessibility</loc>
   </url>
   <url>
+    <loc>https://doctarx.com/for-providers</loc>
+  </url>
+  <url>
+    <loc>https://doctarx.com/partners</loc>
+  </url>
+  <url>
+    <loc>https://doctarx.com/company</loc>
+  </url>
+  <url>
+    <loc>https://doctarx.com/press</loc>
+  </url>
+  <url>
     <loc>https://doctarx.com/international</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://doctarx.com/international" />
     <xhtml:link rel="alternate" hreflang="es" href="https://doctarx.com/international/es" />

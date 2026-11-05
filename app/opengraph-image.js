@@ -63,18 +63,18 @@ export default function OpengraphImage() {
                   border: '1px solid rgba(8,145,178,0.12)',
                 }}
               >
-                United States Telehealth
+                Your care. Connected.
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ fontSize: '78px', fontWeight: 800, lineHeight: 1, letterSpacing: '-0.05em' }}>DoctaRx</div>
                 <div style={{ fontSize: '54px', fontWeight: 700, lineHeight: 1.05, letterSpacing: '-0.04em', color: '#0f172a' }}>
-                  Secure visits, connected records, and premium care coordination.
+                  Care is a conversation. Keep it connected.
                 </div>
               </div>
 
               <div style={{ fontSize: '30px', lineHeight: 1.45, color: '#334155', maxWidth: '760px' }}>
-                HIPAA-ready workflows, insurance-aware booking, secure messaging, and e-prescribing without cross-market leakage.
+                Explore voice, virtual visits and connected workflows for patients, providers and care teams.
               </div>
             </div>
 
@@ -92,13 +92,13 @@ export default function OpengraphImage() {
               }}
             >
               <div style={{ fontSize: '22px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#94a3b8' }}>
-                Care Signals
+                Discover DoctaRx
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {[
-                  'Secure video visits',
-                  'Insurance + self-pay ready',
-                  'Prescription routing',
+                  'Virtual visits',
+                  'Voice experiences',
+                  'Care coordination',
                 ].map((item) => (
                   <div
                     key={item}

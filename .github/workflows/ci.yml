@@ -29,6 +29,9 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit --allowJs --checkJs false --project jsconfig.json
 
+      - name: Public discovery, sharing and contact delivery
+        run: npm run test:growth
+
       - name: Functional, regression, and portal tests
         run: npm test
 

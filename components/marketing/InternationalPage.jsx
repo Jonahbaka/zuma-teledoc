@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import PublicShare from '@/components/growth/PublicShare';
 import content from '@/lib/seo/international-content.cjs';
 import { LANGUAGE_PATHS } from '@/lib/seo/public-seo-config.cjs';
 import { pageGraph, serializeJsonLd } from '@/lib/seo/metadata.cjs';
@@ -45,6 +46,7 @@ export default function InternationalPage({ language = 'en' }) {
             <Link href="/privacy" hrefLang="en" className="underline underline-offset-4">{copy.privacy}</Link>
           </div>
         </section>
+        <div className="mt-10"><PublicShare destination={{ en: 'international', es: 'internationalEs', fr: 'internationalFr', pt: 'internationalPt', ar: 'internationalAr' }[language]} /></div>
       </div>
     </main>
   );
