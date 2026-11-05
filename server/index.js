@@ -28,6 +28,7 @@ const fs = require('fs');
 const { execSync } = require('child_process');
 const packageJson = require('../package.json');
 const app = express();
+app.use(require('./middleware/searchIndexPolicy'));
 // Install before any static serving or asynchronous initialization.
 app.use(require('./middleware/creatorAssetGuard'));
 const PORT = parseInt(process.env.PORT, 10) || 8080;

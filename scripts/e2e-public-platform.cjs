@@ -219,8 +219,8 @@ async function waitForRenderedPage(page, { timeoutMs = 10000 } = {}) {
   const expectedTitle = {
     '/': 'DoctaRx | AI-First Telehealth & Language Voice',
     '/ng': 'AI-First Telehealth and Language Voice in Nigeria',
-    '/pharmacies': 'Pharmacy directory',
-    '/ng/pharmacies': 'Pharmacy directory',
+    '/pharmacies': 'United States pharmacy directory',
+    '/ng/pharmacies': 'Nigeria pharmacy directory',
     '/ng/provider/call': 'DoctaRx | Virtual Care, Prescriptions, and Pharmacy Coordination',
   }[pathname];
   assert.ok(expectedTitle, 'An explicit rendered-page title contract is required for ' + pathname);

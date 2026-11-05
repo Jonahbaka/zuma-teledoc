@@ -2,98 +2,101 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://doctarx.com/</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="en-US" href="https://doctarx.com/" />
     <xhtml:link rel="alternate" hreflang="en-NG" href="https://doctarx.com/ng" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://doctarx.com/" />
   </url>
   <url>
     <loc>https://doctarx.com/ng</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.95</priority>
     <xhtml:link rel="alternate" hreflang="en-US" href="https://doctarx.com/" />
     <xhtml:link rel="alternate" hreflang="en-NG" href="https://doctarx.com/ng" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://doctarx.com/" />
   </url>
   <url>
-    <loc>https://doctarx.com/ng/provider/register</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.72</priority>
+    <loc>https://doctarx.com/pharmacies</loc>
+  </url>
+  <url>
+    <loc>https://doctarx.com/ng/pharmacies</loc>
+  </url>
+  <url>
+    <loc>https://doctarx.com/ng/find-care</loc>
   </url>
   <url>
     <loc>https://doctarx.com/contact</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://doctarx.com/faq</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://doctarx.com/blog</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://doctarx.com/help</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://doctarx.com/privacy</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>yearly</changefreq>
-    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://doctarx.com/terms</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>yearly</changefreq>
-    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://doctarx.com/hipaa</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>yearly</changefreq>
-    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://doctarx.com/accessibility</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>yearly</changefreq>
-    <priority>0.4</priority>
   </url>
   <url>
-    <loc>https://doctarx.com/patient/login</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <loc>https://doctarx.com/international</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://doctarx.com/international" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://doctarx.com/international/es" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://doctarx.com/international/fr" />
+    <xhtml:link rel="alternate" hreflang="pt" href="https://doctarx.com/international/pt" />
+    <xhtml:link rel="alternate" hreflang="ar" href="https://doctarx.com/international/ar" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://doctarx.com/international" />
   </url>
   <url>
-    <loc>https://doctarx.com/patient/register</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <loc>https://doctarx.com/international/es</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://doctarx.com/international" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://doctarx.com/international/es" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://doctarx.com/international/fr" />
+    <xhtml:link rel="alternate" hreflang="pt" href="https://doctarx.com/international/pt" />
+    <xhtml:link rel="alternate" hreflang="ar" href="https://doctarx.com/international/ar" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://doctarx.com/international" />
   </url>
   <url>
-    <loc>https://doctarx.com/provider/login</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <loc>https://doctarx.com/international/fr</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://doctarx.com/international" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://doctarx.com/international/es" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://doctarx.com/international/fr" />
+    <xhtml:link rel="alternate" hreflang="pt" href="https://doctarx.com/international/pt" />
+    <xhtml:link rel="alternate" hreflang="ar" href="https://doctarx.com/international/ar" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://doctarx.com/international" />
   </url>
   <url>
-    <loc>https://doctarx.com/provider/register</loc>
-    <lastmod>2026-04-09T00:00:00.000Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <loc>https://doctarx.com/international/pt</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://doctarx.com/international" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://doctarx.com/international/es" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://doctarx.com/international/fr" />
+    <xhtml:link rel="alternate" hreflang="pt" href="https://doctarx.com/international/pt" />
+    <xhtml:link rel="alternate" hreflang="ar" href="https://doctarx.com/international/ar" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://doctarx.com/international" />
+  </url>
+  <url>
+    <loc>https://doctarx.com/international/ar</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://doctarx.com/international" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://doctarx.com/international/es" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://doctarx.com/international/fr" />
+    <xhtml:link rel="alternate" hreflang="pt" href="https://doctarx.com/international/pt" />
+    <xhtml:link rel="alternate" hreflang="ar" href="https://doctarx.com/international/ar" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://doctarx.com/international" />
+  </url>
+  <url>
+    <loc>https://doctarx.com/blog/prepare-for-a-video-visit</loc>
+  </url>
+  <url>
+    <loc>https://doctarx.com/blog/prescriptions-and-pharmacy-coordination</loc>
+  </url>
+  <url>
+    <loc>https://doctarx.com/blog/protect-your-health-information</loc>
   </url>
 </urlset>

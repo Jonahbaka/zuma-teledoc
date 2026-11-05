@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { LAST_MODIFIED, PUBLIC_ROUTES, ROBOTS, SITE_URL } = require('../lib/seo/public-seo-config.cjs');
+const { PUBLIC_ROUTES, ROBOTS, SITE_URL } = require('../lib/seo/public-seo-config.cjs');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const ROBOTS_PATH = path.join(PUBLIC_DIR, 'robots.txt');
@@ -16,13 +16,6 @@ function escapeXml(value) {
     .replace(/>/g, '&gt;');
 }
 
-function formatPriority(priority) {
-  return Number(priority)
-    .toFixed(2)
-    .replace(/0$/, '')
-    .replace(/\.0$/, '.0');
-}
-
 function buildRobotsTxt() {
   const lines = ['User-agent: *'];
 
@@ -35,7 +28,6 @@ function buildRobotsTxt() {
   }
 
   lines.push(`Sitemap: ${SITE_URL}/sitemap.xml`);
-  lines.push(`Host: ${SITE_URL}`);
 
   return `${lines.join('\n')}\n`;
 }
@@ -53,9 +45,7 @@ function buildSitemapXml() {
     return [
       '  <url>',
       `    <loc>${escapeXml(loc)}</loc>`,
-      `    <lastmod>${escapeXml(LAST_MODIFIED)}</lastmod>`,
-      `    <changefreq>${escapeXml(route.changeFrequency)}</changefreq>`,
-      `    <priority>${formatPriority(route.priority)}</priority>`,
+      route.lastModified ? '<lastmod>' + escapeXml(route.lastModified) + '</lastmod>' : null,
       alternateLinks || null,
       '  </url>',
     ]
@@ -72,9 +62,10 @@ function buildSitemapXml() {
   ].join('\n');
 }
 
-fs.mkdirSync(PUBLIC_DIR, { recursive: true });
-fs.writeFileSync(ROBOTS_PATH, buildRobotsTxt(), 'utf8');
-fs.writeFileSync(SITEMAP_PATH, buildSitemapXml(), 'utf8');
-
-console.log(`Wrote ${path.relative(process.cwd(), ROBOTS_PATH)}`);
-console.log(`Wrote ${path.relative(process.cwd(), SITEMAP_PATH)}`);
+if (require.main === module) {
+  fs.mkdirSync(PUBLIC_DIR, { recursive: true });
+  fs.writeFileSync(ROBOTS_PATH, buildRobotsTxt(), 'utf8');
+  fs.writeFileSync(SITEMAP_PATH, buildSitemapXml(), 'utf8');
+  console.log('Generated public robots.txt and sitemap.xml');
+}
+module.exports = { buildRobotsTxt, buildSitemapXml };

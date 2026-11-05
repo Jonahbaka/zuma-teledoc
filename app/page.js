@@ -1,7 +1,7 @@
 import MarketHomepage from '@/components/marketing/MarketHomepage';
 
 export const metadata = {
-  title: 'DoctaRx | AI-First Telehealth & Language Voice',
+  title: { absolute: 'DoctaRx | AI-First Telehealth & Language Voice' },
   description:
     'A global AI-first telehealth platform connecting patients and providers. Explore language voice across Africa and beyond, clinician-led care, records and pharmacy coordination.',
   alternates: {
@@ -9,6 +9,7 @@ export const metadata = {
     languages: {
       'en-US': 'https://doctarx.com/',
       'en-NG': 'https://doctarx.com/ng',
+      'x-default': 'https://doctarx.com/',
     },
   },
   openGraph: {

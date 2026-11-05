@@ -94,8 +94,13 @@ jobs:
           node-version: '24.22.1'
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run lint
+      - run: node --test server/tests/public-seo.test.js
       - run: npx tsc --noEmit --allowJs --checkJs false --project jsconfig.json
       - run: npm run build
+      - name: Crawl production SEO and check translated page accessibility
+        run: |
+          export CHROME_PATH="$(command -v google-chrome)"
+          node scripts/verify-public-seo.cjs
       - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
   linux-security-and-release:
     # Standard public-repository runner; no larger runner or cloud credentials.

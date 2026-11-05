@@ -23,7 +23,7 @@ const nigeriaStructuredData = [
   },
   {
     '@context': 'https://schema.org',
-    '@type': 'MedicalOrganization',
+    '@type': 'Organization',
     name: 'DoctaRx Nigeria',
     url: 'https://doctarx.com/ng',
     logo: 'https://doctarx.com/icon.svg',
@@ -33,8 +33,9 @@ const nigeriaStructuredData = [
       '@type': 'Country',
       name: 'Nigeria',
     },
-    availableLanguage: ['en-NG', 'en'],
-    availableService: [
+    hasOfferCatalog: {
+      '@type': 'OfferCatalog', name: 'Care coordination features',
+      itemListElement: [
       {
         '@type': 'Service',
         name: 'Online doctor consultation',
@@ -50,7 +51,8 @@ const nigeriaStructuredData = [
         name: 'Pharmacy coordination',
         serviceType: 'Medicine search, pharmacy confirmation, and fulfillment',
       },
-    ],
+      ],
+    },
   },
   {
     '@context': 'https://schema.org',
@@ -90,6 +92,7 @@ export const metadata = {
     languages: {
       'en-US': 'https://doctarx.com/',
       'en-NG': 'https://doctarx.com/ng',
+      'x-default': 'https://doctarx.com/',
     },
   },
   robots: {

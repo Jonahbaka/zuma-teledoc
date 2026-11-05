@@ -58,7 +58,7 @@ test('browser gate checks the approved headline and both exact metadata titles',
   const browser = read('scripts/e2e-public-platform.cjs');
   assert.ok(browser.includes('/AI-first telehealth\\.\\s*Human care\\./'));
   for (const [route, source] of [['/', us], ['/ng', ng]]) {
-    const title = source.match(/export const metadata = \{[\s\S]*?title: '([^']+)'/)[1];
+    const title = source.match(/export const metadata = \{[\s\S]*?title: (?:\{ absolute: )?'([^']+)'/)[1];
     assert.ok(browser.includes(`'${route}': '${title}'`));
   }
 });

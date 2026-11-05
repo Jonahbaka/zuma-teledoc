@@ -1,10 +1,12 @@
 import NigeriaCareDiscoveryExperience from '@/components/ng/NigeriaCareDiscoveryExperience';
+import { publicMetadata } from '@/lib/seo/metadata.cjs';
 
-export const metadata = {
-  title: 'Find Care in Nigeria | DoctaRx',
+export const metadata = publicMetadata({
+  title: 'Find care and providers in Nigeria',
+  path: '/ng/find-care',
   description:
     'Search symptoms, medicines, specialists, and trusted provider options in Nigeria with location-aware ranking, manual fallback, and low-bandwidth telehealth options.',
-};
+});
 
 export default function NigeriaFindCarePage() {
   return (

@@ -4,6 +4,7 @@ import { AuthProvider } from '@/components/providers/AuthProvider';
 import { I18nProvider } from '@/components/providers/I18nProvider';
 import ClientRuntime from '@/components/providers/ClientRuntime';
 import ConditionalSiteFooter from '@/components/layouts/ConditionalSiteFooter';
+import { serializeJsonLd } from '@/lib/seo/metadata.cjs';
 import { THEME_STORAGE_KEY } from '@/lib/theme';
 import { resolveDeploymentProfile } from '@/lib/deploymentProfile.cjs';
 
@@ -43,9 +44,7 @@ export const metadata = {
       'max-snippet': -1,
     },
   },
-  alternates: {
-    canonical: 'https://doctarx.com',
-  },
+
   openGraph: {
     type: 'website',
     locale: 'en_US',
@@ -80,9 +79,8 @@ export const metadata = {
     ]
   },
   verification: {
-    // Add Google Search Console verification code after setup:
-    // google: 'your-google-verification-code',
-    // yandex: 'your-yandex-verification-code',
+    ...(process.env.GOOGLE_SITE_VERIFICATION ? { google: process.env.GOOGLE_SITE_VERIFICATION } : {}),
+    ...(process.env.BING_SITE_VERIFICATION ? { other: { 'msvalidate.01': process.env.BING_SITE_VERIFICATION } } : {}),
   },
   ...(deployment.careops ? {
     title: { default: 'DoctaRx CareOps', template: '%s | DoctaRx CareOps' },
@@ -123,33 +121,22 @@ const jsonLdApp = {
 };
 
 const jsonLdOrg = {
-  "@context": "https://schema.org",
-  "@type": "MedicalOrganization",
-  "name": "DoctaRx",
-  "url": "https://doctarx.com",
-  "logo": "https://doctarx.com/icon.svg",
-  "description": "DoctaRx is a healthcare technology platform for virtual care, secure communication, prescription routing, and pharmacy coordination.",
-  "email": "info@doctarx.com",
-  "sameAs": [],
-  "medicalSpecialty": "Primary Care",
-  "availableService": {
-    "@type": "MedicalTherapy",
-    "name": "Digital Healthcare Workflow",
-    "description": "Secure virtual care, messaging, prescription routing, and pharmacy coordination"
-  }
+  '@context': 'https://schema.org', '@type': 'Organization',
+  '@id': 'https://doctarx.com/#organization',
+  name: 'DoctaRx', url: 'https://doctarx.com/',
+  logo: 'https://doctarx.com/icon-512.png',
+  description: 'A healthcare technology platform for virtual care, secure communication, prescription routing and pharmacy coordination.',
+  email: 'info@doctarx.com'
 };
 
 const jsonLdWebsite = {
   "@context": "https://schema.org",
   "@type": "WebSite",
+  "@id": "https://doctarx.com/#website",
   "name": "DoctaRx",
   "url": "https://doctarx.com",
   "description": "Market-specific digital healthcare experiences for virtual care, prescription routing, and pharmacy coordination",
-  "publisher": {
-    "@type": "Organization",
-    "name": "DoctaRx",
-    "url": "https://doctarx.com"
-  }
+  "publisher": { "@id": "https://doctarx.com/#organization" }
 };
 
 export default function RootLayout({ children }) {
@@ -177,15 +164,15 @@ export default function RootLayout({ children }) {
         {!deployment.careops && <>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdApp) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLdApp) }}
         />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdOrg) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLdOrg) }}
         />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdWebsite) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLdWebsite) }}
         />
         </>}
         {/* Prevent theme flash: set `.dark` before React hydrates */}
