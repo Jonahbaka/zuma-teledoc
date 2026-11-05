@@ -3,7 +3,7 @@
 /**
  * MeetingRoom.jsx
  *
- * Full Zoom/Meet-grade telehealth conference room.
+ * Multi-participant conference room with managed media and admission controls.
  *
  * State machine:
  *   lobby      → user sees camera preview and name input
@@ -33,6 +33,7 @@ import {
 import { conf } from './conferenceApi';
 import { useConferenceSignaling } from './useConferenceSignaling';
 import LiveKitMediaPanel from './LiveKitMediaPanel';
+import MediaPreflight from './MediaPreflight';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -527,8 +528,6 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
   const [leaveError, setLeaveError] = useState('');
   const leaving = useRef(false);
 
-  const lobbyVideoRef = useRef(null);
-  const [lobbyStream, setLobbyStream] = useState(null);
   const isLiveKitRoom = String(room?.media_server || '').toLowerCase() === 'livekit';
 
   // Direct signaling stays available for small rooms. Adaptive-media rooms use the managed media client.
@@ -554,26 +553,6 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
   });
 
   const isHost = Boolean(myParticipant && (myParticipant.user_id === room?.host_user_id || myParticipant.permissions_json?.admit_others === true || myParticipant.permissions_json?.end_room === true || ['host', 'consultant'].includes(myParticipant.role)));
-
-  // ── Lobby camera preview ───────────────────────────────────────────────────
-  useEffect(() => {
-    if (phase !== 'lobby') return;
-    let stream = null; let cancelled = false;
-    navigator.mediaDevices
-      .getUserMedia({ video: true, audio: false })
-      .then((s) => {
-        if (cancelled) { s.getTracks().forEach((track) => track.stop()); return; }
-        stream = s;
-        setLobbyStream(s);
-        if (lobbyVideoRef.current) lobbyVideoRef.current.srcObject = s;
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-      if (stream) stream.getTracks().forEach((t) => t.stop());
-      setLobbyStream(null);
-    };
-  }, [phase]);
 
   // ── Poll participants while in meeting or waiting ──────────────────────────
   useEffect(() => {
@@ -717,19 +696,7 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
             </p>
           </div>
 
-          {/* Camera preview */}
-          <div className="relative aspect-video overflow-hidden rounded-2xl bg-slate-900 ring-1 ring-slate-700">
-            <video ref={lobbyVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-            {!lobbyStream && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                <VideoOff className="h-10 w-10 text-slate-600" />
-                <p className="text-xs text-slate-500">Camera unavailable</p>
-              </div>
-            )}
-            <div className="absolute bottom-2 left-2 rounded-lg bg-black/60 px-2 py-1 text-xs font-semibold text-white">
-              {displayName || 'You'}
-            </div>
-          </div>
+          <MediaPreflight enabled={phase === 'lobby'} />
 
           {/* Display name */}
           <div>
@@ -753,7 +720,7 @@ export default function MeetingRoom({ room, me: initialMe, onLeft, onEnded }) {
           {/* Managed media notice */}
           {isLiveKitRoom && (
             <div className="rounded-xl bg-blue-900/20 px-4 py-3 text-xs text-blue-300">
-              <strong>Adaptive media:</strong> Joining connects through the managed clinical media service for multi-party audio, video, screen share, and connection recovery.
+              <strong>Adaptive media:</strong> Joining connects through the managed media service with your microphone and camera off. Turn them on inside the room when ready. Multi-party audio, video and screen sharing are available after admission.
             </div>
           )}
 

@@ -18,6 +18,7 @@
 const assert = require('node:assert/strict');
 const Module = require('module');
 const { describe, it } = require('node:test');
+const { renderDashboard } = require('../../server/tests/dashboard-render-fixture.cjs');
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 const PATIENT_ID     = 'user-patient-001';
@@ -558,11 +559,13 @@ describe('Step 9 — Navigation: Return-to-dashboard contract', () => {
     assert.match(src, /\$\{providerBase\}\/appointments\/\$\{appointmentId\}\/visit/, 'must retain the current market and appointment in the visit link');
   });
 
-  it('NGProviderDashboard appointment rows have Start Call action links', () => {
-    const src = readFile('components/provider/NGProviderDashboard.jsx');
-    // market-aware base path resolves to /ng/provider or /provider at runtime
-    assert.match(src, /\$\{base\}\/(call|appointments)/, 'appointment rows must link to call/appointment');
-    assert.match(src, /onStartAppointmentCall/, 'dashboard must pass start-call handler');
+  it('NGProviderDashboard renders a discoverable call link retaining the late video appointment', () => {
+    const appointment = { id: 'lifecycle-video', patientFirstName: 'Fictional', status: 'confirmed', type: 'video', scheduledAt: new Date(Date.now() - 60000).toISOString() };
+    const rendered = renderDashboard('provider', { appointments: { rows: [appointment] }, patients: { rows: [] }, notes: { rows: [] } }, { market: 'ng' });
+    assert.ok(rendered.links.includes('/ng/provider/appointments/lifecycle-video/call'), 'visible video action retains market and appointment context');
+    assert.ok(rendered.links.includes('/ng/provider/appointments/lifecycle-video/visit'), 'the same encounter remains discoverable');
+    assert.ok(!rendered.links.some(href => href.startsWith('/provider/')), 'Nigeria workflow must not route into US portal');
+    assert.match(rendered.text, /Open video visit/);
   });
 
   it('RxDetail has Back to prescriptions navigation', () => {

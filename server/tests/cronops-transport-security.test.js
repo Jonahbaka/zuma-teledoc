@@ -8,6 +8,7 @@ const { EventEmitter } = require('node:events');
 const ts = require('typescript');
 const { Client } = require('pg');
 const databaseTransport = require('../db/connectionConfig');
+const { requireOpenSsl } = require('./deployment-test-capabilities.cjs');
 const root = path.resolve(__dirname, '../..');
 const DATABASE_URL = 'postgresql://fixture:fictional-password@db.fixture.invalid/fixture';
 
@@ -174,7 +175,9 @@ test('unsafe probe policy returns failed health and security results before any 
   assert.equal((await health.httpGet('http://localhost/health')).ok, true);
 });
 
-test('real loopback HTTPS rejects an untrusted certificate before health/security success', async () => {
+test('real loopback HTTPS rejects an untrusted certificate before health/security success', async t => {
+  const openssl = requireOpenSsl(t);
+  if (!openssl) return;
   const https = require('node:https');
   const os = require('node:os');
   const { once } = require('node:events');
@@ -183,7 +186,7 @@ test('real loopback HTTPS rejects an untrusted certificate before health/securit
   const keyFile = path.join(directory, 'fixture.key'), certFile = path.join(directory, 'fixture.crt');
   let server;
   try {
-    execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes',
+    execFileSync(openssl, ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes',
       '-keyout', keyFile, '-out', certFile, '-subj', '/CN=localhost', '-days', '1',
       '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1'], { stdio: 'ignore', timeout: 10000 });
     const key = fs.readFileSync(keyFile), cert = fs.readFileSync(certFile);

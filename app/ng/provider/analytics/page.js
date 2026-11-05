@@ -1,5 +1,5 @@
-import ProviderAnalyticsPage from '@/app/(dashboard)/provider/analytics/page';
+import NGProviderDashboard from '@/components/provider/NGProviderDashboard';
 
 export default function NigeriaProviderAnalyticsPage() {
-  return <ProviderAnalyticsPage />;
+  return <NGProviderDashboard market="ng" view="analytics" />;
 }

@@ -32,7 +32,7 @@ test('production and invalid ports cannot start the standalone demo', async () =
   await assert.rejects(createLocalVoiceDemoServer({ assets, env: { NODE_ENV: 'production' } }));
   for (const port of [-1, 65536, '0', 0.5]) await assert.rejects(createLocalVoiceDemoServer({ assets, env: {}, port }));
 });
-test('the actual CLI prints a usable loopback URL and exits on its own shutdown signal', { timeout: 10000 }, async t => {
+test('the actual CLI serves loopback and terminates with the platform-supported SIGTERM outcome', { timeout: 10000 }, async t => {
   const child = spawn(process.execPath, [require.resolve('../../../scripts/voice-local-demo.cjs')], { env: { ...process.env, NODE_ENV: 'test' }, stdio: ['ignore', 'pipe', 'pipe'] });
   t.after(() => { if (child.exitCode === null) child.kill('SIGTERM'); });
   const exited = once(child, 'exit');
@@ -41,5 +41,10 @@ test('the actual CLI prints a usable loopback URL and exits on its own shutdown 
     child.stdout.on('data', chunk => { text += chunk.toString(); const found = text.match(/http:\/\/127\.0\.0\.1:\d+/); if (found) resolve(found[0]); });
   });
   assert.equal((await request(url)).status, 200); child.kill('SIGTERM');
-  const [code, signal] = await exited; assert.equal(code, 0); assert.equal(signal, null);
+  const [code, signal] = await exited;
+  // Windows child.kill force-terminates instead of delivering a POSIX signal
+  // handler. The explicit demo.close() tests above still verify graceful close.
+  if (process.platform === 'win32') { assert.equal(code, null); assert.equal(signal, 'SIGTERM'); }
+  else { assert.equal(code, 0); assert.equal(signal, null); }
+  await assert.rejects(request(url), error => ['ECONNREFUSED', 'ECONNRESET'].includes(error.code));
 });

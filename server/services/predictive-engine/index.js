@@ -20,6 +20,7 @@ const inferenceEngine = require('./inference-engine');
 const trainingPipeline = require('./training-pipeline');
 const explainability = require('./explainability');
 const db = require('../../db');
+const { assertReviewedModel, validateInputs, fail } = require('./model-validation');
 
 class PredictiveEngine {
   constructor() {
@@ -88,16 +89,14 @@ class PredictiveEngine {
     
     const predictions = await inferenceEngine.predictAll(patientId, context);
     
-    // Compute overall risk score
-    const scores = Object.values(predictions).filter(p => p.riskScore !== null && p.riskScore !== undefined);
-    const overallRisk = scores.length > 0 
-      ? scores.reduce((sum, p) => sum + (p.riskScore || 0), 0) / scores.length 
-      : 0;
+    // Financial, attendance and clinical scores cannot be averaged into a medical probability.
 
     return {
       patientId,
-      overallRiskScore: Math.round(overallRisk * 10000) / 10000,
-      overallRiskLevel: this.computeRiskLevel(overallRisk),
+      overallRiskScore: null,
+      assessmentStatus: 'unassessed',
+      requiresClinicalReview: true,
+      overallRiskLevel: null,
       predictions,
       generatedAt: new Date().toISOString(),
       modelVersions: Object.fromEntries(
@@ -128,10 +127,11 @@ class PredictiveEngine {
   async explainPrediction(patientId, predictionType, context = {}) {
     if (!this.initialized) await this.initialize();
 
-    const model = (await modelRegistry.getModelForInference(predictionType)).model;
+    const model = (await modelRegistry.getModelForInference(predictionType, context.market)).model;
     if (!model) throw new Error(`No model available for ${predictionType}`);
 
-    const features = await featureStore.computeFeaturesForModel(patientId, predictionType, context);
+    const approval = assertReviewedModel(model, context.market);
+    const features = validateInputs(model, await featureStore.computeVerifiedInputs(patientId, model, context), approval);
     
     // Score the model
     const score = inferenceEngine.scoreModel(model, features);
@@ -159,84 +159,23 @@ class PredictiveEngine {
   /**
    * Check for and generate clinical alerts based on predictions
    */
-  async generateAlerts(patientId, predictions) {
-    const alerts = [];
-
-    for (const [type, prediction] of Object.entries(predictions)) {
-      if (!prediction || prediction.error) continue;
-
-      if (prediction.riskLevel === 'critical' || prediction.riskLevel === 'high') {
-        const alert = {
-          alertType: type === 'sepsis_warning' ? 'clinical' : 
-                     type === 'claims_denial' ? 'financial' :
-                     type === 'quality_measures' ? 'quality' : 'clinical',
-          severity: prediction.riskLevel,
-          title: prediction.predictionLabel,
-          message: prediction.explanation,
-          targetRole: type === 'claims_denial' ? 'billing' :
-                      type === 'no_show' ? 'admin' :
-                      type === 'cost_forecast' ? 'care_coordinator' : 'provider',
-          predictionId: null // Will be set after persistence
-        };
-
-        try {
-          const result = await db.query(`
-            INSERT INTO ml_alerts (alert_type, severity, title, message, target_role, expires_at)
-            VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '7 days')
-            RETURNING id
-          `, [alert.alertType, alert.severity, alert.title, alert.message, alert.targetRole]);
-
-          alert.id = result.rows[0].id;
-          alerts.push(alert);
-        } catch (error) {
-          console.error('Alert creation failed:', error.message);
-        }
-      }
-    }
-
-    return alerts;
+  async generateAlerts() {
+    // Legacy alerts had no patient/prediction link or named owner.
+    return [];
   }
 
   /**
    * Get active alerts
    */
-  async getActiveAlerts(options = {}) {
-    const { role, severity, limit = 50 } = options;
-    
-    let query = `
-      SELECT * FROM ml_alerts 
-      WHERE status = 'active' AND (expires_at IS NULL OR expires_at > NOW())
-    `;
-    const params = [];
-    let paramIdx = 1;
-
-    if (role) {
-      query += ` AND target_role = $${paramIdx++}`;
-      params.push(role);
-    }
-    if (severity) {
-      query += ` AND severity = $${paramIdx++}`;
-      params.push(severity);
-    }
-
-    query += ` ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, created_at DESC LIMIT $${paramIdx}`;
-    params.push(limit);
-
-    const result = await db.query(query, params);
-    return result.rows;
+  async getActiveAlerts() {
+    throw fail('PREDICTIVE_PATIENT_SCOPE_REQUIRED', 'Use the authorized patient-scoped alert reader.');
   }
 
   /**
    * Acknowledge an alert
    */
-  async acknowledgeAlert(alertId, userId, action = null) {
-    await db.query(`
-      UPDATE ml_alerts SET 
-        status = $1, acknowledged_by = $2, acknowledged_at = NOW(),
-        action_taken = $3, action_taken_at = CASE WHEN $3 IS NOT NULL THEN NOW() ELSE NULL END,
-        updated_at = NOW()
-      WHERE id = $4
-    `, [action ? 'acted_upon' : 'acknowledged', userId, action, alertId]);
+  async acknowledgeAlert() {
+    throw fail('PREDICTIVE_PATIENT_SCOPE_REQUIRED', 'Use the authorized patient-scoped alert mutation.');
   }
 
   // =========================================================================
@@ -246,7 +185,7 @@ class PredictiveEngine {
   /**
    * Get status of all models
    */
-  async getModelStatus() {
+  async getModelStatus(market) {
     const champions = await modelRegistry.getChampionOverview();
     const drift = await modelRegistry.checkDrift();
     const metrics = inferenceEngine.getMetrics();
@@ -257,7 +196,7 @@ class PredictiveEngine {
         name: m.model_name,
         version: m.model_version,
         algorithm: m.algorithm,
-        status: m.status,
+        status: (() => { try { assertReviewedModel(m, market); return 'reviewed'; } catch { return 'validation_required'; } })(),
         championSince: m.champion_since,
         predictions24h: parseInt(m.predictions_24h) || 0,
         avgInferenceMs: Math.round(parseFloat(m.avg_inference_ms_24h) || 0)
@@ -347,60 +286,15 @@ class PredictiveEngine {
   /**
    * Get aggregate prediction statistics
    */
-  async getPredictionStats(options = {}) {
-    const { days = 7 } = options;
-
-    const result = await db.query(`
-      SELECT 
-        prediction_type,
-        COUNT(*) as total_predictions,
-        AVG(risk_score) as avg_risk_score,
-        COUNT(*) FILTER (WHERE risk_level = 'critical') as critical_count,
-        COUNT(*) FILTER (WHERE risk_level = 'high') as high_count,
-        COUNT(*) FILTER (WHERE risk_level = 'moderate') as moderate_count,
-        COUNT(*) FILTER (WHERE risk_level = 'low') as low_count,
-        COUNT(*) FILTER (WHERE risk_level = 'minimal') as minimal_count,
-        AVG(inference_time_ms) as avg_inference_ms,
-        AVG(CASE WHEN prediction_correct = true THEN 1.0 WHEN prediction_correct = false THEN 0.0 END) as live_accuracy
-      FROM ml_predictions
-      WHERE created_at > NOW() - INTERVAL '${days} days'
-      GROUP BY prediction_type
-      ORDER BY prediction_type
-    `);
-
-    return result.rows.map(row => ({
-      predictionType: row.prediction_type,
-      totalPredictions: parseInt(row.total_predictions),
-      avgRiskScore: Math.round(parseFloat(row.avg_risk_score) * 100) / 100,
-      distribution: {
-        critical: parseInt(row.critical_count),
-        high: parseInt(row.high_count),
-        moderate: parseInt(row.moderate_count),
-        low: parseInt(row.low_count),
-        minimal: parseInt(row.minimal_count)
-      },
-      avgInferenceMs: Math.round(parseFloat(row.avg_inference_ms)),
-      liveAccuracy: row.live_accuracy ? Math.round(parseFloat(row.live_accuracy) * 100) / 100 : null
-    }));
+  async getPredictionStats() {
+    throw fail('PREDICTIVE_DATASET_SCOPE_REQUIRED', 'A reviewed market-scoped dataset is required.');
   }
 
   /**
    * Record actual outcome for prediction validation
    */
-  async recordOutcome(predictionId, actualOutcome) {
-    const prediction = await db.query('SELECT * FROM ml_predictions WHERE id = $1', [predictionId]);
-    
-    if (!prediction.rows[0]) throw new Error('Prediction not found');
-
-    const riskScore = parseFloat(prediction.rows[0].risk_score);
-    const predicted = riskScore >= 0.5 ? 1 : 0;
-    const actual = actualOutcome === 'positive' || actualOutcome === true || actualOutcome === 1 ? 1 : 0;
-
-    await db.query(`
-      UPDATE ml_predictions SET 
-        actual_outcome = $1, outcome_date = NOW(), prediction_correct = $2
-      WHERE id = $3
-    `, [String(actualOutcome), predicted === actual, predictionId]);
+  async recordOutcome() {
+    throw fail('PREDICTIVE_PATIENT_SCOPE_REQUIRED', 'Use the authorized patient-scoped outcome mutation.');
   }
 
   // =========================================================================

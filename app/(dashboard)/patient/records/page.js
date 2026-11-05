@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FileText, Calendar, Eye, Loader2, Search, ShieldCheck, ClipboardList } from 'lucide-react';
 import api, { clinicalEhrAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,9 @@ export default function PatientRecordsPage() {
   const [selectedEncounterId, setSelectedEncounterId] = useState(null);
   const [encounterNotes, setEncounterNotes] = useState([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
+  const [notesError, setNotesError] = useState('');
+  const notesRequest = useRef(0);
+  const recordsRequest = useRef(0);
 
   const [consents, setConsents] = useState([]);
   const [consentState, setConsentState] = useState('CA');
@@ -35,13 +38,20 @@ export default function PatientRecordsPage() {
 
   useEffect(() => {
     fetchAll();
+    return () => { recordsRequest.current += 1; notesRequest.current += 1; };
   }, []);
 
   const fetchAll = async () => {
+    const request = ++recordsRequest.current;
+    notesRequest.current += 1;
     setLoading(true);
     setLoadError('');
+    setRecords([]); setEncounters([]); setConsents([]); setMe(null);
+    setViewedRecord(null); setSelectedEncounterId(null); setEncounterNotes([]);
+    setNotesError(''); setLoadingNotes(false);
     try {
       const meRes = await api.get('/auth/me');
+      if (request !== recordsRequest.current) return;
       const user = meRes?.data?.user;
       if (!user?.id) throw new Error('Your account could not be loaded');
       setMe(user);
@@ -52,6 +62,7 @@ export default function PatientRecordsPage() {
         clinicalEhrAPI.getConsents(user.id).catch(() => ({ data: { success: false } }))
       ]);
 
+      if (request !== recordsRequest.current) return;
       if (recordsRes.data.success) setRecords(recordsRes.data.records || []);
       if (encountersRes.data.success) setEncounters(encountersRes.data.encounters || []);
       if (consentsRes.data.success) setConsents(consentsRes.data.consents || []);
@@ -59,9 +70,9 @@ export default function PatientRecordsPage() {
         setLoadError('Some records could not be loaded. Retry before treating this list as complete.');
       }
     } catch {
-      setLoadError('Health records could not be loaded. Please retry.');
+      if (request === recordsRequest.current) setLoadError('Health records could not be loaded. Please retry.');
     } finally {
-      setLoading(false);
+      if (request === recordsRequest.current) setLoading(false);
     }
   };
 
@@ -76,17 +87,21 @@ export default function PatientRecordsPage() {
   });
 
   const loadEncounterNotes = async (encounterId) => {
+    if (!encounters.some(encounter => encounter.id === encounterId)) return;
+    const request = ++notesRequest.current;
     setSelectedEncounterId(encounterId);
+    setEncounterNotes([]);
+    setNotesError('');
     setLoadingNotes(true);
     try {
       const res = await clinicalEhrAPI.getEncounterNotes(encounterId);
-      if (res.data?.success) {
-        setEncounterNotes(res.data.notes || []);
-      }
-    } catch (e) {
-      toast({ title: 'Error', description: 'Failed to load clinical notes', variant: 'destructive' });
+      if (request !== notesRequest.current) return;
+      if (!res.data?.success || !Array.isArray(res.data.notes) || res.data.notes.some(note => note.encounterId !== encounterId)) throw new Error('Invalid encounter notes response');
+      setEncounterNotes(res.data.notes);
+    } catch {
+      if (request === notesRequest.current) setNotesError('These visit notes could not be loaded. Retry to view this encounter.');
     } finally {
-      setLoadingNotes(false);
+      if (request === notesRequest.current) setLoadingNotes(false);
     }
   };
 
@@ -278,6 +293,8 @@ export default function PatientRecordsPage() {
                       <div className="flex items-center justify-center py-6">
                         <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
                       </div>
+                    ) : notesError ? (
+                      <div role="alert" className="portal-error"><p>{notesError}</p><Button variant="outline" className="mt-3" onClick={() => loadEncounterNotes(selectedEncounterId)}>Retry visit notes</Button></div>
                     ) : encounterNotes.length === 0 ? (
                       <p className="text-slate-500">No notes found for this encounter.</p>
                     ) : (

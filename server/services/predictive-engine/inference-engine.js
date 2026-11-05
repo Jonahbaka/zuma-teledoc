@@ -9,6 +9,7 @@ const db = require('../../db');
 const logger = require('../../middleware/logger');
 const featureStore = require('./feature-store');
 const modelRegistry = require('./model-registry');
+const { assertReviewedModel, validateInputs, fail } = require('./model-validation');
 
 class InferenceEngine {
   constructor() {
@@ -32,14 +33,16 @@ class InferenceEngine {
     
     try {
       // 1. Get the model to use (handles A/B routing)
-      const { model, isChallenger } = await modelRegistry.getModelForInference(predictionType);
+      const { model, isChallenger } = await modelRegistry.getModelForInference(predictionType, context.market);
       
       if (!model) {
         throw new Error(`No production model available for ${predictionType}`);
       }
 
       // 2. Compute features for this patient
-      const features = await featureStore.computeFeaturesForModel(patientId, predictionType, context);
+      const approval = assertReviewedModel(model, context.market);
+      const input = await featureStore.computeVerifiedInputs(patientId, model, context);
+      const features = validateInputs(model, input, approval);
 
       // 3. Run model inference
       const rawScore = this.scoreModel(model, features);
@@ -51,7 +54,8 @@ class InferenceEngine {
       const explanation = this.explainPrediction(model, features, rawScore);
 
       // 6. Generate recommendations
-      const recommendations = this.generateRecommendations(predictionType, riskLevel, rawScore, features);
+      // Generic hardcoded treatment instructions are not part of a validated model.
+      const recommendations = { actions: [], tests: [], carePathway: null };
 
       const inferenceTimeMs = Date.now() - startTime;
       
@@ -60,7 +64,9 @@ class InferenceEngine {
         predictionType,
         riskScore: Math.round(rawScore * 10000) / 10000,
         riskLevel,
-        confidence: this.computeConfidence(model, features, rawScore),
+        confidence: null,
+        requiresClinicalReview: true,
+        assessmentStatus: 'reviewed_model_output',
         predictionLabel: this.generateLabel(predictionType, riskLevel, rawScore),
         
         // Explanation
@@ -152,65 +158,8 @@ class InferenceEngine {
   /**
    * Run population-level risk stratification
    */
-  async stratifyPopulation(predictionType, options = {}) {
-    const { minRiskScore = 0, limit = 1000 } = options;
-    
-    try {
-      // Get all active patients
-      const patients = await db.query(`
-        SELECT id FROM users WHERE role = 'patient' AND status = 'active'
-        ORDER BY id LIMIT $1
-      `, [limit]);
-
-      const predictions = await this.batchPredict(
-        patients.rows.map(p => p.id),
-        predictionType
-      );
-
-      // Stratify by risk level
-      const stratification = {
-        critical: [],
-        high: [],
-        moderate: [],
-        low: [],
-        minimal: [],
-        errors: 0,
-        total: predictions.length
-      };
-
-      for (const result of predictions) {
-        if (result.prediction) {
-          const level = result.prediction.riskLevel;
-          if (stratification[level] && result.prediction.riskScore >= minRiskScore) {
-            stratification[level].push({
-              patientId: result.patientId,
-              riskScore: result.prediction.riskScore,
-              topRiskFactors: result.prediction.topRiskFactors?.slice(0, 3)
-            });
-          }
-        } else {
-          stratification.errors++;
-        }
-      }
-
-      // Sort each tier by risk score descending
-      for (const level of ['critical', 'high', 'moderate', 'low', 'minimal']) {
-        stratification[level].sort((a, b) => b.riskScore - a.riskScore);
-      }
-
-      stratification.summary = {
-        critical: stratification.critical.length,
-        high: stratification.high.length,
-        moderate: stratification.moderate.length,
-        low: stratification.low.length,
-        minimal: stratification.minimal.length
-      };
-
-      return stratification;
-    } catch (error) {
-      logger.error('Population stratification failed', { error: error.message });
-      throw error;
-    }
+  async stratifyPopulation() {
+    throw fail('PREDICTIVE_DATASET_SCOPE_REQUIRED', 'A reviewed market-scoped dataset is required.');
   }
 
   // =========================================================================
@@ -238,7 +187,7 @@ class InferenceEngine {
       case 'ensemble':
         return this.ensembleScore(features, featureNames, weights, hyperparams);
       default:
-        return this.weightedScoringFallback(features, featureNames, model.model_type);
+        throw fail('PREDICTIVE_ALGORITHM_UNSUPPORTED', 'This model algorithm has no reviewed serving implementation.');
     }
   }
 
@@ -247,7 +196,7 @@ class InferenceEngine {
     
     for (const name of featureNames) {
       const value = features[name] || 0;
-      const weight = weights[name] || this.getDefaultWeight(name);
+      const weight = weights[name] ?? this.getDefaultWeight(name);
       z += value * weight;
     }
 
@@ -295,7 +244,7 @@ class InferenceEngine {
     
     for (const name of featureNames) {
       const value = features[name] || 0;
-      const weight = weights[name] || this.getDefaultWeight(name);
+      const weight = weights[name] ?? this.getDefaultWeight(name);
       prediction += value * weight;
     }
 

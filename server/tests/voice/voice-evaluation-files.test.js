@@ -4,7 +4,9 @@ const fs = require('node:fs'), os = require('node:os'), path = require('node:pat
 const { createHash } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { inspectEvaluationRecordings, MAX_AUDIO_BYTES } = require('../../services/voice/voiceEvaluationFiles');
-const { readEvaluationTrial } = require('../../services/voice/voiceEvaluationRead');
+const { readEvaluationTrial, readEvaluationDescriptor } = require('../../services/voice/voiceEvaluationRead');
+const { linuxOnly, linuxDescriptorTraversal, secureTrialRead, audioParser } = require('./voice-evaluation-platform.cjs');
+const parseAudio = audioParser();
 
 // Generated silence establishes file parsing only, never a spoken evaluation.
 function wav() {
@@ -25,20 +27,33 @@ function corpus(t) {
   const inspect = recordings => inspectEvaluationRecordings(recordings, { corpusRoot: root });
   return { root, write, inspect };
 }
-test('local PCM WAV checking returns metadata and hashes but no content, transcript or acoustic validation', t => {
-  const f = corpus(t), recording = f.write(), [result] = f.inspect([recording]);
+test('PCM parsing returns only metadata; local inspection either binds hashes or explicitly fails closed', t => {
+  const details = parseAudio(wav(), '.wav');
+  assert.deepEqual({ ...details }, { format: 'wav_pcm16', channels: 1, sampleRate: 16000, durationMs: 10, decodedAudioVerified: false });
+  const f = corpus(t), recording = f.write();
+  if (!linuxDescriptorTraversal) {
+    assert.throws(() => f.inspect([recording]), { code: 'VOICE_EVALUATION_SAFE_FILE_ACCESS_UNAVAILABLE' });
+    return;
+  }
+  const [result] = f.inspect([recording]);
   assert.deepEqual(result, { id: recording.id, sha256: recording.sha256, bytes: 364, status: 'header_and_hash_checked',
     format: 'wav_pcm16', channels: 1, sampleRate: 16000, durationMs: 10, decodedAudioVerified: false, audioContentVerified: false });
   assert.equal(JSON.stringify(result).includes(f.root), false);
   assert.equal(fs.readFileSync(path.join(f.root, recording.path)).equals(wav()), true);
 });
-test('changed recording bytes cannot reuse the supplied artifact digest', t => {
+test('changed recording bytes cannot receive a checked artifact, including on unsupported platforms', t => {
   const f = corpus(t), recording = f.write();
   const changed = wav(); changed[44] = 1; fs.writeFileSync(path.join(f.root, recording.path), changed);
-  assert.throws(() => f.inspect([recording]), { code: 'VOICE_EVALUATION_AUDIO_HASH_MISMATCH' });
+  assert.throws(() => f.inspect([recording]), { code: linuxDescriptorTraversal ? 'VOICE_EVALUATION_AUDIO_HASH_MISMATCH' : 'VOICE_EVALUATION_SAFE_FILE_ACCESS_UNAVAILABLE' });
 });
 test('recording input is bounded, relative, unique and constrained to the explicit corpus', t => {
   const f = corpus(t), recording = f.write();
+  assert.throws(() => f.inspect(Array(9).fill(recording)), { code: 'VOICE_EVALUATION_RECORDING_SCOPE_REQUIRED' });
+  assert.throws(() => inspectEvaluationRecordings([], { corpusRoot: 'relative' }), { code: 'VOICE_EVALUATION_RECORDING_SCOPE_REQUIRED' });
+  if (!linuxDescriptorTraversal) {
+    assert.throws(() => f.inspect([{ ...recording, path: '../fictional.wav' }]), { code: 'VOICE_EVALUATION_SAFE_FILE_ACCESS_UNAVAILABLE' });
+    return;
+  }
   for (const file of ['../fictional.wav', '/tmp/fictional.wav', 'sub/../fictional.wav', './fictional.wav', 'sub//fictional.wav',
     'fictional.wav\0', 'sub\\fictional.wav', 'fictional.txt', 'a'.repeat(257) + '.wav']) {
     assert.throws(() => f.inspect([{ ...recording, path: file }]), { code: 'VOICE_EVALUATION_RECORDING_PATH_INVALID' });
@@ -49,7 +64,7 @@ test('recording input is bounded, relative, unique and constrained to the explic
   assert.throws(() => inspectEvaluationRecordings([], { corpusRoot: 'relative' }), { code: 'VOICE_EVALUATION_RECORDING_SCOPE_REQUIRED' });
   assert.throws(() => inspectEvaluationRecordings([], { corpusRoot: path.join(f.root, recording.path) }), { code: 'VOICE_EVALUATION_RECORDING_SCOPE_REQUIRED' });
 });
-test('symlinks escaping the corpus and non-files are refused without disclosing paths', t => {
+test('symlinks escaping the corpus and non-files are refused without disclosing paths', linuxOnly, t => {
   const f = corpus(t), outside = corpus(t), recording = outside.write();
   fs.symlinkSync(path.join(outside.root, recording.path), path.join(f.root, 'outside.wav'));
   fs.symlinkSync(outside.root, path.join(f.root, 'outside-dir'));
@@ -65,9 +80,12 @@ test('symlinks escaping the corpus and non-files are refused without disclosing 
 test('oversized local audio is rejected before loading its bytes', t => {
   const f = corpus(t), recording = f.write();
   fs.truncateSync(path.join(f.root, recording.path), MAX_AUDIO_BYTES + 1);
-  assert.throws(() => f.inspect([recording]), { code: 'VOICE_EVALUATION_AUDIO_INVALID' });
+  const descriptor = fs.openSync(path.join(f.root, recording.path), 'r');
+  try { assert.throws(() => readEvaluationDescriptor(descriptor, { maxBytes: MAX_AUDIO_BYTES, code: 'VOICE_EVALUATION_AUDIO_INVALID' }), { code: 'VOICE_EVALUATION_AUDIO_INVALID' }); }
+  finally { fs.closeSync(descriptor); }
+  assert.throws(() => f.inspect([recording]), { code: linuxDescriptorTraversal ? 'VOICE_EVALUATION_AUDIO_INVALID' : 'VOICE_EVALUATION_SAFE_FILE_ACCESS_UNAVAILABLE' });
 });
-test('replacing an ancestor with an outside symlink before opening is rejected', t => {
+test('replacing an ancestor with an outside symlink before opening is rejected', linuxOnly, t => {
   const f = corpus(t), outside = corpus(t), recording = outside.write();
   fs.mkdirSync(path.join(f.root, 'nested')); fs.writeFileSync(path.join(f.root, 'nested/fictional.wav'), wav());
   const original = fs.openSync; let replaced = false;
@@ -81,7 +99,7 @@ test('replacing an ancestor with an outside symlink before opening is rejected',
   assert.throws(() => f.inspect([{ ...recording, path: 'nested/fictional.wav' }]), { code: 'VOICE_EVALUATION_RECORDING_PATH_INVALID' });
   assert.equal(replaced, true);
 });
-test('corpus root acquisition also refuses replacement of its own ancestors', t => {
+test('corpus root acquisition also refuses replacement of its own ancestors', linuxOnly, t => {
   const f = corpus(t), outside = corpus(t);
   fs.mkdirSync(path.join(f.root, 'base/corpus'), { recursive: true }); fs.mkdirSync(path.join(outside.root, 'corpus'));
   fs.writeFileSync(path.join(outside.root, 'corpus/fictional.wav'), wav());
@@ -97,7 +115,7 @@ test('corpus root acquisition also refuses replacement of its own ancestors', t 
     { corpusRoot: path.join(f.root, 'base/corpus') }), { code: 'VOICE_EVALUATION_RECORDING_SCOPE_REQUIRED' });
   assert.equal(replaced, true);
 });
-test('directory identity stays pinned if its pathname is replaced after opening', t => {
+test('directory identity stays pinned if its pathname is replaced after opening', linuxOnly, t => {
   const f = corpus(t), outside = corpus(t), different = wav(); different[44] = 3; outside.write('fictional.wav', different);
   fs.mkdirSync(path.join(f.root, 'nested')); fs.writeFileSync(path.join(f.root, 'nested/fictional.wav'), wav());
   const recording = { id: 'fictional-recording', role: 'duplex', path: 'nested/fictional.wav', sha256: createHash('sha256').update(wav()).digest('hex') };
@@ -119,9 +137,12 @@ test('a file growing during a bounded descriptor read is rejected', t => {
     if (!grew) { grew = true; fs.appendFileSync(path.join(f.root, recording.path), Buffer.alloc(1)); }
     return result;
   });
-  assert.throws(() => f.inspect([recording]), { code: 'VOICE_EVALUATION_AUDIO_INVALID' }); assert.equal(grew, true);
+  const descriptor = fs.openSync(path.join(f.root, recording.path), 'r');
+  try { assert.throws(() => readEvaluationDescriptor(descriptor, { maxBytes: MAX_AUDIO_BYTES, code: 'VOICE_EVALUATION_AUDIO_INVALID' }), { code: 'VOICE_EVALUATION_AUDIO_INVALID' }); }
+  finally { fs.closeSync(descriptor); }
+  assert.equal(grew, true);
 });
-test('FIFO inputs cannot block trial or recording reads', t => {
+test('FIFO inputs cannot block trial or recording reads', linuxOnly, t => {
   const f = corpus(t), file = path.join(f.root, 'fifo.wav');
   const created = spawnSync('mkfifo', [file], { encoding: 'utf8', timeout: 1000 }); assert.equal(created.status, 0, created.stderr);
   assert.throws(() => readEvaluationTrial(file), { code: 'VOICE_EVALUATION_INPUT_INVALID' });
@@ -133,7 +154,8 @@ test('malformed PCM headers, sizes and formats cannot receive a checked WAV resu
     b => b.writeUInt16LE(3, 22), b => b.writeUInt32LE(12345, 24), b => b.writeUInt32LE(1, 28),
     b => b.writeUInt16LE(1, 32), b => b.writeUInt16LE(8, 34), b => b.writeUInt32LE(99999, 40), b => b.write('JUNK', 36)]) {
     const bytes = wav(); mutate(bytes); const recording = f.write('bad.wav', bytes);
-    assert.throws(() => f.inspect([recording]), { code: 'VOICE_EVALUATION_AUDIO_INVALID' });
+    assert.throws(() => parseAudio(bytes, '.wav'), { code: 'VOICE_EVALUATION_AUDIO_INVALID' });
+    assert.throws(() => f.inspect([recording]), { code: linuxDescriptorTraversal ? 'VOICE_EVALUATION_AUDIO_INVALID' : 'VOICE_EVALUATION_SAFE_FILE_ACCESS_UNAVAILABLE' });
   }
 });
 test('MP3 and WebM signatures are identified only as header checks, never decoded audio', t => {
@@ -141,9 +163,26 @@ test('MP3 and WebM signatures are identified only as header checks, never decode
   for (const [extension, header, format] of [['mp3', Buffer.from('ID3'), 'mp3_header_only'],
     ['webm', Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), 'webm_header_only']]) {
     const bytes = Buffer.alloc(16); header.copy(bytes); const recording = f.write('fictional.' + extension, bytes);
-    const [result] = f.inspect([recording]); assert.equal(result.format, format);
-    assert.equal(result.decodedAudioVerified, false); assert.equal(result.audioContentVerified, false);
+    const parsed = parseAudio(bytes, '.' + extension); assert.equal(parsed.format, format); assert.equal(parsed.decodedAudioVerified, false);
+    if (linuxDescriptorTraversal) {
+      const [result] = f.inspect([recording]); assert.equal(result.format, format);
+      assert.equal(result.decodedAudioVerified, false); assert.equal(result.audioContentVerified, false);
+    } else assert.throws(() => f.inspect([recording]), { code: 'VOICE_EVALUATION_SAFE_FILE_ACCESS_UNAVAILABLE' });
     bytes[0] = 0; const invalid = f.write('bad.' + extension, bytes);
-    assert.throws(() => f.inspect([invalid]), { code: 'VOICE_EVALUATION_AUDIO_INVALID' });
+    assert.throws(() => parseAudio(bytes, '.' + extension), { code: 'VOICE_EVALUATION_AUDIO_INVALID' });
+    assert.throws(() => f.inspect([invalid]), { code: linuxDescriptorTraversal ? 'VOICE_EVALUATION_AUDIO_INVALID' : 'VOICE_EVALUATION_SAFE_FILE_ACCESS_UNAVAILABLE' });
   }
+});
+
+test('unsupported secure access refuses before opening any corpus or trial pathname', t => {
+  if (linuxDescriptorTraversal && secureTrialRead) return;
+  const f = corpus(t), recording = f.write();
+  let opened = 0;
+  t.mock.method(fs, 'openSync', () => { opened++; throw new Error('Test must not open a pathname'); });
+  if (!linuxDescriptorTraversal) assert.throws(() => f.inspect([recording]), error => {
+    assert.equal(error.code, 'VOICE_EVALUATION_SAFE_FILE_ACCESS_UNAVAILABLE');
+    assert.equal(error.message.includes(f.root), false); return true;
+  });
+  if (!secureTrialRead) assert.throws(() => readEvaluationTrial(path.join(f.root, 'trial.json')), { code: 'VOICE_EVALUATION_INPUT_INVALID' });
+  assert.equal(opened, 0);
 });

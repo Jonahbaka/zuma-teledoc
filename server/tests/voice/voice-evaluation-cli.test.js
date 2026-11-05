@@ -4,6 +4,7 @@ const fs = require('node:fs'), os = require('node:os'), path = require('node:pat
 const { spawnSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const { createEvaluationTrial } = require('../../services/voice/voiceEvaluationEvidence');
+const { linuxOnly, secureTrialRead, linuxDescriptorTraversal, symlinkOrSkip } = require('./voice-evaluation-platform.cjs');
 const script = require.resolve('../../../scripts/evaluate-voice.cjs');
 const run = args => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', timeout: 10000 });
 function workspace(t) {
@@ -17,24 +18,32 @@ test('CLI catalog and checklist include all unrun scenarios and preserve separat
     assert.equal(parsed.scenarios.at(-1).voice, 'Riko'); assert.equal(parsed.scenarios.at(-1).language, 'en-NG');
   }
 });
-test('CLI creates private new files and will not overwrite an existing file or symlink', t => {
-  const root = workspace(t), target = path.join(root, 'trial.json'), existing = path.join(root, 'existing.json');
+test('CLI creates new files and will not overwrite an existing file', t => {
+  const root = workspace(t), target = path.join(root, 'trial.json');
   const args = ['template', '--scenario', 'ha-correction_negation', '--out', target];
   const result = run(args); assert.equal(result.status, 0, result.stderr); assert.equal(result.stdout, '');
   assert.deepEqual(JSON.parse(fs.readFileSync(target)), createEvaluationTrial('ha-correction_negation'));
-  assert.equal(fs.statSync(target).mode & 0o777, 0o600);
   const before = fs.readFileSync(target); assert.equal(run(args).status, 1); assert.deepEqual(fs.readFileSync(target), before);
-  fs.writeFileSync(existing, 'unchanged'); const link = path.join(root, 'link.json'); fs.symlinkSync(existing, link);
+});
+test('CLI creates files with private POSIX permissions', { skip: process.platform === 'win32' ? 'Windows stat mode does not represent POSIX owner/group permissions; no Windows ACL protection is inferred.' : false }, t => {
+  const root = workspace(t), target = path.join(root, 'trial.json');
+  assert.equal(run(['catalog', '--out', target]).status, 0);
+  assert.equal(fs.statSync(target).mode & 0o777, 0o600);
+});
+test('CLI will not overwrite a symlink destination', t => {
+  const root = workspace(t), existing = path.join(root, 'existing.json');
+  fs.writeFileSync(existing, 'unchanged'); const link = path.join(root, 'link.json');
+  if (!symlinkOrSkip(t, existing, link, 'file')) return;
   assert.equal(run(['catalog', '--out', link]).status, 1); assert.equal(fs.readFileSync(existing, 'utf8'), 'unchanged');
 });
-test('CLI incomplete analysis exits 2 and emits a review-needed report, never a quality pass', t => {
+test('CLI incomplete analysis exits 2 and emits a review-needed report, never a quality pass', linuxOnly, t => {
   const root = workspace(t), trialPath = path.join(root, 'trial.json'); fs.writeFileSync(trialPath, JSON.stringify(createEvaluationTrial('yo-barge_in')));
   const result = run(['analyze', '--trial', trialPath, '--corpus-root', root]); assert.equal(result.status, 2, result.stderr);
   const report = JSON.parse(result.stdout); assert.equal(report.completeness, 'incomplete');
   assert.equal(report.languageAccuracyValidated, false); assert.equal(report.activationApproved, false);
   assert.ok(report.issues.includes('observed_transcript_missing')); assert.ok(report.issues.includes('required_audio_recording_missing'));
 });
-test('CLI full supplied-review flow binds actual local bytes and preserves needs-work, not quality acceptance', t => {
+test('CLI full supplied-review flow binds actual local bytes and preserves needs-work, not quality acceptance', linuxOnly, t => {
   // All identities and declarations here are fictional test data. This silent
   // file is intentionally not a narration or evidence of a human review.
   const root = workspace(t), trialPath = path.join(root, 'trial.json'), trial = createEvaluationTrial('en-NG-riko_narration');
@@ -68,21 +77,41 @@ test('CLI rejects unsupported live options, duplicate arguments and missing scen
     assert.ok(JSON.parse(result.stderr).error.startsWith('VOICE_EVALUATION_'));
   }
 });
-test('CLI refuses symlink and oversized trial files and sanitizes JSON or filesystem errors', t => {
-  const root = workspace(t), file = path.join(root, 'trial.json'), link = path.join(root, 'link.json');
-  fs.writeFileSync(file, JSON.stringify(createEvaluationTrial('ig-clarification'))); fs.symlinkSync(file, link);
+test('CLI rejects oversized, malformed and missing trial inputs without leaking contents or paths', t => {
+  const root = workspace(t), file = path.join(root, 'trial.json');
   const inspect = name => run(['analyze', '--trial', name, '--corpus-root', root]);
-  assert.equal(inspect(link).status, 1); fs.writeFileSync(file, ' '.repeat(262145)); assert.equal(inspect(file).status, 1);
+  fs.writeFileSync(file, ' '.repeat(262145)); assert.equal(inspect(file).status, 1);
   fs.writeFileSync(file, '{"private-string-not-to-echo"'); const bad = inspect(file);
   assert.equal(bad.status, 1); assert.equal(bad.stderr.includes('private-string-not-to-echo'), false); assert.equal(bad.stderr.includes(root), false);
   assert.equal(inspect(path.join(root, 'missing.json')).stderr.includes(root), false);
+});
+test('CLI refuses symbolic-link trial input when the platform permits creating the fixture', t => {
+  const root = workspace(t), file = path.join(root, 'trial.json'), link = path.join(root, 'link.json');
+  fs.writeFileSync(file, JSON.stringify(createEvaluationTrial('ig-clarification')));
+  if (!symlinkOrSkip(t, file, link, 'file')) return;
+  const result = run(['analyze', '--trial', link, '--corpus-root', root]);
+  assert.equal(result.status, 1); assert.equal(result.stdout, '');
+  assert.deepEqual(JSON.parse(result.stderr), { error: 'VOICE_EVALUATION_INPUT_INVALID' });
+});
+
+test('CLI fails closed when secure trial or corpus access is unsupported', t => {
+  if (linuxDescriptorTraversal && secureTrialRead) return;
+  const root = workspace(t), file = path.join(root, 'trial.json');
+  fs.writeFileSync(file, JSON.stringify(createEvaluationTrial('ha-barge_in')));
+  const result = run(['analyze', '--trial', file, '--corpus-root', root]);
+  assert.equal(result.status, 1); assert.equal(result.stdout, '');
+  assert.deepEqual(JSON.parse(result.stderr), { error: secureTrialRead ? 'VOICE_EVALUATION_SAFE_FILE_ACCESS_UNAVAILABLE' : 'VOICE_EVALUATION_INPUT_INVALID' });
+  assert.equal(result.stderr.includes(root), false);
 });
 test('CLI validates trial schema before trying to inspect any requested audio', t => {
   const root = workspace(t), file = path.join(root, 'trial.json'), trial = createEvaluationTrial('ha-barge_in');
   trial.language = 'yo'; trial.recordings = [{ id: 'outside', role: 'duplex', path: '../outside.wav', sha256: 'a'.repeat(64) }];
   fs.writeFileSync(file, JSON.stringify(trial));
   const result = run(['analyze', '--trial', file, '--corpus-root', root]); assert.equal(result.status, 1);
-  assert.deepEqual(JSON.parse(result.stderr), { error: 'VOICE_EVALUATION_INPUT_INVALID', field: 'scenario_binding' });
+  assert.deepEqual(JSON.parse(result.stderr), secureTrialRead
+    ? { error: 'VOICE_EVALUATION_INPUT_INVALID', field: 'scenario_binding' }
+    : { error: 'VOICE_EVALUATION_INPUT_INVALID' });
+  assert.equal(result.stdout, '');
 });
 test('combined CLI smoke reports only the 24 synthetic transport checks', () => {
   const result = run(['smoke']); assert.equal(result.status, 0, result.stderr); const report = JSON.parse(result.stdout);
