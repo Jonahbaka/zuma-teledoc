@@ -26,30 +26,8 @@ class PersistentMemory {
 
   async initialize() {
     try {
-      // Create memory table if not exists
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS ai_agent_memory (
-          id SERIAL PRIMARY KEY,
-          agent_type VARCHAR(50) NOT NULL,
-          memory_type VARCHAR(30) NOT NULL DEFAULT 'context',
-          memory_key VARCHAR(200) NOT NULL,
-          memory_value TEXT NOT NULL,
-          importance FLOAT DEFAULT 0.5,
-          source VARCHAR(100) DEFAULT 'conversation',
-          expires_at TIMESTAMP,
-          created_at TIMESTAMP DEFAULT NOW(),
-          updated_at TIMESTAMP DEFAULT NOW(),
-          UNIQUE(agent_type, memory_key)
-        )
-      `);
-
-      // Create index for fast lookup
-      await db.query(`
-        CREATE INDEX IF NOT EXISTS idx_agent_memory_type ON ai_agent_memory(agent_type)
-      `);
-      await db.query(`
-        CREATE INDEX IF NOT EXISTS idx_agent_memory_key ON ai_agent_memory(memory_type)
-      `);
+      // Schema is applied only by the explicit migration runner.
+      await db.query('SELECT id, agent_type, memory_type, memory_key, memory_value, importance, source, expires_at, created_at, updated_at FROM ai_agent_memory LIMIT 0');
 
       this.initialized = true;
       console.log('  🧠 Persistent Memory: ONLINE (Second Brain active)');

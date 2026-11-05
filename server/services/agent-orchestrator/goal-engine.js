@@ -39,69 +39,9 @@ class GoalEngine {
 
   async initialize() {
     try {
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS ai_agent_goals (
-          id SERIAL PRIMARY KEY,
-          agent_id VARCHAR(100) NOT NULL,
-          agent_name VARCHAR(255) NOT NULL,
-          timeframe VARCHAR(20) NOT NULL CHECK (timeframe IN ('daily', 'weekly', 'monthly', 'yearly', 'infinite')),
-          period_start TIMESTAMP DEFAULT NOW(),
-          period_label VARCHAR(100),
-          
-          -- Dollar metrics
-          revenue_target DECIMAL(12,2) DEFAULT 0,
-          revenue_actual DECIMAL(12,2) DEFAULT 0,
-          cost_savings_target DECIMAL(12,2) DEFAULT 0,
-          cost_savings_actual DECIMAL(12,2) DEFAULT 0,
-          
-          -- Energy metrics (0-100 scale)
-          efficiency_target INTEGER DEFAULT 0,
-          efficiency_actual INTEGER DEFAULT 0,
-          velocity_target INTEGER DEFAULT 0,
-          velocity_actual INTEGER DEFAULT 0,
-          resonance_score DECIMAL(4,2) DEFAULT 0, -- 0.00 to 1.00
-          
-          -- Descriptive goals  
-          objectives JSONB DEFAULT '[]',
-          achievements JSONB DEFAULT '[]',
-          forecast_notes TEXT,
-          
-          -- Frequency tuning
-          intent_score INTEGER DEFAULT 3,       -- 3 = Creation
-          structure_score INTEGER DEFAULT 6,    -- 6 = Optimization
-          ascension_score INTEGER DEFAULT 9,    -- 9 = Liberation
-          harmonic_alignment DECIMAL(4,2) DEFAULT 0, -- 0.00 to 1.00
-          
-          -- Status
-          status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'completed', 'exceeded', 'missed')),
-          created_at TIMESTAMP DEFAULT NOW(),
-          updated_at TIMESTAMP DEFAULT NOW()
-        )
-      `);
-
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS ai_agent_milestones (
-          id SERIAL PRIMARY KEY,
-          title VARCHAR(255) NOT NULL,
-          description TEXT,
-          agent_id VARCHAR(100),
-          
-          -- Measurements
-          dollars_value DECIMAL(12,2) DEFAULT 0,
-          energy_value INTEGER DEFAULT 0,
-          frequency_reading DECIMAL(6,2) DEFAULT 432,
-          
-          -- Status
-          target_date TIMESTAMP,
-          achieved_date TIMESTAMP,
-          status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'achieved', 'exceeded')),
-          
-          -- Cascade level
-          timeframe VARCHAR(20),
-          
-          created_at TIMESTAMP DEFAULT NOW()
-        )
-      `);
+      // Schema is applied only by the explicit migration runner.
+      await db.query('SELECT id, agent_id, agent_name, timeframe, period_start, period_label, revenue_target, revenue_actual, cost_savings_target, cost_savings_actual, efficiency_target, efficiency_actual, velocity_target, velocity_actual, resonance_score, objectives, achievements, forecast_notes, intent_score, structure_score, ascension_score, harmonic_alignment, status, created_at, updated_at FROM ai_agent_goals LIMIT 0');
+      await db.query('SELECT id, title, description, agent_id, dollars_value, energy_value, frequency_reading, target_date, achieved_date, status, timeframe, created_at FROM ai_agent_milestones LIMIT 0');
 
       this.initialized = true;
     } catch (err) {

@@ -24,65 +24,9 @@ const LINK_STATUS_FILTERS = new Set(['active', 'used', 'revoked', 'expired', 'de
 
 // Generate a secure random token
 const generateToken = () => crypto.randomBytes(32).toString('hex');
-let lifecycleSchemaReadyPromise = null;
-
-function ensureTestingLinksLifecycleSchema() {
-  if (!lifecycleSchemaReadyPromise) {
-    lifecycleSchemaReadyPromise = db.query(`
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'active';
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS revoked_by UUID REFERENCES users(id) ON DELETE SET NULL;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES users(id) ON DELETE SET NULL;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS target_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS target_email VARCHAR(255);
-
-      DO $$ BEGIN
-        IF EXISTS (
-          SELECT 1
-            FROM pg_constraint
-           WHERE conname = 'testing_access_links_link_type_check'
-             AND conrelid = 'testing_access_links'::regclass
-        ) THEN
-          ALTER TABLE testing_access_links DROP CONSTRAINT testing_access_links_link_type_check;
-        END IF;
-
-        IF NOT EXISTS (
-          SELECT 1
-            FROM pg_constraint
-           WHERE conname = 'testing_access_links_link_type_check'
-             AND conrelid = 'testing_access_links'::regclass
-        ) THEN
-          ALTER TABLE testing_access_links
-            ADD CONSTRAINT testing_access_links_link_type_check
-            CHECK (link_type IN ('provider', 'patient', 'pharmacy', 'admin'));
-        END IF;
-      END $$;
-
-      UPDATE testing_access_links
-         SET status = CASE
-           WHEN deleted_at IS NOT NULL THEN 'deleted'
-           WHEN revoked_at IS NOT NULL OR is_active = FALSE THEN 'revoked'
-           WHEN expires_at <= NOW() THEN 'expired'
-           WHEN max_uses IS NOT NULL AND current_uses >= max_uses THEN 'used'
-           ELSE COALESCE(NULLIF(status, ''), 'active')
-         END
-       WHERE status IS NULL OR status = '';
-
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_status ON testing_access_links(status);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_deleted_at ON testing_access_links(deleted_at);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_created_by ON testing_access_links(created_by);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_last_used_by ON testing_access_links(last_used_by);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_user_id ON testing_access_links(target_user_id);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_email ON testing_access_links(LOWER(target_email));
-    `).catch((error) => {
-      lifecycleSchemaReadyPromise = null;
-      throw error;
-    });
-  }
-
-  return lifecycleSchemaReadyPromise;
-}
+const ensureTestingLinksLifecycleSchema = require('../db/verifyRouteSchema').createSchemaVerifier(db, {
+  testing_access_links: ['status', 'revoked_at', 'revoked_by', 'deleted_at', 'deleted_by', 'target_user_id', 'target_email'],
+});
 
 const isQueryEnabled = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').toLowerCase());
 const isAllMarketScope = (value) => String(value || '').trim().toUpperCase() === 'ALL';

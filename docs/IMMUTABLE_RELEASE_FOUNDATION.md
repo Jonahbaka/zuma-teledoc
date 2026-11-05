@@ -7,6 +7,18 @@ activation path. This is not deployment readiness.**
 
 ## Implemented behavior
 
+Serving startup now verifies core and Nigeria migration history read-only before
+route/worker imports. Apply migrations explicitly before startup; the server no
+longer invokes the Nigeria migration runner. Route schema setup for social,
+analytics and testing links is supplied by the explicit migration manifest, with
+read-only column checks in the routes. Fresh/legacy PostgreSQL tests exercise the
+new additive migrations twice and verify retained records. Migration `047` also
+supplies the memory, event, goal and Nova profile tables and the test-account flag
+previously created by services. Service initialization now uses read-only checks;
+triage relies on the explicitly migrated appointment metadata column. This separation does
+not by itself establish whole-application rollback compatibility or unlock serving
+from a sealed release.
+
 `manifest.cjs` verifies the exact local Git commit/tree and every tracked blob and
 executable bit, then rejects extra source/assets outside the explicit `.next` and
 `node_modules` build/dependency namespaces. An untracked `server/db.js` cannot shadow

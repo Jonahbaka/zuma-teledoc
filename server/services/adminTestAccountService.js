@@ -29,7 +29,6 @@ const TEST_ACCOUNT_ACCESS_LEVEL_BY_TIER = {
   gold: 'gold_monthly',
   platinum: 'platinum_monthly',
 };
-let adminTestAccountSchemaReadyPromise = null;
 const generateToken = () => crypto.randomBytes(32).toString('hex');
 
 const getBaseUrl = (req) => {
@@ -72,71 +71,10 @@ function appendMarketScopeFilter(where, params, sqlExpression, marketScope) {
   where.push(`${sqlExpression} = $${params.length}`);
 }
 
-function ensureAdminTestAccountSchema() {
-  if (!adminTestAccountSchemaReadyPromise) {
-    adminTestAccountSchemaReadyPromise = db.query(`
-      DO $$ BEGIN
-        CREATE TYPE region_code AS ENUM ('US', 'NG', 'GH', 'KE', 'ZA');
-      EXCEPTION WHEN duplicate_object THEN NULL;
-      END $$;
-
-      DO $$ BEGIN
-        ALTER TYPE access_level ADD VALUE IF NOT EXISTS 'basic_monthly';
-      EXCEPTION WHEN duplicate_object OR undefined_object THEN NULL;
-      END $$;
-
-      DO $$ BEGIN
-        ALTER TYPE access_level ADD VALUE IF NOT EXISTS 'platinum_monthly';
-      EXCEPTION WHEN duplicate_object OR undefined_object THEN NULL;
-      END $$;
-
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS region region_code DEFAULT 'US';
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS market_scope VARCHAR(10) DEFAULT 'US';
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS test_account_metadata JSONB DEFAULT '{}'::jsonb;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_test_account BOOLEAN DEFAULT FALSE;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_active BOOLEAN DEFAULT FALSE;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_expires_at TIMESTAMPTZ;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS testing_bypass_tier VARCHAR(50);
-
-      DO $$ BEGIN
-        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'access_level') THEN
-          ALTER TABLE users ADD COLUMN IF NOT EXISTS access_level access_level DEFAULT 'read_only';
-        ELSE
-          ALTER TABLE users ADD COLUMN IF NOT EXISTS access_level VARCHAR(50) DEFAULT 'read_only';
-        END IF;
-      END $$;
-
-      UPDATE users
-         SET market_scope = CASE
-           WHEN region::text = 'NG' OR UPPER(COALESCE(country, '')) IN ('NG', 'NIGERIA') THEN 'NG'
-           ELSE COALESCE(NULLIF(market_scope, ''), 'US')
-         END
-       WHERE market_scope IS NULL OR market_scope = '';
-
-      CREATE INDEX IF NOT EXISTS idx_users_market_scope ON users(market_scope);
-      CREATE INDEX IF NOT EXISTS idx_users_role_market_scope ON users(role, market_scope);
-      CREATE INDEX IF NOT EXISTS idx_users_is_test_account ON users(is_test_account);
-
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'active';
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS revoked_by UUID REFERENCES users(id) ON DELETE SET NULL;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES users(id) ON DELETE SET NULL;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS target_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
-      ALTER TABLE testing_access_links ADD COLUMN IF NOT EXISTS target_email VARCHAR(255);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_status ON testing_access_links(status);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_deleted_at ON testing_access_links(deleted_at);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_user_id ON testing_access_links(target_user_id);
-      CREATE INDEX IF NOT EXISTS idx_testing_access_links_target_email ON testing_access_links(LOWER(target_email));
-    `).catch((error) => {
-      adminTestAccountSchemaReadyPromise = null;
-      throw error;
-    });
-  }
-
-  return adminTestAccountSchemaReadyPromise;
-}
+const ensureAdminTestAccountSchema = require('../db/verifyRouteSchema').createSchemaVerifier(db, {
+  users: ['must_change_password', 'region', 'market_scope', 'test_account_metadata', 'is_test_account', 'testing_bypass_active', 'testing_bypass_expires_at', 'testing_bypass_tier', 'access_level'],
+  testing_access_links: ['status', 'revoked_at', 'revoked_by', 'deleted_at', 'deleted_by', 'target_user_id', 'target_email'],
+});
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);

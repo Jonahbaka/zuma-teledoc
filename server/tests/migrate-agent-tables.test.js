@@ -56,6 +56,14 @@ test('reviewed SQL migrations are loaded from the explicit allowlist', () => {
       file: '045_clinical_lab_workflow.sql'
     },
     {
+      name: '046_explicit_route_schema',
+      file: '046_explicit_route_schema.sql',
+    },
+    {
+      name: '047_explicit_service_schema',
+      file: '047_explicit_service_schema.sql',
+    },
+    {
       name: '400_agent_orchestrator_schema',
       file: '400_agent_orchestrator_schema.sql',
     },

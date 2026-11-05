@@ -512,6 +512,18 @@ app.use((req, res, next) => {
  * Initialize all services AFTER port is already bound
  */
 async function initializeApp() {
+  // Serving must never apply migrations. Complete both explicit migration
+  // commands before startup; verify their ledgers before loading any routes or
+  // optional workers. Pending, drifted or unavailable history blocks readiness.
+  try {
+    const { verifyMigrationHistory } = require('./db/verifyMigrationHistory');
+    await verifyMigrationHistory(require('./db').getPool());
+  } catch (error) {
+    nextInitStatus = 'failed';
+    nextInitError = 'Database migration verification failed';
+    console.error('[BOOT] Migration history blocked readiness:', error.code || 'SCHEMA_CHECK_UNAVAILABLE');
+    throw error;
+  }
   console.log('📦 Loading dependencies...');
   
   // Now safe to load heavy modules (dotenv already loaded at startup)
@@ -771,23 +783,6 @@ async function initializeApp() {
   } catch (err) {
     console.error('🇳🇬 Nigeria routes FAILED to load:', err.message);
     console.error('🇳🇬 Stack:', err.stack?.split('\n').slice(0, 5).join('\n'));
-  }
-
-  // Clinical schema is a readiness prerequisite, never background work.
-  // Refuse to serve API traffic if the Nigeria migration manifest fails.
-  // Keep liveness available, but /readyz and /api/health must fail closed.
-  {
-    const { runNgMigrations } = require('../ng/migrations/migrate');
-    const pool = require('./db').getPool();
-    try {
-      const result = await runNgMigrations(pool);
-      console.log('[NG] Migration manifest verified: ' + result.ran + ' new');
-    } catch (error) {
-      nextInitStatus = 'failed';
-      nextInitError = 'Nigeria migration verification failed';
-      console.error('[BOOT] Nigeria migrations blocked readiness:', error.code || 'MIGRATION_FAILED');
-      throw error;
-    }
   }
 
   console.log('✅ API routes loading complete (+ Hive Gateway + OpenClaw REST API)');

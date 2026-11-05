@@ -238,7 +238,7 @@ async function socialRouteFixture() {
   const sourceModule = { exports: {} }, routes = new Map(), middleware = [], sqlCalls = [];
   const router = { use(handler) { middleware.push(handler); } };
   for (const method of ['get', 'post', 'patch', 'delete']) {
-    router[method] = (route, ...handlers) => routes.set(`${method} ${route}`, handlers);
+    router[method] = (route, ...handlers) => routes.set(`${method} ${route}`, [...middleware, ...handlers]);
   }
   const db = { pool: { async query(sql, params) {
     sqlCalls.push({ sql, params });
@@ -254,6 +254,7 @@ async function socialRouteFixture() {
     require(name) {
       if (name === 'express') return { Router: () => router };
       if (name === '../db') return db;
+      if (name === '../db/verifyRouteSchema') return require('../db/verifyRouteSchema');
       if (name === '../services/socialSchedulerService') return require('../services/socialSchedulerService');
       if (name === '../middleware/auth') return { authenticate(req, res, next) {
         return req.user ? next() : res.status(401).json({ success: false, error: 'Authentication required' });
@@ -261,18 +262,16 @@ async function socialRouteFixture() {
       assert.fail('Unexpected route dependency or provider: ' + name);
     },
   }, { filename });
-  // Existing module-import schema checks are outside these request guards.
-  // Complete that synthetic setup before recording request-time IO.
   await new Promise(resolve => setImmediate(resolve));
-  sqlCalls.length = 0;
+  assert.deepEqual(sqlCalls, [], 'importing a route must not access or mutate the database');
   return { sqlCalls, async invoke(route, authenticated = true) {
     let result;
     const request = { user: authenticated ? { id: 'fictional-user' } : undefined,
       params: { id: 'fictional-post' }, body: { scheduledTime: '2099-01-01', platforms: ['linkedin'] } };
     const response = { statusCode: 200, status(code) { this.statusCode = code; return this; },
       json(body) { result = { status: this.statusCode, body }; return this; } };
-    const handlers = [...middleware, ...(routes.get(`post ${route}`) || [])];
-    assert.ok(handlers.length > middleware.length, 'actual route must be registered');
+    const handlers = routes.get(`post ${route}`);
+    assert.ok(handlers?.length, 'actual route must be registered');
     let position = 0;
     const next = async () => { if (position < handlers.length) await handlers[position++](request, response, next); };
     await next();

@@ -127,39 +127,19 @@ class EventBus {
   }
 
   /**
-   * Initialize — create event queue table if needed
+   * Initialize — verify the explicitly migrated event schema
    */
   async initialize() {
     try {
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS ai_event_queue (
-          id SERIAL PRIMARY KEY,
-          event_type VARCHAR(100) NOT NULL,
-          payload JSONB DEFAULT '{}',
-          source VARCHAR(100) DEFAULT 'system',
-          severity VARCHAR(20) DEFAULT 'info',
-          processed_at TIMESTAMP,
-          created_at TIMESTAMP DEFAULT NOW()
-        )
-      `);
-
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS ai_event_cursors (
-          consumer_id VARCHAR(100) PRIMARY KEY,
-          last_event_id INTEGER DEFAULT 0,
-          updated_at TIMESTAMP DEFAULT NOW()
-        )
-      `);
-
-      // Create index for unprocessed events
-      await db.query(`CREATE INDEX IF NOT EXISTS idx_event_queue_unprocessed ON ai_event_queue (processed_at) WHERE processed_at IS NULL`);
-      await db.query(`CREATE INDEX IF NOT EXISTS idx_event_queue_type ON ai_event_queue (event_type)`);
+      // Schema is applied only by the explicit migration runner.
+      await db.query('SELECT id, event_type, payload, source, severity, processed_at, created_at FROM ai_event_queue LIMIT 0');
+      await db.query('SELECT consumer_id, last_event_id, updated_at FROM ai_event_cursors LIMIT 0');
 
       this.initialized = true;
       console.log('  ⚡ Event Bus: CONNECTED');
     } catch (e) {
       console.error('  ⚡ Event Bus init error (non-fatal):', e.message);
-      this.initialized = true; // Continue without DB events
+      this.initialized = false;
     }
   }
 

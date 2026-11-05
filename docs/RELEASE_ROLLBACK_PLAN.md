@@ -14,9 +14,18 @@ cannot restore a coherent application release. The artifact trap also does not r
 a complete previous release before these mutations. A successful health check cannot
 repair those facts.
 
-There is a second compatibility boundary: startup currently applies NG migrations
-and some route imports create schema. Disabling schedules and realtime handlers does
-not make a candidate read-only. A previous application can also become incompatible
+There is a second compatibility boundary: older releases apply NG migrations at
+startup and create schema from routes. Current startup verifies both migration
+ledgers read-only before importing routes or workers; it never invokes a migration
+runner. Social, realtime analytics and testing-link schema setup now belongs to
+explicit migrations, including additive migration `046_explicit_route_schema`.
+Migration `047_explicit_service_schema` likewise owns service-created memory,
+event, goal and Nova profile tables and the missing test-account flag. Triage no
+longer alters appointment metadata during a request.
+Run `npm run migrate` and `npm run ng:migrate` as a separate, reviewed phase before
+starting this revision; a missing, unverified or drifted ledger blocks readiness.
+Disabling schedules and realtime handlers alone does not make every service read-only.
+A previous application can also become incompatible
 with committed schema/data changes. An automatic database restore is not an acceptable
 rollback mechanism because it can discard subsequent clinical records and cannot undo
 external payments, messages or deliveries.

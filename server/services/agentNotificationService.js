@@ -43,20 +43,7 @@ const FALLBACKS = {
 
 // ─── Nova Profile Table ────────────────────────────────────────────────────
 async function ensureNovaProfileTable() {
-  try {
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS nova_user_profiles (
-        user_id       UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-        known_facts   JSONB    DEFAULT '[]'::jsonb,
-        last_contact  TIMESTAMP WITH TIME ZONE,
-        message_count INTEGER  DEFAULT 0,
-        onboarding_done BOOLEAN DEFAULT false,
-        updated_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-      );
-    `);
-  } catch (err) {
-    logger.warn('Nova: profile table note:', err.message);
-  }
+  await db.query('SELECT user_id, known_facts, last_contact, message_count, onboarding_done, updated_at FROM nova_user_profiles LIMIT 0');
 }
 
 // ─── Build User Context ────────────────────────────────────────────────────

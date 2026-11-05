@@ -5,40 +5,14 @@ const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
-let schemaReady = false;
 const fallbackEvents = [];
 let lastGrowthActionAt = 0;
 let lastGrowthAction = null;
 let gaTokenCache = { token: null, expiresAt: 0 };
 
-async function ensureSchema() {
-  if (schemaReady) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS realtime_analytics_events (
-      id BIGSERIAL PRIMARY KEY,
-      session_id TEXT NOT NULL,
-      event_type TEXT NOT NULL DEFAULT 'page_view',
-      page_path TEXT,
-      page_title TEXT,
-      source TEXT,
-      referrer TEXT,
-      device_type TEXT,
-      country TEXT,
-      city TEXT,
-      user_agent TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await db.query(`
-    CREATE INDEX IF NOT EXISTS idx_realtime_analytics_events_created_at
-      ON realtime_analytics_events(created_at DESC)
-  `);
-  await db.query(`
-    CREATE INDEX IF NOT EXISTS idx_realtime_analytics_events_session
-      ON realtime_analytics_events(session_id, created_at DESC)
-  `);
-  schemaReady = true;
-}
+const ensureSchema = require('../db/verifyRouteSchema').createSchemaVerifier(db, {
+  realtime_analytics_events: ['id', 'session_id', 'event_type', 'page_path', 'page_title', 'source', 'referrer', 'device_type', 'country', 'city', 'user_agent', 'created_at'],
+});
 
 function base64Url(input) {
   return Buffer.from(input)

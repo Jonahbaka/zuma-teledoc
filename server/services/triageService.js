@@ -30,18 +30,7 @@ class TriageService {
     try {
       await client.query('BEGIN');
       
-      // Check if metadata column exists, create it if not
-      const checkColumn = await client.query(
-        `SELECT column_name FROM information_schema.columns 
-         WHERE table_name = 'appointments' AND column_name = 'metadata'`
-      );
-      
-      if (checkColumn.rows.length === 0) {
-        await client.query(`
-          ALTER TABLE appointments ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb
-        `);
-      }
-      
+      // The explicit migration manifest supplies appointment metadata.
       // Verify appointment exists and belongs to patient
       const appointmentCheck = await client.query(
         'SELECT id, patient_id FROM appointments WHERE id = $1',

@@ -55,70 +55,21 @@ function rejectUnavailablePublishing(_req, res) {
   });
 }
 
-async function ensureTables() {
-  await db.pool.query(`
-    CREATE TABLE IF NOT EXISTS social_accounts (
-      id VARCHAR(255) PRIMARY KEY,
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-      platform VARCHAR(50) NOT NULL,
-      handle VARCHAR(255) NOT NULL,
-      access_token TEXT NOT NULL,
-      refresh_token TEXT,
-      token_expires_at TIMESTAMP,
-      status VARCHAR(50) DEFAULT 'active',
-      connected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      last_posted_at TIMESTAMP,
-      post_count INT DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(platform, handle, user_id)
-    )
-  `);
+// Refuse unavailable publishing before any database access.
+router.post('/post/:id/schedule', rejectUnavailablePublishing);
+router.post('/post/:id/publish-now', rejectUnavailablePublishing);
+router.post('/post/:id/retry', rejectUnavailablePublishing);
 
-  await db.pool.query(`
-    CREATE TABLE IF NOT EXISTS social_posts (
-      id VARCHAR(255) PRIMARY KEY,
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-      title VARCHAR(500) NOT NULL,
-      description TEXT,
-      media_url VARCHAR(1000),
-      caption TEXT,
-      hashtags JSONB DEFAULT '[]',
-      platforms JSONB DEFAULT '[]',
-      status VARCHAR(50) DEFAULT 'draft',
-      scheduled_time TIMESTAMP,
-      published_at TIMESTAMP,
-      retry_count INT DEFAULT 0,
-      last_error TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  await db.pool.query(`
-    CREATE TABLE IF NOT EXISTS social_platform_posts (
-      id VARCHAR(255) PRIMARY KEY,
-      post_id VARCHAR(255) REFERENCES social_posts(id) ON DELETE CASCADE,
-      account_id VARCHAR(255) REFERENCES social_accounts(id) ON DELETE SET NULL,
-      platform VARCHAR(50) NOT NULL,
-      platform_post_id VARCHAR(500),
-      platform_url VARCHAR(1000),
-      status VARCHAR(50) DEFAULT 'pending',
-      views INT DEFAULT 0,
-      likes INT DEFAULT 0,
-      comments INT DEFAULT 0,
-      shares INT DEFAULT 0,
-      published_at TIMESTAMP,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-}
-
-// Run on startup (non-blocking)
-ensureTables().catch(err =>
-  console.warn('[social] Table setup warning:', err.message)
-);
+const verifySocialSchema = require('../db/verifyRouteSchema').createSchemaVerifier(db.pool, {
+  social_accounts: ['id', 'user_id', 'platform', 'handle', 'access_token', 'refresh_token', 'token_expires_at', 'status', 'connected_at', 'last_posted_at', 'post_count', 'created_at', 'updated_at'],
+  social_posts: ['id', 'user_id', 'title', 'description', 'media_url', 'caption', 'hashtags', 'platforms', 'status', 'scheduled_time', 'published_at', 'retry_count', 'last_error', 'created_at', 'updated_at'],
+  social_platform_posts: ['id', 'post_id', 'account_id', 'platform', 'platform_post_id', 'platform_url', 'status', 'views', 'likes', 'comments', 'shares', 'published_at', 'created_at', 'updated_at'],
+});
+router.use(async (_req, res, next) => {
+  try { await verifySocialSchema(); }
+  catch { return res.status(503).json({ success: false, code: 'ROUTE_SCHEMA_UNAVAILABLE', error: 'Required database schema is unavailable.' }); }
+  return next();
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ACCOUNTS
@@ -279,12 +230,6 @@ router.delete('/post/:id', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
-// Scheduling/retrying an unavailable provider must not promise delivery or
-// mutate existing post state. Draft editing and historical reads remain intact.
-router.post('/post/:id/schedule', rejectUnavailablePublishing);
-router.post('/post/:id/publish-now', rejectUnavailablePublishing);
-router.post('/post/:id/retry', rejectUnavailablePublishing);
 
 // GET /posts
 router.get('/posts', async (req, res) => {
