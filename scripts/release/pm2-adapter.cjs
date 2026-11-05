@@ -32,7 +32,7 @@ function createPm2Adapter({ storeRoot, configurationFile, evidenceFile, schemaFi
     // A second application under either the legacy root or release store is a
     // foreign writer, even if it has a different PM2 name.
     if (all.some(p => p.name !== name && p.pm2_env.status === 'online' &&
-        (String(p.pm2_env.pm_cwd).startsWith(storeRoot + '/') || p.pm2_env.pm_cwd === '/opt/zuma-teledoc'))) fail('FOREIGN_WRITER', 'An additional managed application writer is active.');
+        (String(p.pm2_env.pm_cwd).startsWith(storeRoot + '/') || (name === 'doctarx' && p.pm2_env.pm_cwd === '/opt/zuma-teledoc')))) fail('FOREIGN_WRITER', 'An additional managed application writer is active.');
     if (writers.length > 1) fail('MULTIPLE_WRITERS', 'Only one application process is supported.');
     return writers[0];
   }
