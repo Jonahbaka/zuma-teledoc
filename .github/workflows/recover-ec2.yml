@@ -23,16 +23,21 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AWS_REGION: ${{ vars.AWS_REGION }}
-  EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
-  EC2_APP_DIR: ${{ vars.EC2_APP_DIR }}
-  EC2_APP_USER: ${{ vars.EC2_APP_USER }}
-  EC2_PM2_APP: ${{ vars.EC2_PM2_APP }}
-  EC2_HEALTH_PORT: ${{ vars.EC2_HEALTH_PORT }}
-  EC2_RECOVERY_TRANSPORT: ${{ vars.EC2_RECOVERY_TRANSPORT }}
+  # Non-secret defaults copied from the old repository's successful SSM run
+  # 39131115534. Repository variables remain authoritative when configured.
+  # This does not grant the new repository access: AWS must trust its OIDC sub.
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
+  AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN || 'arn:aws:iam::653070064211:role/DoctaRxGitHubRecovery' }}
+  EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID || 'i-0f9a10195f3137853' }}
+  EC2_APP_DIR: ${{ vars.EC2_APP_DIR || '/opt/zuma-teledoc' }}
+  EC2_APP_USER: ${{ vars.EC2_APP_USER || 'root' }}
+  EC2_PM2_APP: ${{ vars.EC2_PM2_APP || 'doctarx' }}
+  EC2_HEALTH_PORT: ${{ vars.EC2_HEALTH_PORT || '8080' }}
+  EC2_RECOVERY_TRANSPORT: ${{ vars.EC2_RECOVERY_TRANSPORT || 'ssm' }}
 
 jobs:
   recover:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -47,7 +52,7 @@ jobs:
       - name: Configure AWS credentials through GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
           role-session-name: doctarx-recovery-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Diagnose or recover the existing application through SSM
