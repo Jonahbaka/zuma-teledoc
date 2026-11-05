@@ -177,16 +177,17 @@ test('standalone Next middleware enforces the same denial before public files wh
   vm.runInNewContext(compiled, { module: isolated, exports: isolated.exports, require(name) {
     if (name === 'next/server') return nextServer;
     if (name === './lib/legacyCreatorAssets.cjs') return { isLegacyCreatorAssetPath };
+    if (name === './lib/seo/public-seo-config.cjs') return require('../../lib/seo/public-seo-config.cjs');
     assert.fail('Unexpected Next middleware dependency: ' + name);
   } });
   assert.equal(isolated.exports.config.matcher, '/:path*', 'encoded protected prefixes must still invoke middleware');
   for (const requestPath of blockedPaths) {
-    const result = isolated.exports.middleware({ nextUrl: { pathname: requestPath.split('?')[0] } });
+    const result = isolated.exports.middleware({ url: 'https://doctarx.com' + requestPath, nextUrl: { pathname: requestPath.split('?')[0] } });
     assert.equal(result.status, 404, requestPath);
     assert.match(result.headers.get('cache-control'), /no-store/);
     assert.equal(await result.text(), '');
   }
   for (const requestPath of allowedPaths) {
-    assert.equal(isolated.exports.middleware({ nextUrl: { pathname: requestPath.split('?')[0] } }).headers.get('x-middleware-next'), '1');
+    assert.equal(isolated.exports.middleware({ url: 'https://doctarx.com' + requestPath, nextUrl: { pathname: requestPath.split('?')[0] } }).headers.get('x-middleware-next'), '1');
   }
 });

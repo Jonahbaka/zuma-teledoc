@@ -151,7 +151,7 @@ test('render readiness waits for independent route metadata and naturally comple
   const waiting = waitForRenderedPage(page, { timeoutMs: 1000 }).then(value => { ready = true; return value; });
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(ready, false, 'Rendered content cannot stand in for its missing streamed metadata');
-  state.title = 'Pharmacy directory | DoctaRx | DoctaRx'; state.titles = [state.title];
+  state.title = 'United States pharmacy directory | DoctaRx'; state.titles = [state.title];
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(ready, false, 'An active finite transition must still finish');
   animation.playState = 'finished';
@@ -161,7 +161,7 @@ test('render readiness waits for independent route metadata and naturally comple
 });
 
 test('permanently absent or wrong route titles fail bounded readiness without creating metadata or suppressing Axe', async () => {
-  for (const initialTitle of ['', 'United States Telehealth | DoctaRx']) {
+  for (const initialTitle of ['', 'United States Telehealth | DoctaRx', 'Pharmacy directory | DoctaRx']) {
     const { state, page } = renderedDocument();
     state.title = initialTitle; state.titles = initialTitle ? [initialTitle] : [];
     await assert.rejects(waitForRenderedPage(page, { timeoutMs: 45 }), /Rendered-page readiness timed out:.*titles/);
@@ -172,7 +172,7 @@ test('permanently absent or wrong route titles fail bounded readiness without cr
 
 test('stuck finite transitions fail rather than being skipped while unchanged infinite decorative motion remains allowed', async () => {
   const { state, page } = renderedDocument();
-  state.title = 'Pharmacy directory | DoctaRx'; state.titles = [state.title];
+  state.title = 'United States pharmacy directory | DoctaRx'; state.titles = [state.title];
   state.animations = [{ playState: 'running', effect: { getComputedTiming: () => ({ endTime: 200 }) } }];
   await assert.rejects(waitForRenderedPage(page, { timeoutMs: 45 }), /Rendered-page readiness timed out:.*finiteAnimations.*running/);
   state.animations = [{ playState: 'running', effect: { getComputedTiming: () => ({ endTime: Infinity }) } }];
@@ -242,7 +242,7 @@ test('context cleanup cannot replace an earlier page failure with only its shutd
 test('fonts and image decoding have independent bounded failure evidence without skipping rendered-page checks', async () => {
   for (const pendingResource of ['fonts', 'image']) {
     const { state, page } = renderedDocument();
-    state.title = 'Pharmacy directory | DoctaRx'; state.titles = [state.title];
+    state.title = 'United States pharmacy directory | DoctaRx'; state.titles = [state.title];
     if (pendingResource === 'fonts') state.fontsReady = new Promise(() => {});
     let decodeCalls = 0;
     state.images = [{ scrollIntoView() {}, getAttribute: () => '/pending-resource.png', decode() { decodeCalls++; return pendingResource === 'image' ? new Promise(() => {}) : Promise.resolve(); } }];
@@ -257,13 +257,13 @@ test('fonts and image decoding have independent bounded failure evidence without
     assert.equal(state.frames, 0, 'Timed-out resources must not advance into an allegedly rendered capture');
     assert.equal(state.evaluations, 1, 'A hanging resource operation must run once rather than be retried');
     assert.equal(decodeCalls, pendingResource === 'fonts' ? 0 : 1);
-    assert.equal(state.title, 'Pharmacy directory | DoctaRx'); assert.equal(state.titles.length, 1);
+    assert.equal(state.title, 'United States pharmacy directory | DoctaRx'); assert.equal(state.titles.length, 1);
   }
 });
 
 test('healthy resource preparation preserves the ordinary main, title and natural-motion render contract', async () => {
   const { state, page } = renderedDocument();
-  state.title = 'Pharmacy directory | DoctaRx'; state.titles = [state.title];
+  state.title = 'United States pharmacy directory | DoctaRx'; state.titles = [state.title];
   let decodeCalls = 0;
   state.images = [{ scrollIntoView() {}, getAttribute: () => '/healthy-resource.png', decode: async () => { decodeCalls++; } }];
   const result = await settle(page, { resourceTimeoutMs: 1000 });
@@ -276,7 +276,7 @@ test('healthy resource preparation preserves the ordinary main, title and natura
 
 test('offscreen lazy images decode after ordinary scrolling and restore the original position without attribute changes', async () => {
   const { state, page } = renderedDocument();
-  state.title = 'Pharmacy directory | DoctaRx'; state.titles = [state.title]; state.scroll = { left: 31, top: 417 };
+  state.title = 'United States pharmacy directory | DoctaRx'; state.titles = [state.title]; state.scroll = { left: 31, top: 417 };
   let visible = false; let decodeCalls = 0; let eagerMutations = 0; let releaseOffscreen; let decodedOffscreen = false;
   const scrolls = [];
   const image = Object.freeze({
@@ -299,7 +299,7 @@ test('offscreen lazy images decode after ordinary scrolling and restore the orig
 
 test('a pending image decode retains the exact resource diagnostic and restores scroll before its bounded failure', async () => {
   const { state, page } = renderedDocument();
-  state.title = 'Pharmacy directory | DoctaRx'; state.titles = [state.title]; state.scroll = { left: 11, top: 512 };
+  state.title = 'United States pharmacy directory | DoctaRx'; state.titles = [state.title]; state.scroll = { left: 11, top: 512 };
   const currentSrc = 'https://images.example.invalid/stalled-lazy-image.png'; let decodeCalls = 0;
   state.images = [Object.freeze({ currentSrc,
     scrollIntoView() { state.scroll = { left: 0, top: 2400 }; },
@@ -319,7 +319,7 @@ test('a pending image decode retains the exact resource diagnostic and restores 
 
 test('an immediate decode API failure preserves its original error and restores scroll without manufacturing a rendered page', async () => {
   const { state, page } = renderedDocument();
-  state.title = 'Pharmacy directory | DoctaRx'; state.titles = [state.title]; state.scroll = { left: 7, top: 91 };
+  state.title = 'United States pharmacy directory | DoctaRx'; state.titles = [state.title]; state.scroll = { left: 7, top: 91 };
   const original = new Error('Image decoder transport failed before returning a promise');
   state.images = [Object.freeze({ currentSrc: '/broken-decoder.png',
     scrollIntoView() { state.scroll = { left: 0, top: 3000 }; },
@@ -329,7 +329,7 @@ test('an immediate decode API failure preserves its original error and restores 
     assert.equal(error.cause, original); assert.match(error.message, /Image decoder transport failed/); return true;
   });
   assert.deepEqual(state.scroll, { left: 7, top: 91 }); assert.equal(state.scrollRestores.length, 1);
-  assert.equal(state.frames, 0); assert.equal(state.evaluations, 1); assert.equal(state.title, 'Pharmacy directory | DoctaRx');
+  assert.equal(state.frames, 0); assert.equal(state.evaluations, 1); assert.equal(state.title, 'United States pharmacy directory | DoctaRx');
 });
 
 test('browser shutdown failure kills only the explicitly owned BrowserServer and still reports the close failure', async () => {
