@@ -10,7 +10,7 @@ if (!immutableRuntime()) require('dotenv').config();
 if (process.env.DOCTARX_DEPLOY_CHECK === 'true') {
   module.exports = require('./runtime/candidateServer').startCandidateServer();
 } else {
-assertServingModeSupported();
+const sealedReleaseIdentity = assertServingModeSupported();
 const { backgroundWorkAllowed } = require('./utils/backgroundWorkPolicy');
 // Preserve existing cookie defaults; reject an unknown explicit deployment mode
 // before listening instead of failing individual authentication requests.
@@ -31,10 +31,22 @@ const app = express();
 // Install before any static serving or asynchronous initialization.
 app.use(require('./middleware/creatorAssetGuard'));
 const PORT = parseInt(process.env.PORT, 10) || 8080;
-const HOST = process.env.DOCTARX_DEPLOY_CHECK === 'true' ? '127.0.0.1' : '0.0.0.0';
+const HOST = sealedReleaseIdentity || process.env.DOCTARX_DEPLOY_CHECK === 'true' ? '127.0.0.1' : '0.0.0.0';
 const NEXT_READY_TIMEOUT_MS = parseInt(process.env.NEXT_READY_TIMEOUT_MS, 10) || 180000;
 const NEXT_WARMUP_GRACE_MS = parseInt(process.env.NEXT_WARMUP_GRACE_MS, 10) || 45000;
 const serverStartedAt = new Date();
+
+// The identity is captured from the verified executing bundle, never git HEAD or
+// a mutable build-id override. A private credential also blocks tunnel access.
+app.get('/internal/release-identity', (req, res) => {
+  const supplied = req.get('x-doctarx-release-token') || '';
+  const expected = process.env.DOCTARX_RELEASE_HEALTH_TOKEN || '';
+  const crypto = require('node:crypto');
+  if (!sealedReleaseIdentity || !/^[a-f0-9]{64}$/.test(supplied) || expected.length !== 64 ||
+      !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) return res.sendStatus(404);
+  if (!initialized || !nextReady) return res.status(503).json({ ready: false });
+  res.set('Cache-Control', 'no-store').json(sealedReleaseIdentity);
+});
 
 // Track startup status
 let nextReady = false;

@@ -163,6 +163,14 @@ function verifySourceFiles(root, source, entries) {
   }
   for (const entry of entries) {
     if (['.next', 'node_modules'].includes(entry.path.split('/')[0])) continue;
+    // Prebuild copies these public browser assets directly from the pinned npm
+    // dependency. Accept only byte-identical files, not an arbitrary public tree.
+    if (entry.path === 'public/mediapipe-wasm' && entry.type === 'directory') continue;
+    if (/^public\/mediapipe-wasm\/[A-Za-z0-9_.-]+\.(wasm|js)$/.test(entry.path) && entry.type === 'file') {
+      const dependency = entries.find(item => item.path === 'node_modules/@mediapipe/tasks-vision/wasm/' + path.basename(entry.path));
+      if (!dependency || dependency.type !== 'file' || dependency.sha256 !== entry.sha256) fail('GENERATED_ASSET_MISMATCH', 'Public runtime asset differs from its pinned dependency.');
+      continue;
+    }
     if (entry.type === 'directory' ? directories.has(entry.path) : tracked.has(entry.path)) continue;
     fail('UNTRACKED_SOURCE', 'Extra source/assets outside explicit build and dependency namespaces are not accepted');
   }
