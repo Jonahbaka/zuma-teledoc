@@ -75,7 +75,11 @@ test('candidate checks cannot start optional background initializers', async () 
   }
   assert.equal(backgroundWorkAllowed({}), true, 'ordinary deployment behavior is preserved');
   assert.match(source, /DOCTARX_DEPLOY_CHECK === 'true'[\s\S]*Deployment readiness check only/);
-  assert.match(source, /const HOST = process\.env\.DOCTARX_DEPLOY_CHECK === 'true' \? '127\.0\.0\.1' : '0\.0\.0\.0'/);
+  const hostExpression = source.match(/const HOST = ([^;]+);/)?.[1];
+  assert.ok(hostExpression);
+  for (const [sealedReleaseIdentity, deployCheck, expected] of [[null, 'true', '127.0.0.1'], [{}, undefined, '127.0.0.1'], [null, undefined, '0.0.0.0']]) {
+    assert.equal(vm.runInNewContext(hostExpression, { sealedReleaseIdentity, process: { env: { DOCTARX_DEPLOY_CHECK: deployCheck } } }), expected);
+  }
 });
 
 test('discovery bootstrap does not schedule work in a candidate check process', () => {
