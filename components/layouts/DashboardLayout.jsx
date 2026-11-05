@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bell, ChevronDown, LogOut, Menu, Settings, User, X } from 'lucide-react';
+import { ArrowUpRight, Bell, ChevronDown, Globe2, LogOut, Menu, Settings, User, X } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { notificationsAPI } from '@/lib/api';
 import { getPortalPath } from '@/lib/portalPaths';
@@ -45,10 +45,21 @@ export default function DashboardLayout({ children, navigation = [], navigationG
   const mobile = (PRIORITIES[portalName] || []).map((name) => items.find((item) => item.name === name)).filter(Boolean).slice(0, 3);
   const quickItems = mobile.length ? mobile : items.slice(0, 3);
   const portalPath = (suffix) => getPortalPath(suffix, { pathname, user });
+  const carePortal = portalName === 'Patient' || portalName === 'Provider';
+  const marketLabel = pathname.startsWith('/ng/') ? 'Nigeria' : 'United States';
+  const initials = [user?.firstName, user?.lastName].filter(Boolean).map(name => name.slice(0, 1)).join('').slice(0, 2);
+  const careNames = new Set(['Today', 'Appointments', 'Patient Queue', 'Triage Queue', 'Video consultations', 'Schedule', 'Patients']);
+  const recordNames = new Set(['Clinical notes', 'Prescriptions', 'Referrals', 'Medical Imaging', 'Clinical guidance', 'Hospital Network', 'Care Teams']);
+  const providerSections = portalName === 'Provider' && !groups ? [
+    { name: 'Care delivery', items: items.filter(item => careNames.has(item.name)) },
+    { name: 'Clinical tools', items: items.filter(item => recordNames.has(item.name)) },
+    { name: 'Your practice', items: items.filter(item => !careNames.has(item.name) && !recordNames.has(item.name)) },
+  ].filter(group => group.items.length) : null;
 
   useEffect(() => { setSidebarOpen(false); setAccountOpen(false); }, [pathname]);
   useEffect(() => {
     let cancelled = false;
+    setUnreadCount(null);
     const load = async () => {
       try {
         const { data } = await notificationsAPI.getUnreadCount();
@@ -91,38 +102,40 @@ export default function DashboardLayout({ children, navigation = [], navigationG
 
   const renderLink = (item) => <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}
     aria-current={activePath(pathname, item.href, home) ? 'page' : undefined}
-    className={cn('flex min-h-12 items-center gap-3 rounded-xl px-4 py-3 font-medium transition-colors',
-      activePath(pathname, item.href, home) ? 'bg-blue-50 text-blue-800' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950')}>
+    className={cn('group flex min-h-12 items-center gap-3 rounded-xl border px-4 py-3 font-medium transition-colors',
+      activePath(pathname, item.href, home) ? 'border-teal-200 bg-teal-50 text-teal-950' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-950')}>
     <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" /><span>{item.name}</span>
   </Link>;
 
-  return <div className="doctarx-portal clinical-readable min-h-[100dvh] bg-slate-50 text-slate-950">
+  return <div className="doctarx-portal clinical-readable min-h-[100dvh] bg-[#f3f6fa] text-slate-950">
     <a href="#portal-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-white focus:p-4">Skip to main content</a>
     {!immersive && <>
       {sidebarOpen && <div className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden" onClick={() => setSidebarOpen(false)} aria-hidden="true" />}
       <aside ref={drawer} aria-label={portalName + ' navigation'} role={sidebarOpen ? 'dialog' : undefined} aria-modal={sidebarOpen ? true : undefined}
-        className={cn('fixed inset-y-0 left-0 z-50 flex w-72 max-w-[88vw] flex-col border-r border-slate-200 bg-white transition-transform lg:translate-x-0', sidebarOpen ? 'translate-x-0' : '-translate-x-full')}>
+        className={cn('fixed inset-y-0 left-0 z-50 flex w-72 max-w-[88vw] flex-col border-r border-slate-200 bg-white transition-transform lg:visible lg:translate-x-0', sidebarOpen ? 'visible translate-x-0' : 'invisible -translate-x-full')}>
         <div className="flex min-h-24 items-center justify-between bg-[#101d36] px-6">
           <Link href={home} aria-label="DoctaRx home"><DoctaRxLogo glow={false} className="h-9 w-auto" /></Link>
           <button className="rounded-lg p-2 text-white lg:hidden" aria-label={'Close ' + portalName.toLowerCase() + ' navigation'} onClick={() => setSidebarOpen(false)}><X className="h-6 w-6" /></button>
         </div>
+        {carePortal && <div className="mx-4 mt-5 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"><Globe2 className="h-5 w-5 shrink-0 text-teal-700" aria-hidden="true" /><div><p className="font-semibold text-slate-900">{marketLabel}</p><p className="text-sm text-slate-600">{portalName === 'Provider' ? 'Clinical workspace' : 'Personal care workspace'}</p></div></div>}
         <nav className="flex-1 overflow-y-auto p-4" aria-label={portalName + ' main navigation'}>
-          {groups ? <><div className="mb-5 space-y-1">{topLevel.map(renderLink)}</div>{groups.map((group) => <section key={group.name} className="mb-5"><p className="mb-2 px-4 font-semibold text-slate-500">{group.name}</p><div className="space-y-1">{group.items.map(renderLink)}</div></section>)}</> : <div className="space-y-1">{items.map(renderLink)}</div>}
+          {groups || providerSections ? <>{groups && <div className="mb-5 space-y-1">{topLevel.map(renderLink)}</div>}{(groups || providerSections).map((group) => <section key={group.name} className="mb-5"><p className="mb-2 px-4 font-semibold text-slate-500">{group.name}</p><div className="space-y-1">{group.items.map(renderLink)}</div></section>)}</> : <div className="space-y-1">{items.map(renderLink)}</div>}
         </nav>
         <div className="space-y-3 border-t border-slate-200 p-5">
-          <p className="break-words font-medium text-slate-900">{user?.firstName} {user?.lastName}</p>
+          <div className="flex items-center gap-3"><span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-900 font-semibold text-white">{initials || <User className="h-5 w-5" />}</span><div className="min-w-0"><p className="break-words font-semibold text-slate-900">{user?.firstName} {user?.lastName}</p><p className="text-sm text-slate-600">{portalName} account</p></div></div>
           <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-slate-600 hover:bg-slate-50" onClick={() => logout()}><LogOut className="h-5 w-5" aria-hidden="true" />Sign out</button>
         </div>
       </aside>
     </>}
     <div className={cn('min-h-[100dvh] min-w-0', !immersive && 'lg:pl-72')}>
-      {!immersive && <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
-        <div className="flex min-h-24 items-center justify-between gap-3 px-4 py-4 sm:px-8">
+      {!immersive && <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-md">
+        <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-3 sm:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <button ref={menuButton} className="shrink-0 rounded-xl border border-slate-200 p-3 lg:hidden" aria-label={'Open ' + portalName.toLowerCase() + ' navigation'} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><Menu className="h-6 w-6" /></button>
-            <div className="min-w-0"><p className="font-medium text-slate-500">DoctaRx · {portalName === 'Provider' ? 'Clinical workspace' : portalName === 'Patient' ? 'Your care' : portalName + ' workspace'}</p><p className="font-semibold text-slate-950">{current?.name || portalName}</p></div>
+            <div className="min-w-0"><p className="hidden font-medium text-slate-500 sm:block">{portalName === 'Provider' ? 'Your practice, connected' : portalName === 'Patient' ? 'Your care, connected' : 'DoctaRx · ' + portalName}</p><p className="font-semibold text-slate-950">{current?.name || portalName}</p></div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {carePortal && <Link href={portalName === 'Provider' ? portalPath('/schedule') : portalPath('/appointments')} className="mr-2 hidden min-h-12 items-center gap-2 rounded-xl bg-slate-900 px-4 font-medium text-white hover:bg-slate-800 xl:inline-flex">{portalName === 'Provider' ? 'View schedule' : 'My appointments'}<ArrowUpRight className="h-4 w-4" aria-hidden="true" /></Link>}
             <Link href={portalPath('/notifications')} aria-label="Notifications" className="relative flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50"><Bell className="h-5 w-5" aria-hidden="true" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-h-6 min-w-6 items-center justify-center rounded-full bg-blue-700 px-1 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}</Link>
             <div ref={accountMenu} className="relative">
               <button onClick={() => setAccountOpen(!accountOpen)} aria-expanded={accountOpen} aria-controls="portal-account-menu" aria-label="Account menu" className="flex h-12 items-center gap-2 rounded-xl border border-slate-200 px-3"><User className="h-5 w-5" aria-hidden="true" /><span className="hidden sm:inline">Account</span><ChevronDown className="hidden h-4 w-4 sm:block" aria-hidden="true" /></button>
@@ -135,7 +148,7 @@ export default function DashboardLayout({ children, navigation = [], navigationG
           </div>
         </div>
       </header>}
-      <main id="portal-content" tabIndex={-1} className={immersive ? 'h-[100dvh] overflow-hidden p-0' : 'mx-auto max-w-[1560px] p-4 pb-28 sm:p-8 sm:pb-28 lg:pb-8'}>{children}</main>
+      <main id="portal-content" tabIndex={-1} className={immersive ? 'h-[100dvh] overflow-hidden p-0' : 'mx-auto max-w-[1560px] p-4 pb-28 sm:p-8 sm:pb-28 lg:pb-8 xl:p-10'}>{children}</main>
       {!immersive && <nav aria-label={portalName + ' quick navigation'} className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
         {quickItems.map((item) => <Link key={item.href} href={item.href} aria-current={activePath(pathname, item.href, home) ? 'page' : undefined} className={cn('flex min-h-20 min-w-0 flex-col items-center justify-center gap-1 px-1 text-center', activePath(pathname, item.href, home) ? 'text-blue-800' : 'text-slate-600')}><item.icon className="h-5 w-5" aria-hidden="true" /><span>{item.name === 'Appointments' ? 'Visits' : item.name}</span></Link>)}
         <button aria-label={'Open ' + portalName.toLowerCase() + ' menu'} onClick={() => setSidebarOpen(true)} className="flex min-h-20 flex-col items-center justify-center gap-1 text-slate-600"><Menu className="h-5 w-5" aria-hidden="true" />Menu</button>

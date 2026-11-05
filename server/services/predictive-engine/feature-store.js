@@ -132,6 +132,17 @@ class FeatureStore {
    * Compute features for a specific prediction type
    * Returns only the features needed by that model
    */
+  async computeVerifiedInputs() {
+    // The old feature adapters query legacy columns, infer undocumented units,
+    // and replace read failures with normal vitals. They cannot establish the
+    // explicit-numeric-features-v1 contract. Never label these defaults as
+    // measured patient data; a canonical, source-linked adapter must be reviewed
+    // before patient scoring is available.
+    throw Object.assign(new Error('Clinical model inputs have not been verified.'), {
+      statusCode: 503, code: 'PREDICTIVE_INPUTS_UNVERIFIED',
+    });
+  }
+
   async computeFeaturesForModel(patientId, modelType, context = {}) {
     const allFeatures = await this.computeRealTimeFeatures(patientId, context);
     const modelFeatures = this.getModelFeatureNames(modelType);

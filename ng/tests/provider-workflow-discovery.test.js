@@ -16,6 +16,7 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const { renderDashboard } = require('../../server/tests/dashboard-render-fixture.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
@@ -47,8 +48,19 @@ describe('Provider dashboard exposes the operating workspace (discoverable)', ()
     assert.match(dashboard, /'\/visits'/);
   });
 
-  it('routes "Start" on a video appointment to a call page with appointment context', () => {
-    assert.match(dashboard, /\$\{base\}\/call\?appointmentId=\$\{appt\.id\}/);
+  it('renders video actions retaining shared and legacy appointment context in both markets', () => {
+    const baseAppointment = { status: 'confirmed', type: 'video', scheduledAt: new Date(Date.now() + 60000).toISOString() };
+    for (const market of ['us', 'ng']) {
+      const base = market === 'us' ? '/provider' : '/ng/provider';
+      const rendered = renderDashboard('provider', {
+        appointments: { rows: [{ ...baseAppointment, id: 'shared-visit' }, { ...baseAppointment, id: 'legacy visit&context', legacy: true }, { ...baseAppointment, id: 'phone-visit', type: 'phone' }] },
+        notes: { rows: [] }, patients: { rows: [] },
+      }, { market });
+      assert.ok(rendered.links.includes(`${base}/appointments/shared-visit/call`));
+      assert.ok(rendered.links.includes(`${base}/call?appointmentId=legacy%20visit%26context`));
+      assert.ok(!rendered.links.includes(`${base}/appointments/phone-visit/call`));
+      assert.match(rendered.text, /Open video visit/);
+    }
   });
 
   it('no longer ships a "Module Viewer" dead-end header for workspace items', () => {

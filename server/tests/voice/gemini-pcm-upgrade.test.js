@@ -121,7 +121,8 @@ test('real loopback upgrade uses actual JWT cookie authentication and sends fict
   const f = await fixture(t), { ws, first } = await f.connect(); const ready = JSON.parse(first);
   assert.equal(ready.type, 'session.ready'); assert.equal(ready.language, 'ig'); assert.equal(f.creates(), 1);
   ws.send(JSON.stringify({ type: 'audio.pcm', sequence: 1, data: Buffer.alloc(3200).toString('base64') }));
-  await new Promise(resolve => setTimeout(resolve, 20)); assert.equal(f.sdkInput[0].audio.mimeType, 'audio/pcm;rate=16000');
+  await eventually(() => f.sdkInput.length === 1);
+  assert.equal(f.sdkInput[0].audio.mimeType, 'audio/pcm;rate=16000');
   ws.close(); await new Promise(resolve => ws.once('close', resolve)); await eventually(() => f.closes() === 1);
 });
 test('missing forged and expired JWTs never create providers', async t => {

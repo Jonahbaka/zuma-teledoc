@@ -13,6 +13,7 @@ const { Client } = require('pg');
 const { buildDatabaseConfig, isNeonHost, readRootCertificates } = require('../db/connectionConfig');
 const { resolveNeonConfig } = require('../db/resolve-neon-url');
 const { createSchemaCheckPool } = require('../db/verifyMigrationHistory');
+const { requireOpenSsl } = require('./deployment-test-capabilities.cjs');
 const ROOT = path.resolve(__dirname, '../..');
 const URL_BASE = 'postgresql://fictional:fixture-password@db.fixture.invalid/fictional';
 const production = (extras = {}) => ({ NODE_ENV: 'production', DATABASE_URL: URL_BASE, ...extras });
@@ -108,9 +109,9 @@ test('Neon classification uses the parsed host, preserves identity on IPv4 diali
   }
 });
 
-function createCertificates() {
+function createCertificates(openssl) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'doctarx-synthetic-tls-'));
-  const run = args => execFileSync('openssl', args, { cwd: directory, stdio: 'ignore', timeout: 10000 });
+  const run = args => execFileSync(openssl, args, { cwd: directory, stdio: 'ignore', timeout: 10000 });
   try {
     run(['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-days', '2', '-subj', '/CN=DoctaRx Synthetic Test CA', '-addext', 'basicConstraints=critical,CA:TRUE', '-keyout', 'ca.key', '-out', 'ca.crt']);
     for (const [name, names] of [['matching', 'DNS:db.fixture.invalid,DNS:tenant.fixture.neon.tech,IP:127.0.0.1'], ['wrong', 'DNS:localhost']]) {
@@ -145,25 +146,73 @@ async function postgresTlsFixture(certificates, name, supportsTls = true) {
   return { port: server.address().port, events, async close() { for (const socket of sockets) socket.destroy(); await new Promise(resolve => server.close(resolve)); } };
 }
 
-test('CA loading accepts only bounded public certificates, rejecting missing files, links, FIFO and key material', () => {
-  const fixture = createCertificates();
-  try {
-    assert.match(readRootCertificates(fixture.ca), /BEGIN CERTIFICATE/);
-    fs.symlinkSync(fixture.ca, path.join(fixture.directory, 'alias'));
-    execFileSync('mkfifo', [path.join(fixture.directory, 'pipe')]);
-    fs.writeFileSync(path.join(fixture.directory, 'large'), Buffer.alloc(1024 * 1024 + 1));
-    fs.writeFileSync(path.join(fixture.directory, 'garbage'), 'NOT A CERTIFICATE');
-    fs.writeFileSync(path.join(fixture.directory, 'mixed'), fs.readFileSync(fixture.ca, 'utf8') + fs.readFileSync(path.join(fixture.directory, 'ca.key'), 'utf8'));
-    for (const name of ['absent', 'alias', 'pipe', 'large', 'garbage', 'mixed', 'ca.key', '.']) {
-      assert.throws(() => readRootCertificates(path.join(fixture.directory, name)), error => error.code === 'DATABASE_CA_INVALID' && !error.message.includes(fixture.directory));
-    }
-    assert.throws(() => buildDatabaseConfig(production({ PGSSLROOTCERT: path.join(fixture.directory, 'absent') })), { code: 'DATABASE_CA_INVALID' });
-    assert.throws(() => buildDatabaseConfig({ NODE_ENV: 'development', PGSSLROOTCERT: fixture.ca }), { code: 'DATABASE_CA_WITHOUT_TLS' });
-  } finally { fixture.cleanup(); }
+function readCaBytesFixture(bytes, { file = true, changedSize = false } = {}) {
+  // Inject an already bounded synthetic descriptor to exercise the production
+  // CA parser on every OS. Real pathname/no-follow behavior is tested below.
+  let reads = 0, stats = 0, closed = false;
+  const fakeFs = {
+    constants: { O_RDONLY: 0, O_NOFOLLOW: 1, O_NONBLOCK: 2 },
+    openSync(_filename, flags) { assert.equal(flags, 3); return 17; },
+    fstatSync(descriptor) { assert.equal(descriptor, 17); return { isFile: () => file, size: bytes.length + (changedSize && stats++ ? 1 : 0), mtimeMs: 1, ctimeMs: 1 }; },
+    readSync(descriptor, target, offset, length, position) { assert.equal(descriptor, 17); reads++; return bytes.copy(target, offset, position, position + length); },
+    closeSync(descriptor) { assert.equal(descriptor, 17); closed = true; },
+  };
+  const loaded = { exports: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'server/db/connectionConfig.js'), 'utf8'), {
+    module: loaded, exports: loaded.exports, Buffer, URL, process: { cwd: () => ROOT },
+    require: name => name === 'node:fs' ? fakeFs : require(name),
+  });
+  return { read() { return loaded.exports.readRootCertificates('fictional-ca.pem'); }, reads: () => reads, closed: () => closed };
+}
+
+test('CA byte validation remains bounded and rejects malformed, mixed, changing or non-file descriptors on every OS', () => {
+  const publicCa = Buffer.from(tls.rootCertificates[0]);
+  const valid = readCaBytesFixture(publicCa);
+  assert.match(valid.read(), /BEGIN CERTIFICATE/); assert.equal(valid.closed(), true);
+  const privateMaterial = '\n-----BEGIN PRIVATE KEY-----\nFICTIONAL\n-----END PRIVATE KEY-----';
+  for (const bytes of [Buffer.alloc(0), Buffer.from('NOT A CERTIFICATE'), Buffer.from(privateMaterial), Buffer.concat([publicCa, Buffer.from(privateMaterial)]), Buffer.concat([publicCa, Buffer.from('\nUNEXPECTED TRAILING DATA')]), Buffer.alloc(1024 * 1024 + 1)]) {
+    const fixture = readCaBytesFixture(bytes);
+    assert.throws(fixture.read, { code: 'DATABASE_CA_INVALID' }); assert.equal(fixture.closed(), true);
+    if (bytes.length > 1024 * 1024) assert.equal(fixture.reads(), 0, 'Reject oversized metadata before reading bytes');
+  }
+  for (const options of [{ file: false }, { changedSize: true }]) assert.throws(readCaBytesFixture(publicCa, options).read, { code: 'DATABASE_CA_INVALID' });
 });
 
-test('actual pg TLS handshake accepts matching peers and rejects wrong identity, untrusted CA and plaintext fallback', { timeout: 20000 }, async () => {
-  const certificates = createCertificates();
+test('CA loading accepts public certificates only with safe descriptor support, otherwise fails closed', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'doctarx-public-ca-'));
+  const ca = path.join(directory, 'ca.crt');
+  // A public certificate bundled with Node is a parser fixture only. It is
+  // never installed into process trust or used as an impersonated TLS peer.
+  assert.ok(tls.rootCertificates.length > 0);
+  fs.writeFileSync(ca, tls.rootCertificates[0]);
+  try {
+    if (!Number.isInteger(fs.constants.O_NOFOLLOW) || !Number.isInteger(fs.constants.O_NONBLOCK)) {
+      let opened = 0;
+      t.mock.method(fs, 'openSync', () => { opened++; throw new Error('No pathname may be opened without safe flags'); });
+      assert.throws(() => readRootCertificates(ca), { code: 'DATABASE_CA_INVALID' });
+      assert.throws(() => buildDatabaseConfig(production({ PGSSLROOTCERT: ca })), { code: 'DATABASE_CA_INVALID' });
+      assert.equal(opened, 0);
+      return;
+    }
+    assert.match(readRootCertificates(ca), /BEGIN CERTIFICATE/);
+    fs.symlinkSync(ca, path.join(directory, 'alias'));
+    execFileSync('mkfifo', [path.join(directory, 'pipe')]);
+    fs.writeFileSync(path.join(directory, 'large'), Buffer.alloc(1024 * 1024 + 1));
+    fs.writeFileSync(path.join(directory, 'garbage'), 'NOT A CERTIFICATE');
+    fs.writeFileSync(path.join(directory, 'key'), '-----BEGIN PRIVATE KEY-----\nFICTIONAL\n-----END PRIVATE KEY-----');
+    fs.writeFileSync(path.join(directory, 'mixed'), tls.rootCertificates[0] + fs.readFileSync(path.join(directory, 'key'), 'utf8'));
+    for (const name of ['absent', 'alias', 'pipe', 'large', 'garbage', 'mixed', 'key', '.']) {
+      assert.throws(() => readRootCertificates(path.join(directory, name)), error => error.code === 'DATABASE_CA_INVALID' && !error.message.includes(directory));
+    }
+    assert.throws(() => buildDatabaseConfig(production({ PGSSLROOTCERT: path.join(directory, 'absent') })), { code: 'DATABASE_CA_INVALID' });
+    assert.throws(() => buildDatabaseConfig({ NODE_ENV: 'development', PGSSLROOTCERT: ca }), { code: 'DATABASE_CA_WITHOUT_TLS' });
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('actual pg TLS handshake accepts matching peers and rejects wrong identity, untrusted CA and plaintext fallback', { timeout: 20000 }, async t => {
+  const openssl = requireOpenSsl(t);
+  if (!openssl) return;
+  const certificates = createCertificates(openssl);
   try {
     for (const scenario of ['dns', 'ip', 'neon', 'wrong-dns', 'wrong-ip', 'untrusted', 'no-tls']) {
       const server = await postgresTlsFixture(certificates, scenario.startsWith('wrong') ? 'wrong' : 'matching', scenario !== 'no-tls');

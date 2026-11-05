@@ -169,6 +169,14 @@ test('legacy paths stay unchanged and external private agent state stays outside
     assert.deepEqual(fs.readdirSync(f.state), [], 'resolution itself must not create state');
     policy.ensureRuntimeDirectory('agentChat', f.options);
     assert.equal(fs.existsSync(path.join(f.release, 'server/uploads')), false);
+    assert.equal(fs.lstatSync(path.join(f.state, 'private/agent-chat')).isDirectory(), true);
+  } finally { f.cleanup(); }
+});
+
+test('external private agent state uses owner-only POSIX directory permissions', { skip: process.platform === 'win32' ? 'Windows stat mode does not express POSIX owner-only permissions; Windows ACL privacy is not inferred.' : false }, () => {
+  const f = directories();
+  try {
+    policy.ensureRuntimeDirectory('agentChat', f.options);
     assert.equal(fs.lstatSync(path.join(f.state, 'private/agent-chat')).mode & 0o777, 0o700);
   } finally { f.cleanup(); }
 });
@@ -184,7 +192,7 @@ test('sealed source cannot opt out or fall back, and invalid external paths fail
       assert.throws(() => policy.ensureRuntimeDirectory('agentChat', { releaseRoot: f.release, env: { DOCTARX_STATE_ROOT: stateRoot } }));
     }
     fs.mkdirSync(path.join(f.state, 'private'));
-    fs.symlinkSync('private', path.join(f.state, 'public'));
+    fs.symlinkSync(path.join(f.state, 'private'), path.join(f.state, 'public'), process.platform === 'win32' ? 'junction' : 'dir');
     assert.throws(() => policy.ensureRuntimeDirectory('agentChat', f.options), { code: 'RUNTIME_STATE_UNSAFE' });
     assert.equal(fs.existsSync(path.join(f.state, 'private/agent-chat')), false);
   } finally { f.cleanup(); }
@@ -320,7 +328,7 @@ test('ordinary unconfigured uploads retain existing symlink storage compatibilit
   const f = directories();
   try {
     fs.mkdirSync(path.join(f.release, 'server'));
-    fs.symlinkSync(f.state, path.join(f.release, 'server/uploads'));
+    fs.symlinkSync(f.state, path.join(f.release, 'server/uploads'), process.platform === 'win32' ? 'junction' : 'dir');
     const options = { releaseRoot: f.release, env: {} };
     assert.equal(policy.ensureRuntimeDirectory('agentChat', options), path.join(f.release, 'server/uploads/agent-chat'));
     assert.equal(fs.statSync(path.join(f.state, 'agent-chat')).isDirectory(), true);

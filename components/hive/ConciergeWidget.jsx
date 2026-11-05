@@ -65,7 +65,7 @@ export default function ConciergeWidget() {
         return;
       }
 
-      const res = await fetch(`${getApiBase()}/api/hive/message`, {
+      const res = await fetch(`${getApiBase()}/api/hive/message/public`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: sid, content: text.trim() }),
@@ -189,7 +189,7 @@ export default function ConciergeWidget() {
 
       <div className="px-3 pb-2 text-center">
         <p className="text-[10px] text-gray-600">
-          AI assistant. Not a substitute for medical advice. Call 911 for emergencies.
+          Platform navigation assistant. Keep medical information in your secure portal. For emergencies, contact local emergency services.
         </p>
       </div>
     </div>

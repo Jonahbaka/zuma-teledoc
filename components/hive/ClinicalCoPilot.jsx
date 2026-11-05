@@ -1,234 +1,98 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import {
-  Brain, Send, Loader2, FileText, Pill, Activity,
-  Stethoscope, AlertCircle, ClipboardList, ChevronDown,
-  ChevronUp, Bot, Shield, Mic, MicOff, Sparkles
-} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { Brain, ChevronDown, ChevronUp, Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { cn } from '@/lib/utils';
+import { appointmentsAPI, clinicalEhrAPI } from '@/lib/api';
+import { toProviderPortalPath } from '@/lib/providerPortal';
+import contextHelpers from '@/lib/clinical-copilot-context.cjs';
 
-const QUICK_COMMANDS = [
-  { label: 'Draft SOAP Note',      cmd: '@hive draft SOAP note from this consultation' },
-  { label: 'Last Labs',            cmd: '@hive show last labs' },
-  { label: 'Medication History',   cmd: '@hive show medication history' },
-  { label: 'Drug Interactions',    cmd: '@hive check drug interactions' },
-  { label: 'Differential Dx',      cmd: '@hive suggest differential diagnosis' },
-  { label: 'Follow-up Plan',       cmd: '@hive draft follow-up plan' },
-];
-
-function getApiBase() {
-  if (typeof window === 'undefined') return '';
-  const h = window.location.hostname;
-  if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:8080';
-  return window.location.origin;
+export default function ClinicalCoPilot({ appointmentId, patientId, collapsed }) {
+  const { user } = useAuth();
+  return <ClinicalReview key={`${user?.id}:${user?.role}:${user?.marketScope}:${appointmentId}:${patientId}`} appointmentId={appointmentId} patientId={patientId} user={user} initiallyCollapsed={collapsed} />;
 }
 
-export default function ClinicalCoPilot({ appointmentId, patientId, patientName, collapsed: initialCollapsed }) {
-  const { user } = useAuth();
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
-  const [sessionId, setSessionId] = useState(null);
-  const [collapsed, setCollapsed] = useState(!!initialCollapsed);
-  const [listening, setListening] = useState(false);
-  const [soapDraft, setSoapDraft] = useState(null);
-  const scrollRef = useRef(null);
+function ClinicalReview({ appointmentId, patientId, user, initiallyCollapsed }) {
+  const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(Boolean(initiallyCollapsed));
+  const [loading, setLoading] = useState(true);
+  const [contextReady, setContextReady] = useState(false);
+  const [encounter, setEncounter] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const [error, setError] = useState('');
+  const [working, setWorking] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [stage, setStage] = useState('consultation_brief');
+  const mounted = useRef(false);
+  const operation = useRef(false);
+  const context = { appointmentId, patientId, providerId: user?.id };
+  const portalPath = target => toProviderPortalPath(target, { pathname, user });
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
+    mounted.current = true;
+    let active = true;
+    setLoading(true); setError(''); setContextReady(false); setEncounter(null); setDraft(null);
+    contextHelpers.resolveContext({ appointments: appointmentsAPI, clinical: clinicalEhrAPI }, { appointmentId, patientId, providerId: user?.id })
+      .then(result => { if (active) { setEncounter(result.encounter); setContextReady(true); } })
+      .catch(() => { if (active) setError('The appointment and encounter could not be verified. Refresh or open the visit workspace.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; mounted.current = false; };
+  }, [appointmentId, patientId, user?.id, revision]);
 
-  const apiCall = useCallback(async (path, body) => {
-    const token = localStorage.getItem('accessToken');
-    const res = await fetch(`${getApiBase()}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify(body),
-    });
-    return res.json();
-  }, []);
-
-  const startSession = useCallback(async () => {
-    const data = await apiCall('/api/hive/session', { agentId: 'hippocrates' });
-    if (data.success) { setSessionId(data.data.sessionId); return data.data.sessionId; }
-    return null;
-  }, [apiCall]);
-
-  const sendMessage = useCallback(async (text) => {
-    if (!text.trim() || sending) return;
-    const fullText = patientId ? `[Patient: ${patientName || patientId}, Appointment: ${appointmentId || 'active'}] ${text.trim()}` : text.trim();
-    setMessages(prev => [...prev, { role: 'user', content: text.trim(), ts: Date.now() }]);
-    setInput('');
-    setSending(true);
-
+  async function prepare() {
+    if (!encounter || operation.current) return;
+    operation.current = true; setWorking(true); setError(''); setDraft(null);
     try {
-      let sid = sessionId;
-      if (!sid) sid = await startSession();
-
-      const data = await apiCall('/api/hive/message', { sessionId: sid, content: fullText });
-      if (data.success) {
-        const agentContent = data.data.content;
-        setMessages(prev => [...prev, { role: 'agent', content: agentContent, toolCalls: data.data.toolCalls, ts: Date.now() }]);
-
-        if (agentContent.toLowerCase().includes('soap') && (agentContent.includes('Subjective') || agentContent.includes('subjective'))) {
-          setSoapDraft(agentContent);
-        }
-      }
-    } catch {
-      setMessages(prev => [...prev, { role: 'agent', content: 'Connection issue. Please try again.', ts: Date.now() }]);
-    }
-    setSending(false);
-  }, [sessionId, sending, apiCall, startSession, patientId, patientName, appointmentId]);
-
-  const handleSubmit = (e) => { e.preventDefault(); sendMessage(input); };
-
-  if (collapsed) {
-    return (
-      <button
-        onClick={() => setCollapsed(false)}
-        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-900/60 to-teal-900/40 border border-emerald-800/50 rounded-xl text-white text-sm hover:bg-emerald-900/80 transition-all"
-      >
-        <Brain className="w-4 h-4 text-emerald-400" />
-        <span className="font-medium">Clinical Co-Pilot</span>
-        <ChevronDown className="w-4 h-4 text-gray-400" />
-      </button>
-    );
+      const result = await contextHelpers.prepareDraft(clinicalEhrAPI, context, encounter.id, stage);
+      if (mounted.current) setDraft(result);
+    } catch (failure) {
+      if (mounted.current) setError(failure?.response?.data?.code === 'CLINICAL_AI_CONTEXT_UNAVAILABLE'
+        ? 'This encounter has no eligible clinical AI context. Continue documentation in the chart.'
+        : 'A clinical draft is unavailable. The encounter must have an authorized source record and configured clinical AI access. Continue documentation in the chart.');
+    } finally { operation.current = false; if (mounted.current) setWorking(false); }
   }
-
-  return (
-    <div className="contrast-dark bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden flex flex-col h-full max-h-[600px]">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-emerald-900/40 to-teal-900/30 border-b border-gray-800">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-400 flex items-center justify-center">
-            <Stethoscope className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-white">Hippocrates</p>
-            <p className="text-[10px] text-gray-400">Clinical Co-Pilot</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setListening(!listening)}
-            className={cn('p-1.5 rounded-lg transition-colors', listening ? 'bg-red-500/20 text-red-400' : 'ui-dark-chip-action')}
-            title={listening ? 'Stop listening' : 'Start live scribing'}
-          >
-            {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-          </button>
-          <button onClick={() => setCollapsed(true)} className="text-gray-400 hover:text-white transition-colors">
-            <ChevronUp className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {listening && (
-        <div className="px-4 py-2 bg-red-900/20 border-b border-red-800/30 flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-          <span className="text-xs text-red-300">Live scribing active — listening to consultation</span>
-        </div>
-      )}
-
-      {/* Quick commands */}
-      <div className="px-3 py-2 border-b border-gray-800/50 flex gap-1.5 overflow-x-auto scrollbar-none">
-        {QUICK_COMMANDS.map((qc) => (
-          <button
-            key={qc.label}
-            onClick={() => sendMessage(qc.cmd)}
-            className="flex-shrink-0 text-[11px] px-2.5 py-1.5 rounded-md bg-gray-900 border border-gray-800 text-gray-400 hover:text-white hover:border-emerald-700/50 transition-all"
-          >
-            {qc.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2.5">
-        {messages.length === 0 && (
-          <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-3.5 text-xs text-gray-400">
-            <p className="text-gray-300 font-medium mb-1">Ready to assist, Dr. {user?.lastName || 'Provider'}.</p>
-            <p>Use the quick commands above or type a question. I can draft SOAP notes, fetch patient records, check interactions, and suggest differentials.</p>
-          </div>
-        )}
-
-        {messages.map((m, i) => (
-          <div key={i} className={cn('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
-            <div className={cn(
-              'max-w-[90%] rounded-xl px-3 py-2 text-xs leading-relaxed',
-              m.role === 'user' ? 'bg-emerald-700/80 text-white rounded-br-sm' :
-              'bg-gray-900 border border-gray-800 text-gray-200 rounded-bl-sm'
-            )}>
-              {m.toolCalls?.length > 0 && (
-                <div className="mb-2 pb-2 border-b border-gray-700 flex flex-wrap gap-1">
-                  {m.toolCalls.map((tc, j) => (
-                    <span key={j} className="px-2 py-0.5 rounded-full bg-teal-900/40 text-teal-300 text-[10px] border border-teal-800/50">
-                      {tc.tool || tc.name}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <div className="whitespace-pre-wrap">{m.content}</div>
-            </div>
-          </div>
-        ))}
-
-        {sending && (
-          <div className="flex gap-2 items-center">
-            <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
-            <span className="text-xs text-gray-400">Analyzing...</span>
-          </div>
-        )}
-      </div>
-
-      {/* SOAP Draft Panel */}
-      {soapDraft && (
-        <div className="px-3 py-2 border-t border-emerald-800/30 bg-emerald-950/30">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-emerald-300 font-medium flex items-center gap-1">
-              <ClipboardList className="w-3 h-3" /> SOAP Draft Ready
-            </span>
-            <div className="flex gap-1">
-              <button
-                onClick={() => {
-                  if (typeof navigator !== 'undefined') navigator.clipboard.writeText(soapDraft);
-                }}
-                className="text-[10px] px-2 py-1 rounded bg-emerald-800/50 text-emerald-200 hover:bg-emerald-700/50"
-              >
-                Copy
-              </button>
-              <button onClick={() => setSoapDraft(null)} className="ui-dark-chip-action text-[10px] px-2 py-1 rounded">
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Input */}
-      <form onSubmit={handleSubmit} className="px-3 py-2 border-t border-gray-800 flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask Hippocrates..."
-          className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-600 transition-colors"
-          disabled={sending}
-        />
-        <button
-          type="submit"
-          disabled={!input.trim() || sending}
-          className="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white disabled:opacity-40 hover:bg-emerald-500 transition-colors"
-        >
-          <Send className="w-3.5 h-3.5" />
-        </button>
-      </form>
-
-      <div className="px-3 pb-1.5 flex items-center gap-1.5">
-        <Shield className="w-2.5 h-2.5 text-green-500" />
-        <p className="text-[9px] text-gray-600">Provider-only. Access controlled. Audited. Not a substitute for clinical judgment.</p>
-      </div>
+  async function review(decision) {
+    if (!encounter || !draft || draft.status !== 'drafted' || operation.current) return;
+    operation.current = true; setWorking(true); setError('');
+    try {
+      const result = await clinicalEhrAPI.reviewEncounterAiDraft(encounter.id, draft.id, { decision,
+        ...(decision === 'rejected' ? { rejectionReason: 'Clinician declined the draft after reviewing the source-linked output.' } : {}) });
+      const status = result.data?.review?.status;
+      if (!result.data?.success || !['accepted', 'rejected'].includes(status)) throw new Error('Review not confirmed');
+      if (mounted.current) setDraft(current => ({ ...current, status }));
+    } catch { if (mounted.current) setError('The review was not confirmed. Keep this draft and retry in the chart.'); }
+    finally { operation.current = false; if (mounted.current) setWorking(false); }
+  }
+  const actionClass = 'min-h-11 rounded-lg border border-slate-600 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-50';
+  if (collapsed) return <button type="button" onClick={() => setCollapsed(false)} className={actionClass}><Brain className="mr-2 inline h-5 w-5" />Clinical Assist<ChevronDown className="ml-2 inline h-4 w-4" /></button>;
+  const output = draft?.output;
+  return <section aria-label="Clinical Assist" className="contrast-dark flex h-full max-h-[700px] flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 text-white">
+    <header className="flex items-center justify-between border-b border-slate-700 p-4"><div><h2 className="font-semibold">Clinical Assist</h2><p className="mt-1 text-sm text-slate-300">Source-linked drafts for clinician review</p></div><button type="button" aria-label="Collapse Clinical Assist" onClick={() => setCollapsed(true)} className={actionClass}><ChevronUp className="h-5 w-5" /></button></header>
+    <div className="space-y-4 overflow-y-auto p-4">
+      {loading && <p role="status"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Checking the assigned encounter…</p>}
+      {error && <p role="alert" className="rounded-lg border border-amber-500/50 bg-amber-950/40 p-3 text-sm text-amber-100">{error}</p>}
+      {!loading && !encounter && <p className="text-sm leading-6 text-slate-200">Open or create this appointment’s encounter in the visit workspace. Clinical Assist uses the exact assigned record; an unrelated encounter is never selected.</p>}
+      {!loading && <div className="flex flex-wrap gap-2"><button type="button" disabled={working} onClick={() => setRevision(value => value + 1)} className={actionClass}><RefreshCw className="mr-2 inline h-4 w-4" />Refresh context</button>{contextReady && <Link className={actionClass} href={portalPath(`/appointments/${appointmentId}/visit`)}>Open visit workspace</Link>}</div>}
+      {encounter && <>
+        <label className="block text-sm" htmlFor="copilot-stage">Draft type</label>
+        <select id="copilot-stage" value={stage} disabled={working} onChange={event => setStage(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 text-base"><option value="consultation_brief">Consultation brief</option><option value="soap_draft">SOAP draft</option><option value="missing_information">Missing information</option><option value="follow_up_draft">Follow-up draft</option></select>
+        <button type="button" onClick={prepare} disabled={working || loading} className={actionClass}>{working ? 'Working…' : 'Prepare draft from encounter'}</button>
+        <p className="text-sm leading-6 text-slate-300">Review source observations, uncertainty and the proposed text. Approval here records your review; signing notes and placing orders remain separate chart actions.</p>
+      </>}
+      {output && <article className="space-y-4 rounded-xl border border-slate-600 bg-slate-900 p-4">
+        <p className="text-sm font-semibold">{draft.status === 'drafted' ? 'Draft — awaiting your review' : `Review: ${draft.status}`}</p>
+        {output.summary && <p className="whitespace-pre-wrap text-sm leading-6">{output.summary}</p>}
+        {output.handoverDraft && <p className="whitespace-pre-wrap text-sm leading-6">{output.handoverDraft}</p>}
+        {output.soapDraft && Object.entries(output.soapDraft).map(([name, text]) => <section key={name}><h3 className="font-semibold capitalize">{name}</h3><p className="mt-1 whitespace-pre-wrap text-sm leading-6">{text || 'Not recorded'}</p></section>)}
+        {output.assertions?.length > 0 && <section><h3 className="font-semibold">Source references</h3><ul className="mt-2 space-y-3">{output.assertions.map((assertion, index) => <li key={index} className="text-sm leading-6">{assertion.text}<p className="break-words text-xs text-slate-400">{assertion.sourceRefs.join(', ')}</p></li>)}</ul></section>}
+        {output.missingInformation?.length > 0 && <section><h3 className="font-semibold">Missing information</h3><ul className="mt-2 space-y-2">{output.missingInformation.map((item, index) => <li key={index} className="text-sm">{item.field}: {item.reason}</li>)}</ul></section>}
+        {output.uncertainties?.length > 0 && <section><h3 className="font-semibold">Uncertainties</h3><ul className="mt-2 space-y-2">{output.uncertainties.map((item, index) => <li key={index} className="text-sm">{item}</li>)}</ul></section>}
+        {output.followUpDrafts?.length > 0 && <section><h3 className="font-semibold">Proposed follow-up</h3><ul className="mt-2 space-y-3">{output.followUpDrafts.map((item, index) => <li key={index} className="text-sm leading-6"><p className="font-medium">{item.title}</p><p className="whitespace-pre-wrap">{item.instructions}</p><p className="break-words text-xs text-slate-400">{item.sourceRefs.join(', ')}</p></li>)}</ul></section>}
+        {draft.status === 'drafted' && <div className="flex flex-wrap gap-2"><button type="button" disabled={working} className={actionClass} onClick={() => review('accepted')}>Accept after review</button><button type="button" disabled={working} className={actionClass} onClick={() => review('rejected')}>Reject draft</button></div>}
+        <Link className={`${actionClass} inline-flex`} href={portalPath(`/encounters/${encounter.id}${draft.status === 'accepted' && draft.suggestion_type === 'soap_draft' ? `?aiSuggestionId=${encodeURIComponent(draft.id)}` : ''}`)}>Continue in encounter chart</Link>
+      </article>}
     </div>
-  );
+  </section>;
 }

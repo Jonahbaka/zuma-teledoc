@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Room, RoomEvent, Track } from 'livekit-client';
 import { conf } from './conferenceApi';
+import { connectionQuality, createMediaSessionController } from '@/lib/ng/livekitMediaLifecycle.cjs';
 
 const TRACK_SOURCES = Track?.Source || {};
 const SCREEN_SOURCES = new Set([
@@ -89,10 +90,10 @@ function participantName(participant, fallback) {
 }
 
 function networkTone(level) {
-  const value = Number(level || 0);
-  if (value >= 4) return { label: 'good', icon: <Wifi className="h-3.5 w-3.5 text-blue-400" /> };
-  if (value >= 2) return { label: 'fair', icon: <WifiLow className="h-3.5 w-3.5 text-amber-400" /> };
-  if (value > 0) return { label: 'poor', icon: <WifiOff className="h-3.5 w-3.5 text-rose-400" /> };
+  const value = connectionQuality(level);
+  if (value === 'excellent' || value === 'good') return { label: value, icon: <Wifi className="h-3.5 w-3.5 text-blue-400" /> };
+  if (value === 'poor') return { label: 'poor', icon: <WifiLow className="h-3.5 w-3.5 text-amber-400" /> };
+  if (value === 'lost') return { label: 'lost', icon: <WifiOff className="h-3.5 w-3.5 text-rose-400" /> };
   return { label: 'unknown', icon: <Wifi className="h-3.5 w-3.5 text-slate-500" /> };
 }
 
@@ -149,6 +150,7 @@ function ControlButton({ label, active, danger, disabled, badge, onClick, childr
       type="button"
       title={label}
       aria-label={label}
+      aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
       className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition disabled:cursor-not-allowed disabled:opacity-45 ${tone}`}
@@ -168,7 +170,7 @@ function MediaTile({ tile, pinned, onPin }) {
   const track = publication?.track || null;
   const muted = Boolean(publication?.isMuted);
   const label = participantName(participant, isLocal ? 'You' : 'Participant');
-  const quality = networkTone(participant?.networkQualityLevel);
+  const quality = networkTone(participant?.connectionQuality);
   const hasVideo = Boolean(track && !muted);
 
   return (
@@ -181,7 +183,7 @@ function MediaTile({ tile, pinned, onPin }) {
         <VideoTrack
           track={track}
           muted={isLocal}
-          className="h-full w-full object-cover"
+          className={`h-full w-full ${type === 'screen' ? 'object-contain' : 'object-cover'}`}
         />
       ) : (
         <div className="flex h-full min-h-[140px] w-full items-center justify-center bg-gradient-to-br from-slate-800 to-slate-950">
@@ -213,8 +215,10 @@ function MediaTile({ tile, pinned, onPin }) {
         <button
           type="button"
           title={pinned ? 'Unpin participant' : 'Pin participant'}
+          aria-label={`${pinned ? 'Unpin' : 'Pin'} ${label}${type === 'screen' ? ' screen' : ''}`}
+          aria-pressed={pinned}
           onClick={onPin}
-          className="absolute right-2 top-2 hidden rounded-md bg-black/60 px-2 py-1 text-[10px] font-semibold text-white hover:bg-black/80 group-hover:block"
+          className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-2 text-xs font-semibold text-white hover:bg-black/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
         >
           {pinned ? 'Unpin' : 'Pin'}
         </button>
@@ -223,7 +227,7 @@ function MediaTile({ tile, pinned, onPin }) {
   );
 }
 
-function buildTiles(livekitRoom, displayName) {
+function buildTiles(livekitRoom) {
   if (!livekitRoom?.localParticipant) return [];
   const local = livekitRoom.localParticipant;
   const remotes = Array.from(livekitRoom.remoteParticipants?.values?.() || []);
@@ -246,9 +250,7 @@ function buildTiles(livekitRoom, displayName) {
     tiles.push({
       id: `${participant.identity || 'local'}:camera`,
       type: 'camera',
-      participant: isLocal
-        ? { ...participant, name: participant.name || displayName || 'You' }
-        : participant,
+      participant,
       publication: camera || null,
       isLocal,
     });
@@ -320,8 +322,10 @@ export default function LiveKitMediaPanel({
   onLeave,
   onEndRoom,
 }) {
-  const roomRef = useRef(null);
-  const joinAttemptRef = useRef(0);
+  const sessionRef = useRef(null);
+  const connectAttemptRef = useRef(0);
+  const controlBusyRef = useRef(false);
+  if (!sessionRef.current) sessionRef.current = createMediaSessionController();
   const [livekitRoom, setLivekitRoom] = useState(null);
   const [livekitUrl, setLivekitUrl] = useState('');
   const [status, setStatus] = useState('idle');
@@ -334,128 +338,131 @@ export default function LiveKitMediaPanel({
   const [screenEnabled, setScreenEnabled] = useState(false);
   const [busyControl, setBusyControl] = useState('');
   const [pinnedId, setPinnedId] = useState(null);
+  const [audioBlocked, setAudioBlocked] = useState(false);
+  const [devices, setDevices] = useState([]);
+  const [selectedDevices, setSelectedDevices] = useState({});
 
   const bump = useCallback(() => setRevision((value) => value + 1), []);
 
-  const disconnect = useCallback(async ({ stopTracks = true } = {}) => {
-    const activeRoom = roomRef.current;
-    if (!activeRoom) return;
-    try {
-      activeRoom.disconnect(stopTracks);
-    } catch {}
-    roomRef.current = null;
+  const disconnect = useCallback(async () => {
+    connectAttemptRef.current += 1;
+    const closing = sessionRef.current.close();
     setLivekitRoom(null);
     setMicEnabled(false);
     setCameraEnabled(false);
     setScreenEnabled(false);
     setConnectionState('disconnected');
     setStatus('disconnected');
+    setBusyControl('');
+    controlBusyRef.current = false;
+    setAudioBlocked(false);
     bump();
+    await closing;
   }, [bump]);
 
   const connect = useCallback(async () => {
     if (!room?.id || !displayName?.trim()) return;
-    const attempt = joinAttemptRef.current + 1;
-    joinAttemptRef.current = attempt;
+    const attempt = ++connectAttemptRef.current;
     setStatus('connecting');
     setConnectionState('connecting');
     setError('');
     setNotice('');
 
-    await disconnect();
+    setMicEnabled(false);
+    setCameraEnabled(false);
+    setScreenEnabled(false);
+    setBusyControl('');
+    controlBusyRef.current = false;
+    setAudioBlocked(false);
+    setLivekitRoom(null);
+    setSelectedDevices({});
 
     try {
-      const tokenResponse = await conf.getLiveKitToken(room.id, displayName.trim());
-      if (joinAttemptRef.current !== attempt) return;
+      const nextRoom = await sessionRef.current.connect({
+        getToken: () => conf.getLiveKitToken(room.id, displayName.trim()),
+        createRoom: () => new Room({
+          adaptiveStream: true,
+          dynacast: true,
+          publishDefaults: {
+            simulcast: true,
+            stopMicTrackOnMute: true,
+          },
+          videoCaptureDefaults: {
+            resolution: { width: 1280, height: 720, frameRate: 24 },
+          },
+        }),
+        onRoom: (mediaRoom, tokenResponse, isCurrent) => {
+          const refresh = () => {
+            if (!isCurrent()) return;
+            setMicEnabled(Boolean(mediaRoom.localParticipant.isMicrophoneEnabled));
+            setCameraEnabled(Boolean(mediaRoom.localParticipant.isCameraEnabled));
+            setScreenEnabled(Boolean(mediaRoom.localParticipant.isScreenShareEnabled));
+            bump();
+          };
+          mediaRoom
+            .on(RoomEvent.ConnectionStateChanged, (state) => {
+              if (!isCurrent()) return;
+              setConnectionState(state);
+              if (state === 'connected') setStatus('connected');
+              if (state === 'reconnecting' || state === 'signalReconnecting') setStatus('reconnecting');
+              bump();
+            })
+            .on(RoomEvent.ParticipantConnected, refresh)
+            .on(RoomEvent.ParticipantDisconnected, refresh)
+            .on(RoomEvent.ConnectionQualityChanged, refresh)
+            .on(RoomEvent.AudioPlaybackStatusChanged, () => {
+              if (isCurrent()) setAudioBlocked(!mediaRoom.canPlaybackAudio);
+            })
+            .on(RoomEvent.TrackSubscribed, refresh)
+            .on(RoomEvent.TrackUnsubscribed, refresh)
+            .on(RoomEvent.TrackMuted, refresh)
+            .on(RoomEvent.TrackUnmuted, refresh)
+            .on(RoomEvent.LocalTrackPublished, refresh)
+            .on(RoomEvent.LocalTrackUnpublished, refresh)
+            .on(RoomEvent.Disconnected, () => {
+              if (!isCurrent()) return;
+              void sessionRef.current.close();
+              setLivekitRoom(null);
+              setConnectionState('disconnected');
+              setStatus('disconnected');
+              setError('The media connection ended. Retry to rejoin; your microphone and camera will remain off.');
+              setMicEnabled(false);
+              setCameraEnabled(false);
+              setScreenEnabled(false);
+              setBusyControl('');
+              controlBusyRef.current = false;
+              bump();
+            });
 
-      const nextRoom = new Room({
-        adaptiveStream: true,
-        dynacast: true,
-        publishDefaults: {
-          simulcast: true,
-          stopMicTrackOnMute: false,
-        },
-        videoCaptureDefaults: {
-          resolution: { width: 1280, height: 720, frameRate: 24 },
+          setLivekitRoom(mediaRoom);
+          setLivekitUrl(tokenResponse.livekitUrl || '');
         },
       });
-
-      const refresh = () => bump();
-      nextRoom
-        .on(RoomEvent.ConnectionStateChanged, (state) => {
-          setConnectionState(state);
-          if (state === 'connected') setStatus('connected');
-          if (state === 'reconnecting') setStatus('reconnecting');
-          bump();
-        })
-        .on(RoomEvent.ParticipantConnected, refresh)
-        .on(RoomEvent.ParticipantDisconnected, refresh)
-        .on(RoomEvent.TrackSubscribed, refresh)
-        .on(RoomEvent.TrackUnsubscribed, refresh)
-        .on(RoomEvent.TrackMuted, refresh)
-        .on(RoomEvent.TrackUnmuted, refresh)
-        .on(RoomEvent.LocalTrackPublished, refresh)
-        .on(RoomEvent.LocalTrackUnpublished, refresh)
-        .on(RoomEvent.Disconnected, () => {
-          setConnectionState('disconnected');
-          setStatus('disconnected');
-          bump();
-        });
-
-      roomRef.current = nextRoom;
-      setLivekitRoom(nextRoom);
-      setLivekitUrl(tokenResponse.livekitUrl || '');
-
-      await nextRoom.connect(tokenResponse.livekitUrl, tokenResponse.token, {
-        autoSubscribe: true,
-      });
-
-      try {
-        await nextRoom.localParticipant.setMicrophoneEnabled(true);
-        setMicEnabled(true);
-      } catch {
-        setMicEnabled(false);
-        setNotice('Microphone permission was not granted. You can still listen and use chat.');
-      }
-
-      try {
-        await nextRoom.localParticipant.setCameraEnabled(true);
-        setCameraEnabled(true);
-      } catch {
-        setCameraEnabled(false);
-        setNotice((current) => current || 'Camera permission was not granted. You can stay in the room with audio.');
-      }
-
-      if (joinAttemptRef.current !== attempt) {
-        try { nextRoom.disconnect(true); } catch {}
-        return;
-      }
+      if (!nextRoom || attempt !== connectAttemptRef.current || sessionRef.current.room !== nextRoom) return;
+      setAudioBlocked(!nextRoom.canPlaybackAudio);
+      setNotice('You joined with your microphone and camera off. Turn them on when you are ready.');
       setStatus('connected');
       setConnectionState(nextRoom.state || 'connected');
       bump();
     } catch (err) {
+      if (attempt !== connectAttemptRef.current) return;
       setStatus('error');
       setConnectionState('disconnected');
       setError(err?.message || 'Media room connection failed.');
-      roomRef.current = null;
       setLivekitRoom(null);
       bump();
     }
-  }, [bump, disconnect, displayName, room?.id]);
+  }, [bump, displayName, room?.id]);
 
   useEffect(() => {
     connect();
     return () => {
-      joinAttemptRef.current += 1;
-      const activeRoom = roomRef.current;
-      roomRef.current = null;
-      if (activeRoom) {
-        try { activeRoom.disconnect(true); } catch {}
-      }
+      connectAttemptRef.current += 1;
+      void sessionRef.current.close();
     };
   }, [connect]);
 
-  const tiles = buildTiles(livekitRoom, displayName);
+  const tiles = buildTiles(livekitRoom);
   const audioTracks = buildAudioTracks(livekitRoom);
   const visibleParticipantCount = Math.max(
     Number(participantCount || 0),
@@ -473,53 +480,60 @@ export default function LiveKitMediaPanel({
     });
   }, [error, livekitRoom, livekitUrl, revision, room, status]);
 
-  const toggleMic = useCallback(async () => {
-    const activeRoom = roomRef.current;
-    if (!activeRoom) return;
-    setBusyControl('mic');
+  const refreshDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
     try {
-      const next = !micEnabled;
-      await activeRoom.localParticipant.setMicrophoneEnabled(next);
-      setMicEnabled(next);
-      bump();
-    } catch (err) {
-      setNotice(err?.message || 'Microphone control failed.');
-    } finally {
-      setBusyControl('');
-    }
-  }, [bump, micEnabled]);
+      // Enumerating never opens a permission prompt or starts capture.
+      const available = await navigator.mediaDevices.enumerateDevices();
+      setDevices(available.filter((device) => device.deviceId && ['audioinput', 'videoinput'].includes(device.kind)));
+    } catch { /* Device selection is optional when the browser hides devices. */ }
+  }, []);
 
-  const toggleCamera = useCallback(async () => {
-    const activeRoom = roomRef.current;
-    if (!activeRoom) return;
-    setBusyControl('camera');
-    try {
-      const next = !cameraEnabled;
-      await activeRoom.localParticipant.setCameraEnabled(next);
-      setCameraEnabled(next);
-      bump();
-    } catch (err) {
-      setNotice(err?.message || 'Camera control failed.');
-    } finally {
-      setBusyControl('');
-    }
-  }, [bump, cameraEnabled]);
+  useEffect(() => {
+    refreshDevices();
+    navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices);
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices);
+  }, [refreshDevices]);
 
-  const toggleScreenShare = useCallback(async () => {
-    const activeRoom = roomRef.current;
-    if (!activeRoom) return;
-    setBusyControl('screen');
-    try {
-      const next = !screenEnabled;
-      await activeRoom.localParticipant.setScreenShareEnabled(next);
-      setScreenEnabled(next);
+  const runControl = useCallback(async (name, action) => {
+    const activeRoom = sessionRef.current.room;
+    if (!activeRoom || controlBusyRef.current) return;
+    controlBusyRef.current = true;
+    setBusyControl(name);
+    await sessionRef.current.act(action, (mediaRoom) => {
+      setMicEnabled(Boolean(mediaRoom.localParticipant.isMicrophoneEnabled));
+      setCameraEnabled(Boolean(mediaRoom.localParticipant.isCameraEnabled));
+      setScreenEnabled(Boolean(mediaRoom.localParticipant.isScreenShareEnabled));
+      setNotice('');
       bump();
-    } catch (err) {
-      setNotice(err?.message || 'Screen share failed.');
-    } finally {
+      refreshDevices();
+    }, (err) => {
+      setNotice(err?.message || 'Device action failed. Check browser permissions and try again.');
+    });
+    if (sessionRef.current.room === activeRoom) {
+      controlBusyRef.current = false;
       setBusyControl('');
     }
-  }, [bump, screenEnabled]);
+  }, [bump, refreshDevices]);
+
+  const toggleMic = () => runControl('mic', (mediaRoom) => (
+    mediaRoom.localParticipant.setMicrophoneEnabled(!mediaRoom.localParticipant.isMicrophoneEnabled)
+  ));
+  const toggleCamera = () => runControl('camera', (mediaRoom) => (
+    mediaRoom.localParticipant.setCameraEnabled(!mediaRoom.localParticipant.isCameraEnabled)
+  ));
+  const toggleScreenShare = () => runControl('screen', (mediaRoom) => (
+    mediaRoom.localParticipant.setScreenShareEnabled(!mediaRoom.localParticipant.isScreenShareEnabled)
+  ));
+  const enableAudio = () => runControl('audio', async (mediaRoom) => {
+    await mediaRoom.startAudio();
+    if (sessionRef.current.room === mediaRoom) setAudioBlocked(!mediaRoom.canPlaybackAudio);
+  });
+  const changeDevice = (kind, deviceId) => runControl('device', async (mediaRoom) => {
+    const switched = await mediaRoom.switchActiveDevice(kind, deviceId, Boolean(deviceId));
+    if (!switched) throw new Error('That device could not be selected. Try another device.');
+    if (sessionRef.current.room === mediaRoom) setSelectedDevices((current) => ({ ...current, [kind]: deviceId }));
+  });
 
   const leave = useCallback(async () => {
     await disconnect();
@@ -530,8 +544,9 @@ export default function LiveKitMediaPanel({
     onEndRoom?.();
   }, [onEndRoom]);
 
-  const currentNetwork = networkTone(livekitRoom?.localParticipant?.networkQualityLevel);
-  const connected = status === 'connected' || connectionState === 'connected';
+  const currentNetwork = networkTone(livekitRoom?.localParticipant?.connectionQuality);
+  const connected = connectionState === 'connected';
+  const orderedTiles = [...tiles].sort((a, b) => Number(b.id === pinnedId) - Number(a.id === pinnedId));
 
   return (
     <div className="flex h-full min-h-0 flex-col rounded-xl bg-slate-950" data-testid="livekit-media-panel">
@@ -545,18 +560,18 @@ export default function LiveKitMediaPanel({
           <span className="capitalize">{currentNetwork.label}</span>
         </span>
         <span>{visibleParticipantCount} in room</span>
-        <span className="font-mono text-[11px]">{compactUrl(livekitUrl) || 'media service pending'}</span>
+        <span>Video consultation</span>
       </div>
 
       {(status === 'connecting' || status === 'reconnecting') && (
-        <div className="flex shrink-0 items-center gap-2 bg-amber-950/70 px-3 py-2 text-sm text-amber-200">
+        <div role="status" className="flex shrink-0 items-center gap-2 bg-amber-950/70 px-3 py-2 text-sm text-amber-200">
           <Loader2 className="h-4 w-4 animate-spin" />
           {status === 'reconnecting' ? 'Reconnecting media session...' : 'Connecting to the media server...'}
         </div>
       )}
 
       {error && (
-        <div className="flex shrink-0 items-center justify-between gap-3 bg-rose-950/80 px-3 py-2 text-sm text-rose-200">
+        <div role="alert" className="flex shrink-0 items-center justify-between gap-3 bg-rose-950/80 px-3 py-2 text-sm text-rose-200">
           <span className="flex min-w-0 items-center gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span className="truncate">{error}</span>
@@ -573,16 +588,46 @@ export default function LiveKitMediaPanel({
       )}
 
       {notice && (
-        <div className="flex shrink-0 items-center gap-2 bg-slate-900 px-3 py-2 text-xs text-slate-300">
+        <div role="status" className="flex shrink-0 items-center gap-2 bg-slate-900 px-3 py-2 text-xs text-slate-300">
           <AlertTriangle className="h-3.5 w-3.5 text-amber-300" />
           {notice}
         </div>
       )}
 
-      <div className="min-h-0 flex-1 p-2">
+      {audioBlocked && connected && (
+        <div role="status" className="flex shrink-0 flex-wrap items-center gap-3 bg-blue-950 px-3 py-2 text-sm text-blue-100">
+          <span>Your browser needs permission to play the call audio.</span>
+          <button type="button" onClick={enableAudio} disabled={Boolean(busyControl)} className="rounded-lg bg-blue-600 px-3 py-2 font-semibold disabled:opacity-50">Enable call audio</button>
+        </div>
+      )}
+
+      {connected && ['poor', 'lost'].includes(currentNetwork.label) && (
+        <div role="status" className="flex shrink-0 flex-wrap items-center gap-3 bg-amber-950 px-3 py-2 text-sm text-amber-100">
+          <span>Connection quality is {currentNetwork.label}. Turning off your camera reduces upload bandwidth. You can also use chat.</span>
+          {cameraEnabled && <button type="button" disabled={Boolean(busyControl)} onClick={() => runControl('camera', (mediaRoom) => mediaRoom.localParticipant.setCameraEnabled(false))} className="rounded-lg bg-amber-800 px-3 py-2 font-semibold disabled:opacity-50">Turn off my video</button>}
+        </div>
+      )}
+
+      <details className="shrink-0 border-b border-slate-800 px-3 py-2 text-xs text-slate-300">
+        <summary className="cursor-pointer py-1 font-semibold">Microphone and camera settings</summary>
+        <p className="my-2">Choose a device, then use the microphone or camera button to turn it on. Your camera tile is your preview. Device names may appear after you grant permission.</p>
+        <div className="flex flex-wrap gap-3 pb-2">
+          {['audioinput', 'videoinput'].map((kind) => (
+            <label key={kind} className="flex min-w-0 flex-1 flex-col gap-1">
+              {kind === 'audioinput' ? 'Microphone' : 'Camera'}
+              <select value={selectedDevices[kind] || ''} onChange={(event) => changeDevice(kind, event.target.value)} disabled={!connected || Boolean(busyControl)} className="min-w-0 rounded-lg border border-slate-600 bg-slate-900 p-2 text-white disabled:opacity-50">
+                <option value="">Browser default</option>
+                {devices.filter((device) => device.kind === kind).map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `${kind === 'audioinput' ? 'Microphone' : 'Camera'} ${index + 1}`}</option>)}
+              </select>
+            </label>
+          ))}
+        </div>
+      </details>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {connected || tiles.length ? (
           <div className={`grid ${gridClass(tiles.length)} h-full auto-rows-fr gap-2`}>
-            {tiles.map((tile) => (
+            {orderedTiles.map((tile) => (
               <MediaTile
                 key={tile.id}
                 tile={tile}
@@ -596,7 +641,7 @@ export default function LiveKitMediaPanel({
             <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
             <div>
               <p className="font-semibold text-white">Preparing media room</p>
-              <p className="mt-1 text-sm text-slate-400">Camera, microphone, and media subscription setup is in progress.</p>
+              <p className="mt-1 text-sm text-slate-400">{error ? 'Use Retry to reconnect to the room.' : 'Connecting with your camera and microphone off.'}</p>
             </div>
           </div>
         )}
@@ -607,7 +652,7 @@ export default function LiveKitMediaPanel({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-800 bg-slate-950 px-4 py-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-800 bg-slate-950 px-3 py-3">
         <div className="hidden min-w-0 items-center gap-2 text-xs text-slate-400 sm:flex">
           <span className={`h-2 w-2 rounded-full ${connected ? 'bg-blue-400' : 'bg-amber-400'}`} />
           <span className="truncate capitalize">{connectionState || status}</span>
@@ -622,12 +667,12 @@ export default function LiveKitMediaPanel({
           )}
         </div>
 
-        <div className="flex flex-1 items-center justify-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2">
           <ControlButton
             label={micEnabled ? 'Mute microphone' : 'Unmute microphone'}
             active={micEnabled}
             danger={!micEnabled}
-            disabled={!connected || busyControl === 'mic'}
+            disabled={!connected || Boolean(busyControl)}
             onClick={toggleMic}
           >
             {micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
@@ -637,7 +682,7 @@ export default function LiveKitMediaPanel({
             label={cameraEnabled ? 'Stop camera' : 'Start camera'}
             active={cameraEnabled}
             danger={!cameraEnabled}
-            disabled={!connected || busyControl === 'camera'}
+            disabled={!connected || Boolean(busyControl)}
             onClick={toggleCamera}
           >
             {cameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
@@ -646,7 +691,7 @@ export default function LiveKitMediaPanel({
           <ControlButton
             label={screenEnabled ? 'Stop screen share' : 'Share screen'}
             active={screenEnabled}
-            disabled={!connected || busyControl === 'screen'}
+            disabled={!connected || Boolean(busyControl)}
             onClick={toggleScreenShare}
           >
             {screenEnabled ? <MonitorOff className="h-5 w-5" /> : <Monitor className="h-5 w-5" />}
@@ -664,6 +709,7 @@ export default function LiveKitMediaPanel({
           {isHost ? (
             <button
               type="button"
+              aria-label="End room for everyone"
               onClick={endRoom}
               className="ml-2 inline-flex h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-bold text-white hover:bg-rose-700"
             >
@@ -674,6 +720,7 @@ export default function LiveKitMediaPanel({
             <button
               type="button"
               title="Leave call"
+              aria-label="Leave call"
               onClick={leave}
               className="ml-2 flex h-11 w-11 items-center justify-center rounded-xl bg-rose-600 text-white hover:bg-rose-700"
             >

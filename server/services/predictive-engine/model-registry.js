@@ -8,6 +8,7 @@
 const db = require('../../db');
 const crypto = require('crypto');
 const logger = require('../../middleware/logger');
+const { assertReviewedModel, reviewedMarkets, fail } = require('./model-validation');
 
 class ModelRegistry {
   constructor() {
@@ -108,6 +109,7 @@ class ModelRegistry {
       const model = await client.query('SELECT * FROM ml_models WHERE id = $1', [modelId]);
       if (!model.rows[0]) throw new Error('Model not found');
       
+      if (!reviewedMarkets(model.rows[0]).length) throw fail('PREDICTIVE_MODEL_UNVALIDATED', 'Independent model review is required before promotion.');
       const modelType = model.rows[0].model_type;
 
       // Demote current champion
@@ -161,10 +163,8 @@ class ModelRegistry {
    * Get the champion model for a prediction type
    */
   async getChampionModel(modelType) {
-    // Check cache first
-    if (this.modelCache.has(modelType)) {
-      return this.modelCache.get(modelType);
-    }
+    // Re-read current status: revoking/deprecating a model must take effect
+    // immediately, including in other serving processes.
 
     const result = await db.query(`
       SELECT * FROM ml_models 
@@ -183,24 +183,10 @@ class ModelRegistry {
   /**
    * Get model for inference (handles A/B routing)
    */
-  async getModelForInference(modelType) {
+  async getModelForInference(modelType, market) {
+    // Shadow models must never produce a clinical response through random routing.
     const champion = await this.getChampionModel(modelType);
-    
-    // Check for active A/B test
-    const challenger = await db.query(`
-      SELECT * FROM ml_models 
-      WHERE model_type = $1 AND status = 'shadow' AND traffic_percentage > 0
-      LIMIT 1
-    `, [modelType]);
-
-    if (challenger.rows[0]) {
-      // Route traffic based on percentage
-      const random = Math.random() * 100;
-      if (random < challenger.rows[0].traffic_percentage) {
-        return { model: challenger.rows[0], isChallenger: true };
-      }
-    }
-
+    assertReviewedModel(champion, market);
     return { model: champion, isChallenger: false };
   }
 
@@ -323,107 +309,10 @@ class ModelRegistry {
    * These serve as baselines until ML models are trained
    */
   async registerDefaultModels() {
-    const defaultModels = [
-      {
-        modelName: 'readmission_risk_baseline',
-        modelVersion: '1.0.0',
-        modelType: 'readmission_risk',
-        algorithm: 'logistic_regression',
-        description: 'Baseline readmission risk model using weighted feature scoring',
-        featureNames: ['age', 'encounters_30d', 'er_visits_90d', 'active_medications', 'charlson_comorbidity_index', 'mews_score', 'sdoh_risk_score'],
-        hyperparameters: { method: 'weighted_scoring', threshold: 0.5 },
-        trainingMetrics: { accuracy: 0.72, auc_roc: 0.76 },
-        trainedBy: 'system_default'
-      },
-      {
-        modelName: 'claims_denial_baseline',
-        modelVersion: '1.0.0',
-        modelType: 'claims_denial',
-        algorithm: 'logistic_regression',
-        description: 'Baseline claims denial prediction using historical patterns',
-        featureNames: ['denial_rate', 'avg_claim_amount', 'active_problems', 'is_medicaid'],
-        hyperparameters: { method: 'weighted_scoring', threshold: 0.5 },
-        trainingMetrics: { accuracy: 0.68, auc_roc: 0.71 },
-        trainedBy: 'system_default'
-      },
-      {
-        modelName: 'no_show_baseline',
-        modelVersion: '1.0.0',
-        modelType: 'no_show',
-        algorithm: 'logistic_regression',
-        description: 'Baseline appointment no-show prediction',
-        featureNames: ['no_show_rate', 'cancellation_count', 'sdoh_risk_score', 'days_since_last_completed'],
-        hyperparameters: { method: 'weighted_scoring', threshold: 0.5 },
-        trainingMetrics: { accuracy: 0.74, auc_roc: 0.78 },
-        trainedBy: 'system_default'
-      },
-      {
-        modelName: 'sepsis_early_warning_baseline',
-        modelVersion: '1.0.0',
-        modelType: 'sepsis_warning',
-        algorithm: 'rule_enhanced_scoring',
-        description: 'MEWS-enhanced sepsis early warning system',
-        featureNames: ['mews_score', 'heart_rate', 'temperature', 'bp_systolic', 'respiratory_rate', 'oxygen_saturation'],
-        hyperparameters: { method: 'mews_enhanced', threshold: 0.6 },
-        trainingMetrics: { accuracy: 0.82, auc_roc: 0.87 },
-        trainedBy: 'system_default'
-      },
-      {
-        modelName: 'disease_progression_baseline',
-        modelVersion: '1.0.0',
-        modelType: 'disease_progression',
-        algorithm: 'logistic_regression',
-        description: 'Baseline chronic disease progression prediction',
-        featureNames: ['charlson_comorbidity_index', 'active_problems', 'encounter_acceleration', 'lab_abnormality_rate'],
-        hyperparameters: { method: 'weighted_scoring', threshold: 0.5 },
-        trainingMetrics: { accuracy: 0.70, auc_roc: 0.73 },
-        trainedBy: 'system_default'
-      },
-      {
-        modelName: 'cost_forecast_baseline',
-        modelVersion: '1.0.0',
-        modelType: 'cost_forecast',
-        algorithm: 'linear_regression',
-        description: 'Baseline cost of care forecasting',
-        featureNames: ['total_billed', 'encounters_90d', 'charlson_comorbidity_index', 'er_visits_90d'],
-        hyperparameters: { method: 'weighted_scoring', threshold: 0.5 },
-        trainingMetrics: { accuracy: 0.65, r_squared: 0.58 },
-        trainedBy: 'system_default'
-      },
-      {
-        modelName: 'quality_measures_baseline',
-        modelVersion: '1.0.0',
-        modelType: 'quality_measures',
-        algorithm: 'logistic_regression',
-        description: 'Baseline quality measure (HEDIS/Star) gap detection',
-        featureNames: ['days_since_last_encounter', 'no_show_rate', 'active_problems', 'clinical_complexity_score'],
-        hyperparameters: { method: 'weighted_scoring', threshold: 0.5 },
-        trainingMetrics: { accuracy: 0.69, auc_roc: 0.72 },
-        trainedBy: 'system_default'
-      }
-    ];
-
-    let registered = 0;
-    for (const config of defaultModels) {
-      try {
-        const existing = await db.query(
-          'SELECT id FROM ml_models WHERE model_name = $1 AND model_version = $2',
-          [config.modelName, config.modelVersion]
-        );
-
-        if (!existing.rows.length) {
-          const model = await this.registerModel(config);
-          await this.promoteToChampion(model.id);
-          registered++;
-        }
-      } catch (error) {
-        console.error(`Failed to register default model ${config.modelName}:`, error.message);
-      }
-    }
-
-    if (registered > 0) {
-      console.log(`🧠 Registered ${registered} default predictive models`);
-    }
+    // Historical defaults remain in storage for audit, but are rejected by the
+    // reviewed artifact gate. Startup must not invent evaluation metrics or
+    // promote heuristic models to production.
+    return 0;
   }
 }
 
